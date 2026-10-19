@@ -325,3 +325,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend-dev] DONE: same; app/routers/{apps,admin,auth}.py, app/models.py, alembic e5b2c8d1f3a7, tests/test_moderation.py (+3 tests), tests/test_reconciler.py (uuid email, flaky id() collision). 152 pass. Not committed.
 - 2026-10-19 [scm-security] START: commit #3/#4/#5 fixes, merge fix/mysql-admin-grants, review procedures, push, CI
 - 2026-10-19 [backend] DONE: #1 root cause = MySQL 8.4 GRANT ignores wildcard-db grants for the grantor check (1044 even for SELECT). Fix: picopaas_ops SECURITY DEFINER procs + MYSQL_ADMIN_USE_PROCEDURES=1; branch fix/mysql-admin-grants, CI green run 39242817676 (not merged).
+- 2026-10-19 [scm-security] note: .gitleaksignore fingerprint for historical test dummy password (commit 58e2897 line 146); current tree no longer contains it
