@@ -182,7 +182,7 @@ def second_user(admin):
     email = f"e2e-{secrets.token_hex(5)}@picopaas-e2e.dev"
     password = secrets.token_urlsafe(18)
     with httpx.Client(base_url=PICOPAAS_URL, timeout=30) as c:
-        r = c.post("/auth/register", json={"email": email, "password": password})
+        r = c.post("/auth/register", json={"email": email, "password": password, "accept_terms": True})
         assert r.status_code == 201, f"register: {r.status_code} {r.text[:200]}"
         uid = r.json()["id"]
         try:

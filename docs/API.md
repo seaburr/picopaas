@@ -46,7 +46,7 @@ The only route that already has an `/api` prefix is `/api/keys`.
 
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
-| POST | `/auth/register` | public | `{email, password}` (email valid, password 8 to 256) | 201 `User`; sets cookie. The first user is `uberadmin`/`active`; later users are `user`/`pending`. 409 `email already registered`. |
+| POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `uberadmin`/`active`; later users are `user`/`pending`. 409 `email already registered`. |
 | POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 `invalid email or password` (also for deleted users; failures are audited). |
 | POST | `/auth/logout` | public | none | 204; clears cookie. |
 | GET | `/auth/me` | user | none | `User` |

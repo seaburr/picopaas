@@ -18,7 +18,7 @@ def test_second_user_is_plain_user(make_client):
 def test_register_rejects_duplicate_email(client):
     register_and_login(client, "dupe@example.com")
     resp = client.post(
-        "/auth/register", json={"email": "dupe@example.com", "password": DEFAULT_PASSWORD}
+        "/auth/register", json={"email": "dupe@example.com", "password": DEFAULT_PASSWORD, "accept_terms": True}
     )
     assert resp.status_code == 409
 
@@ -60,3 +60,29 @@ def test_logout_clears_session(client):
     assert resp.status_code == 204
 
     assert client.get("/auth/me").status_code == 401
+
+
+def test_register_requires_accept_terms(client):
+    base = {"email": "t@example.com", "password": DEFAULT_PASSWORD}
+    assert client.post("/auth/register", json=base).status_code == 422
+    r = client.post("/auth/register", json={**base, "accept_terms": False})
+    assert r.status_code == 422 and "accept the terms" in r.text
+    assert client.post("/auth/register", json={**base, "accept_terms": True, "x": 1}).status_code == 422
+
+
+def test_terms_accepted_at_stored_and_listed_for_admin(make_client):
+    admin = make_client()
+    register_and_login(admin, "admin@example.com")
+    register_and_login(make_client(), "u@example.com")
+    users = admin.get("/admin/users").json()
+    assert all(u["terms_accepted_at"] for u in users)
+
+
+def test_existing_users_have_null_terms(make_client, db_session):
+    from app import models
+    from app.routers.auth import create_user
+    admin = make_client()
+    register_and_login(admin, "admin@example.com")
+    create_user(db_session, "old@example.com", "Password123!x", first_hint=False)
+    old = next(u for u in admin.get("/admin/users").json() if u["email"] == "old@example.com")
+    assert old["terms_accepted_at"] is None

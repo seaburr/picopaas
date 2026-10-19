@@ -16,6 +16,14 @@ class UserRegister(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     email: EmailStr
     password: str = Field(min_length=8, max_length=256)
+    accept_terms: bool
+
+    @field_validator("accept_terms")
+    @classmethod
+    def _must_accept(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError("you must accept the terms (accept_terms: true) to register")
+        return v
 
 
 class UserLogin(BaseModel):

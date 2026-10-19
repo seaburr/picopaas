@@ -91,7 +91,7 @@ def register_and_login(client: TestClient, email: str, password: str = DEFAULT_P
     New non-first users start 'pending'; by default they are approved so ordinary tests can use
     /apps. Pass approve=False to exercise the pending state.
     """
-    resp = client.post("/auth/register", json={"email": email, "password": password})
+    resp = client.post("/auth/register", json={"email": email, "password": password, "accept_terms": True})
     assert resp.status_code == 201, resp.text
     if approve and resp.json()["status"] == "pending":
         approve_user_directly(email)

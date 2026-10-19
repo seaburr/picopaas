@@ -27,6 +27,7 @@ class AdminUserOut(BaseModel):
     app_count: int
     status: str
     created_at: datetime
+    terms_accepted_at: Optional[datetime] = None
 
 
 class AdminAppOut(BaseModel):
@@ -110,7 +111,8 @@ def _user_out(db: Session, user: models.User) -> dict:
         .count()
     )
     return dict(id=user.id, email=user.email, role=user.role, app_limit=user.app_limit,
-                app_count=count, status=user.status, created_at=user.created_at)
+                app_count=count, status=user.status, created_at=user.created_at,
+                terms_accepted_at=user.terms_accepted_at)
 
 
 def _server_out(db: Session, s: models.DbServer) -> DbServerOut:

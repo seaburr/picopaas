@@ -25,6 +25,7 @@ class User(Base):
     # 'pending' (awaiting uberadmin approval) | 'active' | 'suspended' | 'deleted' (soft).
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="active")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")

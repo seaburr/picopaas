@@ -8,7 +8,7 @@ Platform URL: `https://platform.raisehellpraisedale.xyz` (the CLI default).
 
 ## 1. Getting an account
 
-1. Open the platform URL, click **Register**, enter an email and a password (8 to 256 characters).
+1. Open the platform URL, click **Register**, enter an email and a password (8 to 256 characters), and accept the terms (this is a dev/test platform; the API requires `accept_terms: true`).
 2. New accounts are `pending`. You can log in, but the API refuses app and key calls with
    `403 account pending approval` until the uberadmin approves you. The UI shows a "pending" page.
 3. Once approved (`active`) you can create apps and API keys. The first account ever registered on a fresh
