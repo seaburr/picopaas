@@ -44,9 +44,10 @@ def db():
               autocommit=True)
     ca = ca_file()
     if ca:
-        kw["ssl"] = {"ca": ca}
-        kw["ssl_verify_cert"] = True
-        kw["ssl_verify_identity"] = True
+        import ssl
+        ctx = ssl.create_default_context(cafile=ca)  # verifies chain + hostname
+        ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)  # DO's CA fails Python 3.13+ strict mode
+        kw["ssl"] = ctx
     return pymysql.connect(**kw)
 
 

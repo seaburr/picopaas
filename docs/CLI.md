@@ -43,12 +43,15 @@ env:
 Python (pymysql): write the PEM to a file at startup, then pass it as `ssl`.
 
 ```python
-import os, pymysql
+import os, ssl, pymysql
 ca = os.environ.get("DB_CA_CERT", "")
+ctx = None
 if ca:
     open("/tmp/db-ca.pem", "w").write(ca)
-conn = pymysql.connect(host=..., user=..., password=..., database=...,
-                       ssl={"ca": "/tmp/db-ca.pem"} if ca else None)
+    ctx = ssl.create_default_context(cafile="/tmp/db-ca.pem")  # verifies chain + hostname
+    # Python 3.13+ rejects DO's CA in strict mode ("Basic Constraints of CA cert not marked critical").
+    ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+conn = pymysql.connect(host=..., user=..., password=..., database=..., ssl=ctx)
 ```
 
 Node (mysql2):

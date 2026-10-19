@@ -1,6 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import create_engine
 from sqlalchemy import pool
 
 from alembic import context
@@ -8,6 +8,7 @@ from alembic import context
 from app import models  # noqa: F401  (ensures models are registered on Base.metadata)
 from app.config import DATABASE_URL
 from app.db import Base
+from app.db_tls import engine_url_and_args
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -20,7 +21,7 @@ if config.config_file_name is not None:
 
 # DATABASE_URL (env-driven, see app/config.py) is the single source of truth
 # for the connection string, so alembic.ini never carries a real URL.
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))  # configparser interpolation
 
 target_metadata = Base.metadata
 
@@ -61,11 +62,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Same URL/TLS handling as the app engine (ssl_ca query param -> SSLContext), see app/db_tls.py.
+    url, connect_args = engine_url_and_args(DATABASE_URL)
+    connectable = create_engine(url, connect_args=connect_args, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(

@@ -29,6 +29,7 @@ import pymysql.cursors
 
 from app import config
 from app.crypto import decrypt
+from app.db_tls import mysql_ssl_context
 from app.providers.base import MySQLAdmin, MySQLAdminError
 
 # We only ever generate `app_<int>` ourselves (see _db_name/_db_user below),
@@ -81,7 +82,7 @@ class MySQLAdminClient(MySQLAdmin):
         kwargs: dict[str, Any] = {}
         if self._ssl_ca:
             # Managed MySQL requires TLS: verify the server cert against the CA and hostname.
-            kwargs.update(ssl={"ca": self._ssl_ca}, ssl_verify_cert=True, ssl_verify_identity=True)
+            kwargs.update(ssl=mysql_ssl_context(self._ssl_ca))
         try:
             return pymysql.connect(
                 **kwargs,

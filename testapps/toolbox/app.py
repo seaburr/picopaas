@@ -161,7 +161,10 @@ def c_mysql_login(a):
         fd, ca_path = tempfile.mkstemp(suffix=".pem")
         with os.fdopen(fd, "w") as f:
             f.write(ca_pem)
-        kw["ssl"] = {"ca": ca_path}
+        import ssl
+        ctx = ssl.create_default_context(cafile=ca_path)
+        ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)  # DO's CA fails Python 3.13+ strict mode
+        kw["ssl"] = ctx
     try:
         conn = pymysql.connect(**kw)
         conn.close()
