@@ -96,13 +96,18 @@ jobs:
         run: |
           set -euo pipefail
           live_id=""
-          if kubectl -n traefik get svc traefik >/dev/null 2>&1; then
-            live_id=$(kubectl -n traefik get svc traefik \
-              -o jsonpath='{.metadata.annotations.kubernetes\.digitalocean\.com/load-balancer-id}')
+          # Only a definite NotFound means "no Service yet"; any other kubectl error aborts (never guess).
+          if out=$(kubectl -n traefik get svc traefik \
+                -o jsonpath='{.metadata.annotations.kubernetes\.digitalocean\.com/load-balancer-id}' 2>&1); then
+            live_id="$out"
             if [ -z "$live_id" ]; then
               echo "::warning::traefik Service exists but has no load-balancer-id yet; skipping orphan cleanup"
               exit 0
             fi
+          elif grep -q 'NotFound' <<<"$out"; then
+            live_id=""
+          else
+            echo "::error::could not read the traefik Service ($out); refusing to touch load balancers"; exit 1
           fi
           echo "live LB id: ${live_id:-<none: no traefik Service in this cluster yet>}"
           doctl compute load-balancer list -o json \
