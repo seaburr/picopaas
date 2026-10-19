@@ -1,0 +1,69 @@
+name: diag
+
+# Read-only cluster diagnostics (pods, events, recent logs) so Claude can debug without a local kubeconfig.
+# Every value in the namespace's Secrets is masked (::add-mask::) before anything is printed.
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: "Namespace to inspect"
+        default: picopaas-system
+      selector:
+        description: "Label selector for logs (empty = all pods in the namespace)"
+        default: ""
+      tail:
+        description: "Log lines per container"
+        default: "150"
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    env:
+      NS: ${{ inputs.namespace }}
+      SELECTOR: ${{ inputs.selector }}
+      TAIL: ${{ inputs.tail }}
+    steps:
+      - uses: digitalocean/action-doctl@v2.5.1
+        with:
+          token: ${{ secrets.DIGITALOCEAN_TOKEN }}
+      - uses: azure/setup-kubectl@v4
+      - name: Kubeconfig
+        run: doctl kubernetes cluster kubeconfig save picopaas-nyc3 >/dev/null
+      - name: Validate inputs
+        run: |
+          [[ "$NS" =~ ^[a-z0-9-]{1,63}$ ]] || { echo "::error::bad namespace"; exit 1; }
+          [[ "$SELECTOR" =~ ^[a-zA-Z0-9=,._/-]*$ ]] || { echo "::error::bad selector"; exit 1; }
+          [[ "$TAIL" =~ ^[0-9]{1,4}$ ]] || { echo "::error::bad tail"; exit 1; }
+      - name: Mask secret values
+        run: |
+          # Fail closed: if secrets can't be read, abort before any logs are printed.
+          set -euo pipefail
+          secrets=$(kubectl -n "$NS" get secrets -o json) || { echo "::error::cannot read secrets; refusing to continue"; exit 1; }
+          echo "$secrets" | jq -r '.items[].data // {} | .[]' | while read -r v; do
+                echo "::add-mask::$v"
+                d=$(echo "$v" | base64 -d 2>/dev/null) || continue
+                # Mask the whole value and each line of it (multi-line PEMs).
+                [ ${#d} -ge 4 ] && echo "::add-mask::$d"
+                echo "$d" | while IFS= read -r line; do [ ${#line} -ge 8 ] && echo "::add-mask::$line"; done
+              done
+      - name: Nodes
+        run: kubectl get nodes -o wide && kubectl top nodes 2>/dev/null || true
+      - name: Pods and events
+        run: |
+          kubectl -n "$NS" get pods -o wide
+          kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -40
+      - name: Describe non-ready pods
+        run: |
+          for p in $(kubectl -n "$NS" get pods -o json | jq -r '.items[] | select(([.status.containerStatuses[]?.ready] | all) | not) | .metadata.name'); do
+            echo "=== $p"; kubectl -n "$NS" describe pod "$p" | sed -n '/^Containers:/,$p' | grep -v -iE 'password|secret_key|token' || true
+          done
+      - name: Logs
+        run: |
+          sel=${SELECTOR:+-l $SELECTOR}
+          for p in $(kubectl -n "$NS" get pods $sel -o jsonpath='{.items[*].metadata.name}'); do
+            echo "=== $p (current)"; kubectl -n "$NS" logs "$p" --all-containers --tail="$TAIL" 2>&1 || true
+            echo "=== $p (previous)"; kubectl -n "$NS" logs "$p" --all-containers --previous --tail="$TAIL" 2>&1 || true
+          done
