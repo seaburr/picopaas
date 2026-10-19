@@ -1,15 +1,22 @@
 name: terraform
 
-# Manual, plan-only. There is deliberately NO apply here: applies need an APPROVED docs/requests entry
-# and are run by hand (or from Terraform Cloud) by a human.
+# Manual plan + apply (Chas, 2026-10-19). Run it only for changes covered by an APPROVED docs/requests entry.
+# Untick "apply" to get a plan only. Runs execute remotely in Terraform Cloud (workspace seaburr/picopaas).
 on:
   workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply after planning (unticked = plan only)"
+        type: boolean
+        default: true
+
+concurrency: terraform
 
 permissions:
   contents: read
 
 jobs:
-  plan:
+  terraform:
     runs-on: ubuntu-latest
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
@@ -51,3 +58,6 @@ jobs:
         if: steps.gate.outputs.run == 'true'
       - run: terraform plan -input=false
         if: steps.gate.outputs.run == 'true'
+      - name: terraform apply
+        if: steps.gate.outputs.run == 'true' && inputs.apply
+        run: terraform apply -input=false -auto-approve

@@ -1,5 +1,5 @@
 # PicoPaaS infra — request 0001 (docs/requests/0001-core-infra.md)
-# NOT APPLIED. Written for review only. See infra/README.md before running anything.
+# Applied via the manual "terraform" GitHub workflow (plan + apply in Terraform Cloud). See infra/README.md.
 
 terraform {
   required_version = ">= 1.5"
