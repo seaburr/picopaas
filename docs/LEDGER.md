@@ -424,3 +424,10 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [infra-ops] DONE: hostname suffix 5->7 chars, word lists expanded (~150 each); existing apps unchanged; docs/tests updated.
 - 2026-10-19 [backend-dev] START: health snapshot background refresh + per-app resource overrides
 - 2026-10-19 [backend-dev] DONE: app/health.py caches only the k8s snapshot, refreshed every 15s per replica (scheduler job + warm-up thread; "warming": true while empty; sync fallback when no scheduler); app/resources.py, App cpu/mem override columns (migration c8d4e1f7a2b9), PATCH /admin/apps/{id}/resources, AppOut/AdminAppOut `resources`, manifests/quota(2x limits)/LimitRange max from effective values. Uncommitted.
+- 2026-10-19 [frontend-dev] START: dev/test banner, register terms checkbox, privacy reword, noindex
+- 2026-10-19 [frontend-dev] DONE: DevBanner (login/register/slim shell), landing+privacy banner, register accept_terms checkbox, privacy reword + abuse@ contact, noindex, public/404.html. typecheck+build ok. Uncommitted.
+- 2026-10-19 [backend-dev] START: accept_terms at signup, robots.txt + X-Robots-Tag, unknown-app-host 404
+- 2026-10-19 [backend-dev] DONE: users.terms_accepted_at (migration d9e5f2a8b3c1), register requires accept_terms, admin users list exposes it; /robots.txt + X-Robots-Tag via outermost middleware; unknown *.APP_DOMAIN hosts get static/404.html (inline fallback) 404; catch-all Ingress (priority 1) in deploy/platform/ingress.yaml; docs + tests. Uncommitted.
+- 2026-10-19 [frontend-dev] START: public/suspended.html (503 page for suspended apps)
+- 2026-10-19 [frontend-dev] DONE: frontend/public/suspended.html (matches 404.html); build ok, static/suspended.html present. Uncommitted.
+- 2026-10-19 [backend-dev] DONE: suspended apps: reconciler omits Ingress and calls KubeProvider.delete_ingress (base/kube/fake); middleware serves static/suspended.html 503 (10s cached hostname lookup, indexed) vs 404; docs/tests. Uncommitted.

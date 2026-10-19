@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
+import DevBanner from '../components/DevBanner.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
@@ -28,7 +29,8 @@ async function onSubmit() {
 <template>
   <div class="flex min-h-screen items-center justify-center bg-pico-bg px-4">
     <div class="w-full max-w-sm">
-      <h1 class="mb-6 text-center text-xl font-bold text-white">PicoPaaS</h1>
+      <h1 class="mb-4 text-center text-xl font-bold text-white">PicoPaaS</h1>
+      <DevBanner class="mb-4" />
       <div class="rounded-lg border border-pico-border bg-pico-panel p-6">
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div>

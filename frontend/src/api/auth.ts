@@ -2,10 +2,10 @@ import type { User } from '../types'
 import { apiFetch } from './client'
 
 // Matches app/routers/auth.py exactly.
-export const register = (email: string, password: string) =>
+export const register = (email: string, password: string, acceptTerms: boolean) =>
   apiFetch<User>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, accept_terms: acceptTerms }),
   })
 
 export const login = (email: string, password: string) =>
