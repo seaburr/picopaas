@@ -306,3 +306,8 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   app/routers/apps.py, tests/test_{spaces,quota,rotation}.py + rotate test in test_mysql_admin.py (CI-only). 122 passed, 1 skipped. Not committed.
 - 2026-10-19 [scm-security] START: secret gate, security review, commit+push wave, watch CI
 - 2026-10-19 [scm-security] DONE: wave committed+pushed; review filed #1 (mysql root@% reachable from tenant ns), #2 (non-atomic rotation); deploy.yml sha input now validated hex. Reviewed OK: admin authz, spec parsing, dns-sync (A-only), workflow perms.
+- 2026-10-19 [infra-ops] START: issue #1 — mysql root localhost-only, picopaas_admin/picopaas_backup users (deploy/mysql, README, PENTEST #20)
+- 2026-10-19 [infra-ops] DONE: issue #1 fix in working tree (deploy/mysql/{statefulset,backup-cronjob,networkpolicy}.yaml, deploy/README.md, docs/PENTEST.md); kubeconform OK. Existing MySQL needs manual user SQL (README). Not committed.
+- 2026-10-19 [backend-dev] START: fix issue #2 (atomic credential rotation)
+- 2026-10-19 [backend-dev] DONE: issue #2 — Spaces: create new key -> commit -> revoke old (no rename; `revoke_other_keys`/`delete_key` added to ObjectStore); MySQL: commit new password first, then `set_password` (ALTER), restore old stored pw on failure; quota.py same + retries revoke each poll. Failure-injection tests in test_{rotation,quota,spaces}.py, real-MySQL test in test_mysql_admin.py. 136 passed, 1 skipped. Not committed.
+- 2026-10-19 [scm-security] START: commit+push fixes for #1/#2, watch CI (mysql-integration as picopaas_admin)
