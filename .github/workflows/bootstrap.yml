@@ -229,6 +229,7 @@ jobs:
             --from-literal=SPACES_ENDPOINT="https://$SPACES_REGION.digitaloceanspaces.com" \
             --from-literal=APP_DOMAIN="$DOMAIN" \
             --from-literal=RECONCILER_ENABLED=1 \
+            --from-literal=MAX_NODES=2 \
             --from-literal=MYSQL_EGRESS_MODE=cidr \
             --from-literal=MYSQL_SSL_CA=/etc/picopaas/db-ca/ca.crt \
             --from-literal=MYSQL_EGRESS_CIDR="$VPC_CIDR" \

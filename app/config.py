@@ -75,3 +75,6 @@ MYSQL_EGRESS_CIDR = os.environ.get("MYSQL_EGRESS_CIDR", "")
 # namespace the per-app NetworkPolicy admits traffic from.
 INGRESS_CLASS = os.environ.get("INGRESS_CLASS", "traefik")
 INGRESS_NAMESPACE = os.environ.get("INGRESS_NAMESPACE", "traefik")
+
+# Node ceiling shown on the admin health dashboard (informational; the real cap is in Terraform).
+MAX_NODES = int(os.environ["MAX_NODES"]) if os.environ.get("MAX_NODES", "").isdigit() else None

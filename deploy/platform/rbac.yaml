@@ -1,7 +1,7 @@
 # Minimum RBAC for the picopaas reconciler (in-process APScheduler loop inside the api pod,
 # ARCHITECTURE.md §2) to manage per-app namespaces. No wildcards, no RBAC self-management
 # (roles/rolebindings/clusterroles/clusterrolebindings), no escalate/bind/impersonate, no
-# nodes, no exec/attach/portforward, no access to Secrets outside what's listed below.
+# node writes, no exec/attach/portforward, no access to Secrets outside what's listed below.
 #
 # WARNING (flag for scm-security, see deploy/README.md "Known RBAC exposure"): `secrets` get/
 # list/watch/create/update/patch/delete is granted at CLUSTER scope (no per-namespace Role is
@@ -36,6 +36,14 @@ rules:
   # Pod status only — no delete, no exec/attach/portforward subresources.
   - apiGroups: [""]
     resources: ["pods"]
+    verbs: ["get", "list"]
+
+  # Read-only, for GET /admin/health (admin dashboard): node capacity + usage from metrics.k8s.io.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
     verbs: ["get", "list"]
 
   - apiGroups: ["apps"]

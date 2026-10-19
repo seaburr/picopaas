@@ -17,6 +17,19 @@ from app.security import decode_access_token, hash_api_key
 _registry_client = RegistryClient()
 
 
+_kube_client = None
+
+
+def get_kube():
+    """Lazy real KubeClient (tests override with FakeKubeProvider)."""
+    global _kube_client
+    if _kube_client is None:
+        from app.providers.kube import KubeClient
+
+        _kube_client = KubeClient()
+    return _kube_client
+
+
 def get_registry() -> Registry:
     return _registry_client
 

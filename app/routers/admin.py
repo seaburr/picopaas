@@ -7,9 +7,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models
+from app import audit, crypto, health, models
 from app.db import get_db
-from app.dependencies import require_uberadmin
+from app.dependencies import get_kube, require_uberadmin
 from app.routers.apps import DOMAIN_SUFFIX
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_uberadmin)])
@@ -256,6 +256,16 @@ def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_
 @router.get("/db-servers", response_model=List[DbServerOut])
 def list_db_servers(db: Session = Depends(get_db)):
     return [_server_out(db, s) for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
+
+
+@router.get("/health")
+def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
+    def _build():
+        servers = [_server_out(db, s).model_dump()
+                   for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
+        return health.build(db, kube, servers)
+
+    return health.get_cached(_build)
 
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)

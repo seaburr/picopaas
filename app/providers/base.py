@@ -31,6 +31,16 @@ class KubeProvider(ABC):
         """Return a coarse status string (e.g. 'running', 'pending', 'unknown')."""
         raise NotImplementedError
 
+    @abstractmethod
+    def cluster_snapshot(self) -> dict[str, Any]:
+        """Read-only health snapshot for the admin dashboard (plain dicts, no specs/env/secrets):
+        {"nodes": [{name, ready, age_s, cpu_capacity_m, cpu_allocatable_m, cpu_requested_m, cpu_used_m|None,
+                    mem_capacity_mi, mem_allocatable_mi, mem_requested_mi, mem_used_mi|None, pods, pods_capacity}],
+         "pods":  [{name, namespace, node, phase, ready, restarts, cpu_used_m|None, mem_used_mi|None}],
+         "metrics_available": bool, "errors": [str]}
+        Non-terminated pods only. Must not raise for a metrics.k8s.io failure (set metrics_available False)."""
+        raise NotImplementedError
+
 
 def generate_password(length: int = 32) -> str:
     import secrets

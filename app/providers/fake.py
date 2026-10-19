@@ -21,6 +21,12 @@ class FakeKubeProvider(KubeProvider):
         self.applied: dict[str, list[dict[str, Any]]] = {}
         self.deleted: set[str] = set()
         self.statuses: dict[str, str] = {}
+        self.snapshot: dict[str, Any] = {"nodes": [], "pods": [], "metrics_available": True, "errors": []}
+        self.snapshot_calls = 0
+
+    def cluster_snapshot(self) -> dict[str, Any]:
+        self.snapshot_calls += 1
+        return self.snapshot
 
     @staticmethod
     def _namespace_of(manifest: dict[str, Any]) -> Optional[str]:
