@@ -6,7 +6,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 
 ## Now / Next
 (Session paused 2026-10-18 night. Resume here.)
-- BLOCKED on Chas: request 0001 (variant choice, DO token, Spaces key, `picopaas-tfstate` bucket).
+- BLOCKED on Chas: request 0001 (variant choice, DO token, Spaces key, Terraform Cloud workspace + TF_API_TOKEN).
   Expected 2026-10-19. Infra apply waits on it. Code work does not.
 - DONE: backend scaffold + providers/manifests/registry/API keys (68 tests), frontend scaffold, infra
   Terraform (validated). All committed, CI green.
@@ -15,12 +15,15 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - NEXT (backend-dev): spike the DO API for per-bucket Spaces keys (ARCHITECTURE.md §2 ⚠). Needs the DO token.
 - NEXT (frontend-dev): API-key management UI (`/api/keys` exists).
 - NEXT (infra-ops): `deploy/` manifests (ingress-nginx, cert-manager + wildcard cert via DO DNS-01, platform
-  Deployment, MySQL StatefulSet for the lean variant), Dockerfile for the platform image (tribal-style multi-stage),
-  GHCR build/push workflow, `dns-sync` CronJob for the no-LB variant.
+  Deployment, MySQL StatefulSet for the lean variant), `dns-sync` CronJob for the no-LB variant.
+- DONE (infra-ops, 2026-10-18): Dockerfile (multi-stage, non-root `USER 10001:10001`), `.dockerignore`,
+  `entrypoint.sh`, `.github/workflows/image.yml` (GHCR build/push). Local `docker build` not verified —
+  Docker daemon not running on this machine; CI's `image.yml` will be the first real build. The platform
+  Deployment manifest (next bullet) should point at `ghcr.io/seaburr/picopaas:<sha>`.
 - DECIDED (Chas, 2026-10-18): NO root images. `RUN_AS_NON_ROOT=True` stays.
-- NEXT (backend-dev): at app create/update, fetch the image config blob in `app/providers/registry.py`
-  and reject with 422 when `User` is empty/`root`/`0`/`0:*`, e.g. "image runs as root; add a non-root USER".
-  Test it with MockTransport. Frontend: show that error and link a Dockerfile `USER` example.
+- DONE: root-image check at create/update (`Registry.inspect` reads the config blob's `User`; empty/0/root → 422,
+  a non-numeric user → 422 because kubelet can't verify it).
+- NEXT (frontend-dev): show a Dockerfile `USER 10001` example next to the image field.
 
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
@@ -144,3 +147,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   "unchanged"; (2) PATCH env reusing an existing key hit the unique constraint (flush the deletes first).
   Regression test added. 68 tests passing.
 - 2026-10-18 [manager] DONE: recorded Chas's decision: no root images (ARCHITECTURE.md, k8s_manifests.py).
+- 2026-10-18 [infra-ops] START: containerize platform (Dockerfile multi-stage, .dockerignore, entrypoint.sh, image.yml GHCR workflow).
+- 2026-10-18 [infra-ops] DONE: containerize platform. `Dockerfile` (node:22-slim builds frontend/ -> ../static, python:3.13-slim final stage, non-root `USER 10001:10001`, ENV ENVIRONMENT=production so SECRET_KEY/FERNET_KEY are required), `.dockerignore`, `entrypoint.sh` (alembic upgrade head && exec uvicorn), `.github/workflows/image.yml` (buildx + build-push-action, GHA cache, PR=build-only, main push=ghcr.io/seaburr/picopaas:latest + short-sha). `/healthz` already existed in app/main.py (no edit needed); added `tests/test_healthz.py` since no test covered it. `.venv/bin/python -m pytest tests/ -q` -> 69 passed. Did not touch routers/apps.py or providers/registry.py. Not committed (scm-security's job). Docker daemon not running locally so `docker build .` was not actually exercised; flagged in Now/Next for CI to verify.
+- 2026-10-18 [manager] DONE: root-image preflight (registry.py inspect, apps.py _check_non_root, tests/test_non_root.py);
+  Terraform backend moved from S3 to Terraform Cloud (org seaburr, workspace picopaas), per Chas. 79 tests passing.

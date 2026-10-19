@@ -18,8 +18,3 @@ output "platform_bucket_name" {
   description = "Platform Spaces bucket name (backups, platform artifacts)."
   value       = digitalocean_spaces_bucket.platform.name
 }
-
-output "tfstate_bucket_name" {
-  description = "Terraform state bucket name (created manually, not by this config — see README)."
-  value       = "picopaas-tfstate"
-}

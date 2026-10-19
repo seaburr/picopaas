@@ -19,6 +19,23 @@ router = APIRouter(prefix="/apps", tags=["apps"])
 DOMAIN_SUFFIX = "seaburr.io"
 
 
+def _check_non_root(user: str) -> None:
+    """Root images aren't supported (ARCHITECTURE.md "No root images"). Pods run with
+    runAsNonRoot, which kubelet can only verify for a numeric UID, so require one up front
+    instead of letting the pod fail to start later."""
+    uid = user.split(":", 1)[0].strip()
+    if uid in ("", "0", "root"):
+        raise HTTPException(
+            status_code=422,
+            detail="image runs as root, which isn't supported. Add a non-root numeric user to the Dockerfile, e.g. `USER 10001`",
+        )
+    if not uid.isdigit():
+        raise HTTPException(
+            status_code=422,
+            detail=f"image USER '{user}' must be a numeric UID (e.g. `USER 10001`) so the platform can verify it isn't root",
+        )
+
+
 def _check_image_cap(registry: Registry, image: str) -> None:
     """Enforce the 512MB image cap (ARCHITECTURE.md §2 "Image size").
 
@@ -27,9 +44,11 @@ def _check_image_cap(registry: Registry, image: str) -> None:
     caller and would narrow a probing surface.
     """
     try:
-        size = registry.image_size_bytes(image)
+        info = registry.inspect(image)
     except RegistryError:
         raise HTTPException(status_code=422, detail="image not found or not public")
+    _check_non_root(info.user)
+    size = info.size_bytes
     if size > MAX_IMAGE_SIZE_BYTES:
         raise HTTPException(
             status_code=422,

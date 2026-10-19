@@ -18,7 +18,7 @@ from typing import Any, Optional
 
 import httpx
 
-from app.providers.base import Registry, RegistryError
+from app.providers.base import ImageInfo, Registry, RegistryError
 
 _MANIFEST_LIST_TYPES = {
     "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -74,18 +74,42 @@ class RegistryClient(Registry):
         self._client = client or httpx.Client(timeout=timeout)
 
     def image_size_bytes(self, image_ref: str) -> int:
+        return self._sum_layer_sizes(self._wrap(lambda: self._resolve(image_ref)[0]))
+
+    def inspect(self, image_ref: str) -> ImageInfo:
+        def _do() -> ImageInfo:
+            manifest, registry, repository, token = self._resolve(image_ref)
+            size = self._sum_layer_sizes(manifest)
+            digest = (manifest.get("config") or {}).get("digest")
+            if not digest:
+                raise RegistryError("manifest has no config digest; unsupported schema")
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            # Blobs are commonly served via a redirect to object storage.
+            resp = self._client.get(
+                f"https://{registry}/v2/{repository}/blobs/{digest}", headers=headers, follow_redirects=True
+            )
+            if resp.status_code != 200:
+                raise RegistryError("image not found or not public")
+            user = (resp.json().get("config") or {}).get("User") or ""
+            return ImageInfo(size_bytes=size, user=user)
+
+        return self._wrap(_do)
+
+    def _resolve(self, image_ref: str) -> tuple[dict[str, Any], str, str, Optional[str]]:
         registry, repository, reference = _parse_image_ref(image_ref)
+        token = self._get_token(registry, repository)
+        manifest, content_type = self._get_manifest(registry, repository, reference, token)
+        if self._is_manifest_list(manifest, content_type):
+            manifest, _ = self._get_manifest(registry, repository, self._select_amd64_digest(manifest), token)
+        return manifest, registry, repository, token
+
+    @staticmethod
+    def _wrap(fn):
         try:
-            token = self._get_token(registry, repository)
-            manifest, content_type = self._get_manifest(registry, repository, reference, token)
-            if self._is_manifest_list(manifest, content_type):
-                manifest, _ = self._get_manifest(
-                    registry, repository, self._select_amd64_digest(manifest), token
-                )
-            return self._sum_layer_sizes(manifest)
+            return fn()
         except RegistryError:
             raise
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             raise RegistryError(f"registry request failed: {exc}") from exc
 
     def _get_token(self, registry: str, repository: str) -> Optional[str]:

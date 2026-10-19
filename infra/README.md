@@ -17,17 +17,14 @@ bucket, optional managed MySQL, and the DNS/firewall wiring needed depending on 
 
 The Terraform code is identical across all four flag combinations — see cost table below.
 
-## State bucket
+## State: Terraform Cloud
 
-Terraform state is stored in DO Spaces via the S3-compatible backend (`versions.tf`), bucket
-`picopaas-tfstate`, endpoint `https://atl1.digitaloceanspaces.com` (ATL1; adjust if the region
-changes to the NYC3 fallback).
+State and runs live in Terraform Cloud: org `seaburr`, workspace `picopaas` (the `cloud {}` block in
+`versions.tf`), the same setup as tribal. Locally, run `terraform login` once. CI uses
+`TF_TOKEN_app_terraform_io` from the GitHub secret `TF_API_TOKEN`.
 
-**This bucket is created ONCE, manually, outside of Terraform** — via the DO control panel or
-`doctl` — before the first `terraform init`. It is deliberately not a `digitalocean_spaces_bucket`
-resource in this config, because Terraform must not own the bucket that holds its own state (a
-`terraform destroy` or bucket-recreate would otherwise be able to nuke state out from under
-itself). Mark it private.
+Runs execute remotely in TFC by default, so the DO credentials below have to be **sensitive
+environment variables on the TFC workspace**. Shell env vars on your machine don't reach a remote run.
 
 ## Credentials (never in files)
 
@@ -37,7 +34,8 @@ this repo):
 | Env var | Used for |
 |---|---|
 | `DIGITALOCEAN_TOKEN` | the `digitalocean` provider (DO API) |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | the S3 backend — set these to the DO Spaces access key/secret (DO Spaces speaks the S3 API; the backend just wants AWS-shaped env vars) |
+| `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET_ACCESS_KEY` | the `digitalocean` provider's Spaces calls (the platform bucket) |
+| `TF_TOKEN_app_terraform_io` | Terraform Cloud auth (CI: GitHub secret `TF_API_TOKEN`) |
 
 Variables that aren't secret but you don't want to retype can go in `terraform.tfvars` (copy from
 `terraform.tfvars.example`, gitignored) or as `TF_VAR_<name>` env vars. Example:
@@ -75,7 +73,7 @@ actually ordering, and update this table once confirmed.
 
 | File | Contents |
 |---|---|
-| `versions.tf` | provider + S3 backend config |
+| `versions.tf` | provider + Terraform Cloud (`cloud {}`) config |
 | `variables.tf` | all input variables, with cost/caveat comments |
 | `network.tf` | VPC |
 | `cluster.tf` | DOKS cluster + node pool (version via `digitalocean_kubernetes_versions` data source, auto-upgrade, maintenance window) |

@@ -20,7 +20,7 @@ Nothing gets provisioned until Chas approves. Terraform for this lives in `infra
 
 ## 1. What is being deployed
 - DOKS cluster (non-HA control plane) with 1 × `s-2vcpu-4gb` node, region `atl1` (fallback `nyc3`)
-- Spaces subscription: one private bucket for Terraform state + MySQL backups, plus one bucket per app on demand
+- Spaces subscription: one private platform bucket (MySQL backups; Terraform state lives in Terraform Cloud), plus one bucket per app on demand
 - 10 GiB block volume for in-cluster MySQL
 - DNS: wildcard `*.seaburr.io` A record (plus `picopaas.seaburr.io` for the platform UI)
 - No load balancer. Ingress runs on node hostPorts.
@@ -40,5 +40,6 @@ with DB + storage while staying under the $40/mo budget.
 - [ ] Create a DO API token (read/write) and add it as GitHub repo secret `DIGITALOCEAN_TOKEN`
 - [ ] Create a Spaces access key (full access, used by the platform to create per-app buckets/keys) and add
       it as repo secrets `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET_ACCESS_KEY`
-- [ ] Create a private Spaces bucket `picopaas-tfstate` in the chosen region (one-time, holds Terraform state)
+- [ ] Create the Terraform Cloud workspace `picopaas` in org `seaburr`. Add `DIGITALOCEAN_TOKEN`, `SPACES_ACCESS_KEY_ID`,
+      `SPACES_SECRET_ACCESS_KEY` as sensitive workspace env vars, and add a TFC API token as GitHub repo secret `TF_API_TOKEN`
 - [ ] Pick a final variant: lean / LB-only / managed-DB-only / both (see table above)

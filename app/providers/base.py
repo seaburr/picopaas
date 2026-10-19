@@ -9,6 +9,7 @@ Fakes for all four live in `fake.py` and are what tests should depend on.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -88,6 +89,12 @@ class ObjectStore(ABC):
         raise NotImplementedError
 
 
+@dataclass(frozen=True)
+class ImageInfo:
+    size_bytes: int
+    user: str  # the image config's `User` ("" means the image default, i.e. root)
+
+
 class RegistryError(Exception):
     """Raised for any registry failure: not found, not public, or a malformed manifest."""
 
@@ -102,4 +109,9 @@ class Registry(ABC):
         Raises RegistryError if the image doesn't exist, isn't public, or the
         registry response can't be parsed.
         """
+        raise NotImplementedError
+
+    @abstractmethod
+    def inspect(self, image_ref: str) -> ImageInfo:
+        """Return size plus the configured `User` (from the image config blob). Same errors as above."""
         raise NotImplementedError

@@ -5,6 +5,7 @@ import secrets
 from typing import Any, Optional
 
 from app.providers.base import (
+    ImageInfo,
     KubeProvider,
     MySQLAdmin,
     ObjectStore,
@@ -120,7 +121,11 @@ class FakeRegistry(Registry):
         sizes: Optional[dict[str, int]] = None,
         default_size_bytes: Optional[int] = None,
         missing: Optional[set[str]] = None,
+        users: Optional[dict[str, str]] = None,
+        default_user: str = "10001",
     ) -> None:
+        self.users = dict(users or {})
+        self.default_user = default_user
         self.sizes = dict(sizes or {})
         self.default_size_bytes = default_size_bytes
         self.missing = set(missing or set())
@@ -133,3 +138,6 @@ class FakeRegistry(Registry):
         if self.default_size_bytes is not None:
             return self.default_size_bytes
         raise RegistryError(f"no fake size configured for {image_ref!r}")
+
+    def inspect(self, image_ref: str) -> ImageInfo:
+        return ImageInfo(self.image_size_bytes(image_ref), self.users.get(image_ref, self.default_user))

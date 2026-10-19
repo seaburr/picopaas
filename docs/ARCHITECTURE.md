@@ -118,7 +118,7 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 
 ### IaC
 - Terraform (DO provider) handles the cluster, node pool, firewall rule (80/443 to nodes), Spaces, and DNS.
-  State is stored in a private Spaces bucket (S3 backend).
+  State and runs live in Terraform Cloud (org `seaburr`, workspace `picopaas`), the same as Chas's other projects.
 - Helm/manifests in `deploy/` cover ingress-nginx, cert-manager, MySQL, and the platform itself.
 
 ## 3. Open questions for Chas
