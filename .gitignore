@@ -1,0 +1,39 @@
+# --- Secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl.bak
+kubeconfig*
+*.kubeconfig
+*.pem
+*.key
+secrets/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+static/
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Claude local ---
+.claude/settings.local.json

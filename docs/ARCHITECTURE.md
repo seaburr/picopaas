@@ -1,0 +1,123 @@
+# PicoPaaS Architecture (v0 draft)
+
+Status: **proposed, needs Chas's sign-off on the hosting option** (see `docs/requests/0001-core-infra.md`).
+Pricing checked against digitalocean.com on 2026-10-18.
+
+## 1. Hosting cost: what fits under $40/mo
+
+| Item | Managed option | Lean option (recommended) |
+|---|---|---|
+| DOKS control plane (non-HA) | $0 | $0 |
+| Worker node | 1 × s-2vcpu-4gb, $24 | 1 × s-2vcpu-4gb, $24 |
+| Load balancer | $12 | **$0**: ingress-nginx on hostPorts, DNS points at the node IP |
+| MySQL | Managed 1 GiB, $15.15 | **In-cluster MySQL 8** StatefulSet on a 10 GiB volume, ~$1 |
+| Spaces | $5 (250 GiB, 1 TiB egress, 100 buckets) | $5 |
+| Container registry | GHCR (free) | GHCR (free) |
+| **Total (static)** | **~$56: over budget** | **~$30** |
+
+**Per-app marginal cost (lean):** about $0 until the node is full. Apps request 64m CPU / 128Mi
+and are capped at 250m / 512Mi, so one 4 GB node holds about 8–10 idle-ish throwaway apps
+next to the platform. After that, each extra s-2vcpu-4gb node costs $24 and holds about 12 more apps,
+which works out to roughly **$2/app/month**. Spaces and DB add nothing per app inside the caps
+(250 MB × 100 apps still fits in the 250 GiB included).
+
+The lean option leaves about $10/mo of headroom, enough for a second node or managed MySQL later.
+
+### Trade-offs we accept with the lean option
+- **No LB:** when DOKS recycles the node, its public IP changes. A `dns-sync` CronJob (every 2 min,
+  using the DO API) repoints `*.seaburr.io` at the current node IP. Expect a few minutes of downtime
+  during node upgrades. That's acceptable for throwaway apps.
+- **Self-run MySQL:** we own the backups. A nightly `mysqldump` CronJob writes to a private platform
+  Spaces bucket and keeps 7 days.
+- **Single node:** no HA. This is a hobby/throwaway tier and we say so in the UI.
+
+## 2. Components
+
+```
+               *.seaburr.io (wildcard A → node IP, kept fresh by dns-sync)
+                                │
+                     ingress-nginx (hostPort 80/443)
+              default cert = wildcard *.seaburr.io (cert-manager, DNS-01 via DO)
+                ┌───────────────┴──────────────────┐
+     picopaas.seaburr.io                 <pet>-<5char>.seaburr.io
+   ns: picopaas-system                    ns: app-<id>  (one per app)
+   ┌──────────────────────┐               ┌───────────────────────────┐
+   │ api (FastAPI)        │──k8s API────▶ │ Deployment (1 replica)    │
+   │ ui  (Vue, built into │               │ Service / Ingress         │
+   │      the api image)  │               │ Secret (env + refs)       │
+   │ reconciler (in api)  │               │ ResourceQuota/LimitRange  │
+   └──────────┬───────────┘               │ NetworkPolicy (deny-all + │
+              │                           │  ingress-nginx + mysql)   │
+   ns: picopaas-data                      └───────────────────────────┘
+   MySQL 8 StatefulSet ── db `picopaas` (platform) + db `app_<id>` per app
+   DO Spaces ── bucket `pp-<id>` per app, per-bucket access key
+```
+
+### Platform service (Python + Vue, modeled on seaburr/tribal)
+- FastAPI, SQLAlchemy 2, Alembic, PyMySQL, bcrypt + JWT session cookie, plus API keys for CLI/YAML use.
+- Vue 3 + Vite + Pinia + Tailwind, built into the same image (same layout as tribal).
+- Tests use pytest with the real login flow and no auth mocks. K8s, MySQL-admin, and Spaces clients sit
+  behind thin interfaces with fake implementations for unit tests. CI also runs a MySQL integration job.
+- A single replica handles the API and also runs an in-process reconcile loop (APScheduler), with no
+  separate operator. Desired state lives in the platform DB, and the loop converges k8s, MySQL, and Spaces toward it.
+
+### Tenancy and isolation
+- **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=250m, limits.memory=512Mi, pods=2
+  to allow rolling updates). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
+  `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from ingress-nginx, egress
+  to the internet and to MySQL on 3306, and no traffic to other app namespaces (DOKS uses Cilium, which
+  enforces NetworkPolicy).
+- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `max_user_connections=10`,
+  and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
+  `information_schema.TABLES` and, above 100 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the
+  user can clean up) and flags the app in the UI.
+- **Storage:** one Spaces bucket per app with a per-bucket read/write key. Spaces has no quotas, so the
+  reconciler sums object sizes, and above 250 MB it swaps the key to read-only and flags the app.
+  ⚠ Spike needed: per-bucket keys were UI-only at GA (Jan 2025). Confirm the DO API (`/v2/spaces/keys`) supports them now.
+  Fallback: a shared bucket with a platform-side presigned-URL proxy.
+- **Image size:** before deploying, the API reads the registry manifest and rejects the image if the summed
+  compressed layer size exceeds 512 MB. v1 supports public images only; private pull creds come later.
+
+### Reference variables
+If an app requests a DB or storage, the platform exposes reference variables the user maps onto their
+own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
+- `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`
+- `storage.endpoint`, `storage.region`, `storage.bucket`, `storage.access_key`, `storage.secret_key`
+
+User secrets and resolved refs go into the app namespace's k8s Secret. In the platform DB they are
+encrypted at rest with Fernet, keyed by a platform secret.
+
+### YAML spec (v1)
+```yaml
+apiVersion: picopaas/v1
+name: my-app              # display name only; hostname is generated
+image: ghcr.io/me/app:1.2
+port: 8080
+resources: { db: true, storage: false }
+env:
+  LOG_LEVEL: info
+  DATABASE_URL: ${{ db.url }}
+secrets:                  # values supplied separately (UI or `--secret K=V`), never in the file
+  - API_TOKEN
+```
+
+### Users and roles
+- The first registered user becomes `uberadmin`. Everyone after that is `user`.
+- `user.app_limit` defaults to 1. The uberadmin can raise it per user later (the column exists from day one,
+  but the admin UI for it is deferred).
+
+### DNS and TLS
+- Hostname format: `<adjective>-<animal>-<5 chars of [a-z0-9]>.seaburr.io`, with a uniqueness check in the DB.
+- One wildcard A record `*.seaburr.io`. Explicit records that already exist still take precedence.
+- One wildcard cert from cert-manager + Let's Encrypt, DNS-01 via the DO solver. It's the ingress default
+  cert, so there's no per-app issuance and no LE rate-limit risk.
+
+### IaC
+- Terraform (DO provider) handles the cluster, node pool, firewall rule (80/443 to nodes), Spaces, and DNS.
+  State is stored in a private Spaces bucket (S3 backend).
+- Helm/manifests in `deploy/` cover ingress-nginx, cert-manager, MySQL, and the platform itself.
+
+## 3. Open questions for Chas
+1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
+2. Is anything else already using the `*.seaburr.io` wildcard? (Explicit records keep working either way.)
+3. Region preference? The default is `nyc3` (Spaces + DOKS both available).
