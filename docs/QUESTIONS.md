@@ -11,7 +11,11 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- (none right now)
+- [ ] **DOKS won't create: "region has insufficient capacity"** in ATL1 and NYC3 at every node size, even the
+      smallest `s-1vcpu-2gb`. The minimal request (no autoscale) and Kubernetes 1.36 failed the same way. The DO status
+      page is green, the account is active (droplet limit 25, 1 used), and MySQL creates fine. Please (a) try creating a
+      cluster in the DO panel to see if it's refused there too, and (b) send DO support the ticket Claude drafted (it
+      lists all 8 request IDs). Claude will re-apply as soon as DO answers. MySQL is up in NYC3 meanwhile (~$0.50/day).
 
 ## Resolved
 - 2026-10-19: NYC3 also refused s-2vcpu-4gb → Chas: smallest SKUs everywhere (node `s-1vcpu-2gb` $12, MySQL `db-s-1vcpu-1gb` $15.15); ≈ $44.15/mo. Scale later.
