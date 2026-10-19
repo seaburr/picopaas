@@ -1,6 +1,8 @@
 # Latest available Kubernetes version in this region, rather than a hardcoded version string
 # that will eventually be retired by DO.
-data "digitalocean_kubernetes_versions" "latest" {}
+data "digitalocean_kubernetes_versions" "latest" {
+  version_prefix = "1.36." # 1.37 creates kept failing with capacity 422s (2026-10-19); revisit
+}
 
 resource "digitalocean_kubernetes_cluster" "picopaas" {
   name     = "picopaas-${var.region}"
