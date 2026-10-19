@@ -7,7 +7,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 ## Now / Next
 - 2026-10-19 (manager): Chas answered QUESTIONS.md. DONE: MySQL slug `db-amd-1vcpu-1gb` + plan-time slug check in
   terraform.yml; LE email; adopt bucket `pico-paas-s3-a` (import block); gitleaks pre-commit hook + CI no-allowlist guard
-  + CLAUDE.md rule. WAITING on Chas: run `rewrite-history.sh` (force-push; denied to Claude), then LB choice + apply go-ahead (QUESTIONS 1).
+  + CLAUDE.md rule. Chas ran the history rewrite (main force-pushed, CI green) and approved the LB variant. NEXT: TFC plan → apply → deploy/README.md bring-up.
 - **Chas's open questions/to-dos live in `docs/QUESTIONS.md`. Check it first.**
 - DONE (backend-dev, 2026-10-19): issues #3/#4/#5 fixed + gitleaks test-value rename (migration e5b2c8d1f3a7). Uncommitted.
 - DONE (backend-dev, 2026-10-19): signup approval + user/app suspend/delete + audit log + SMTP egress block (migration d4e1a7b9c2f6; see Log). Frontend can build against it.
@@ -332,3 +332,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] note: .gitleaksignore fingerprint for historical test dummy password (commit 58e2897 line 146); current tree no longer contains it
 - 2026-10-19 [scm-security] DONE: pushed 58c56b5 (#3/#4/#5), merge 3722fb8 (#1), gitleaks ignore; CI all green; procedures reviewed OK (int-validated ids, QUOTE() for passwords); issues 1,3,4,5 closed; branch deleted
 - 2026-10-19 [manager] DONE: added docs/QUESTIONS.md as Chas's answer file; CLAUDE.md points every session at it.
+- 2026-10-19 [scm-security] START: commit/push terraform.yml gate working-directory fix, dispatch workflow
+- 2026-10-19 [scm-security] DONE: pushed ff9dc0d; terraform run 39270616109 FAILED at plan: DO API 401 + Spaces creds not configured (TF workspace vars/credentials issue, BLOCKED for infra owner/Chas)
+- 2026-10-19 [scm-security] START: commit terraform plan+apply workflow and LB-approved docs, push, watch CI (terraform workflow NOT dispatched)

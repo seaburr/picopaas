@@ -7,23 +7,18 @@ background on each item if you want it.
 
 ## Open questions
 
-1. **Load balancer + go-ahead to apply.** MySQL is settled (Premium AMD). Remaining choice:
-   with LB ≈ **$60.30/mo** (robust when the autoscaler adds/replaces nodes) or without ≈ **$48.30/mo**
-   (ingress on node ports + DNS-sync CronJob). Claude recommends the LB. Reply "LB, apply" (or "no LB, apply")
-   and Claude runs the Terraform Cloud plan, then apply.
-   **Answer:**
-
-2. **Run the history-rewrite script** (your answer to old Q4). Claude's permissions block rewriting `main`, so
-   it's ready for you: in Claude Code type
-   `! bash /private/tmp/claude-501/-Users-cberndt-source-picopaas/bab185d4-d6b4-41d5-88b6-03cd0bd97143/scratchpad/rewrite-history.sh`
-   It backs up the repo, scrubs the fake password from all commits, deletes `.gitleaksignore`, re-scans, and force-pushes.
-   **Done?**
+- (none right now)
 
 ## To-dos (only you can do these)
 
-- (none right now)
+- [ ] **Terraform Cloud vars aren't reaching the plan** (run 39270616109: DO API 401 + "Spaces credentials not
+      configured"; the same token works from GitHub Actions). In TFC → `picopaas` → Variables, check that these three
+      exist with exactly these names, category **Environment variable** (not "Terraform variable"), marked sensitive:
+      `DIGITALOCEAN_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`. If they're in a variable set, make
+      sure it's applied to this workspace. Tell Claude when done and it re-runs the plan.
 
 ## Resolved
+- 2026-10-19: Load balancer: yes. Final variant managed MySQL (AMD) + LB ≈ $60.30/mo. History rewrite run by Chas (force-pushed).
 - 2026-10-19: Managed MySQL, Premium AMD 1 GiB in ATL1, $19.30/mo (`db-amd-1vcpu-1gb`).
 - 2026-10-19: Autoscaler `max_nodes = 2` approved.
 - 2026-10-19: Let's Encrypt email → `yz80nomo+lepaas@gmail.com`.

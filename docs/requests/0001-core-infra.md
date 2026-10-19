@@ -1,4 +1,4 @@
-# Request 0001: Core infrastructure (status: MANAGED MySQL chosen; LB + apply go-ahead pending, see QUESTIONS.md)
+# Request 0001: Core infrastructure (status: APPROVED 2026-10-19: managed MySQL Premium AMD + LB, ≈ $60.30/mo)
 
 ## 2026-10-18 update from Chas
 - He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
