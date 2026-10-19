@@ -331,23 +331,55 @@ def delete_app(
     except Exception:
         pass
 
+    failed = False
     if app.database is not None:
         try:
             mysql_admin_factory(app.database.server).drop(app.id)
-        except Exception:
-            pass
-        session.delete(app.database)
+        except Exception as exc:
+            if _is_not_found(exc):
+                session.delete(app.database)
+            else:
+                failed = True
+                log.warning("app %s: database drop failed (will retry): %s", app.id, _provider_error_summary(exc))
+        else:
+            session.delete(app.database)
 
     if app.storage is not None:
         try:
             object_store.delete(app.id)
-        except Exception:
-            pass
-        session.delete(app.storage)
+        except Exception as exc:
+            if _is_not_found(exc):
+                session.delete(app.storage)
+            else:
+                failed = True
+                log.warning("app %s: storage delete failed (will retry): %s", app.id, _provider_error_summary(exc))
+        else:
+            session.delete(app.storage)
+
+    if failed:
+        # Keep the remaining rows and the soft-deleted state; the next sweep retries.
+        session.commit()
+        return
 
     app.status = "deleted"
     app.status_detail = None
     session.commit()
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    """MySQL unknown database/user or Spaces NoSuchBucket/404 (also via __cause__) count as already gone."""
+    e: Optional[BaseException] = exc
+    for _ in range(3):
+        if e is None:
+            break
+        response = getattr(e, "response", None)
+        if isinstance(response, dict) and isinstance(response.get("Error"), dict):
+            if str(response["Error"].get("Code", "")) in ("NoSuchBucket", "NoSuchKey", "404", "NotFound"):
+                return True
+        if e.args and e.args[0] in (1008, 1049, 1396):
+            return True
+        e = e.__cause__
+    return False
 
 
 def reconcile_all(

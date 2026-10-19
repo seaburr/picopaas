@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from cryptography import x509
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -67,6 +68,16 @@ class DbServerOut(BaseModel):
     warn: bool
 
 
+def _validate_ca_pem(v: Optional[str]) -> Optional[str]:
+    if v is None or v.strip() == "":
+        return None
+    try:
+        x509.load_pem_x509_certificate(v.encode())
+    except Exception:
+        raise ValueError("ca_cert must be a PEM-encoded x509 certificate")
+    return v
+
+
 class DbServerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: str = Field(min_length=1, max_length=255)
@@ -75,12 +86,18 @@ class DbServerCreate(BaseModel):
     admin_user: str = Field(min_length=1, max_length=255)
     admin_password: str = Field(min_length=1)
     max_databases: int = Field(gt=0)
+    ca_cert: Optional[str] = Field(default=None, max_length=20000)
+
+    _check_ca = field_validator("ca_cert")(_validate_ca_pem)
 
 
 class DbServerPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     status: Optional[Literal["active", "draining", "full"]] = None
     max_databases: Optional[int] = Field(default=None, gt=0)
+    ca_cert: Optional[str] = Field(default=None, max_length=20000)  # "" clears it
+
+    _check_ca = field_validator("ca_cert")(_validate_ca_pem)
 
 
 def _user_out(db: Session, user: models.User) -> dict:
@@ -243,12 +260,12 @@ def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)
-def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db)):
-    user = db.get(models.User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
+def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db),
+               admin: models.User = Depends(require_uberadmin)):
+    user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
     user.app_limit = payload.app_limit
     db.commit()
+    audit.record(db, admin, "user.update", "user", user.id, f"app_limit={payload.app_limit}")
     db.refresh(user)
     return _user_out(db, user)
 
@@ -269,11 +286,12 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
 
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)
-def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db)):
+def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
+                     admin: models.User = Depends(require_uberadmin)):
     server = models.DbServer(
         name=payload.name, host=payload.host, port=payload.port, admin_user=payload.admin_user,
         admin_password_encrypted=crypto.encrypt(payload.admin_password),
-        max_databases=payload.max_databases, status="active",
+        max_databases=payload.max_databases, status="active", ca_cert=payload.ca_cert,
     )
     db.add(server)
     try:
@@ -282,11 +300,14 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=409, detail="a db server with that name already exists")
     db.refresh(server)
+    audit.record(db, admin, "dbserver.create", "db_server", server.id,
+                 f"name={server.name} max_databases={server.max_databases} ca_cert={'set' if server.ca_cert else 'none'}")
     return _server_out(db, server)
 
 
 @router.patch("/db-servers/{server_id}", response_model=DbServerOut)
-def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depends(get_db)):
+def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depends(get_db),
+                    admin: models.User = Depends(require_uberadmin)):
     server = db.get(models.DbServer, server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="db server not found")
@@ -294,6 +315,11 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
         server.status = payload.status
     if payload.max_databases is not None:
         server.max_databases = payload.max_databases
+    if "ca_cert" in payload.model_fields_set:
+        server.ca_cert = payload.ca_cert
     db.commit()
     db.refresh(server)
+    changed = sorted(payload.model_fields_set)
+    audit.record(db, admin, "dbserver.update", "db_server", server.id,
+                 "fields=" + ",".join(changed) + (f" status={payload.status}" if payload.status else ""))
     return _server_out(db, server)

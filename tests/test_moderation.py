@@ -207,3 +207,58 @@ def test_first_user_race_only_one_uberadmin(db_session):
     assert (a.role, a.status) == ("uberadmin", "active")
     assert (b.role, b.status) == ("user", "pending")
     assert db_session.query(models.User).filter_by(role="uberadmin").count() == 1
+
+
+def _cert_pem():
+    import datetime as dt
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ca")])
+    now = dt.datetime.now(dt.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(1).not_valid_before(now).not_valid_after(now + dt.timedelta(days=1))
+            .sign(key, hashes.SHA256()))
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def test_admin_user_patch_and_dbserver_audited(make_client):
+    admin, user, uid = _setup(make_client)
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 7}).status_code == 200
+    body = {"name": "second", "host": "h", "admin_user": "root", "admin_password": "adm-pw-xyz",
+            "max_databases": 5, "ca_cert": _cert_pem()}
+    r = admin.post("/admin/db-servers", json=body)
+    assert r.status_code == 201
+    sid = r.json()["id"]
+    assert admin.patch(f"/admin/db-servers/{sid}", json={"status": "draining"}).status_code == 200
+    entries = admin.get("/admin/audit?limit=100").json()
+    actions = [e["action"] for e in entries]
+    for a in ("user.update", "dbserver.create", "dbserver.update"):
+        assert a in actions, a
+    blob = str(entries)
+    assert "adm-pw-xyz" not in blob and "BEGIN CERTIFICATE" not in blob
+
+
+def test_patch_deleted_user_404(make_client):
+    admin, user, uid = _setup(make_client)
+    assert admin.delete(f"/admin/users/{uid}").status_code == 204
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 3}).status_code == 404
+
+
+def test_dbserver_ca_cert_validation(make_client, db_session):
+    admin, user, uid = _setup(make_client)
+    body = {"name": "s2", "host": "h", "admin_user": "root", "admin_password": "x", "max_databases": 5}
+    assert admin.post("/admin/db-servers", json={**body, "ca_cert": "not a cert"}).status_code == 422
+    pem = _cert_pem()
+    sid = admin.post("/admin/db-servers", json={**body, "ca_cert": pem}).json()["id"]
+    assert db_session.get(models.DbServer, sid).ca_cert == pem
+    assert admin.patch(f"/admin/db-servers/{sid}", json={"ca_cert": "junk"}).status_code == 422
+    admin.patch(f"/admin/db-servers/{sid}", json={"ca_cert": ""})
+    db_session.expire_all()
+    assert db_session.get(models.DbServer, sid).ca_cert is None
+    admin.patch(f"/admin/db-servers/{sid}", json={"ca_cert": pem})
+    db_session.expire_all()
+    assert db_session.get(models.DbServer, sid).ca_cert == pem

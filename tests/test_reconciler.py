@@ -363,3 +363,69 @@ def test_provider_error_summary_pymysql_and_botocore():
         response = {"Error": {"Code": "AccessDenied", "Message": "x"}}
 
     assert _provider_error_summary(ClientError("nope")) == "ClientError AccessDenied"
+
+
+def _deleted_app_with_resources(session):
+    from datetime import datetime, timezone
+
+    _make_server(session)
+    kube, mysql, store = FakeKubeProvider(), FakeMySQLAdmin(), FakeObjectStore()
+    app = _make_app(session, want_db=True, want_storage=True)
+    reconcile_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store, settings={})
+    app.deleted_at = datetime.now(timezone.utc)
+    session.commit()
+    return app, kube, mysql, store
+
+
+def test_delete_retries_when_mysql_drop_fails(session):
+    app, kube, mysql, store = _deleted_app_with_resources(session)
+    real_drop = mysql.drop
+
+    def boom(app_id):
+        raise MySQLAdminError("down password=hunter2")
+
+    mysql.drop = boom
+    delete_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store)
+    assert app.status != "deleted"
+    assert session.query(models.AppDatabase).filter_by(app_id=app.id).count() == 1
+    assert session.query(models.AppStorage).filter_by(app_id=app.id).count() == 0  # storage succeeded
+
+    mysql.drop = real_drop
+    reconcile_all(session, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store, settings={})
+    assert app.status == "deleted"
+    assert session.query(models.AppDatabase).filter_by(app_id=app.id).count() == 0
+
+
+def test_delete_retries_when_bucket_delete_fails(session):
+    app, kube, mysql, store = _deleted_app_with_resources(session)
+    real_delete = store.delete
+
+    def boom(app_id):
+        raise ObjectStoreError("spaces down")
+
+    store.delete = boom
+    delete_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store)
+    assert app.status != "deleted"
+    assert session.query(models.AppStorage).filter_by(app_id=app.id).count() == 1
+
+    store.delete = real_delete
+    delete_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store)
+    assert app.status == "deleted"
+    assert session.query(models.AppStorage).filter_by(app_id=app.id).count() == 0
+
+
+def test_delete_treats_not_found_as_success(session):
+    app, kube, mysql, store = _deleted_app_with_resources(session)
+
+    class NoBucket(Exception):
+        response = {"Error": {"Code": "NoSuchBucket"}}
+
+    def gone_db(app_id):
+        raise MySQLAdminError(1049, "Unknown database")
+
+    def gone_bucket(app_id):
+        raise NoBucket()
+
+    mysql.drop, store.delete = gone_db, gone_bucket
+    delete_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store)
+    assert app.status == "deleted"
