@@ -68,3 +68,11 @@ jobs:
             echo "=== $p (current)"; kubectl -n "$NS" logs "$p" --all-containers --tail="$TAIL" 2>&1 || true
             echo "=== $p (previous)"; kubectl -n "$NS" logs "$p" --all-containers --previous --tail="$TAIL" 2>&1 || true
           done
+      - name: Network policies (no secrets)
+        run: kubectl -n "$NS" get networkpolicy -o yaml | grep -vE '^\s*(uid|resourceVersion|creationTimestamp|generation):' || true
+      - name: Managed DB firewall and node IPs
+        run: |
+          db_id=$(doctl databases list -o json | jq -r '.[] | select(.name == "picopaas-mysql-nyc3") | .id')
+          echo "db firewall rules:"; doctl databases firewalls list "$db_id" -o json | jq -c '.[] | {type, value}'
+          echo "db private IP:"; getent hosts "$(doctl databases connection "$db_id" --private -o json | jq -r 'if type=="array" then .[0] else . end | .host')" || echo "(not resolvable from runner)"
+          kubectl get nodes -o custom-columns=NAME:.metadata.name,INTERNAL:.status.addresses[0].address,PODCIDR:.spec.podCIDR
