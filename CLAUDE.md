@@ -55,3 +55,9 @@ cd frontend && npm run dev | npm run typecheck
 Required env vars outside `ENVIRONMENT=dev`: `SECRET_KEY` (JWT signing), `FERNET_KEY` (encrypts env var
 values at rest — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
 Dev/test runs use fixed insecure defaults baked into `app/config.py`.
+
+Reconciler/scheduler env vars (all optional; see `app/scheduler.py`, `app/config.py`):
+- `RECONCILER_ENABLED=1`: start the APScheduler jobs (reconcile every 15s, quota poll every 5 min) in the app lifespan.
+  Off by default and never set in tests. With MySQL, a `GET_LOCK('picopaas-reconciler')` keeps replicas from double-running.
+- `MYSQL_EGRESS_MODE` = `in-cluster` (ns `picopaas-data`, pod `app=mysql`) | `cidr` (default), plus `MYSQL_EGRESS_CIDR` for a managed DB.
+- `BOOTSTRAP_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD`: if all set (port defaults 3306) and no DbServer exists, insert one named `primary`.

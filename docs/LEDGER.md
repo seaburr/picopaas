@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- NEXT (backend-dev): scheduler imports `app.providers.spaces.SpacesStore` (optional `from_config()`); rename/add it when Spaces lands (current stub is `SpacesObjectStore`). Until then storage reconcile/quota is skipped with a log.
 (Session paused 2026-10-18 night. Resume here.)
 - BLOCKED on Chas: request 0001 (variant choice, DO token, Spaces key, Terraform Cloud workspace + TF_API_TOKEN).
   Expected 2026-10-19. Infra apply waits on it. Code work does not.
@@ -38,8 +39,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   rbac.yaml SA+ClusterRole+ClusterRoleBinding, deployment.yaml/service.yaml/ingress.yaml). All YAML
   validated with `ruby -ryaml` (kubeconform not installed, not installed it — budget). Not applied.
   `deploy/README.md` has install order + by-hand secrets + a flagged RBAC exposure (see next line).
-- NEXT (infra-ops): `dns-sync` CronJob (no-LB variant, still a TODO) and in-cluster MySQL StatefulSet
-  manifests (only needed if `use_managed_mysql=false`) — out of scope for the chunk above, budget ran out.
+- DONE (infra-ops, 2026-10-19): `deploy/mysql/` (ns, StatefulSet, NetworkPolicy, nightly backup CronJob), `deploy/dns-sync/`, kubeconform CI job, `deploy.yml` + manual plan-only `terraform.yml`, full runbook + restore in `deploy/README.md`. kubeconform clean locally. Not applied.
 - FLAG (infra-ops → scm-security): `deploy/platform/rbac.yaml`'s ClusterRole grants `secrets`
   get/list/watch/create/update/patch/delete at cluster scope (needed because the reconciler manages
   arbitrary per-app namespaces that don't exist yet), so a compromised platform pod can read every
@@ -49,6 +49,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   `entrypoint.sh`, `.github/workflows/image.yml` (GHCR build/push). Local `docker build` not verified —
   Docker daemon not running on this machine; CI's `image.yml` will be the first real build. The platform
   Deployment manifest (next bullet) should point at `ghcr.io/seaburr/picopaas:<sha>`.
+- DONE (frontend-dev, 2026-10-19): admin view, YAML deploy tab, status_detail + list polling, rotate-credentials buttons. Needs backend `AppOut.status_detail` and `POST /apps/{id}/rotate-credentials` to exist to function.
 - DECIDED (Chas, 2026-10-18): NO root images. `RUN_AS_NON_ROOT=True` stays.
 - DONE: root-image check at create/update (`Registry.inspect` reads the config blob's `User`; empty/0/root → 422,
   a non-numeric user → 422 because kubelet can't verify it).
@@ -57,6 +58,17 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - NEXT (scm-security, once dev env is up): run docs/PENTEST.md (tenant isolation, incl. "even with creds").
 - DECIDED: request 0002 → option A + private DB server (k8s API public is fine for now; Spaces can't be made private
   on DO at this budget). NEXT (backend-dev): credential-rotation action for DB/storage.
+
+- DONE (backend-dev chunk B, 2026-10-19): real `SpacesStore` (`app/providers/spaces.py`, `from_env()` needs
+  DIGITALOCEAN_TOKEN, SPACES_ACCESS_KEY_ID, SPACES_SECRET_ACCESS_KEY, SPACES_REGION=atl1), `rotate_password`/`rotate_key`,
+  `POST /apps/{id}/rotate-credentials`, `app/quota.py` (`poll_quotas`, `capacity_summary`). boto3 added.
+- GAP (Spaces per-bucket keys): DO API `POST /v2/spaces/keys` DOES support per-bucket `grants` (read/readwrite),
+  but PUT/PATCH can only rename a key; grants are immutable. So read-only toggle and rotation = create new key,
+  delete old, rename. The app's access key therefore CHANGES on quota flip/rotation: `ObjectStore.set_read_only`
+  now returns new creds (or None), quota.py persists them and sets app.status='pending'. NEXT (backend-dev/reconciler):
+  make sure a re-render with changed Secret actually rolls the pod (e.g. checksum annotation); wire `poll_quotas`
+  into the scheduler with `MySQLAdminClient` + `SpacesStore.from_env()`; wire `get_object_store`/
+  `get_mysql_admin_factory` in routers/apps.py are the injection points.
 
 ## Log
 - 2026-10-18 [infra-ops] DONE: see Now/Next above — `deploy/ingress-nginx/`, `deploy/cert-manager/`,
@@ -281,3 +293,16 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   `kube.py`/`spaces.py` (still stubs), no quota polling, `mysql_cidr` for the rendered NetworkPolicy
   is threaded through `settings` but nothing populates a real value yet (placeholder `/32` default) —
   all flagged in Now/Next above for the next backend-dev chunk.
+- 2026-10-19 [frontend-dev] START: admin view, YAML deploy tab, status_detail + polling, rotate-credentials buttons (frontend/)
+- 2026-10-19 [backend-dev] START: chunk C — admin API, YAML spec deploy (POST /apps/spec), CLI (app/routers/admin.py, spec.py, app/spec.py, cli/picopaas.py)
+- 2026-10-19 [frontend-dev] DONE: /admin view (users app_limit, DB servers capacity/status/add, warn banner), YAML tab + SpecEditor on /apps/new, status_detail + 5s polling in list, rotate buttons in edit; typecheck+build pass. Types aligned with admin.py/spec.py; AppOut.status_detail and POST /apps/{id}/rotate-credentials not yet in backend at check time (frontend/src/{api,views,components,types.ts})
+- 2026-10-19 [backend-dev] DONE: chunk C — /admin (users, db-servers), POST /apps/spec (strict pydantic, aliases rejected, 64KB cap, secrets kept on update; removing db/storage on update is refused), cli/picopaas.py + docs/CLI.md, PyYAML pinned, tests/test_admin_spec_cli.py. Imported private helpers from apps.py (no edits). Rotate CLI relies on the other agent's /apps/{id}/rotate-credentials. 102 tests pass.
+- 2026-10-19 [backend-dev] START: chunk A — real KubeProvider, MYSQL_EGRESS_MODE, scheduler, DbServer bootstrap
+- 2026-10-19 [backend-dev] DONE: chunk A — app/providers/kube.py (SSA via dynamic client, status mapping), app/scheduler.py (APScheduler, MySQL GET_LOCK leader), lifespan in app/main.py (RECONCILER_ENABLED=1 only), mysql egress in-cluster|cidr (k8s_manifests/reconciler), reconciler maps "error: x" status to status=error+detail, config/requirements/CLAUDE.md, tests (kube, scheduler, manifests). Full suite passes.
+- 2026-10-19 [infra-ops] START: deploy/mysql, backup, dns-sync, kubeconform CI, deploy.yml, runbook.
+- 2026-10-19 [infra-ops] DONE: same; files under deploy/, .github/workflows/{ci,deploy,terraform}.yml. Not committed/applied.
+- 2026-10-19 [backend-dev] START: chunk B — SpacesStore, credential rotation, quota polling.
+- 2026-10-19 [backend-dev] DONE: chunk B — app/providers/{spaces,base,fake,mysql}.py, app/quota.py, rotation endpoint in
+  app/routers/apps.py, tests/test_{spaces,quota,rotation}.py + rotate test in test_mysql_admin.py (CI-only). 122 passed, 1 skipped. Not committed.
+- 2026-10-19 [scm-security] START: secret gate, security review, commit+push wave, watch CI
+- 2026-10-19 [scm-security] DONE: wave committed+pushed; review filed #1 (mysql root@% reachable from tenant ns), #2 (non-atomic rotation); deploy.yml sha input now validated hex. Reviewed OK: admin authz, spec parsing, dns-sync (A-only), workflow perms.
