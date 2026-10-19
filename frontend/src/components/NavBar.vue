@@ -1,9 +1,23 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { listUsers } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+const pending = ref(0)
+async function refreshPending() {
+  if (auth.user?.role !== 'uberadmin') return
+  try {
+    pending.value = (await listUsers()).filter((u) => u.status === 'pending').length
+  } catch {
+    pending.value = 0
+  }
+}
+onMounted(refreshPending)
+watch(() => route.fullPath, refreshPending)
 
 async function onLogout() {
   await auth.logout()
@@ -16,7 +30,7 @@ async function onLogout() {
     <div class="flex items-center gap-4">
       <RouterLink to="/" class="text-sm font-semibold text-white">PicoPaaS</RouterLink>
       <RouterLink to="/keys" class="text-sm text-zinc-400 hover:text-white">API keys</RouterLink>
-      <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin" class="text-sm text-zinc-400 hover:text-white">Admin</RouterLink>
+      <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin" class="text-sm text-zinc-400 hover:text-white">Admin<span v-if="pending > 0" class="ml-1 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-black">{{ pending }}</span></RouterLink>
     </div>
     <div class="flex items-center gap-3 text-sm text-zinc-400">
       <span v-if="auth.user">{{ auth.user.email }}</span>

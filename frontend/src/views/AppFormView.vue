@@ -44,6 +44,7 @@ async function confirmRotate() {
   }
 }
 
+const suspended = ref(false)
 const loading = ref(isEdit.value)
 const saving = ref(false)
 const error = ref('')
@@ -61,6 +62,7 @@ onMounted(async () => {
   if (!isEdit.value || appId.value === null) return
   try {
     const app = await store.fetchOne(appId.value)
+    suspended.value = app.status === 'suspended'
     form.name = app.name
     form.image = app.image
     form.port = app.port
@@ -131,6 +133,10 @@ async function onSubmit() {
       <div v-else-if="loading" class="text-sm text-zinc-500">Loading…</div>
 
       <form v-else class="space-y-5 rounded-lg border border-pico-border bg-pico-panel p-5" @submit.prevent="onSubmit">
+        <div v-if="suspended" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
+          Suspended by an administrator. This app can't be edited.
+        </div>
+        <fieldset :disabled="suspended" class="space-y-5">
         <div>
           <label class="mb-1 block text-sm font-medium text-zinc-300">Name</label>
           <input
@@ -220,6 +226,8 @@ async function onSubmit() {
           <span v-if="rotateMsg" class="text-xs text-zinc-400">{{ rotateMsg }}</span>
         </div>
 
+        </fieldset>
+
         <div v-if="formError" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {{ formError }}
         </div>
@@ -230,7 +238,7 @@ async function onSubmit() {
           </RouterLink>
           <button
             type="submit"
-            :disabled="saving"
+            :disabled="saving || suspended"
             class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
           >
             {{ saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create app' }}

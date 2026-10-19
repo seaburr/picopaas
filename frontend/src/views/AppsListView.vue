@@ -100,7 +100,8 @@ async function confirmDelete() {
               <span class="font-medium text-white">{{ app.name }}</span>
               <StatusBadge :status="app.status" />
             </div>
-            <p v-if="app.status_detail" class="truncate text-xs text-zinc-400">{{ app.status_detail }}</p>
+            <p v-if="app.status === 'suspended'" class="text-xs text-amber-400">Suspended by an administrator</p>
+            <p v-else-if="app.status_detail" class="truncate text-xs text-zinc-400">{{ app.status_detail }}</p>
             <a
               :href="`https://${app.hostname}`"
               target="_blank"
@@ -112,7 +113,14 @@ async function confirmDelete() {
             <p class="truncate text-xs text-zinc-500">{{ app.image }}</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
+            <span
+              v-if="app.status === 'suspended'"
+              class="cursor-not-allowed rounded border border-pico-border px-2 py-1 text-xs text-zinc-600"
+            >
+              Edit
+            </span>
             <RouterLink
+              v-else
               :to="`/apps/${app.id}/edit`"
               class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
             >

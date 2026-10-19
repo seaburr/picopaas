@@ -6,8 +6,11 @@ export interface User {
   email: string
   role: string
   app_limit: number
+  status: UserStatus
   created_at: string
 }
+
+export type UserStatus = 'pending' | 'active' | 'suspended' | 'deleted'
 
 export interface EnvVar {
   key: string
@@ -85,6 +88,7 @@ export interface AdminUser {
   role: string
   app_limit: number
   app_count: number
+  status: UserStatus
   created_at: string
 }
 
@@ -110,3 +114,24 @@ export interface DbServerCreate {
 }
 
 export type AppWithCreated = App & { created: boolean }
+
+export interface AdminApp {
+  id: number
+  name: string
+  hostname: string
+  status: string
+  owner_id: number
+  owner_email: string
+  image: string
+  created_at: string
+}
+
+export interface AuditEntry {
+  id: number
+  at: string
+  actor_email: string | null
+  action: string
+  target_type: string
+  target_id: string | number | null
+  detail: string | null
+}
