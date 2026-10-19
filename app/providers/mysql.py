@@ -27,6 +27,7 @@ from typing import Any
 import pymysql
 import pymysql.cursors
 
+from app import config
 from app.crypto import decrypt
 from app.providers.base import MySQLAdmin, MySQLAdminError
 
@@ -73,6 +74,7 @@ class MySQLAdminClient(MySQLAdmin):
         self._port = server.port
         self._admin_user = server.admin_user
         self._admin_password = decrypt(server.admin_password_encrypted)
+        self._use_procs = config.MYSQL_ADMIN_USE_PROCEDURES
 
     def _connect(self) -> pymysql.connections.Connection:
         try:
@@ -97,6 +99,9 @@ class MySQLAdminClient(MySQLAdmin):
             conn = self._connect()
             try:
                 with conn.cursor() as cur:
+                    if self._use_procs:
+                        cur.execute("CALL picopaas_ops.provision_app(%s, %s)", (app_id, password))
+                        return self._creds(app_id, password)
                     cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
                     # Idempotent: a user left over from a failed previous
                     # attempt shouldn't block retrying with a fresh password.
@@ -113,15 +118,19 @@ class MySQLAdminClient(MySQLAdmin):
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"create_db_user({app_id}) failed: {exc}") from exc
 
-        creds = {
+        return self._creds(app_id, password)
+
+    def _creds(self, app_id: int, password: str) -> dict[str, Any]:
+        db_name = _db_name(app_id)
+        db_user = _db_user(app_id)
+        return {
             "host": self._host,
             "port": self._port,
             "name": db_name,
             "user": db_user,
             "password": password,
+            "url": f"mysql://{db_user}:{password}@{self._host}:{self._port}/{db_name}",
         }
-        creds["url"] = f"mysql://{db_user}:{password}@{self._host}:{self._port}/{db_name}"
-        return creds
 
     def drop(self, app_id: int) -> None:
         db_name = _validate_identifier(_db_name(app_id))
@@ -130,6 +139,9 @@ class MySQLAdminClient(MySQLAdmin):
             conn = self._connect()
             try:
                 with conn.cursor() as cur:
+                    if self._use_procs:
+                        cur.execute("CALL picopaas_ops.drop_app(%s)", (app_id,))
+                        return
                     cur.execute(f"DROP DATABASE IF EXISTS `{db_name}`")
                     cur.execute(f"DROP USER IF EXISTS '{db_user}'@'%'")
                     cur.execute("FLUSH PRIVILEGES")
@@ -144,6 +156,10 @@ class MySQLAdminClient(MySQLAdmin):
             conn = self._connect()
             try:
                 with conn.cursor() as cur:
+                    if self._use_procs:
+                        cur.execute("CALL picopaas_ops.app_size(%s)", (app_id,))
+                        (total,) = cur.fetchone()
+                        return int(total)
                     cur.execute(
                         "SELECT COALESCE(SUM(data_length + index_length), 0) "
                         "FROM information_schema.TABLES WHERE table_schema = %s",
@@ -164,6 +180,9 @@ class MySQLAdminClient(MySQLAdmin):
             conn = self._connect()
             try:
                 with conn.cursor() as cur:
+                    if self._use_procs:
+                        cur.execute("CALL picopaas_ops.set_app_read_only(%s, %s)", (app_id, int(read_only)))
+                        return
                     cur.execute(
                         f"{verb} {_WRITE_PRIVILEGES} ON `{db_name}`.* {preposition} '{db_user}'@'%'"
                     )
@@ -180,18 +199,13 @@ class MySQLAdminClient(MySQLAdmin):
             conn = self._connect()
             try:
                 with conn.cursor() as cur:
+                    if self._use_procs:
+                        cur.execute("CALL picopaas_ops.set_app_password(%s, %s)", (app_id, password))
+                        return self._creds(app_id, password)
                     cur.execute(f"ALTER USER '{db_user}'@'%%' IDENTIFIED BY %s", (password,))
                     cur.execute("FLUSH PRIVILEGES")
             finally:
                 conn.close()
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"set_password({app_id}) failed: {exc}") from exc
-        creds = {
-            "host": self._host,
-            "port": self._port,
-            "name": db_name,
-            "user": db_user,
-            "password": password,
-        }
-        creds["url"] = f"mysql://{db_user}:{password}@{self._host}:{self._port}/{db_name}"
-        return creds
+        return self._creds(app_id, password)

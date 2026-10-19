@@ -42,6 +42,11 @@ FERNET_KEY = _required_outside_dev("FERNET_KEY", _DEV_FERNET_KEY)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7
 
+# When "1", MySQLAdminClient talks to picopaas_ops stored procedures (deploy/mysql initdb) instead
+# of issuing CREATE/GRANT/DROP directly. Required for the in-cluster picopaas_admin user (issue #1);
+# leave unset for managed MySQL where the admin user holds real privileges.
+MYSQL_ADMIN_USE_PROCEDURES = os.environ.get("MYSQL_ADMIN_USE_PROCEDURES") == "1"
+
 DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 
