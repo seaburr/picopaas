@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "node_size" {
-  description = "Droplet size slug for the DOKS worker node pool."
+  description = "Droplet size slug for the DOKS worker node pool. AMD (~$28) because ATL1 had no s-2vcpu-4gb capacity (Chas, 2026-10-19)."
   type        = string
-  default     = "s-2vcpu-4gb"
+  default     = "s-2vcpu-4gb-amd"
 }
 
 variable "node_count" {

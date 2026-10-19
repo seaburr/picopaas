@@ -338,3 +338,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] DONE: pushed 0d6f851 (ci) + 2a31d66 (docs); CI + image green; deploy run 39271027882 FAILED (BLOCKED, expected: doctl 'no cluster goes by the name picopaas-atl1', cluster not provisioned until TFC creds fixed); terraform workflow not dispatched
 - 2026-10-19 [scm-security] START: commit terraform local-exec workflow change, push, dispatch plan-only (apply=false)
 - 2026-10-19 [scm-security] DONE: pushed e1fbe9e; CI green; terraform plan-only run 39271775789 success (1 import, 4 add, 1 change, 0 destroy); apply NOT run
+- 2026-10-19 [scm-security] START: commit MySQL 8.4 / AMD node infra change, push, dispatch plan-only
