@@ -1,4 +1,4 @@
-# Request 0001: Core infrastructure (status: APPROVED 2026-10-19: NYC3, smallest SKUs: s-1vcpu-2gb-amd node + basic 1 GiB MySQL + LB, ≈ $46/mo)
+# Request 0001: Core infrastructure (status: APPROVED 2026-10-19: NYC3, s-2vcpu-4gb-amd node + basic 1 GiB managed MySQL + LB, ≈ $60/mo, above the $40 CLAUDE.md budget with Chas's approval)
 
 ## 2026-10-18 update from Chas
 - He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
@@ -7,14 +7,15 @@
 - DNS: wildcards OK. Domain superseded 2026-10-19: apps and platform use `raisehellpraisedale.xyz` (see request 0003).
 - Tokens arrive 2026-10-19.
 
-### Managed option in ATL1 (estimate)
+### Approved managed option (current truth: node $28 + LB $12 + Spaces $5 + MySQL $15.15 ≈ $60/mo)
 | | Monthly |
 |---|---|
-| Node s-1vcpu-2gb-amd ~$14 in NYC3 (plain size has no capacity there) + LB $12 + Spaces $5 + managed MySQL basic 1 GiB $15.15 (`db-s-1vcpu-1gb`): smallest SKUs, scale later (Chas 2026-10-19) | **~$46, over the $40 budget by ~$6**; autoscaled 2nd node +~$14 |
-| Per deployed app | same as lean: ~$0 for the first ~8–10 apps, then ~$2/app |
-Middle ground: managed MySQL with no LB (~$49), or an LB with in-cluster MySQL (~$42). Chas decides.
-The code is identical in every variant. Only Terraform flags differ (`use_managed_mysql`, `use_load_balancer`).
+| Node `s-2vcpu-4gb-amd` ~$28 + LB $12 + Spaces $5 + managed MySQL basic 1 GiB `db-s-1vcpu-1gb` $15.15 | **~$60, over the $40 budget by ~$20 (accepted by Chas)**; autoscaled 2nd node (max 2) +~$28 while up |
+| Per deployed app | ~$0 for the first ~8–10 apps, then a 2nd node (+$28) |
+Superseded alternatives (history): managed MySQL with no LB, or an LB with in-cluster MySQL. The code is identical in every variant; only the Terraform flags differ (`use_managed_mysql`, `use_load_balancer`).
 
+
+The sections below describe the original lean plan (history); the approved plan is the managed option above.
 
 Nothing gets provisioned until Chas approves. Terraform for this lives in `infra/` once written.
 
