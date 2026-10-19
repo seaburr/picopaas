@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- DONE (backend-dev, 2026-10-19): issues #3/#4/#5 fixed + gitleaks test-value rename (migration e5b2c8d1f3a7). Uncommitted.
 - DONE (backend-dev, 2026-10-19): signup approval + user/app suspend/delete + audit log + SMTP egress block (migration d4e1a7b9c2f6; see Log). Frontend can build against it.
 - NEXT (backend-dev): scheduler imports `app.providers.spaces.SpacesStore` (optional `from_config()`); rename/add it when Spaces lands (current stub is `SpacesObjectStore`). Until then storage reconcile/quota is skipped with a log.
 (Session paused 2026-10-18 night. Resume here.)
@@ -320,3 +321,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend-dev] DONE: users.status (pending/active/suspended/deleted) + audit_log, migration d4e1a7b9c2f6; `get_active_user` gate on /apps*, /api/keys*, spec; /admin/users/{id}/approve|suspend|unsuspend, DELETE, /admin/apps*, /admin/audit; app status 'suspended' -> replicas 0 (reconciler marks status_detail='scaled to zero'); allow-egress-internet excludes TCP 25/465/587; app/audit.py; tests/test_moderation.py; register_and_login auto-approves (approve=False for pending). Full suite passes. Not committed.
 - 2026-10-19 [scm-security] START: secret gate, security review of moderation wave, commit+push, watch CI
 - 2026-10-19 [scm-security] DONE: committed domain move + moderation (api, frontend) + docs; review filed #3 (delete+recreate evades app suspension), #4 (first-user race), #5 (unsuspend revives admin-suspended apps). Reviewed OK: get_active_user on all /apps,/api/keys,/spec routes; deleted users blocked (login, cookie, keys); admin routes uberadmin-only; uberadmin protected; audit has no secrets; SMTP port ranges gap-free (UDP all allowed, 2525 etc. still open).
+- 2026-10-19 [backend-dev] START: fix issues #3 (owner delete of suspended app 403), #4 (platform_init singleton for first uberadmin), #5 (App.suspended_by_user), gitleaks false positive in tests/test_moderation.py
+- 2026-10-19 [backend-dev] DONE: same; app/routers/{apps,admin,auth}.py, app/models.py, alembic e5b2c8d1f3a7, tests/test_moderation.py (+3 tests), tests/test_reconciler.py (uuid email, flaky id() collision). 152 pass. Not committed.
+- 2026-10-19 [scm-security] START: commit #3/#4/#5 fixes, merge fix/mysql-admin-grants, review procedures, push, CI
