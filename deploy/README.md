@@ -1,6 +1,6 @@
 # deploy/
 
-Plain YAML manifests + two third-party Helm charts (ingress-nginx, cert-manager — values files
+Plain YAML manifests + two third-party Helm charts (Traefik, cert-manager — values files
 only, no templating of our own stuff in Helm). Nothing here has been `kubectl apply`d or `helm
 install`ed against real infra; per `infra-ops` rules that requires an APPROVED `docs/requests/`
 entry and this chunk didn't create one (no new paid resource — LB cost is already covered by
@@ -9,7 +9,7 @@ entry and this chunk didn't create one (no new paid resource — LB cost is alre
 ## Automated bring-up (managed MySQL + LB variant)
 
 `.github/workflows/bootstrap.yml` (workflow_dispatch, run by hand after the `terraform` workflow) automates steps 2-8
-below for the managed-MySQL + LB variant: ingress-nginx and cert-manager (pinned chart versions in the workflow `env`),
+below for the managed-MySQL + LB variant: Traefik and cert-manager (pinned chart versions in the workflow `env`),
 DNS A records `*` and `picopaas` -> LB IP (it owns them; leave Terraform `wildcard_lb_ip` empty), the
 `digitalocean-dns` / `picopaas-env` / `picopaas-db-ca` secrets, the platform `picopaas` database + user on the managed
 cluster, issuers/certificate, platform workload at the current short-sha image, and a `/healthz` check. It is safe to
@@ -25,14 +25,14 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
    set (or via Terraform Cloud UI). `terraform apply` only after request 0001 says APPROVED. Variant flags:
    `use_load_balancer`, `use_managed_mysql`.
 2. **Kubeconfig [0001: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-atl1`.
-3. **ingress-nginx** (helm; pin the chart version at install time)
+3. **Traefik** (helm, Ingress API only; install the chart's CRDs, needed for the default TLSStore)
    ```
-   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
-   helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace \
-     --version <PIN_AT_INSTALL_TIME> -f deploy/ingress-nginx/values.yaml
+   helm repo add traefik https://traefik.github.io/charts && helm repo update
+   helm install traefik traefik/traefik -n traefik --create-namespace \
+     --version 42.0.0 -f deploy/traefik/values.yaml
    ```
-   LB variant: take the Service's external IP (`kubectl get svc -n ingress-nginx`) into Terraform
-   `wildcard_lb_ip` and re-apply. No-LB variant: first swap in the hostPort block in the values file.
+   LB variant: take the Service's external IP (`kubectl -n traefik get svc traefik`) into Terraform
+   `wildcard_lb_ip` and re-apply. The no-LB (hostPort) variant is not wired in the Traefik values yet.
 4. **cert-manager** (helm) + DNS token secret + issuer/certificate
    ```
    helm repo add jetstack https://charts.jetstack.io && helm repo update
@@ -141,6 +141,6 @@ at the cost of more moving parts in the reconciler).
 ## Not done / notes
 
 - Nothing under `deploy/` has been applied; `kubeconform` (CI job) validates the manifests offline.
-- Chart versions are pinned in `bootstrap.yml` env (ingress-nginx 4.15.1, cert-manager v1.21.2); the manual steps above still say `<PIN_AT_INSTALL_TIME>`.
+- Chart versions are pinned in `bootstrap.yml` env (Traefik 42.0.0, cert-manager v1.21.2); the manual steps above still say `<PIN_AT_INSTALL_TIME>`.
 - Managed MySQL needs TLS: the platform DATABASE_URL uses `?ssl_ca=/etc/picopaas/db-ca/ca.crt` (secret `picopaas-db-ca`, mounted by the Deployment). `MySQLAdminClient` does not yet pass `ssl=` to pymysql (app gap, see ledger).
 - The mysql StatefulSet relies on the official image running as uid 999 with `fsGroup: 999`; verify on first boot.

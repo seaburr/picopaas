@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- DONE (infra-ops, 2026-10-19): ingress-nginx -> Traefik 42.0.0 (ns traefik, IngressClass traefik, default TLSStore -> wildcard secret in ns traefik). Uncommitted; not applied.
 - 2026-10-19 (manager): Chas answered QUESTIONS.md. DONE: MySQL slug `db-amd-1vcpu-1gb` + plan-time slug check in
   terraform.yml; LE email; adopt bucket `pico-paas-s3-a` (import block); gitleaks pre-commit hook + CI no-allowlist guard
   + CLAUDE.md rule. Chas ran the history rewrite (main force-pushed, CI green) and approved the LB variant. NEXT: TFC plan → apply → deploy/README.md bring-up.
@@ -345,3 +346,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend] START: MYSQL_SSL_CA TLS for MySQLAdminClient + bootstrap.yml literal
 - 2026-10-19 [backend] DONE: MYSQL_SSL_CA in config.py, ssl+verify in MySQLAdminClient._connect (only pymysql.connect in app/), bootstrap.yml literal, tests/test_mysql_ssl.py. 154 passed, 1 skipped. Tenant DATABASE_URL (reconciler.py:54 mysql://u:p@host:port/db) has no TLS param; apps may need ssl-mode. Not committed.
 - 2026-10-19 [scm-security] DONE: committed fmt, MYSQL_SSL_CA TLS, bootstrap workflow (reviewed: no secret echo, masks present, DNS limited to A '*'/picopaas); issues filed for tenant DB TLS + ingress-nginx retirement
+- 2026-10-19 [backend] START: ingress-nginx -> Traefik in app/ (ingressClassName, NetworkPolicy ns, settings)
+- 2026-10-19 [backend] DONE: Traefik in app/k8s_manifests.py + config.py (INGRESS_CLASS, INGRESS_NAMESPACE), policy renamed allow-ingress-controller, tests updated; 154 passed, 1 skipped. No nginx annotations existed. Not committed.
+- 2026-10-19 [infra-ops] START: replace ingress-nginx with Traefik (deploy/traefik, bootstrap.yml, cert-manager ns, docs)
+- 2026-10-19 [infra-ops] DONE: deploy/traefik/values.yaml (chart 42.0.0, CRDs kept for TLSStore default cert), bootstrap.yml, cert-manager certificate ns traefik, platform ingress class traefik, deploy/README, ARCHITECTURE decision, infra comments. helm template + kubeconform + yaml OK; not applied, not committed.

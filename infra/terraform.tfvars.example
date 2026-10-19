@@ -17,6 +17,6 @@ mysql_size = "db-s-1vcpu-1gb"
 
 domain = "raisehellpraisedale.xyz"
 
-# Leave empty until the ingress-nginx LoadBalancer Service exists and you've read its IP with
-# `kubectl get svc -n ingress-nginx`. See the TODO in variables.tf.
+# Leave empty until the Traefik LoadBalancer Service exists and you've read its IP with
+# `kubectl -n traefik get svc traefik`. See the TODO in variables.tf.
 wildcard_lb_ip = ""

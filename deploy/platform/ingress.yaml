@@ -1,14 +1,15 @@
-# TLS not set explicitly: ingress-nginx's default-ssl-certificate (the wildcard cert) covers
-# picopaas.raisehellpraisedale.xyz already, so no per-host tls/secretName block is needed here.
+# Hosts-only tls (no secretName): Traefik's default TLSStore (the wildcard cert) covers
+# picopaas.raisehellpraisedale.xyz; tls.hosts just makes Traefik serve it on websecure.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: picopaas
   namespace: picopaas-system
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - picopaas.raisehellpraisedale.xyz
   rules:
     - host: picopaas.raisehellpraisedale.xyz
       http:

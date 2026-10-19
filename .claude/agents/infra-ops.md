@@ -1,6 +1,6 @@
 ---
 name: infra-ops
-description: Infra/Ops engineer for PicoPaaS. Terraform for DigitalOcean (DOKS, Spaces, DNS, firewall), k8s manifests (ingress-nginx, cert-manager, MySQL, platform), CI/CD deploy workflows, backups. Use for infra/, deploy/, .github/workflows deploy jobs.
+description: Infra/Ops engineer for PicoPaaS. Terraform for DigitalOcean (DOKS, Spaces, DNS, firewall), k8s manifests (Traefik, cert-manager, MySQL, platform), CI/CD deploy workflows, backups. Use for infra/, deploy/, .github/workflows deploy jobs.
 model: sonnet
 tools: Bash, Read, Grep, Glob, Edit, Write, WebFetch, WebSearch
 ---

@@ -9,7 +9,7 @@ Pricing checked against digitalocean.com on 2026-10-18.
 |---|---|---|
 | DOKS control plane (non-HA) | $0 | $0 |
 | Worker node | 1 × s-2vcpu-4gb, $24 | 1 × s-2vcpu-4gb, $24 |
-| Load balancer | $12 | **$0**: ingress-nginx on hostPorts, DNS points at the node IP |
+| Load balancer | $12 | **$0**: Traefik on hostPorts, DNS points at the node IP |
 | MySQL | Managed 1 GiB, $15.15 | **In-cluster MySQL 8** StatefulSet on a 10 GiB volume, ~$1 |
 | Spaces | $5 (250 GiB, 1 TiB egress, 100 buckets) | $5 |
 | Container registry | GHCR (free) | GHCR (free) |
@@ -36,8 +36,8 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 ```
                *.raisehellpraisedale.xyz (wildcard A → node IP, kept fresh by dns-sync)
                                 │
-                     ingress-nginx (hostPort 80/443)
-              default cert = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
+                     Traefik (hostPort 80/443)
+              default cert (TLSStore) = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
                 ┌───────────────┴──────────────────┐
      picopaas.raisehellpraisedale.xyz                 <pet>-<5char>.raisehellpraisedale.xyz
    ns: picopaas-system                    ns: app-<id>  (one per app)
@@ -47,7 +47,7 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
    │      the api image)  │               │ Secret (env + refs)       │
    │ reconciler (in api)  │               │ ResourceQuota/LimitRange  │
    └──────────┬───────────┘               │ NetworkPolicy (deny-all + │
-              │                           │  ingress-nginx + mysql)   │
+              │                           │  traefik + mysql)   │
    ns: picopaas-data                      └───────────────────────────┘
    MySQL 8 StatefulSet ── db `picopaas` (platform) + db `app_<id>` per app
    DO Spaces ── bucket `pp-<id>` per app, per-bucket access key
@@ -64,7 +64,7 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 ### Tenancy and isolation
 - **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=250m, limits.memory=512Mi, pods=2
   to allow rolling updates). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
-  `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from ingress-nginx, egress
+  `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from the Traefik namespace, egress
   to the internet and to MySQL on 3306, and no traffic to other app namespaces (DOKS uses Cilium, which
   enforces NetworkPolicy).
 - **No root images (decided by Chas, 2026-10-18):** pods run with `runAsNonRoot: true`, so an image whose
@@ -140,7 +140,12 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 ### IaC
 - Terraform (DO provider) handles the cluster, node pool, firewall rule (80/443 to nodes), Spaces, and DNS.
   State and runs live in Terraform Cloud (org `seaburr`, workspace `picopaas`), the same as Chas's other projects.
-- Helm/manifests in `deploy/` cover ingress-nginx, cert-manager, MySQL, and the platform itself.
+- Helm/manifests in `deploy/` cover Traefik, cert-manager, MySQL, and the platform itself.
+
+**Decision (Chas, 2026-10-19):** ingress-nginx is retired upstream, so the ingress controller is **Traefik**
+(official chart, ns `traefik`, IngressClass `traefik` as default) using the standard Kubernetes Ingress API only (no
+Gateway API, no IngressRoute). Traefik's CRDs are installed solely for the `default` TLSStore, which serves the
+cert-manager wildcard cert (secret in ns `traefik`) to per-app Ingresses that have hosts-only `tls`.
 
 ## 3. Scaling
 

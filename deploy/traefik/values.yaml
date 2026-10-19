@@ -1,0 +1,102 @@
+# Helm values for the official Traefik chart (https://traefik.github.io/charts, chart `traefik`).
+#   helm repo add traefik https://traefik.github.io/charts
+#   helm upgrade --install traefik traefik/traefik -n traefik --create-namespace --skip-crds \
+#     --version <TRAEFIK_CHART_VERSION in bootstrap.yml> -f deploy/traefik/values.yaml
+#
+# We use ONLY the standard Kubernetes Ingress API for routing (no IngressRoute usage, no Gateway
+# API). Traefik's own CRDs ARE installed (default helm behaviour, do NOT pass --skip-crds) and the
+# kubernetesCRD provider stays enabled, solely so the `default` TLSStore (a CRD) can point at the
+# wildcard cert. Per-app Ingresses carry `tls: [{hosts: [...]}]` with no secretName and are served
+# that default cert. If we ever dropped the TLSStore, --skip-crds + kubernetesCRD off would be safe.
+#
+# DO allocates the Load Balancer implicitly when the Service is created (Terraform does NOT create
+# it; see infra/variables.tf wildcard_lb_ip). Read the IP with `kubectl -n traefik get svc traefik`.
+# ~$12/mo, see docs/requests/. Service name is `traefik` in ns `traefik` (release name = traefik).
+
+providers:
+  kubernetesCRD:
+    enabled: true
+    defaultTLSResourcesNamespace: traefik   # only the `default` TLSStore from this ns is honored
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true   # Ingress .status gets the LB IP
+
+# Default (wildcard) TLS cert: secret issued by cert-manager into ns traefik
+# (deploy/cert-manager/certificate.yaml). Traefik picks it up when it appears (no restart needed).
+tlsStore:
+  default:
+    defaultCertificate:
+      secretName: wildcard-raisehellpraisedale-xyz-tls
+
+deployment:
+  replicas: 1
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+
+# No dashboard / API exposure.
+api:
+  dashboard: false
+  insecure: false
+ingressRoute:
+  dashboard:
+    enabled: false
+  healthcheck:
+    enabled: false
+
+ports:
+  web:
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    http:
+      tls:
+        enabled: true
+  traefik:
+    expose:
+      default: false
+
+service:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/do-loadbalancer-name: "picopaas"
+    service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
+    service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "false"
+  spec:
+    externalTrafficPolicy: Local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# Chart defaults already run non-root (65532), read-only rootfs, no privilege escalation, drop ALL;
+# restated so a chart change can't silently loosen them.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Telemetry off.
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false

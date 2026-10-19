@@ -1,5 +1,5 @@
-# Wildcard cert for *.raisehellpraisedale.xyz (+ the apex), used as ingress-nginx's default TLS cert
-# (see deploy/ingress-nginx/values.yaml default-ssl-certificate arg). One cert, no per-app
+# Wildcard cert for *.raisehellpraisedale.xyz (+ the apex), used as Traefik's default TLS cert
+# (TLSStore `default`, see deploy/traefik/values.yaml; secret must live in ns traefik). One cert, no per-app
 # issuance, so no Let's Encrypt rate-limit risk as apps are created/deleted.
 #
 # Switch issuerRef.name to letsencrypt-staging first to confirm DNS-01 works before burning
@@ -8,7 +8,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: wildcard-raisehellpraisedale-xyz
-  namespace: ingress-nginx
+  namespace: traefik
 spec:
   secretName: wildcard-raisehellpraisedale-xyz-tls
   issuerRef:

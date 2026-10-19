@@ -7,12 +7,12 @@ data "digitalocean_domain" "domain" {
 }
 
 # NOTE: .github/workflows/bootstrap.yml owns the `*` and `picopaas` A records (it upserts them to the
-# ingress-nginx LB IP after the LB exists). Leave var.wildcard_lb_ip EMPTY so this resource stays
+# Traefik LB IP after the LB exists). Leave var.wildcard_lb_ip EMPTY so this resource stays
 # disabled; setting it would make Terraform and bootstrap.yml fight over the `*` record.
 #
 # Wildcard A record, only when a load balancer is in play AND its IP is known.
 #
-# TODO (see variables.wildcard_lb_ip): the LB is created implicitly by ingress-nginx's
+# TODO (see variables.wildcard_lb_ip): the LB is created implicitly by Traefik's
 # `Service.type: LoadBalancer` in deploy/, which doesn't exist until after this Terraform's first
 # apply and a kubectl/helm deploy step. Until wildcard_lb_ip is supplied (non-empty), this resource
 # is skipped entirely — no record is created or guessed.

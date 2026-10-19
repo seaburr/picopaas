@@ -30,7 +30,7 @@ frontend/       Vue 3 + Vite + Pinia + Tailwind (built into the app image → st
 tests/          pytest, SQLite in-memory, real login flow (no auth mocks); infra clients faked via interfaces
 alembic/        migrations
 infra/          Terraform (DO), state in Spaces
-deploy/         k8s manifests/Helm values (ingress-nginx, cert-manager, mysql, platform)
+deploy/         k8s manifests/Helm values (traefik, cert-manager, mysql, platform)
 docs/           ledger, architecture, requests
 ```
 

@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 45
     env:
       # Pinned chart versions (looked up 2026-10-19 with `helm search repo`). Bump deliberately.
-      INGRESS_NGINX_CHART_VERSION: "4.15.1"
+      TRAEFIK_CHART_VERSION: "42.0.0"
       CERT_MANAGER_CHART_VERSION: "v1.21.2"
       CLUSTER_NAME: picopaas-atl1
       VPC_NAME: picopaas-atl1
@@ -85,16 +85,16 @@ jobs:
           doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME"
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
-      # ---- step 3: ingress-nginx (creates the DO load balancer) ----
-      - name: Install ingress-nginx
+      # ---- step 3: Traefik (creates the DO load balancer; chart CRDs installed for the default TLSStore) ----
+      - name: Install Traefik
         if: steps.gate.outputs.run == 'true'
         run: |
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo add traefik https://traefik.github.io/charts
           helm repo update
-          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            -n ingress-nginx --create-namespace \
-            --version "$INGRESS_NGINX_CHART_VERSION" \
-            -f deploy/ingress-nginx/values.yaml \
+          helm upgrade --install traefik traefik/traefik \
+            -n traefik --create-namespace \
+            --version "$TRAEFIK_CHART_VERSION" \
+            -f deploy/traefik/values.yaml \
             --wait --timeout 10m
 
       # ---- step 4: cert-manager (CRDs come from deploy/cert-manager/values.yaml: crds.enabled) ----
@@ -114,7 +114,7 @@ jobs:
         run: |
           ip=""
           for i in $(seq 1 60); do
-            ip=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+            ip=$(kubectl -n traefik get svc traefik \
               -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             [ -n "$ip" ] && break
             echo "waiting for LB IP ($i/60)"; sleep 10
@@ -262,8 +262,8 @@ jobs:
             fi
             echo "not healthy yet ($i/40)"; sleep 15
           done
-          echo "::warning::strict TLS check failed after ~10 min; certificate probably not issued yet (kubectl describe certificate -n ingress-nginx)"
-          kubectl -n ingress-nginx get certificate || true
+          echo "::warning::strict TLS check failed after ~10 min; certificate probably not issued yet (kubectl describe certificate -n traefik)"
+          kubectl -n traefik get certificate || true
           if curl -fsSk --max-time 10 --resolve "$PLATFORM_HOST:443:$LB_IP" "$url" >/dev/null; then
             echo "::warning::app is up via $LB_IP but the certificate is not ready (insecure check passed). Re-run later."
           else

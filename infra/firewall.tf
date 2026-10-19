@@ -1,4 +1,4 @@
-# Only needed when there's no load balancer: ingress-nginx runs on node hostPorts, so the nodes
+# Only needed when there's no load balancer: Traefik runs on node hostPorts, so the nodes
 # themselves must accept 80/443 from the internet. When a load balancer is used, DO's LB sits in
 # front and the nodes don't need public 80/443 (the LB forwards over the VPC).
 resource "digitalocean_firewall" "ingress_hostports" {

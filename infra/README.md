@@ -11,8 +11,8 @@ bucket, optional managed MySQL, and the DNS/firewall wiring needed depending on 
 
 - `use_managed_mysql` (default `true`) — managed DO MySQL vs. in-cluster MySQL (the in-cluster
   StatefulSet itself lives in `deploy/`, not here).
-- `use_load_balancer` (default `true`) — a DO Load Balancer (created implicitly by ingress-nginx's
-  `Service.type: LoadBalancer` in `deploy/`) vs. ingress-nginx on node hostPorts + a firewall rule
+- `use_load_balancer` (default `true`) — a DO Load Balancer (created implicitly by Traefik's
+  `Service.type: LoadBalancer` in `deploy/`) vs. Traefik on node hostPorts + a firewall rule
   here opening 80/443 on the nodes.
 
 The Terraform code is identical across all four flag combinations — see cost table below.
@@ -91,7 +91,7 @@ actually ordering, and update this table once confirmed.
 - **Never manage or touch TXT records.** General rule, kept from the old domain (the Bluesky TXT on seaburr.io) —
   nothing in this directory should ever define a `digitalocean_record` of type `TXT`.
 - The wildcard `*.raisehellpraisedale.xyz` A record is only created here when `use_load_balancer = true` *and*
-  `wildcard_lb_ip` is set. That IP comes from the DO Load Balancer that ingress-nginx's
+  `wildcard_lb_ip` is set. That IP comes from the DO Load Balancer that Traefik's
   `Service.type: LoadBalancer` creates — which doesn't exist until `deploy/` is applied, after this
   Terraform. See the `TODO` comment on `variables.wildcard_lb_ip` in `variables.tf` for the
   two-step apply sequence.
