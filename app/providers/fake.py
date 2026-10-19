@@ -117,7 +117,7 @@ class FakeObjectStore(ObjectStore):
 
     def create_bucket_and_key(self, app_id: int) -> dict[str, Any]:
         creds = {
-            "endpoint": "atl1.digitaloceanspaces.com",
+            "endpoint": "https://atl1.digitaloceanspaces.com",
             "region": "atl1",
             "bucket": f"pp-{app_id}",
             "access_key": secrets.token_hex(10),

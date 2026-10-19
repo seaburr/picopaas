@@ -51,7 +51,7 @@ env:
   DB_USER: ${{ db.user }}
   DB_PASSWORD: ${{ db.password }}
   DB_CA_CERT: ${{ db.ca_cert }}
-  S3_ENDPOINT: ${{ storage.endpoint }}
+  S3_ENDPOINT: ${{ storage.endpoint }}   # full URL incl. https://
   S3_REGION: ${{ storage.region }}
   S3_BUCKET: ${{ storage.bucket }}
   S3_ACCESS_KEY: ${{ storage.access_key }}

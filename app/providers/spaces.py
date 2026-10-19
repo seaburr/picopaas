@@ -53,11 +53,11 @@ class SpacesStore(ObjectStore):
         http_client: Optional[httpx.Client] = None,
     ) -> None:
         self.region = region
-        self.endpoint = f"{region}.digitaloceanspaces.com"
+        self.endpoint = f"https://{region}.digitaloceanspaces.com"
         self._s3 = s3_client or boto3.client(
             "s3",
             region_name=region,
-            endpoint_url=f"https://{self.endpoint}",
+            endpoint_url=self.endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),

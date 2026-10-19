@@ -62,6 +62,7 @@ def test_create_bucket_and_key():
         creds = store.create_bucket_and_key(7)
     assert creds["bucket"].startswith("pp-7-") and len(creds["bucket"]) == len("pp-7-") + 6
     assert creds["access_key"] == "AK1" and creds["region"] == "atl1"
+    assert creds["endpoint"] == "https://atl1.digitaloceanspaces.com"
     assert list(do.keys.values())[0]["grants"] == [{"bucket": creds["bucket"], "permission": "readwrite"}]
 
 

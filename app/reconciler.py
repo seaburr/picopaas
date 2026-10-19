@@ -64,8 +64,11 @@ def _db_refs(app: models.App) -> dict[str, str]:
 def _storage_refs(app: models.App) -> dict[str, str]:
     """Build the `storage.*` ref values from an already-provisioned AppStorage."""
     row = app.storage
+    endpoint = row.endpoint
+    if endpoint and "://" not in endpoint:  # older rows were stored without a scheme; boto3 needs one
+        endpoint = f"https://{endpoint}"
     return {
-        "storage.endpoint": row.endpoint,
+        "storage.endpoint": endpoint,
         "storage.region": row.region,
         "storage.bucket": row.bucket,
         "storage.access_key": row.access_key,
