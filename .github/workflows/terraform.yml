@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
     defaults:
       run:
         working-directory: infra
@@ -32,6 +33,18 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         with:
           terraform_wrapper: false
+      # Fail early if the MySQL size slug isn't orderable for mysql in the region (DO has no docs table for these).
+      - name: Check managed MySQL size slug
+        if: steps.gate.outputs.run == 'true' && env.DIGITALOCEAN_TOKEN != ''
+        run: |
+          slug=$(sed -n '/variable "mysql_size"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
+          region=$(sed -n '/variable "region"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
+          opts=$(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/databases/options)
+          echo "$opts" | jq -e --arg r "$region" '.options.mysql.regions | index($r)' >/dev/null \
+            || { echo "::error::managed MySQL not offered in $region"; exit 1; }
+          echo "$opts" | jq -e --arg s "$slug" '[.options.mysql.layouts[].sizes[]] | index($s)' >/dev/null \
+            || { echo "::error::slug $slug not valid; mysql sizes:"; echo "$opts" | jq -c '[.options.mysql.layouts[].sizes[]]|unique'; exit 1; }
+          echo "mysql slug $slug OK in $region"
       # Provider creds (DIGITALOCEAN_TOKEN, Spaces keys) are workspace env vars in Terraform Cloud.
       - run: terraform init -input=false
         if: steps.gate.outputs.run == 'true'

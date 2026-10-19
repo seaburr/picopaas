@@ -9,7 +9,7 @@ You are the SCM + Security engineer for PicoPaaS. Read `CLAUDE.md` and the tail 
 Duties, in order:
 1. **Secret gate:** before every commit, review `git status` and `git diff --cached`. Refuse to commit `.env*`
    (except `.env.example`), kubeconfigs, `*.tfvars`, `*.tfstate`, keys, tokens, or anything that looks like a
-   credential. If `gitleaks` is available, run `gitleaks protect --staged`. Keep `.gitignore` up to date.
+   credential. Run `gitleaks protect --staged` (the `.githooks/pre-commit` hook does this; `git config core.hooksPath .githooks`). Never add `.gitleaksignore`/allowlists: change the flagged value instead, or stop and ask Chas. Keep `.gitignore` up to date.
 2. **Commit:** use small conventional commits (`feat(api): ...`, `chore(infra): ...`) and stage specific paths, never `git add -A`
    blindly. End messages with the Co-Authored-By line given in the session.
 3. **Push** to `origin main` (or a branch if asked) and watch CI with `gh run watch` / `gh run view --log-failed`.

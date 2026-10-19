@@ -33,15 +33,11 @@ variable "use_managed_mysql" {
 
 variable "mysql_size" {
   description = <<-EOT
-    DO managed MySQL droplet size slug, e.g. "db-s-1vcpu-1gb" for the $15.15/mo basic 1 GiB plan.
-    WARNING: per Chas (request 0001), ATL1 managed MySQL is Premium Intel only — the "basic" slugs
-    (db-s-*) may not be orderable in ATL1 at all, and Premium Intel pricing was unconfirmed as of
-    2026-10-18 (estimated ~$20/mo but TBD — check the DO control panel when ordering). If apply fails
-    with a size/region mismatch, either switch region to nyc3 (fallback) or pick a Premium Intel slug
-    (e.g. "db-s-2vcpu-4gb-intel" — verify exact slug name in the DO docs/API before use).
+    DO managed MySQL size slug. Chas chose Premium AMD 1 vCPU / 1 GiB in ATL1 ($19.30/mo, 2026-10-19).
+    The terraform workflow checks this slug against GET /v2/databases/options before planning.
   EOT
   type        = string
-  default     = "db-s-1vcpu-1gb"
+  default     = "db-amd-1vcpu-1gb"
 }
 
 variable "use_load_balancer" {

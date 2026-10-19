@@ -15,6 +15,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: no secret-scan allowlists
+        run: |
+          if [ -e .gitleaksignore ] || [ -e .gitleaks.toml ]; then
+            echo "::error::gitleaks allowlists are banned (CLAUDE.md). Change the flagged value instead."; exit 1
+          fi
       - name: gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \

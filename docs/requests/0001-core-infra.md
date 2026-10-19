@@ -1,4 +1,4 @@
-# Request 0001: Core infrastructure (status: AWAITING CHAS: leaning managed)
+# Request 0001: Core infrastructure (status: MANAGED MySQL chosen; LB + apply go-ahead pending, see QUESTIONS.md)
 
 ## 2026-10-18 update from Chas
 - He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
@@ -10,7 +10,7 @@
 ### Managed option in ATL1 (estimate)
 | | Monthly |
 |---|---|
-| Node s-2vcpu-4gb $24 + LB $12 + Spaces $5 + managed MySQL (Premium Intel, ~$20?) | **~$61, over the $40 budget by ~$21** |
+| Node s-2vcpu-4gb $24 + LB $12 + Spaces $5 + managed MySQL Premium AMD 1 GiB $19.30 (`db-amd-1vcpu-1gb`, Chas 2026-10-19) | **~$60.30, over the $40 budget by ~$20** (without LB ~$48.30) |
 | Per deployed app | same as lean: ~$0 for the first ~8–10 apps, then ~$2/app |
 Middle ground: managed MySQL with no LB (~$49), or an LB with in-cluster MySQL (~$42). Chas decides.
 The code is identical in every variant. Only Terraform flags differ (`use_managed_mysql`, `use_load_balancer`).

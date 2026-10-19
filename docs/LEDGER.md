@@ -5,6 +5,9 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-19 (manager): Chas answered QUESTIONS.md. DONE: MySQL slug `db-amd-1vcpu-1gb` + plan-time slug check in
+  terraform.yml; LE email; adopt bucket `pico-paas-s3-a` (import block); gitleaks pre-commit hook + CI no-allowlist guard
+  + CLAUDE.md rule. WAITING on Chas: run `rewrite-history.sh` (force-push; denied to Claude), then LB choice + apply go-ahead (QUESTIONS 1).
 - **Chas's open questions/to-dos live in `docs/QUESTIONS.md`. Check it first.**
 - DONE (backend-dev, 2026-10-19): issues #3/#4/#5 fixed + gitleaks test-value rename (migration e5b2c8d1f3a7). Uncommitted.
 - DONE (backend-dev, 2026-10-19): signup approval + user/app suspend/delete + audit log + SMTP egress block (migration d4e1a7b9c2f6; see Log). Frontend can build against it.

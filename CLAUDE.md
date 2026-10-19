@@ -17,6 +17,9 @@ MySQL DB (100MB) and Spaces bucket (250MB). Caps: 250m CPU, 512MB RAM, 512MB ima
   and prefer `sonnet` subagents for implementation.
 - **Only the `scm-security` agent commits and pushes.** Other agents leave changes in the working tree and
   record them in the ledger.
+- Secret scanning: every clone runs `git config core.hooksPath .githooks` (gitleaks on staged changes). **Never**
+  add `.gitleaksignore`, inline `gitleaks:allow`, or allowlists; CI fails if `.gitleaksignore` exists. Test fixtures use
+  values that don't look like secrets (e.g. `not-the-password`), so a finding means change the value.
 - Never commit secrets: no `.env`, kubeconfig, `*.tfvars`, `*.tfstate`, or tokens. Secrets live in GitHub repo
   secrets (requested from Chas) or k8s Secrets.
 

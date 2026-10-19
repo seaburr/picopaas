@@ -192,5 +192,5 @@ later without two loops fighting each other.
 ## 4. Open questions for Chas
 1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
 2. ~~Wildcard~~ → OK. Domain is now the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
-3. ~~Region~~ → ATL1 (Chas, 2026-10-18). Managed MySQL in ATL1 is Premium Intel only.
+3. ~~Region~~ → ATL1 (Chas, 2026-10-18). Managed MySQL: Premium AMD 1 GiB, $19.30/mo (Chas, 2026-10-19).
 4. Autoscaler `max_nodes`, the compute spending ceiling. Proposed: 2 (worst case +$24/mo over static).
