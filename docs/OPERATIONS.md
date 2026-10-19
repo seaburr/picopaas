@@ -7,8 +7,8 @@ design in [ARCHITECTURE.md](ARCHITECTURE.md), the manual runbook in [../deploy/R
 
 ```
 *.raisehellpraisedale.xyz (A records -> DO load balancer) -> Traefik (ns traefik, wildcard cert from cert-manager)
-   picopaas.raisehellpraisedale.xyz -> platform (ns picopaas-system, 1 replica: API + UI + reconciler)
-   <pet>-<5char>.raisehellpraisedale.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
+   platform.raisehellpraisedale.xyz -> platform (ns picopaas-system, 1 replica: API + UI + reconciler)
+   <pet>-<7char>.raisehellpraisedale.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
 Managed MySQL (DO, nyc3, private VPC): platform DB `picopaas` + one DB/user per app
 Spaces (atl1): one bucket + key per app, plus the adopted platform bucket pico-paas-s3-a
 State: Terraform Cloud (org seaburr, workspace picopaas, local execution = state only)

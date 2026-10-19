@@ -3,8 +3,8 @@
 Decided by Chas 2026-10-19. Replaces seaburr.io in all plans.
 
 ## 1. What is being deployed
-Use `raisehellpraisedale.xyz` for both the platform (`picopaas.raisehellpraisedale.xyz`) and apps
-(`<pet>-<5char>.raisehellpraisedale.xyz`). Chas points the domain's nameservers at DigitalOcean at his
+Use `raisehellpraisedale.xyz` for both the platform (`platform.raisehellpraisedale.xyz`) and apps
+(`<pet>-<7char>.raisehellpraisedale.xyz`). Chas points the domain's nameservers at DigitalOcean at his
 registrar (`ns1.digitalocean.com`, `ns2.digitalocean.com`, `ns3.digitalocean.com`) and adds the domain in the DO panel.
 Terraform only reads the domain (data source); the wildcard cert and `*` / `picopaas` A records are created by cert-manager and dns-sync.
 

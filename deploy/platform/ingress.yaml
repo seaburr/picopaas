@@ -1,5 +1,7 @@
-# Hosts-only tls (no secretName): Traefik's default TLSStore (the wildcard cert) covers
-# picopaas.raisehellpraisedale.xyz; tls.hosts just makes Traefik serve it on websecure.
+# Hosts-only tls (no secretName): Traefik's default TLSStore (the wildcard + apex cert) covers
+# these hosts; tls.hosts just makes Traefik serve it on websecure.
+# platform.* = the platform; picopaas.* = legacy (the app 301s it to platform.*); apex = landing page
+# (the app serves /, /privacy and 301s everything else to platform.*).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,9 +11,31 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
+        - platform.raisehellpraisedale.xyz
         - picopaas.raisehellpraisedale.xyz
+        - raisehellpraisedale.xyz
   rules:
+    - host: platform.raisehellpraisedale.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80
     - host: picopaas.raisehellpraisedale.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80
+    - host: raisehellpraisedale.xyz
       http:
         paths:
           - path: /

@@ -39,7 +39,7 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
                      Traefik (hostPort 80/443)
               default cert (TLSStore) = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
                 ┌───────────────┴──────────────────┐
-     picopaas.raisehellpraisedale.xyz                 <pet>-<5char>.raisehellpraisedale.xyz
+     platform.raisehellpraisedale.xyz                 <pet>-<7char>.raisehellpraisedale.xyz
    ns: picopaas-system                    ns: app-<id>  (one per app)
    ┌──────────────────────┐               ┌───────────────────────────┐
    │ api (FastAPI)        │──k8s API────▶ │ Deployment (1 replica)    │
@@ -132,7 +132,7 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
   but the admin UI for it is deferred).
 
 ### DNS and TLS
-- Hostname format: `<adjective>-<animal>-<5 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
+- Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
 - One wildcard A record `*.raisehellpraisedale.xyz`. Explicit records that already exist still take precedence.
 - One wildcard cert from cert-manager + Let's Encrypt, DNS-01 via the DO solver. It's the ingress default
   cert, so there's no per-app issuance and no LE rate-limit risk.

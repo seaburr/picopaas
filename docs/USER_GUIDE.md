@@ -4,7 +4,7 @@ For app owners. Deploy one Docker image, give it env vars and secrets, and optio
 Spaces (S3-compatible) bucket. Your app is served over HTTPS at a generated hostname such as
 `clever-robin-a1b2c.raisehellpraisedale.xyz`.
 
-Platform URL: `https://picopaas.raisehellpraisedale.xyz` (the CLI default).
+Platform URL: `https://platform.raisehellpraisedale.xyz` (the CLI default).
 
 ## 1. Getting an account
 
@@ -61,7 +61,7 @@ in the secrets box. Submitting an existing app name updates that app.
 Create an API key under **API keys** in the UI (shown once, starts with `pp_sk_`).
 
 ```bash
-export PP=https://picopaas.raisehellpraisedale.xyz
+export PP=https://platform.raisehellpraisedale.xyz
 export TOKEN=pp_sk_...
 
 # Deploy (create or update, matched on spec name) from a YAML file
@@ -103,7 +103,7 @@ back with `"value": "********"` and `"is_secret": true`. Unknown fields are reje
 `cli/picopaas.py` needs `httpx`. See [CLI.md](CLI.md).
 
 ```bash
-export PICOPAAS_TOKEN=pp_sk_...     # PICOPAAS_URL defaults to https://picopaas.raisehellpraisedale.xyz
+export PICOPAAS_TOKEN=pp_sk_...     # PICOPAAS_URL defaults to https://platform.raisehellpraisedale.xyz
 python cli/picopaas.py apply -f app.yaml --secret API_TOKEN=s3cret
 python cli/picopaas.py apps
 python cli/picopaas.py status my-app

@@ -3,7 +3,7 @@
 `cli/picopaas.py` (needs `httpx`). Create a `pp_sk_` API key in the UI, then:
 
 ```bash
-export PICOPAAS_TOKEN=pp_sk_...            # PICOPAAS_URL defaults to https://picopaas.raisehellpraisedale.xyz
+export PICOPAAS_TOKEN=pp_sk_...            # PICOPAAS_URL defaults to https://platform.raisehellpraisedale.xyz
 python cli/picopaas.py apply -f app.yaml --secret API_TOKEN=s3cret
 python cli/picopaas.py apps
 python cli/picopaas.py status my-app

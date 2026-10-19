@@ -1,6 +1,6 @@
 # PicoPaaS API
 
-Base URL: `https://picopaas.raisehellpraisedale.xyz`. JSON in, JSON out. FastAPI also serves interactive docs at
+Base URL: `https://platform.raisehellpraisedale.xyz`. JSON in, JSON out. FastAPI also serves interactive docs at
 `/docs` and the schema at `/openapi.json`.
 
 ## Authentication

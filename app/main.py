@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import config
 from app.db import Base, engine
 from app.routers import admin, api_keys, apps, auth, spec
 
@@ -81,6 +82,42 @@ async def spa_on_navigation(request: Request, call_next):
         and _is_browser_navigation(request)
     ):
         return FileResponse(_INDEX_HTML)
+    return await call_next(request)
+
+
+def _host(request: Request) -> str:
+    return request.headers.get("host", "").split(":")[0].lower()
+
+
+def _page(name: str):
+    f = _STATIC_DIR / name
+    return FileResponse(f) if f.is_file() else None
+
+
+def _to_platform(request: Request) -> RedirectResponse:
+    url = f"https://{config.PLATFORM_HOST}{request.url.path}"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    return RedirectResponse(url, status_code=301)
+
+
+@app.middleware("http")
+async def host_routing(request: Request, call_next):
+    """Legacy hosts 301 to the platform host; the apex serves the landing/privacy pages and redirects the rest
+    (so apex/login works); the platform host also serves /privacy. Registered after spa_on_navigation, so it runs first."""
+    host = _host(request)
+    path = request.url.path
+    if host in config.LEGACY_HOSTS:
+        return _to_platform(request)
+    if host == config.APEX_HOST:
+        if path.startswith(("/static/", "/healthz")):
+            return await call_next(request)
+        page = {"/": "landing.html", "/privacy": "privacy.html"}.get(path)
+        if page and request.method in ("GET", "HEAD"):
+            return _page(page) or await call_next(request)
+        return _to_platform(request)
+    if host == config.PLATFORM_HOST and path == "/privacy" and request.method in ("GET", "HEAD"):
+        return _page("privacy.html") or await call_next(request)
     return await call_next(request)
 
 

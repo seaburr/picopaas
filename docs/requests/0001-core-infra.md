@@ -23,7 +23,7 @@ Nothing gets provisioned until Chas approves. Terraform for this lives in `infra
 - DOKS cluster (non-HA control plane) with 1 × `s-2vcpu-4gb` node, region `atl1` (fallback `nyc3`)
 - Spaces subscription: one private platform bucket (MySQL backups; Terraform state lives in Terraform Cloud), plus one bucket per app on demand
 - 10 GiB block volume for in-cluster MySQL
-- DNS: wildcard `*.raisehellpraisedale.xyz` A record (plus `picopaas.raisehellpraisedale.xyz` for the platform UI)
+- DNS: wildcard `*.raisehellpraisedale.xyz` A record (plus `platform.raisehellpraisedale.xyz` for the platform UI)
 - No load balancer. Ingress runs on node hostPorts.
 
 ## 2. Why
