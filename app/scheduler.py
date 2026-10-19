@@ -124,6 +124,18 @@ def quota_job() -> None:
         session.close()
 
 
+def _read_ca() -> str | None:
+    """PEM text from the file at MYSQL_SSL_CA, or None if unset/unreadable."""
+    path = os.environ.get("MYSQL_SSL_CA") or config.MYSQL_SSL_CA
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() + "\n" or None
+    except OSError:
+        return None
+
+
 def bootstrap_db_server() -> None:
     """Insert DbServer 'primary' from BOOTSTRAP_DB_* env if none exists."""
     host = os.environ.get("BOOTSTRAP_DB_HOST")
@@ -131,9 +143,17 @@ def bootstrap_db_server() -> None:
     password = os.environ.get("BOOTSTRAP_DB_PASSWORD")
     if not (host and user and password):
         return
+    ca_cert = _read_ca()
     session = SessionLocal()
     try:
         if session.execute(select(models.DbServer.id).limit(1)).first() is not None:
+            primary = session.execute(
+                select(models.DbServer).where(models.DbServer.name == "primary")
+            ).scalar_one_or_none()
+            if primary is not None and primary.ca_cert is None and ca_cert:
+                primary.ca_cert = ca_cert
+                session.commit()
+                log.info("backfilled ca_cert on DbServer 'primary'")
             return
         session.add(
             models.DbServer(
@@ -142,6 +162,7 @@ def bootstrap_db_server() -> None:
                 port=int(os.environ.get("BOOTSTRAP_DB_PORT", "3306")),
                 admin_user=user,
                 admin_password_encrypted=crypto.encrypt(password),
+                ca_cert=ca_cert,
             )
         )
         session.commit()

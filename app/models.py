@@ -129,6 +129,9 @@ class DbServer(Base):
     # 'active' (eligible for new placements), 'draining' (keep existing dbs,
     # no new ones), or 'full' (at/over max_databases).
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    # PEM CA certificate for TLS-only servers (e.g. DO managed MySQL); exposed
+    # to tenant apps as `${{ db.ca_cert }}`. NULL = plaintext server.
+    ca_cert: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     databases: Mapped[List["AppDatabase"]] = relationship(back_populates="server")

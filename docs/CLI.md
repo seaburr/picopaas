@@ -27,3 +27,41 @@ secrets:
 
 `apply` creates the app, or updates it if you already have one with that `name`. On update, a secret
 without `--secret` keeps its stored value. Env values must be strings (quote numbers and booleans).
+
+## Connecting to your database
+
+`${{ db.url }}` is a plain `mysql://user:pw@host:port/db` URL with no driver-specific parameters. Managed
+MySQL requires TLS, so also map the CA and TLS flag:
+
+```yaml
+env:
+  DATABASE_URL: ${{ db.url }}
+  DB_CA_CERT: ${{ db.ca_cert }}   # PEM text; empty string if the server has no CA
+  DB_TLS: ${{ db.tls }}           # "required" if the server has a CA, else "off"
+```
+
+Python (pymysql): write the PEM to a file at startup, then pass it as `ssl`.
+
+```python
+import os, pymysql
+ca = os.environ.get("DB_CA_CERT", "")
+if ca:
+    open("/tmp/db-ca.pem", "w").write(ca)
+conn = pymysql.connect(host=..., user=..., password=..., database=...,
+                       ssl={"ca": "/tmp/db-ca.pem"} if ca else None)
+```
+
+Node (mysql2):
+
+```js
+const conn = mysql.createConnection({
+  host, user, password, database,
+  ssl: process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : undefined,
+});
+```
+
+mysql CLI (save the PEM to `ca.pem` first):
+
+```bash
+mysql --ssl-mode=VERIFY_CA --ssl-ca=ca.pem -h HOST -P PORT -u USER -p DBNAME
+```

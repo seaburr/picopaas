@@ -52,6 +52,8 @@ def _db_refs(app: models.App) -> dict[str, str]:
         "db.user": row.db_user,
         "db.password": password,
         "db.url": f"mysql://{row.db_user}:{password}@{server.host}:{server.port}/{row.db_name}",
+        "db.ca_cert": server.ca_cert or "",
+        "db.tls": "required" if server.ca_cert else "off",
     }
 
 

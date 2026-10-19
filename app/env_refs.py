@@ -11,6 +11,7 @@ REF_RE = re.compile(r"^\$\{\{\s*([a-z0-9_]+(?:\.[a-z0-9_]+)?)\s*\}\}$")
 
 ALLOWED_REFS = {
     "db.host", "db.port", "db.name", "db.user", "db.password", "db.url",
+    "db.ca_cert", "db.tls",
     "storage.endpoint", "storage.region", "storage.bucket",
     "storage.access_key", "storage.secret_key",
 }

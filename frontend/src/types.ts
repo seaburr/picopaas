@@ -73,7 +73,7 @@ export const MASKED_VALUE = '********'
 
 // docs/ARCHITECTURE.md "Reference variables" — kept in sync with
 // app/env_refs.py ALLOWED_REFS by hand.
-export const DB_REFS = ['db.host', 'db.port', 'db.name', 'db.user', 'db.password', 'db.url']
+export const DB_REFS = ['db.host', 'db.port', 'db.name', 'db.user', 'db.password', 'db.url', 'db.ca_cert', 'db.tls']
 export const STORAGE_REFS = [
   'storage.endpoint',
   'storage.region',
