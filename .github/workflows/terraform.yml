@@ -20,6 +20,7 @@ jobs:
     steps:
       - name: Skip if no Terraform Cloud token
         id: gate
+        working-directory: .  # runs before checkout, so infra/ doesn't exist yet
         run: |
           if [ -z "$TF_TOKEN_app_terraform_io" ]; then
             echo "::notice::TF_API_TOKEN is not set; skipping terraform plan."
