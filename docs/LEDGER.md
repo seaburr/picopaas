@@ -350,3 +350,22 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend] DONE: Traefik in app/k8s_manifests.py + config.py (INGRESS_CLASS, INGRESS_NAMESPACE), policy renamed allow-ingress-controller, tests updated; 154 passed, 1 skipped. No nginx annotations existed. Not committed.
 - 2026-10-19 [infra-ops] START: replace ingress-nginx with Traefik (deploy/traefik, bootstrap.yml, cert-manager ns, docs)
 - 2026-10-19 [infra-ops] DONE: deploy/traefik/values.yaml (chart 42.0.0, CRDs kept for TLSStore default cert), bootstrap.yml, cert-manager certificate ns traefik, platform ingress class traefik, deploy/README, ARCHITECTURE decision, infra comments. helm template + kubeconform + yaml OK; not applied, not committed.
+- 2026-10-19 [backend] START: testapps/ (hello, probe, toolbox) + .github/workflows/testapps.yml
+- 2026-10-19 [backend] START: #6 tenant DB TLS (DbServer.ca_cert, db.ca_cert/db.tls refs, bootstrap seed+backfill, docs)
+- 2026-10-19 [backend] DONE: migration f6c3d9e2a4b8, models/env_refs/reconciler/scheduler, frontend DB_REFS, docs/CLI.md "Connecting to your database", tests/test_db_ca_cert.py. Not committed.
+- 2026-10-19 [backend] DONE: testapps/hello (stdlib only), testapps/probe (pymysql+boto3, DB_CA_CERT TLS
+  support, /db /s3 /db/fill /s3/fill, scrubbed errors), testapps/toolbox (nmap/curl/dnsutils/mariadb-client +
+  python; bearer-token-gated /checks /run with 11 fixed named checks, arg validation, no arbitrary exec,
+  scrubbed secrets), .github/workflows/testapps.yml (matrix build+push to
+  ghcr.io/seaburr/picopaas-testapp-{hello,probe,toolbox}, triggers on testapps/** push + workflow_dispatch),
+  testapps/README.md (app.yaml examples with db./storage. env refs incl. DB_CA_CERT). All non-root
+  (10001:10001), listen on $PORT, GET /healthz. Verified: py_compile on all .py; hello and probe servers run
+  locally and return correct JSON (probe returns clean {"ok":false,"error":...} with no stack trace or leaked
+  creds when DB/S3 unreachable or deps missing — fixed a scrub() bug that corrupted error text on short
+  values like DB_USER=u); toolbox tested locally (401 when TOOLBOX_TOKEN unset/wrong, /checks and /run
+  tcp_connect work with correct token). Not verified: actual Docker builds (Docker Desktop not started, per
+  instructions) — image sizes/</512MB and USER directive correctness in the built image are unverified beyond
+  Dockerfile review. Uncommitted.
+- 2026-10-19 [backend] START: live e2e + pentest harness (tests/e2e, tests/pentest)
+- 2026-10-19 [backend] DONE: tests/e2e/{harness,conftest,test_live}.py + README, tests/pentest/{test_isolation.py,README.md}, pytest markers e2e/pentest in pytest.ini. Skipped unless E2E_USER_TOKEN+E2E_ADMIN_TOKEN set; 159 pass, 56 skipped offline. Never run against the live env yet. Not committed.
+- 2026-10-19 [scm-security] DONE: committed+pushed infra SKUs, db.ca_cert/db.tls refs (#6), testapps + workflow; tests/e2e, tests/pentest, pytest.ini left uncommitted (other agent).
