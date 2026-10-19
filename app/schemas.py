@@ -60,6 +60,7 @@ class EnvVarIn(BaseModel):
     key: str
     value: str
     is_secret: bool = False
+    undecryptable: bool = Field(default=False, exclude=True)  # echoed back from EnvVarOut; ignored
 
     @field_validator("key")
     @classmethod
@@ -75,6 +76,7 @@ class EnvVarOut(BaseModel):
     key: str
     value: str
     is_secret: bool
+    undecryptable: bool = False  # stored ciphertext unreadable (platform key changed); re-enter the value
 
 
 # --- Apps ---

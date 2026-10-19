@@ -151,7 +151,11 @@ def _internet_egress_ports() -> list[dict[str, Any]]:
 
 
 def network_policies(
-    app_id: int, app_port: int, mysql_cidr: str | None, mysql_port: int | None = None
+    app_id: int,
+    app_port: int,
+    mysql_cidr: str | None,
+    mysql_port: int | None = None,
+    storage_ips: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
@@ -276,13 +280,32 @@ def network_policies(
         },
     }
 
-    return [
+    policies = [
         default_deny,
         allow_ingress_controller,
         allow_egress_dns,
         allow_egress_internet,
         allow_egress_mysql,
     ]
+    if storage_ips:
+        # Spaces resolves to a private VPC IP inside DO; the internet rule excludes PRIVATE_CIDRS,
+        # so allow exactly those /32s on 443 (never the whole VPC range).
+        policies.append({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": "allow-egress-storage", "namespace": namespace},
+            "spec": {
+                **all_pods_selector,
+                "policyTypes": ["Egress"],
+                "egress": [
+                    {
+                        "to": [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(storage_ips))],
+                        "ports": [{"protocol": "TCP", "port": 443}],
+                    }
+                ],
+            },
+        })
+    return policies
 
 
 def _env_checksum(env: dict[str, str]) -> str:
@@ -443,13 +466,14 @@ def render_app_manifests(
     health_check_enabled: bool = False,
     health_check_path: str = "/healthz",
     mysql_port: int | None = None,
+    storage_ips: list[str] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id),
         "limit_range": limit_range_manifest(app_id),
-        "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port),
+        "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,

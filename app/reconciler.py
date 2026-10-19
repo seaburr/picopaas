@@ -17,7 +17,10 @@ import hashlib
 import hmac
 import json
 import logging
+import ipaddress
 import re
+import socket
+import time
 from typing import Any, Callable
 
 from sqlalchemy import and_, or_, select
@@ -79,6 +82,34 @@ def _storage_refs(app: models.App) -> dict[str, str]:
     }
 
 
+_STORAGE_IP_TTL = 300.0
+_storage_ip_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _private_storage_ips(endpoint: str) -> list[str]:
+    """Private-range IPv4s the storage endpoint host resolves to (cached ~5 min); [] on DNS failure.
+
+    Inside the DO VPC Spaces resolves to a private IP that the tenant "internet" egress rule excludes.
+    """
+    host = endpoint.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if not host:
+        return []
+    now = time.monotonic()
+    hit = _storage_ip_cache.get(host)
+    if hit and now - hit[0] < _STORAGE_IP_TTL:
+        return hit[1]
+    try:
+        infos = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError as exc:
+        log.warning("storage endpoint %s: DNS resolution failed (%s); no extra egress policy", host, type(exc).__name__)
+        return hit[1] if hit else []  # keep the last good answer rather than flapping the policy
+    nets = [ipaddress.ip_network(c) for c in k8s_manifests.PRIVATE_CIDRS]
+    ips = sorted({i[4][0] for i in infos if any(ipaddress.ip_address(i[4][0]) in n for n in nets)})
+    _storage_ip_cache[host] = (now, ips)
+    return ips
+
+
+UNREADABLE_DETAIL = "stored secrets unreadable (platform key changed); re-enter secrets or rotate credentials"
 SUSPENDED_APPLIED = "scaled to zero"
 
 
@@ -206,12 +237,16 @@ def reconcile_app(
 
     # 3. Build refs, decrypt env vars, resolve.
     refs: dict[str, str] = {}
-    if app.want_db and app.database is not None:
-        refs.update(_db_refs(app))
-    if app.want_storage and app.storage is not None:
-        refs.update(_storage_refs(app))
-
-    env_vars = {e.key: crypto.decrypt(e.value_encrypted) for e in app.env_vars}
+    try:
+        if app.want_db and app.database is not None:
+            refs.update(_db_refs(app))
+        if app.want_storage and app.storage is not None:
+            refs.update(_storage_refs(app))
+        env_vars = {e.key: crypto.decrypt(e.value_encrypted) for e in app.env_vars}
+    except ValueError:
+        log.warning("app %s: stored secrets unreadable (platform key changed)", app.id)
+        _fail(session, app, UNREADABLE_DETAIL)
+        return
     try:
         resolved_env = env_refs.resolve(env_vars, refs)
     except env_refs.EnvValidationError:
@@ -229,6 +264,9 @@ def reconcile_app(
         env=resolved_env,
         mysql_cidr=_mysql_cidr(settings),
         mysql_port=app.database.server.port if app.want_db and app.database is not None else None,
+        storage_ips=(
+            _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []
+        ),
         replicas=0 if app.status == "suspended" else 1,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,

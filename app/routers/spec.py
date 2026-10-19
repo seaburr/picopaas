@@ -105,7 +105,7 @@ def deploy_spec(
         )
         db.add(app)
     else:
-        old_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
             (app.image, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
             != (spec.image, spec.port, spec.resources.db, spec.resources.storage,
@@ -128,7 +128,7 @@ def deploy_spec(
         app.env_vars.append(models.AppEnvVar(key=item.key, value_encrypted=enc, is_secret=item.is_secret))
 
     if not created:
-        new_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        new_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         if changed or new_env != old_env:
             app.status = "pending"  # reconciler re-applies and the env-checksum rolls the pod
             app.status_detail = None

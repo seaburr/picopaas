@@ -15,3 +15,11 @@ def decrypt(token: str) -> str:
         return _fernet.decrypt(token.encode()).decode()
     except InvalidToken as exc:
         raise ValueError("could not decrypt value") from exc
+
+
+def try_decrypt(token: str) -> str | None:
+    """Like decrypt, but returns None when the ciphertext is unreadable (e.g. platform key changed)."""
+    try:
+        return decrypt(token)
+    except ValueError:
+        return None

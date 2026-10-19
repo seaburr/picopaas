@@ -71,8 +71,12 @@ def _check_image_cap(registry: Registry, image: str) -> None:
 
 
 def _env_var_out(env_var: models.AppEnvVar) -> schemas.EnvVarOut:
-    value = MASKED_VALUE if env_var.is_secret else crypto.decrypt(env_var.value_encrypted)
-    return schemas.EnvVarOut(key=env_var.key, value=value, is_secret=env_var.is_secret)
+    plain = crypto.try_decrypt(env_var.value_encrypted)
+    bad = plain is None
+    if bad:
+        log.warning("app %s: env var %s is undecryptable", env_var.app_id, env_var.key)
+    value = MASKED_VALUE if env_var.is_secret else (plain or "")
+    return schemas.EnvVarOut(key=env_var.key, value=value, is_secret=env_var.is_secret, undecryptable=bad)
 
 
 def _app_out(app: models.App) -> schemas.AppOut:
@@ -240,7 +244,7 @@ def update_app(
         # Clients only ever see MASKED_VALUE for secrets, so sending it back means "unchanged":
         # keep the stored ciphertext instead of overwriting the secret with the mask.
         existing_secrets = {v.key: v.value_encrypted for v in app.env_vars if v.is_secret}
-        old_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         app.env_vars.clear()
         db.flush()  # delete old rows before inserting, or the (app_id, key) unique constraint trips
         for item in payload.env:
@@ -251,7 +255,7 @@ def update_app(
             app.env_vars.append(
                 models.AppEnvVar(key=item.key, value_encrypted=value_encrypted, is_secret=item.is_secret)
             )
-        new_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        new_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         if new_env != old_env:
             workload_changed = True
 
