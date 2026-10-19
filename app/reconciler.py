@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app import crypto, env_refs, k8s_manifests, models
@@ -67,6 +67,9 @@ def _storage_refs(app: models.App) -> dict[str, str]:
     }
 
 
+SUSPENDED_APPLIED = "scaled to zero"
+
+
 def _fail(session: Session, app: models.App, detail: str) -> None:
     """Mark an app 'error' with a short, secret-free detail and commit.
 
@@ -74,6 +77,11 @@ def _fail(session: Session, app: models.App, detail: str) -> None:
     `str(exc)` — so a provider exception that happens to include a
     password/connection string/etc. can never end up in status_detail.
     """
+    if app.status == "suspended":
+        # Never lose the suspended state; retried next sweep (status_detail stays unmarked).
+        app.status_detail = None
+        session.commit()
+        return
     app.status = "error"
     app.status_detail = detail
     session.commit()
@@ -163,12 +171,15 @@ def reconcile_app(
         port=app.port,
         env=resolved_env,
         mysql_cidr=_mysql_cidr(settings),
+        replicas=0 if app.status == "suspended" else 1,
     )
+    suspended = app.status == "suspended"
     flat = k8s_manifests.flatten_manifests(manifests)
 
-    app.status = "deploying"
-    app.status_detail = None
-    session.commit()
+    if not suspended:
+        app.status = "deploying"
+        app.status_detail = None
+        session.commit()
 
     namespace = k8s_manifests.namespace_name(app.id)
     try:
@@ -178,7 +189,10 @@ def reconcile_app(
         _fail(session, app, "deployment failed")
         return
 
-    if status.startswith("error:"):
+    if suspended:
+        # Scaled to zero; DB/storage kept. Marker stops the sweep from re-applying every tick.
+        app.status_detail = SUSPENDED_APPLIED
+    elif status.startswith("error:"):
         app.status = "error"
         app.status_detail = status[len("error:"):].strip()[:255] or None
     else:
@@ -245,7 +259,16 @@ def reconcile_all(
         session.execute(
             select(models.App).where(
                 models.App.deleted_at.is_(None),
-                models.App.status.in_(["pending", "deploying"]),
+                or_(
+                    models.App.status.in_(["pending", "deploying"]),
+                    and_(
+                        models.App.status == "suspended",
+                        or_(
+                            models.App.status_detail.is_(None),
+                            models.App.status_detail != SUSPENDED_APPLIED,
+                        ),
+                    ),
+                ),
             )
         )
         .scalars()

@@ -20,6 +20,8 @@ class User(Base):
     # 'uberadmin' (first registered user, unlimited apps) or 'user'.
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     app_limit: Mapped[int] = mapped_column(default=1, nullable=False)
+    # 'pending' (awaiting uberadmin approval) | 'active' | 'suspended' | 'deleted' (soft).
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="active")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -164,3 +166,17 @@ class AppStorage(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     app: Mapped["App"] = relationship(back_populates="storage")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False, index=True)
+    actor_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    actor_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Short, secret-free note. Never passwords, keys or env values.
+    detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

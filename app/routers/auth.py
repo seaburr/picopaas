@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import audit, models, schemas
 from app.config import DEFAULT_APP_LIMIT, JWT_EXPIRE_DAYS, SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE
 from app.db import get_db
 from app.dependencies import get_current_user
@@ -32,6 +32,7 @@ def register(payload: schemas.UserRegister, response: Response, db: Session = De
         email=payload.email.lower(),
         password_hash=hash_password(payload.password),
         role="uberadmin" if is_first_user else "user",
+        status="active" if is_first_user else "pending",
         app_limit=DEFAULT_APP_LIMIT,
     )
     db.add(user)
@@ -41,6 +42,7 @@ def register(payload: schemas.UserRegister, response: Response, db: Session = De
         db.rollback()
         raise HTTPException(status_code=409, detail="email already registered")
     db.refresh(user)
+    audit.record(db, user, "user.register", "user", user.id, f"status={user.status}")
     _set_session_cookie(response, user.id)
     return user
 
@@ -48,7 +50,9 @@ def register(payload: schemas.UserRegister, response: Response, db: Session = De
 @router.post("/login", response_model=schemas.UserOut)
 def login(payload: schemas.UserLogin, response: Response, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None or user.status == "deleted" or not verify_password(payload.password, user.password_hash):
+        audit.record(db, None, "login.failed", "user", user.id if user else None,
+                     "invalid credentials", actor_email=payload.email.lower()[:255])
         raise HTTPException(status_code=401, detail="invalid email or password")
     _set_session_cookie(response, user.id)
     return user

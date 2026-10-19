@@ -46,7 +46,7 @@ DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 
 # Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
-APP_DOMAIN = os.environ.get("APP_DOMAIN", "seaburr.io")
+APP_DOMAIN = os.environ.get("APP_DOMAIN", "raisehellpraisedale.xyz")
 
 # Hard cap on (summed, compressed-layer) image size, enforced at app create/update
 # via app/providers/registry.py (ARCHITECTURE.md §2 "Image size").

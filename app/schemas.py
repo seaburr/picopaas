@@ -45,6 +45,7 @@ class UserOut(BaseModel):
     email: EmailStr
     role: str
     app_limit: int
+    status: str
     created_at: datetime
 
 

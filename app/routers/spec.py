@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import crypto, models, schemas
+from app import audit, crypto, models, schemas
 from app.db import get_db
-from app.dependencies import get_current_user, get_registry
+from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
 from app.providers.base import Registry
 from app.routers.apps import _active_app_count, _app_out, _check_image_cap, _validate_env
@@ -30,7 +30,7 @@ class SpecDeployOut(schemas.AppOut):
 def deploy_spec(
     payload: SpecDeploy,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
     try:
@@ -55,6 +55,8 @@ def deploy_spec(
         .first()
     )
     created = app is None
+    if app is not None and app.status == "suspended":
+        raise HTTPException(status_code=403, detail="app suspended")
 
     existing_secrets: Dict[str, str] = {}
     if app is not None:
@@ -120,4 +122,6 @@ def deploy_spec(
         db.rollback()
         raise HTTPException(status_code=409, detail="hostname collision, please retry")
     db.refresh(app)
+    audit.record(db, current_user, "app.create" if created else "app.update", "app", app.id,
+                 f"name={app.name} via=spec")
     return SpecDeployOut(**_app_out(app).model_dump(), created=created)

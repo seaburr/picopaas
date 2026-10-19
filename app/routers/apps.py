@@ -7,10 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import crypto, models, schemas
+from app import audit, crypto, models, schemas
 from app.config import MAX_IMAGE_SIZE_BYTES
 from app.db import get_db
-from app.dependencies import get_current_user, get_registry
+from app.dependencies import get_active_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
 from app.providers.base import (
@@ -27,7 +27,7 @@ from app.schemas import MASKED_VALUE
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps", tags=["apps"])
 
-DOMAIN_SUFFIX = "seaburr.io"
+DOMAIN_SUFFIX = "raisehellpraisedale.xyz"
 
 
 def _check_non_root(user: str) -> None:
@@ -103,6 +103,11 @@ def _get_owned_app_or_404(db: Session, app_id: int, owner_id: int) -> models.App
     return app
 
 
+def _forbid_if_suspended(app: models.App) -> None:
+    if app.status == "suspended":
+        raise HTTPException(status_code=403, detail="app suspended")
+
+
 def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool) -> None:
     seen = set()
     for item in env:
@@ -127,7 +132,7 @@ def _active_app_count(db: Session, owner_id: int) -> int:
 def create_app(
     payload: schemas.AppCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
     if not current_user.is_uberadmin:
@@ -166,13 +171,14 @@ def create_app(
         db.rollback()
         raise HTTPException(status_code=409, detail="hostname collision, please retry")
     db.refresh(app)
+    audit.record(db, current_user, "app.create", "app", app.id, f"name={app.name}")
     return _app_out(app)
 
 
 @router.get("", response_model=List[schemas.AppOut])
 def list_apps(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
 ):
     apps = (
         db.query(models.App)
@@ -187,7 +193,7 @@ def list_apps(
 def get_app(
     app_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user.id)
     return _app_out(app)
@@ -198,10 +204,11 @@ def update_app(
     app_id: int,
     payload: schemas.AppUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user.id)
+    _forbid_if_suspended(app)
 
     if payload.name is not None:
         app.name = payload.name
@@ -228,6 +235,7 @@ def update_app(
 
     db.commit()
     db.refresh(app)
+    audit.record(db, current_user, "app.update", "app", app.id)
     return _app_out(app)
 
 
@@ -235,11 +243,12 @@ def update_app(
 def delete_app(
     app_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_active_user),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user.id)
     app.deleted_at = datetime.now(timezone.utc)
     db.commit()
+    audit.record(db, current_user, "app.delete", "app", app_id)
     return None
 
 
@@ -268,11 +277,12 @@ def rotate_credentials(
     app_id: int,
     body: RotateIn,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_active_user),
     mysql_admin_factory=Depends(get_mysql_admin_factory),
     object_store: ObjectStore = Depends(get_object_store),
 ):
     app = _get_owned_app_or_404(db, app_id, user.id)
+    _forbid_if_suspended(app)
     if body.target == "db":
         row = app.database
         if row is None:
@@ -328,4 +338,5 @@ def rotate_credentials(
     app.status = "pending"
     db.commit()
     db.refresh(app)
+    audit.record(db, user, "app.rotate", "app", app.id, f"target={body.target}")
     return _app_out(app)

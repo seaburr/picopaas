@@ -85,8 +85,23 @@ def test_network_policy_internet_egress_excludes_private_ranges():
         "192.168.0.0/16",
         "169.254.0.0/16",
     }
-    # No `ports` restriction: any protocol/port to the public internet is allowed.
-    assert "ports" not in internet["spec"]["egress"][0]
+    # Everything except SMTP (see test_network_policy_blocks_smtp_egress).
+    assert "ports" in internet["spec"]["egress"][0]
+
+
+def test_network_policy_blocks_smtp_egress():
+    internet = _policy(k8s.network_policies(APP_ID, PORT, MYSQL_CIDR), "allow-egress-internet")
+    ports = internet["spec"]["egress"][0]["ports"]
+    tcp = [(p["port"], p.get("endPort", p["port"])) for p in ports if p["protocol"] == "TCP"]
+    assert tcp == [(1, 24), (26, 464), (466, 586), (588, 65535)]
+    for blocked in (25, 465, 587):
+        assert not any(lo <= blocked <= hi for lo, hi in tcp)
+    assert {"protocol": "UDP", "port": 1, "endPort": 65535} in ports
+
+
+def test_suspended_deployment_has_zero_replicas():
+    m = k8s.render_app_manifests(APP_ID, HOSTNAME, IMAGE, PORT, ENV, MYSQL_CIDR, replicas=0)
+    assert m["deployment"]["spec"]["replicas"] == 0
 
 
 def test_network_policy_mysql_egress_targets_cidr_and_port_3306():
@@ -149,7 +164,7 @@ def test_service_is_cluster_ip_on_app_port():
 def test_ingress_uses_nginx_class_and_wildcard_host():
     ing = k8s.ingress_manifest(APP_ID, HOSTNAME, PORT)
     assert ing["spec"]["ingressClassName"] == "nginx"
-    full_host = f"{HOSTNAME}.seaburr.io"
+    full_host = f"{HOSTNAME}.raisehellpraisedale.xyz"
     assert ing["spec"]["rules"][0]["host"] == full_host
     assert ing["spec"]["tls"] == [{"hosts": [full_host]}]
     backend = ing["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]

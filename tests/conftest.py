@@ -75,8 +75,24 @@ def client(make_client):
     return make_client()
 
 
-def register_and_login(client: TestClient, email: str, password: str = DEFAULT_PASSWORD):
-    """Registers a user (which logs them in via the session cookie) and returns the response."""
+def approve_user_directly(email: str) -> None:
+    """Test helper: flip a user to 'active' straight in the shared test DB."""
+    from app import models
+
+    db = next(app.dependency_overrides[get_db]())
+    user = db.query(models.User).filter(models.User.email == email.lower()).one()
+    user.status = "active"
+    db.commit()
+
+
+def register_and_login(client: TestClient, email: str, password: str = DEFAULT_PASSWORD, approve: bool = True):
+    """Registers a user (which logs them in via the session cookie) and returns the response.
+
+    New non-first users start 'pending'; by default they are approved so ordinary tests can use
+    /apps. Pass approve=False to exercise the pending state.
+    """
     resp = client.post("/auth/register", json={"email": email, "password": password})
     assert resp.status_code == 201, resp.text
+    if approve and resp.json()["status"] == "pending":
+        approve_user_directly(email)
     return resp

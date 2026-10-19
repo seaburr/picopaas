@@ -2,7 +2,7 @@ import re
 
 from tests.conftest import register_and_login
 
-HOSTNAME_RE = re.compile(r"^[a-z]+-[a-z]+-[a-z0-9]{5}\.seaburr\.io$")
+HOSTNAME_RE = re.compile(r"^[a-z]+-[a-z]+-[a-z0-9]{5}\.raisehellpraisedale\.xyz$")
 
 
 def _create_app(client, **overrides):

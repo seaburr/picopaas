@@ -149,7 +149,7 @@ def test_cli_parsing_and_flow(tmp_path, monkeypatch, capsys):
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(req)
         if req.url.path == "/apps/spec":
-            return httpx.Response(200, json={"created": True, "name": "demo", "hostname": "a-b-12345.seaburr.io", "status": "pending"})
+            return httpx.Response(200, json={"created": True, "name": "demo", "hostname": "a-b-12345.raisehellpraisedale.xyz", "status": "pending"})
         if req.url.path == "/apps":
             return httpx.Response(200, json=[{"id": 7, "name": "demo", "hostname": "h", "status": "running", "image": "i"}])
         return httpx.Response(422, json={"detail": "nope"})

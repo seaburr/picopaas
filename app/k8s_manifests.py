@@ -128,6 +128,23 @@ def limit_range_manifest(app_id: int) -> dict[str, Any]:
     }
 
 
+SMTP_PORTS = (25, 465, 587)
+
+
+def _internet_egress_ports() -> list[dict[str, Any]]:
+    ports: list[dict[str, Any]] = []
+    start = 1
+    for blocked in SMTP_PORTS:
+        if blocked > start:
+            ports.append({"protocol": "TCP", "port": start, "endPort": blocked - 1})
+        elif blocked == start:
+            pass
+        start = blocked + 1
+    ports.append({"protocol": "TCP", "port": start, "endPort": 65535})
+    ports.append({"protocol": "UDP", "port": 1, "endPort": 65535})
+    return ports
+
+
 def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
@@ -217,8 +234,10 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list
                                 "except": list(PRIVATE_CIDRS),
                             }
                         }
-                    ]
-                    # No `ports`: any protocol/port to the public internet is allowed.
+                    ],
+                    # NetworkPolicy can't deny, so allow everything EXCEPT SMTP
+                    # (TCP 25/465/587) via endPort ranges (K8s >= 1.25). All UDP allowed.
+                    "ports": _internet_egress_ports(),
                 }
             ],
         },
@@ -274,7 +293,9 @@ def secret_manifest(app_id: int, env: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def deployment_manifest(app_id: int, image: str, port: int, env_checksum: str = "") -> dict[str, Any]:
+def deployment_manifest(
+    app_id: int, image: str, port: int, env_checksum: str = "", replicas: int = 1
+) -> dict[str, Any]:
     name = _resource_name(app_id)
     pod_labels = {"app": name}
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
@@ -285,7 +306,7 @@ def deployment_manifest(app_id: int, image: str, port: int, env_checksum: str = 
         "kind": "Deployment",
         "metadata": {"name": name, "namespace": namespace_name(app_id)},
         "spec": {
-            "replicas": 1,
+            "replicas": replicas,
             "selector": {"matchLabels": pod_labels},
             "template": {
                 "metadata": {"labels": pod_labels, "annotations": pod_annotations},
@@ -344,7 +365,7 @@ def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
         "spec": {
             "ingressClassName": "nginx",
             # No `tls[].secretName`: ingress-nginx's configured default certificate
-            # (the *.seaburr.io wildcard, cert-manager/DNS-01 — ARCHITECTURE.md "DNS
+            # (the *.raisehellpraisedale.xyz wildcard, cert-manager/DNS-01 — ARCHITECTURE.md "DNS
             # and TLS") serves every host automatically, so there's nothing per-app
             # to issue or copy into this namespace.
             "tls": [{"hosts": [full_host]}],
@@ -375,6 +396,7 @@ def render_app_manifests(
     port: int,
     env: dict[str, str],
     mysql_cidr: str | None,
+    replicas: int = 1,
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
@@ -383,7 +405,8 @@ def render_app_manifests(
         "limit_range": limit_range_manifest(app_id),
         "network_policies": network_policies(app_id, port, mysql_cidr),
         "secret": secret_manifest(app_id, env),
-        "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env)),
+        "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
+                                       replicas=replicas),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port),
     }

@@ -1,6 +1,6 @@
 """Generates `<adjective>-<animal>-<5 char suffix>` hostnames, e.g. clever-robin-a1b2c.
 
-Matches ARCHITECTURE.md: "<adjective>-<animal>-<5 chars of [a-z0-9]>.seaburr.io", with a
+Matches ARCHITECTURE.md: "<adjective>-<animal>-<5 chars of [a-z0-9]>.raisehellpraisedale.xyz", with a
 uniqueness check in the DB. This module only builds the label; the caller (apps router)
 appends the domain and checks the `apps.hostname` column for collisions.
 """

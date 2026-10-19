@@ -31,7 +31,7 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
         user_id = decode_access_token(token)
         if user_id is not None:
             user = db.get(models.User, user_id)
-            if user is not None:
+            if user is not None and user.status != "deleted":
                 request.state.auth_via = "cookie"
                 return user
 
@@ -48,7 +48,9 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             api_key.last_used_at = datetime.now(timezone.utc)
             db.commit()
             request.state.auth_via = "api_key"
-            return db.get(models.User, api_key.user_id)
+            user = db.get(models.User, api_key.user_id)
+            if user is not None and user.status != "deleted":
+                return user
 
     return None
 
@@ -58,6 +60,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
+
+
+def get_active_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+    """Shared gate for /apps*, /api/keys* and spec endpoints (cookie and API key alike)."""
+    if current_user.status == "pending":
+        raise HTTPException(status_code=403, detail="account pending approval")
+    if current_user.status != "active":
+        raise HTTPException(status_code=403, detail="account suspended")
+    return current_user
 
 
 def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
