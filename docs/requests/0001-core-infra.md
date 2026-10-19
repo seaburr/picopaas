@@ -44,5 +44,4 @@ with DB + storage while staying under the $40/mo budget.
       `SPACES_SECRET_ACCESS_KEY` as sensitive workspace env vars, and add a TFC API token as GitHub repo secret `TF_API_TOKEN`
 - [ ] Make the GHCR package `ghcr.io/seaburr/picopaas` public (new packages start private, so the cluster can't pull it), or tell us to use a pull secret
 - [ ] Approve autoscaler ceiling `max_nodes = 2` (worst case +$24/mo while the extra node is up)
-- [ ] Give us the IP/CIDR(s) allowed to reach the Kubernetes API (your home IP), for `control_plane_allowed_cidrs`
 - [ ] Pick a final variant: lean / LB-only / managed-DB-only / both (see table above)

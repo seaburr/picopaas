@@ -83,15 +83,16 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
   compressed layer size exceeds 512 MB. v1 supports public images only; private pull creds come later.
 
 ### Public exposure (Chas, 2026-10-18)
-Only two things are public: app URLs (`*.seaburr.io` through ingress) and the PicoPaaS UI/API.
-Everything else is private:
-- **Kubernetes API:** DOKS control-plane firewall (`control_plane_allowed_cidrs`), Chas's IP only.
-  CI can't reach it, so **deploys are pull-based from inside the cluster** (e.g. the platform or a small
-  in-cluster updater watches GHCR). No inbound cluster credentials live in GitHub.
-- **MySQL:** in-cluster ClusterIP only, or managed MySQL with trusted sources = the cluster only.
-- **Nodes:** no inbound except 80/443 (no LB) or from the LB only. No SSH.
-- **Spaces:** DO's endpoint is inherently public. Buckets are private, keys are per-bucket, and credential
-  theft is accepted as out of scope (request 0002, option A), with a credential-rotation action in the UI.
+Goal: the **DB server and Spaces** shouldn't be reachable from the public internet. The Kubernetes API
+staying public is fine for now. `control_plane_allowed_cidrs` exists in Terraform but is off by default.
+- **MySQL: private.** In-cluster ClusterIP only, or managed MySQL with trusted sources = the cluster only.
+  The DO firewall refuses everything else, so the public hostname is unusable from outside.
+- **Spaces: as private as DO allows on this budget.** The endpoint is inherently public (DO has no VPC
+  endpoint for Spaces). Buckets are private and keys are per-bucket. Restricting by source IP would need
+  bucket policies, which DO doesn't support with per-bucket keys, *and* a static egress IP (a DO NAT gateway,
+  extra monthly cost). Revisit if DO ships VPC-only Spaces access. Credential theft is out of scope
+  (request 0002, option A), and there's a credential-rotation action in the UI.
+- **Nodes:** no inbound except 80/443 (no LB) or from the LB only.
 - Pentest items 8 and 10 (use of stolen creds) are informational, not blockers.
 
 ### Reference variables

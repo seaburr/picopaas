@@ -1,8 +1,9 @@
-# Request 0002: Should stolen credentials be useless across apps? (status: DECIDED: A, plus no public infra)
+# Request 0002: Should stolen credentials be useless across apps? (status: DECIDED: A, plus private DB)
 
 ## Decision (Chas, 2026-10-18)
-**Option A.** Credential theft is out of scope. On top of that, **infra must not be reachable from the
-public internet**, so the attack surface is limited to PicoPaaS itself and DigitalOcean. See
+**Option A.** Credential theft is out of scope. On top of that, the **DB server and Spaces** shouldn't be
+reachable from the public internet where possible (the k8s API being public is fine for now). The DB is private
+via firewall. Spaces can't be fully private on DO at this budget. See
 ARCHITECTURE.md "Public exposure". We'll still ship a credential-rotation action.
 
 ## The question

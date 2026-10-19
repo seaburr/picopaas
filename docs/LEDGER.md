@@ -33,8 +33,8 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - DONE (frontend-dev, 2026-10-18): `USER 10001` hint + verbatim image-field 422s added to AppFormView.
 
 - NEXT (scm-security, once dev env is up): run docs/PENTEST.md (tenant isolation, incl. "even with creds").
-- DECIDED: request 0002 → option A + no public infra. NEXT (infra-ops): pull-based in-cluster deploys (k8s API is
-  allowlisted to Chas's IP only); NEXT (backend-dev): credential-rotation action for DB/storage.
+- DECIDED: request 0002 → option A + private DB server (k8s API public is fine for now; Spaces can't be made private
+  on DO at this budget). NEXT (backend-dev): credential-rotation action for DB/storage.
 
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
@@ -217,3 +217,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   Next session: reconciler loop wiring placement + MySQLAdmin + k8s manifests (real kube.py), then deploy/ manifests.
 - 2026-10-18 [manager] DONE: wrote docs/PENTEST.md and request 0002 (credential binding) per Chas.
 - 2026-10-18 [manager] DONE: recorded 0002 decision (A + private infra); added a DOKS control-plane firewall var to Terraform.
+- 2026-10-18 [manager] DONE: corrected per Chas: k8s API may stay public (firewall var kept, off by default); only DB/Spaces should be private.

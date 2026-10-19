@@ -15,9 +15,8 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
   auto_upgrade  = true
   surge_upgrade = true
 
-  # Keep the Kubernetes API off the public internet (Chas, 2026-10-18: infra not publicly
-  # reachable). Only allowlisted CIDRs may reach it; the platform's own reconciler runs
-  # in-cluster and needs no entry here.
+  # Optional Kubernetes API allowlist. Off by default: Chas OK'd a public API for now
+  # (2026-10-18). The platform's reconciler runs in-cluster and never needs an entry.
   control_plane_firewall {
     enabled           = length(var.control_plane_allowed_cidrs) > 0
     allowed_addresses = var.control_plane_allowed_cidrs
