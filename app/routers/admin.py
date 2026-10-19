@@ -265,7 +265,7 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
                    for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
         return health.build(db, kube, servers)
 
-    return health.get_cached(_build)
+    return {**health.get_cached(_build), **health.db_counts(db)}
 
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)

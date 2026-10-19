@@ -91,3 +91,37 @@ def get_cached(builder) -> dict[str, Any]:
     value = builder()
     _cache["at"], _cache["value"] = now, value
     return value
+
+
+WORKLOAD_STATUSES = ("running", "deploying", "pending", "error", "suspended")
+
+
+def db_counts(db: Session) -> dict[str, Any]:
+    """Cheap DB-only platform counts; computed per request (never cached) so approvals show up immediately."""
+    from sqlalchemy import func
+
+    U, A = models.User, models.App
+    users = {"total": 0, "active": 0, "pending": 0, "suspended": 0}
+    for status, n in (db.query(U.status, func.count(U.id)).filter(U.role == "user", U.status != "deleted")
+                      .group_by(U.status).all()):
+        users["total"] += n
+        if status in users:
+            users[status] = n
+    pending = (db.query(U).filter(U.role == "user", U.status == "pending")
+               .order_by(U.created_at, U.id).limit(20).all())
+    by_status = {k: 0 for k in WORKLOAD_STATUSES}
+    total = 0
+    for status, n in db.query(A.status, func.count(A.id)).filter(A.deleted_at.is_(None)).group_by(A.status).all():
+        total += n
+        if status in by_status:
+            by_status[status] = n
+    live = A.deleted_at.is_(None)
+    return {
+        "users": users,
+        "pending_users": [{"id": u.id, "email": u.email, "created_at": u.created_at.isoformat()} for u in pending],
+        "workloads": {
+            "apps_total": total, "by_status": by_status,
+            "with_db": db.query(func.count(A.id)).filter(live, A.want_db.is_(True)).scalar() or 0,
+            "with_storage": db.query(func.count(A.id)).filter(live, A.want_storage.is_(True)).scalar() or 0,
+        },
+    }

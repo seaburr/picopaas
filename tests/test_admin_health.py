@@ -118,3 +118,34 @@ def test_parse_cpu(q, m):
 @pytest.mark.parametrize("q,mi", [("512Mi", 512), ("1Gi", 1024), ("123456Ki", 120), ("536870912", 512)])
 def test_parse_mem(q, mi):
     assert parse_mem_mi(q) == mi
+
+
+def test_platform_counts(make_client, kube, db_session):
+    from datetime import datetime, timedelta
+    from app import models
+    admin = _admin(make_client)
+    d = admin.get("/admin/health").json()
+    assert d["users"] == {"total": 0, "active": 0, "pending": 0, "suspended": 0}  # uberadmin excluded
+    base = datetime(2026, 1, 1)
+    for i in range(22):
+        db_session.add(models.User(email=f"p{i}@x.io", password_hash="x", role="user", status="pending",
+                                   created_at=base + timedelta(minutes=30 - i)))
+    for st in ("active", "active", "suspended", "deleted"):
+        db_session.add(models.User(email=f"{st}{len(db_session.new)}@x.io", password_hash="x", role="user", status=st))
+    db_session.commit()
+    d = admin.get("/admin/health").json()  # not stale despite cache
+    assert d["users"] == {"total": 25, "active": 2, "pending": 22, "suspended": 1}
+    pend = d["pending_users"]
+    assert len(pend) == 20 and pend[0]["email"] == "p21@x.io" and pend[1]["email"] == "p20@x.io"
+    assert set(pend[0]) == {"id", "email", "created_at"}
+    owner = db_session.query(models.User).filter_by(email="admin@example.com").one().id
+    mk = lambda n, **kw: db_session.add(models.App(owner_id=owner, name=n, hostname=f"{n}.x.io", image="i", port=1, **kw))
+    mk("a", status="running", want_db=True)
+    mk("b", status="running", want_storage=True)
+    mk("c", status="error", want_db=True, want_storage=True)
+    mk("d", status="suspended")
+    mk("e", status="running", want_db=True, deleted_at=datetime(2026, 1, 1))
+    db_session.commit()
+    w = admin.get("/admin/health").json()["workloads"]
+    assert w == {"apps_total": 4, "with_db": 2, "with_storage": 2,
+                 "by_status": {"running": 2, "deploying": 0, "pending": 0, "error": 1, "suspended": 1}}
