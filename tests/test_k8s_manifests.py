@@ -55,13 +55,13 @@ def test_network_policies_default_deny_isolates_everything():
     assert deny["spec"]["egress"] == []
 
 
-def test_network_policy_allows_ingress_nginx_only_on_app_port():
+def test_network_policy_allows_ingress_controller_only_on_app_port():
     policies = k8s.network_policies(APP_ID, PORT, MYSQL_CIDR)
-    allow = _policy(policies, "allow-ingress-nginx")
+    allow = _policy(policies, "allow-ingress-controller")
     rule = allow["spec"]["ingress"][0]
     assert rule["ports"] == [{"protocol": "TCP", "port": PORT}]
     ns_selector = rule["from"][0]["namespaceSelector"]["matchLabels"]
-    assert ns_selector == {"kubernetes.io/metadata.name": "ingress-nginx"}
+    assert ns_selector == {"kubernetes.io/metadata.name": "traefik"}
 
 
 def test_network_policy_allows_dns_egress():
@@ -161,9 +161,9 @@ def test_service_is_cluster_ip_on_app_port():
     assert svc["spec"]["selector"] == {"app": "app-42"}
 
 
-def test_ingress_uses_nginx_class_and_wildcard_host():
+def test_ingress_uses_traefik_class_and_wildcard_host():
     ing = k8s.ingress_manifest(APP_ID, HOSTNAME, PORT)
-    assert ing["spec"]["ingressClassName"] == "nginx"
+    assert ing["spec"]["ingressClassName"] == "traefik"
     full_host = f"{HOSTNAME}.raisehellpraisedale.xyz"
     assert ing["spec"]["rules"][0]["host"] == full_host
     assert ing["spec"]["tls"] == [{"hosts": [full_host]}]

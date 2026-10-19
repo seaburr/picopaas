@@ -15,7 +15,7 @@ import hashlib
 import json
 from typing import Any
 
-from app.config import APP_DOMAIN
+from app.config import APP_DOMAIN, INGRESS_CLASS, INGRESS_NAMESPACE
 
 RUN_AS_NON_ROOT = True
 
@@ -32,7 +32,6 @@ LIMIT_RANGE_DEFAULT_MEMORY = "512Mi"
 LIMIT_RANGE_DEFAULT_REQUEST_CPU = "64m"
 LIMIT_RANGE_DEFAULT_REQUEST_MEMORY = "128Mi"
 
-INGRESS_NGINX_NAMESPACE = "ingress-nginx"
 DNS_NAMESPACE = "kube-system"
 DNS_PORT = 53
 
@@ -96,7 +95,7 @@ def resource_quota_manifest(app_id: int) -> dict[str, Any]:
                 "requests.memory": QUOTA_REQUESTS_MEMORY,
                 "pods": QUOTA_PODS,
                 "services": QUOTA_SERVICES,
-                # No LoadBalancer/NodePort services — ingress-nginx is the only entry point
+                # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
                 # (ARCHITECTURE.md's no-LB lean option).
                 "services.loadbalancers": "0",
                 "services.nodeports": "0",
@@ -169,10 +168,10 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list
         },
     }
 
-    allow_ingress_nginx = {
+    allow_ingress_controller = {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "NetworkPolicy",
-        "metadata": {"name": "allow-ingress-nginx", "namespace": namespace},
+        "metadata": {"name": "allow-ingress-controller", "namespace": namespace},
         "spec": {
             **all_pods_selector,
             "policyTypes": ["Ingress"],
@@ -182,7 +181,7 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list
                         {
                             "namespaceSelector": {
                                 "matchLabels": {
-                                    "kubernetes.io/metadata.name": INGRESS_NGINX_NAMESPACE
+                                    "kubernetes.io/metadata.name": INGRESS_NAMESPACE
                                 }
                             }
                         }
@@ -271,7 +270,7 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list
 
     return [
         default_deny,
-        allow_ingress_nginx,
+        allow_ingress_controller,
         allow_egress_dns,
         allow_egress_internet,
         allow_egress_mysql,
@@ -363,8 +362,8 @@ def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
         "kind": "Ingress",
         "metadata": {"name": name, "namespace": namespace_name(app_id)},
         "spec": {
-            "ingressClassName": "nginx",
-            # No `tls[].secretName`: ingress-nginx's configured default certificate
+            "ingressClassName": INGRESS_CLASS,
+            # No `tls[].secretName`: Traefik's default certificate (TLSStore `default`)
             # (the *.raisehellpraisedale.xyz wildcard, cert-manager/DNS-01 — ARCHITECTURE.md "DNS
             # and TLS") serves every host automatically, so there's nothing per-app
             # to issue or copy into this namespace.

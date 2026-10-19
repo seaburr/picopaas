@@ -70,3 +70,8 @@ RECONCILER_ENABLED = os.environ.get("RECONCILER_ENABLED") == "1"
 # pod app=mysql) or "cidr" (managed DB, MYSQL_EGRESS_CIDR).
 MYSQL_EGRESS_MODE = os.environ.get("MYSQL_EGRESS_MODE", "cidr")
 MYSQL_EGRESS_CIDR = os.environ.get("MYSQL_EGRESS_CIDR", "")
+
+# Ingress controller (Traefik, standard Ingress API): class name for per-app Ingresses and the
+# namespace the per-app NetworkPolicy admits traffic from.
+INGRESS_CLASS = os.environ.get("INGRESS_CLASS", "traefik")
+INGRESS_NAMESPACE = os.environ.get("INGRESS_NAMESPACE", "traefik")
