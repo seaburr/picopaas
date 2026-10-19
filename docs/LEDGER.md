@@ -32,6 +32,9 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   a non-numeric user → 422 because kubelet can't verify it).
 - DONE (frontend-dev, 2026-10-18): `USER 10001` hint + verbatim image-field 422s added to AppFormView.
 
+- NEXT (scm-security, once dev env is up): run docs/PENTEST.md (tenant isolation, incl. "even with creds").
+- BLOCKED on Chas: request 0002 (credential binding A/B/C). Option B needs in-cluster MySQL, so decide it alongside 0001.
+
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
   wrote CLAUDE.md, ARCHITECTURE.md, request 0001, agent definitions, .gitignore, CI secret scan.
@@ -211,3 +214,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-18 [manager] DONE: scaling design (ARCHITECTURE.md §3), autoscaler max_nodes var (default 2, needs Chas OK),
   reviewed + committed DB placement/MySQL admin (6 real-MySQL CI tests pass) and the API keys UI. Session end.
   Next session: reconciler loop wiring placement + MySQLAdmin + k8s manifests (real kube.py), then deploy/ manifests.
+- 2026-10-18 [manager] DONE: wrote docs/PENTEST.md and request 0002 (credential binding) per Chas.
