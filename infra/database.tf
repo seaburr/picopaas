@@ -26,4 +26,12 @@ resource "digitalocean_database_firewall" "mysql" {
     type  = "k8s"
     value = digitalocean_kubernetes_cluster.picopaas.id
   }
+
+  # The k8s rule didn't cover a node the autoscaler added (2026-10-19: pods on the new node timed out, pods on the
+  # original node connected). Trust the private VPC range too: only this cluster's nodes live in it, and pod
+  # traffic to the DB leaves via node IPs.
+  rule {
+    type  = "ip_addr"
+    value = digitalocean_vpc.main.ip_range
+  }
 }
