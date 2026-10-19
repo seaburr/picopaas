@@ -1,4 +1,9 @@
-# Request 0002: Should stolen credentials be useless across apps? (status: AWAITING CHAS, a decision, no spend)
+# Request 0002: Should stolen credentials be useless across apps? (status: DECIDED: A, plus no public infra)
+
+## Decision (Chas, 2026-10-18)
+**Option A.** Credential theft is out of scope. On top of that, **infra must not be reachable from the
+public internet**, so the attack surface is limited to PicoPaaS itself and DigitalOcean. See
+ARCHITECTURE.md "Public exposure". We'll still ship a credential-rotation action.
 
 ## The question
 Network isolation between apps is enforceable either way (NetworkPolicy, tested by PENTEST.md 1–7).

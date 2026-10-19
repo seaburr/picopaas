@@ -82,3 +82,9 @@ variable "wildcard_lb_ip" {
   type        = string
   default     = ""
 }
+
+variable "control_plane_allowed_cidrs" {
+  description = "CIDRs allowed to reach the Kubernetes API (e.g. Chas's IP as x.x.x.x/32). Empty leaves the firewall off; set it before the first real apply."
+  type        = list(string)
+  default     = []
+}
