@@ -1,0 +1,39 @@
+name: terraform
+
+# Manual, plan-only. There is deliberately NO apply here: applies need an APPROVED docs/requests entry
+# and are run by hand (or from Terraform Cloud) by a human.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - name: Skip if no Terraform Cloud token
+        id: gate
+        run: |
+          if [ -z "$TF_TOKEN_app_terraform_io" ]; then
+            echo "::notice::TF_API_TOKEN is not set; skipping terraform plan."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.gate.outputs.run == 'true'
+        with:
+          terraform_wrapper: false
+      # Provider creds (DIGITALOCEAN_TOKEN, Spaces keys) are workspace env vars in Terraform Cloud.
+      - run: terraform init -input=false
+        if: steps.gate.outputs.run == 'true'
+      - run: terraform plan -input=false
+        if: steps.gate.outputs.run == 'true'

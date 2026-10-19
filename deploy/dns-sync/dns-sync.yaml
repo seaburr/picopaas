@@ -1,0 +1,170 @@
+# dns-sync (ONLY for the no-LB variant, use_load_balancer = false).
+# Every 2 min: read Ready nodes' ExternalIPs, upsert A records `*` and `picopaas` in seaburr.io.
+# Only touches type=A records with exactly those two names; TXT (Bluesky) and everything else are never read-for-write.
+# Secret (by hand): do-dns-token (key DO_API_TOKEN) in ns picopaas-dns-sync.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: picopaas-dns-sync
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-sync
+  namespace: picopaas-dns-sync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: picopaas-dns-sync
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: picopaas-dns-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: picopaas-dns-sync
+subjects:
+  - kind: ServiceAccount
+    name: dns-sync
+    namespace: picopaas-dns-sync
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dns-sync-script
+  namespace: picopaas-dns-sync
+data:
+  sync.py: |
+    import json, os, ssl, sys, urllib.request
+
+    DOMAIN = os.environ.get("DOMAIN", "seaburr.io")
+    NAMES = ["*", "picopaas"]
+    TTL = 60
+    DO = "https://api.digitalocean.com/v2"
+    TOKEN = os.environ["DO_API_TOKEN"]
+    SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+
+
+    def call(url, method="GET", body=None, headers=None, ctx=None):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+            raw = r.read()
+            return json.loads(raw) if raw else {}
+
+
+    def node_ips():
+        token = open(f"{SA}/token").read().strip()
+        ctx = ssl.create_default_context(cafile=f"{SA}/ca.crt")
+        host = os.environ["KUBERNETES_SERVICE_HOST"]
+        port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
+        nodes = call(f"https://{host}:{port}/api/v1/nodes",
+                     headers={"Authorization": f"Bearer {token}"}, ctx=ctx)["items"]
+        ips = set()
+        for n in nodes:
+            ready = any(c["type"] == "Ready" and c["status"] == "True"
+                        for c in n["status"].get("conditions", []))
+            if not ready:
+                continue
+            for a in n["status"].get("addresses", []):
+                if a["type"] == "ExternalIP":
+                    ips.add(a["address"])
+        return sorted(ips)
+
+
+    def main():
+        ips = node_ips()
+        if not ips:
+            print("no ready node with ExternalIP; leaving DNS untouched")
+            return 0
+        h = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+        recs = call(f"{DO}/domains/{DOMAIN}/records?type=A&per_page=200", headers=h)["domain_records"]
+        for name in NAMES:
+            # Defensive: only A records with this exact name are ever modified.
+            cur = [r for r in recs if r["type"] == "A" and r["name"] == name]
+            have = {r["data"]: r for r in cur}
+            for ip in ips:
+                if ip not in have:
+                    spare = [r for r in cur if r["data"] not in ips]
+                    if spare:
+                        r = spare.pop(0)
+                        cur.remove(r)
+                        call(f"{DO}/domains/{DOMAIN}/records/{r['id']}", "PUT",
+                             {"data": ip, "ttl": TTL}, h)
+                        print(f"updated {name} {r['data']} -> {ip}")
+                    else:
+                        call(f"{DO}/domains/{DOMAIN}/records", "POST",
+                             {"type": "A", "name": name, "data": ip, "ttl": TTL}, h)
+                        print(f"created {name} -> {ip}")
+            for r in cur:
+                if r["data"] not in ips and r["type"] == "A":
+                    call(f"{DO}/domains/{DOMAIN}/records/{r['id']}", "DELETE", headers=h)
+                    print(f"deleted stale {name} {r['data']}")
+        print("ok", ips)
+        return 0
+
+
+    sys.exit(main())
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dns-sync
+  namespace: picopaas-dns-sync
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 90
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: dns-sync
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: sync
+              image: python:3.13-alpine
+              command: ["python", "-I", "/script/sync.py"]
+              env:
+                - name: DOMAIN
+                  value: seaburr.io
+                - name: DO_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: do-dns-token
+                      key: DO_API_TOKEN
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests: {cpu: 20m, memory: 32Mi}
+                limits: {cpu: 100m, memory: 64Mi}
+              volumeMounts:
+                - name: script
+                  mountPath: /script
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: dns-sync-script

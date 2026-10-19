@@ -1,0 +1,120 @@
+# In-cluster MySQL (use_managed_mysql = false). Private: ClusterIP only, NetworkPolicy-restricted.
+# Root password comes from the hand-made Secret `mysql-root` (key MYSQL_ROOT_PASSWORD), see README.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: picopaas-data
+data:
+  picopaas.cnf: |
+    [mysqld]
+    # ~25 app DBs x 5 connections each, oversubscribed (ARCHITECTURE.md section 3).
+    max_connections=150
+    # Small box: leave room for the 768Mi limit.
+    innodb_buffer_pool_size=192M
+    performance_schema=OFF
+    skip-name-resolve
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_0900_ai_ci
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: picopaas-data
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: picopaas-data
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The official mysql image ships a `mysql` user with uid/gid 999 and its entrypoint skips the
+        # root-only chown/gosu path when started as non-root. fsGroup makes the PVC writable by it.
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-root
+                  key: MYSQL_ROOT_PASSWORD
+            # Allow root from other pods (the platform creates per-app users/DBs as root).
+            # Network access is limited by the NetworkPolicy, not by the MySQL host column.
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+              # subPath avoids ext4's lost+found at the volume root breaking `--initialize`.
+              subPath: data
+            - name: config
+              mountPath: /etc/mysql/conf.d
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: mysql-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: do-block-storage
+        resources:
+          requests:
+            storage: 10Gi

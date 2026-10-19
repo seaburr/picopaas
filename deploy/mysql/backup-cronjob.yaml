@@ -1,0 +1,106 @@
+# Nightly logical backup -> private platform Spaces bucket, 7-day retention.
+# initContainer dumps+gzips into an emptyDir; main container uploads and prunes.
+# Secrets (by hand, placeholders in README): mysql-root, mysql-backup-spaces
+#   (SPACES_ACCESS_KEY_ID, SPACES_SECRET_ACCESS_KEY, SPACES_BUCKET, SPACES_ENDPOINT e.g. https://atl1.digitaloceanspaces.com)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: picopaas-data
+spec:
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: mysql-backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              image: mysql:8.4
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  mysqldump -h mysql.picopaas-data.svc -uroot -p"$MYSQL_ROOT_PASSWORD" \
+                    --all-databases --single-transaction --routines --events --triggers \
+                    | gzip -9 > /backup/dump.sql.gz
+                  test -s /backup/dump.sql.gz
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-root
+                      key: MYSQL_ROOT_PASSWORD
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {cpu: 300m, memory: 256Mi}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: amazon/aws-cli:2.17.0
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  export AWS_DEFAULT_REGION=us-east-1 HOME=/tmp
+                  S3="aws --endpoint-url $SPACES_ENDPOINT s3"
+                  KEY="mysql-backups/mysql-$(date -u +%Y%m%d-%H%M%S).sql.gz"
+                  $S3 cp /backup/dump.sql.gz "s3://$SPACES_BUCKET/$KEY"
+                  CUTOFF="$(date -u -d '7 days ago' +%Y%m%d)"
+                  $S3 ls "s3://$SPACES_BUCKET/mysql-backups/" | awk '{print $4}' | while read -r f; do
+                    d="$(echo "$f" | sed -n 's/^mysql-\([0-9]\{8\}\)-.*/\1/p')"
+                    if [ -n "$d" ] && [ "$d" -lt "$CUTOFF" ]; then
+                      $S3 rm "s3://$SPACES_BUCKET/mysql-backups/$f"
+                    fi
+                  done
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef: {name: mysql-backup-spaces, key: SPACES_ACCESS_KEY_ID}
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: mysql-backup-spaces, key: SPACES_SECRET_ACCESS_KEY}
+                - name: SPACES_BUCKET
+                  valueFrom:
+                    secretKeyRef: {name: mysql-backup-spaces, key: SPACES_BUCKET}
+                - name: SPACES_ENDPOINT
+                  valueFrom:
+                    secretKeyRef: {name: mysql-backup-spaces, key: SPACES_ENDPOINT}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {cpu: 300m, memory: 256Mi}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                  readOnly: true
+          volumes:
+            - name: backup
+              emptyDir:
+                sizeLimit: 1Gi

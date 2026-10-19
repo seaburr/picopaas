@@ -1,0 +1,70 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA (short or full) whose image to roll out; default = current ref"
+        required: false
+  workflow_run:
+    workflows: [image]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # For workflow_run, only deploy when the image build succeeded.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+    steps:
+      - name: Skip if no DigitalOcean token yet
+        id: gate
+        run: |
+          if [ -z "$DIGITALOCEAN_TOKEN" ]; then
+            echo "::notice::DIGITALOCEAN_TOKEN is not set; skipping deploy (infra not provisioned yet)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Work out image tag
+        if: steps.gate.outputs.run == 'true'
+        id: tag
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          CUR_SHA: ${{ github.sha }}
+        run: |
+          full="${INPUT_SHA:-${RUN_SHA:-$CUR_SHA}}"
+          if ! echo "$full" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::sha must be 7-40 hex chars"; exit 1
+          fi
+          echo "short=$(echo "$full" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - uses: digitalocean/action-doctl@v2.5.1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          token: ${{ secrets.DIGITALOCEAN_TOKEN }}
+
+      - uses: azure/setup-kubectl@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Save kubeconfig
+        if: steps.gate.outputs.run == 'true'
+        run: doctl kubernetes cluster kubeconfig save picopaas-atl1
+
+      - name: Roll out image
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          kubectl -n picopaas-system set image deployment/picopaas \
+            picopaas=ghcr.io/seaburr/picopaas:${{ steps.tag.outputs.short }}
+          kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s

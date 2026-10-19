@@ -6,75 +6,101 @@ install`ed against real infra; per `infra-ops` rules that requires an APPROVED `
 entry and this chunk didn't create one (no new paid resource — LB cost is already covered by
 `use_load_balancer` in `infra/variables.tf` / request 0001).
 
-## Install order
+## Bring-up runbook (in order)
 
-1. **ingress-nginx**
-   ```
-   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-   helm repo update
-   # Pin at install time: run `helm search repo ingress-nginx/ingress-nginx --versions | head`
-   # and pick the latest stable chart version — not hardcoded here so this doesn't go stale.
-   helm install ingress-nginx ingress-nginx/ingress-nginx \
-     -n ingress-nginx --create-namespace \
-     --version <PIN_AT_INSTALL_TIME> \
-     -f deploy/ingress-nginx/values.yaml
-   ```
-   If `use_load_balancer = true` (default, matches `infra/variables.tf`): after this installs,
-   `kubectl get svc -n ingress-nginx` for the LB's external IP, then feed it into Terraform's
-   `wildcard_lb_ip` and re-apply (see that variable's comment for why it's a chicken-and-egg step).
-   If `use_load_balancer = false`: edit `deploy/ingress-nginx/values.yaml` to swap in the
-   commented hostPort/DaemonSet block first, and the (not yet written) `dns-sync` CronJob is a
-   hard prerequisite for DNS to work at all.
+Steps marked **[0001]** wait on Chas's request-0001 checklist (approval/variant, DO token, Spaces key,
+Terraform Cloud workspace, GHCR package public). Everything else is already in the repo.
 
-2. **cert-manager**
+1. **Terraform apply [0001: approval + variant + tokens]** - from `infra/`, with `TF_TOKEN_app_terraform_io`
+   set (or via Terraform Cloud UI). `terraform apply` only after request 0001 says APPROVED. Variant flags:
+   `use_load_balancer`, `use_managed_mysql`.
+2. **Kubeconfig [0001: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-atl1`.
+3. **ingress-nginx** (helm; pin the chart version at install time)
    ```
-   helm repo add jetstack https://charts.jetstack.io
-   helm repo update
-   # Pin at install time: `helm search repo jetstack/cert-manager --versions | head`
-   helm install cert-manager jetstack/cert-manager \
-     -n cert-manager --create-namespace \
-     --version <PIN_AT_INSTALL_TIME> \
-     -f deploy/cert-manager/values.yaml
+   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx && helm repo update
+   helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace \
+     --version <PIN_AT_INSTALL_TIME> -f deploy/ingress-nginx/values.yaml
    ```
-   Then create the DO DNS token secret **by hand** (see "Secrets to create by hand" below),
-   then:
+   LB variant: take the Service's external IP (`kubectl get svc -n ingress-nginx`) into Terraform
+   `wildcard_lb_ip` and re-apply. No-LB variant: first swap in the hostPort block in the values file.
+4. **cert-manager** (helm) + DNS token secret + issuer/certificate
    ```
-   kubectl apply -f deploy/cert-manager/clusterissuer.yaml
-   kubectl apply -f deploy/cert-manager/certificate.yaml
+   helm repo add jetstack https://charts.jetstack.io && helm repo update
+   helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace \
+     --version <PIN_AT_INSTALL_TIME> -f deploy/cert-manager/values.yaml
    ```
-   Test with `letsencrypt-staging` first (edit `certificate.yaml`'s `issuerRef.name`) before
-   switching to `letsencrypt-prod`, to avoid burning Let's Encrypt's production rate limits on a
-   typo. `kubectl describe certificate wildcard-seaburr-io -n ingress-nginx` to watch issuance.
+   Create `digitalocean-dns` (see Secrets), then apply `deploy/cert-manager/clusterissuer.yaml` and
+   `certificate.yaml`. Try `letsencrypt-staging` first.
+5. **Platform namespace + RBAC + secrets**
+   ```
+   kubectl apply -f deploy/platform/namespace.yaml -f deploy/platform/rbac.yaml
+   ```
+   Create `picopaas-env` (see Secrets). `DATABASE_URL` is the platform's own metadata DB.
+6. **MySQL for app databases**
+   - **Managed (`use_managed_mysql = true`)**: nothing to deploy; register the managed server as a
+     `DbServer` using Terraform outputs. Skip to step 7.
+   - **In-cluster (`false`)**:
+     ```
+     kubectl apply -f deploy/mysql/namespace.yaml
+     # create secrets mysql-root and mysql-backup-spaces (see Secrets)
+     kubectl apply -f deploy/mysql/networkpolicy.yaml -f deploy/mysql/statefulset.yaml
+     kubectl -n picopaas-data rollout status statefulset/mysql
+     kubectl apply -f deploy/mysql/backup-cronjob.yaml
+     ```
+     Verify a manual backup: `kubectl -n picopaas-data create job --from=cronjob/mysql-backup test-backup`.
+7. **Platform workload**
+   ```
+   kubectl apply -f deploy/platform/deployment.yaml -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
+   ```
+   After this, `deploy.yml` (GitHub Actions) rolls new images out automatically once `DIGITALOCEAN_TOKEN` exists.
+   The GHCR package must be public **[0001]** or the pull fails.
+8. **DNS**
+   - LB variant: Terraform owns the wildcard A record (step 3). `picopaas` is covered by the wildcard.
+   - No-LB variant: install dns-sync, which keeps `*` and `picopaas` A records on the node IP(s):
+     ```
+     kubectl apply -f deploy/dns-sync/dns-sync.yaml   # creates ns + RBAC + CronJob
+     # create do-dns-token in picopaas-dns-sync (see Secrets); the CronJob fails until it exists
+     ```
+     It only upserts/deletes type-A records named `*` and `picopaas`. TXT records (Bluesky) are never touched.
 
-3. **platform**
-   ```
-   kubectl apply -f deploy/platform/namespace.yaml
-   kubectl apply -f deploy/platform/rbac.yaml
-   ```
-   Then create the `picopaas-env` secret **by hand** (see below), then:
-   ```
-   kubectl apply -f deploy/platform/deployment.yaml
-   kubectl apply -f deploy/platform/service.yaml
-   kubectl apply -f deploy/platform/ingress.yaml
-   ```
+## MySQL restore (in-cluster variant)
 
-## Secrets to create by hand (placeholders only — never in this repo)
+Backups: `s3://<platform bucket>/mysql-backups/mysql-YYYYMMDD-HHMMSS.sql.gz`, nightly 03:17 UTC, 7 days kept.
+```
+# 1. fetch (any machine with the Spaces key)
+aws --endpoint-url https://atl1.digitaloceanspaces.com s3 cp \
+  s3://<bucket>/mysql-backups/<file>.sql.gz ./restore.sql.gz
+# 2. load into the running server (dump includes all databases, users and grants)
+gunzip -c restore.sql.gz | kubectl -n picopaas-data exec -i mysql-0 -- \
+  sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'
+```
+Total loss (PVC gone): redeploy step 6, wait for `mysql-0` Ready, then run step 2. Restoring over a live
+server overwrites same-named databases; stop the platform first (`kubectl -n picopaas-system scale deploy/picopaas --replicas=0`)
+if you need a consistent point in time. Managed MySQL uses DO's own backups instead.
+
+## Secrets to create by hand (placeholders only; never in this repo)
 
 ```
-# cert-manager namespace, DNS-01 solver credential
-kubectl create secret generic digitalocean-dns \
-  -n cert-manager \
+kubectl create secret generic digitalocean-dns -n cert-manager \
   --from-literal=access-token='<DO_API_TOKEN_PLACEHOLDER>'
 
-# picopaas-system namespace, platform app config
 kubectl create secret generic picopaas-env -n picopaas-system \
-  --from-literal=SECRET_KEY='<placeholder>' \
-  --from-literal=FERNET_KEY='<placeholder>' \
-  --from-literal=DATABASE_URL='<placeholder>' \
-  --from-literal=DO_API_TOKEN='<placeholder>' \
-  --from-literal=DO_SPACES_KEY='<placeholder>' \
-  --from-literal=DO_SPACES_SECRET='<placeholder>'
+  --from-literal=SECRET_KEY='<placeholder>' --from-literal=FERNET_KEY='<placeholder>' \
+  --from-literal=DATABASE_URL='<placeholder>' --from-literal=DO_API_TOKEN='<placeholder>' \
+  --from-literal=SPACES_ACCESS_KEY_ID='<placeholder>' --from-literal=SPACES_SECRET_ACCESS_KEY='<placeholder>'
+
+# in-cluster MySQL only
+kubectl create secret generic mysql-root -n picopaas-data \
+  --from-literal=MYSQL_ROOT_PASSWORD='<placeholder>'
+kubectl create secret generic mysql-backup-spaces -n picopaas-data \
+  --from-literal=SPACES_ACCESS_KEY_ID='<placeholder>' --from-literal=SPACES_SECRET_ACCESS_KEY='<placeholder>' \
+  --from-literal=SPACES_BUCKET='<platform bucket name>' --from-literal=SPACES_ENDPOINT='https://atl1.digitaloceanspaces.com'
+
+# no-LB variant only
+kubectl create secret generic do-dns-token -n picopaas-dns-sync \
+  --from-literal=DO_API_TOKEN='<placeholder>'
 ```
+Prefer a DO token scoped to domains only for `do-dns-token` / `digitalocean-dns` if DO offers it.
 
 ## Known RBAC exposure (flag for scm-security)
 
@@ -94,10 +120,8 @@ cross-tenant-breach scenario. Needs a `docs/PENTEST.md` entry and a mitigation d
 (namespace-scoped Roles created per app namespace instead of one ClusterRole is the likely fix,
 at the cost of more moving parts in the reconciler).
 
-## Not done in this chunk
+## Not done / notes
 
-- `dns-sync` CronJob (no-LB variant) — still a TODO per `infra/variables.tf` and ARCHITECTURE.md.
-- In-cluster MySQL StatefulSet manifests (only relevant if `use_managed_mysql = false`).
-- Chart version pins above are deliberately left as "pin at install time" placeholders — this
-  chunk had a hard ~10-minute budget and did not spend it on a version lookup; whoever runs the
-  install should grab current stable versions at that time.
+- Nothing under `deploy/` has been applied; `kubeconform` (CI job) validates the manifests offline.
+- Chart version pins are "pin at install time" placeholders.
+- The mysql StatefulSet relies on the official image running as uid 999 with `fsGroup: 999`; verify on first boot.
