@@ -138,8 +138,10 @@ def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User
     _protect_uberadmin(user)
     user.status = "suspended"
     for a in _live_apps(db, user.id):
-        a.status = "suspended"
-        a.status_detail = None
+        if a.status != "suspended":  # already admin-suspended apps stay individually suspended
+            a.status = "suspended"
+            a.suspended_by_user = True
+            a.status_detail = None
     db.commit()
     audit.record(db, admin, "user.suspend", "user", user.id)
     return _user_out(db, user)
@@ -152,8 +154,9 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.Us
         raise HTTPException(status_code=409, detail="user is not suspended")
     user.status = "active"
     for a in _live_apps(db, user.id):
-        if a.status == "suspended":
+        if a.status == "suspended" and a.suspended_by_user:
             a.status = "pending"
+            a.suspended_by_user = False
             a.status_detail = None
     db.commit()
     audit.record(db, admin, "user.unsuspend", "user", user.id)
@@ -197,6 +200,7 @@ def list_all_apps(db: Session = Depends(get_db)):
 def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
     a = _get_app_or_404(db, app_id)
     a.status = "suspended"
+    a.suspended_by_user = False
     a.status_detail = None
     db.commit()
     audit.record(db, admin, "app.suspend", "app", a.id)
@@ -209,6 +213,7 @@ def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User
     if a.status != "suspended":
         raise HTTPException(status_code=409, detail="app is not suspended")
     a.status = "pending"
+    a.suspended_by_user = False
     a.status_detail = None
     db.commit()
     audit.record(db, admin, "app.unsuspend", "app", a.id)

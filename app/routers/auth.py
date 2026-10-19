@@ -25,22 +25,44 @@ def _set_session_cookie(response: Response, user_id: int) -> None:
     )
 
 
-@router.post("/register", response_model=schemas.UserOut, status_code=201)
-def register(payload: schemas.UserRegister, response: Response, db: Session = Depends(get_db)):
-    is_first_user = db.query(models.User).count() == 0
+def _try_insert(db: Session, email: str, password: str, first: bool) -> models.User:
     user = models.User(
-        email=payload.email.lower(),
-        password_hash=hash_password(payload.password),
-        role="uberadmin" if is_first_user else "user",
-        status="active" if is_first_user else "pending",
+        email=email.lower(),
+        password_hash=hash_password(password),
+        role="uberadmin" if first else "user",
+        status="active" if first else "pending",
         app_limit=DEFAULT_APP_LIMIT,
     )
     db.add(user)
+    if first:
+        # Singleton row with a fixed PK: only one transaction can ever insert it.
+        db.add(models.PlatformInit(id=1))
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
+        raise
+    return user
+
+
+def create_user(db: Session, email: str, password: str, first_hint: bool = None) -> models.User:
+    """Create a user; only the one that wins the platform_init insert becomes uberadmin."""
+    first = (db.query(models.User).count() == 0) if first_hint is None else first_hint
+    try:
+        return _try_insert(db, email, password, first)
+    except IntegrityError:
+        if not first:
+            raise HTTPException(status_code=409, detail="email already registered")
+    # Lost the first-user race (or duplicate email): retry as a normal pending user.
+    try:
+        return _try_insert(db, email, password, False)
+    except IntegrityError:
         raise HTTPException(status_code=409, detail="email already registered")
+
+
+@router.post("/register", response_model=schemas.UserOut, status_code=201)
+def register(payload: schemas.UserRegister, response: Response, db: Session = Depends(get_db)):
+    user = create_user(db, payload.email, payload.password)
     db.refresh(user)
     audit.record(db, user, "user.register", "user", user.id, f"status={user.status}")
     _set_session_cookie(response, user.id)

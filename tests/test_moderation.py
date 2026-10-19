@@ -171,3 +171,39 @@ def test_audit_never_raises(db_session):
             pass
 
     audit.record(Boom(), None, "x")  # must not raise
+
+
+def test_owner_cannot_delete_suspended_app_admin_can(make_client, db_session):
+    admin, user, uid = _setup(make_client)
+    admin.post(f"/admin/users/{uid}/approve")
+    app_id = user.post("/apps", json=APP).json()["id"]
+    admin.post(f"/admin/apps/{app_id}/suspend")
+    r = user.delete(f"/apps/{app_id}")
+    assert r.status_code == 403 and r.json()["detail"] == "app suspended"
+    assert admin.delete(f"/admin/apps/{app_id}").status_code == 204
+
+
+def test_user_unsuspend_keeps_individually_suspended_apps(make_client, db_session):
+    admin, user, uid = _setup(make_client)
+    admin.post(f"/admin/users/{uid}/approve")
+    db_session.get(models.User, uid).app_limit = 5
+    db_session.commit()
+    bad = user.post("/apps", json=APP).json()["id"]
+    good = user.post("/apps", json=dict(APP, name="other")).json()["id"]
+    admin.post(f"/admin/apps/{bad}/suspend")
+    admin.post(f"/admin/users/{uid}/suspend")
+    admin.post(f"/admin/users/{uid}/unsuspend")
+    db_session.expire_all()
+    assert db_session.get(models.App, bad).status == "suspended"
+    assert db_session.get(models.App, good).status == "pending"
+    assert admin.post(f"/admin/apps/{bad}/unsuspend").json()["status"] == "pending"
+
+
+def test_first_user_race_only_one_uberadmin(db_session):
+    from app.routers.auth import create_user
+    # Both registrants saw an empty users table; only one may claim the platform_init slot.
+    a = create_user(db_session, "a@example.com", "Password123!x", first_hint=True)
+    b = create_user(db_session, "b@example.com", "Password123!x", first_hint=True)
+    assert (a.role, a.status) == ("uberadmin", "active")
+    assert (b.role, b.status) == ("user", "pending")
+    assert db_session.query(models.User).filter_by(role="uberadmin").count() == 1

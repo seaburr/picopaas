@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -30,6 +31,13 @@ class User(Base):
     @property
     def is_uberadmin(self) -> bool:
         return self.role == "uberadmin"
+
+
+class PlatformInit(Base):
+    """Singleton (id=1) claimed by the first registrant; its PK makes uberadmin assignment atomic."""
+    __tablename__ = "platform_init"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
 
 
 class ApiKey(Base):
@@ -67,6 +75,8 @@ class App(Base):
     # Short, secret-free human-readable reason for status='error'. Never holds
     # raw provider exception text (could echo creds) — see app/reconciler.py.
     status_detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # True only when the suspension came from suspending the owner (user unsuspend revives just these).
+    suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 

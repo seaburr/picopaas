@@ -246,6 +246,7 @@ def delete_app(
     current_user: models.User = Depends(get_active_user),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user.id)
+    _forbid_if_suspended(app)  # no delete+recreate to evade suspension; admin can still delete
     app.deleted_at = datetime.now(timezone.utc)
     db.commit()
     audit.record(db, current_user, "app.delete", "app", app_id)

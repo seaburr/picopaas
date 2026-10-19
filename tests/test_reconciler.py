@@ -1,6 +1,8 @@
 """app/reconciler.py — fakes only, plain SQLite session (no HTTP layer)."""
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -41,7 +43,7 @@ def _make_server(session, name="primary", max_databases=25, status="active") -> 
 
 
 def _make_app(session, want_db=False, want_storage=False, env=None) -> models.App:
-    owner = models.User(email=f"u{models.User.__tablename__}{id(object())}@example.com", password_hash="x")
+    owner = models.User(email=f"u{models.User.__tablename__}{uuid.uuid4().hex}@example.com", password_hash="x")
     session.add(owner)
     session.commit()
     app = models.App(
