@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "node_size" {
-  description = "Droplet size slug for the DOKS worker node pool. Smallest size NYC3 actually has capacity for (~$14; plain s-1vcpu-2gb is not offered there). Chas: smallest SKUs, scale later (2026-10-19)."
+  description = "Droplet size slug for the DOKS worker node pool. s-2vcpu-4gb-amd (~$28): on 2 GB nodes Kubernetes overhead left almost no room for apps (Chas, 2026-10-19)."
   type        = string
-  default     = "s-1vcpu-2gb-amd"
+  default     = "s-2vcpu-4gb-amd"
 }
 
 variable "node_count" {
