@@ -28,8 +28,30 @@ deploy/         k8s manifests/Helm values (ingress-nginx, cert-manager, mysql, p
 docs/           ledger, architecture, requests
 ```
 
-## Commands (fill in as they come to exist)
+## Commands
 ```bash
+# one-time setup
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# run the API (SQLite at ./data/picopaas.db by default; set DATABASE_URL for MySQL)
+source .venv/bin/activate
+uvicorn app.main:app --reload
+
+# tests (SQLite in-memory, real register/login flow, no auth mocks)
+source .venv/bin/activate
 python -m pytest tests/ -v
+
+# migrations (DATABASE_URL / SECRET_KEY / FERNET_KEY come from the environment, see app/config.py)
+source .venv/bin/activate
+alembic upgrade head
+alembic revision --autogenerate -m "describe the change"
+
+# frontend (once frontend/ exists)
 cd frontend && npm run dev | npm run typecheck
 ```
+
+Required env vars outside `ENVIRONMENT=dev`: `SECRET_KEY` (JWT signing), `FERNET_KEY` (encrypts env var
+values at rest — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
+Dev/test runs use fixed insecure defaults baked into `app/config.py`.
