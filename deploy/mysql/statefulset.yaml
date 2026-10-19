@@ -47,7 +47,8 @@ data:
     -- so ALL ... WITH GRANT OPTION on this pattern is the tightest set that works. It also lets the
     -- information_schema.TABLES size query see those schemas. It has NO access to mysql.*, other schemas,
     -- or global admin privileges.
-    GRANT ALL ON \`app\\_%\`.* TO 'picopaas_admin'@'%' WITH GRANT OPTION;
+    -- One backslash: bash leaves \_ alone in this heredoc, so MySQL receives app\_% (escaped underscore).
+    GRANT ALL ON \`app\_%\`.* TO 'picopaas_admin'@'%' WITH GRANT OPTION;
 
     -- Backup: read-only, exactly what mysqldump --all-databases --single-transaction --routines --events --triggers needs.
     CREATE USER IF NOT EXISTS 'picopaas_backup'@'%' IDENTIFIED BY '${MYSQL_BACKUP_PASSWORD}';

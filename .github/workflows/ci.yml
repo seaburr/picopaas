@@ -99,7 +99,11 @@ jobs:
           ruby -ryaml -e 'YAML.load_stream(File.read("deploy/mysql/statefulset.yaml")).each { |d| puts d["data"]["10-users.sh"] if d && d["kind"] == "ConfigMap" && d["metadata"]["name"] == "mysql-initdb" }' > /tmp/10-users.sh
           test -s /tmp/10-users.sh
           bash /tmp/10-users.sh
-          mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT @@version, @@partial_revokes; SHOW GRANTS FOR 'picopaas_admin'@'%';"
+          mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW GRANTS FOR 'picopaas_admin'@'%';"
+          # The admin must be able to create app_* schemas and nothing else.
+          mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "CREATE DATABASE app_ci_probe; DROP DATABASE app_ci_probe;"
+          ! mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "CREATE DATABASE notapp_probe;" 2>/dev/null
+          ! mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "SELECT * FROM mysql.user LIMIT 1;" 2>/dev/null
       - name: MySQL tests as picopaas_admin
         env:
           MYSQL_ADMIN_URL: mysql://picopaas_admin:ci-admin-password-0123456789abcdef@127.0.0.1:3306
