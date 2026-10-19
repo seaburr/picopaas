@@ -191,4 +191,12 @@ export interface ClusterHealth {
   apps: HealthApp[]
   platform: HealthPlatform[]
   db_servers: DbServer[]
+  users?: { total: number; active: number; pending: number; suspended: number }
+  pending_users?: { id: number; email: string; created_at: string }[]
+  workloads?: {
+    apps_total: number
+    by_status: Partial<Record<'running' | 'deploying' | 'pending' | 'error' | 'suspended', number>>
+    with_db: number
+    with_storage: number
+  }
 }

@@ -32,7 +32,7 @@ async function apply() {
     for (const s of secrets.value) if (s.key.trim()) map[s.key.trim()] = s.value
     const app = await applySpec(spec.value, map)
     result.value = `${app.created ? 'Created' : 'Updated'} ${app.name}`
-    await router.push('/')
+    await router.push('/apps')
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to apply spec'
   } finally {

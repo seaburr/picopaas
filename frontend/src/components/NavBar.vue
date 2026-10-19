@@ -29,6 +29,7 @@ async function onLogout() {
   <header class="flex items-center justify-between border-b border-pico-border bg-pico-panel px-4 py-3">
     <div class="flex items-center gap-4">
       <RouterLink to="/" class="text-sm font-semibold text-white">PicoPaaS</RouterLink>
+      <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/apps" class="text-sm text-zinc-400 hover:text-white">My apps</RouterLink>
       <RouterLink to="/keys" class="text-sm text-zinc-400 hover:text-white">API keys</RouterLink>
       <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin" class="text-sm text-zinc-400 hover:text-white">Admin<span v-if="pending > 0" class="ml-1 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-black">{{ pending }}</span></RouterLink>
       <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin/health" class="text-sm text-zinc-400 hover:text-white">Health</RouterLink>

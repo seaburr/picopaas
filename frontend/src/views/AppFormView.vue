@@ -114,7 +114,7 @@ async function onSubmit() {
         env: env.value,
       })
     }
-    await router.push('/')
+    await router.push('/apps')
   } catch (e) {
     // The backend's own message is already user-friendly, e.g. for the app
     // limit (app/routers/apps.py create_app): "app limit reached (N);
@@ -283,7 +283,7 @@ async function onSubmit() {
         </div>
 
         <div class="flex justify-end gap-2">
-          <RouterLink to="/" class="rounded-md border border-pico-border px-4 py-2 text-sm text-zinc-300 hover:bg-pico-card">
+          <RouterLink to="/apps" class="rounded-md border border-pico-border px-4 py-2 text-sm text-zinc-300 hover:bg-pico-card">
             Cancel
           </RouterLink>
           <button

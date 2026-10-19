@@ -7,7 +7,8 @@ const router = createRouter({
     { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true } },
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
-    { path: '/', component: () => import('../views/AppsListView.vue'), meta: { requiresAuth: true } },
+    { path: '/', redirect: '/apps' }, // role-aware redirect in beforeEach
+    { path: '/apps', component: () => import('../views/AppsListView.vue'), meta: { requiresAuth: true } },
     {
       path: '/apps/new',
       component: () => import('../views/AppFormView.vue'),
@@ -40,9 +41,11 @@ router.beforeEach(async (to) => {
   if (auth.user && auth.user.status !== 'active') {
     return to.path === '/pending' ? undefined : '/pending'
   }
-  if (to.path === '/pending') return '/'
-  if (to.meta.requiresAdmin && auth.user?.role !== 'uberadmin') return '/'
-  if ((to.path === '/login' || to.path === '/register') && auth.user) return '/'
+  const home = auth.user?.role === 'uberadmin' ? '/admin/health' : '/apps'
+  if (to.path === '/') return home
+  if (to.path === '/pending') return home
+  if (to.meta.requiresAdmin && auth.user?.role !== 'uberadmin') return '/apps'
+  if ((to.path === '/login' || to.path === '/register') && auth.user) return home
 })
 
 export default router

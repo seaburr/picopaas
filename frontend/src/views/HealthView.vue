@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
-import { getHealth } from '../api/admin'
+import { approveUser, getHealth } from '../api/admin'
 import { ApiError } from '../api/client'
 import type { ClusterHealth, HealthApp } from '../types'
 
@@ -39,6 +39,20 @@ function age(s: number) {
   if (s >= 3600) return Math.floor(s / 3600) + 'h'
   return Math.floor(s / 60) + 'm'
 }
+const approving = ref<number | null>(null)
+async function approve(id: number) {
+  approving.value = id
+  try {
+    await approveUser(id)
+    await load()
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Approve failed'
+  } finally {
+    approving.value = null
+  }
+}
+const waiting = (iso: string) => age(Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000))
+const statuses = ['running', 'deploying', 'pending', 'error', 'suspended'] as const
 const num = (v: number | null, unit: string) => (v === null ? 'n/a' : `${v}${unit}`)
 const NA = 'metrics unavailable'
 const fmtUse = (used: number | null, lim: number, unit: string) =>
@@ -84,6 +98,9 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
     <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="text-lg font-semibold text-white">Cluster health</h1>
+        <RouterLink to="/apps/new" class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent">
+          Deploy an app
+        </RouterLink>
         <div class="flex items-center gap-3 text-xs text-zinc-500" aria-live="polite">
           <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
           <button
@@ -107,6 +124,53 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
             <li v-for="(e, i) in data.errors" :key="i">{{ e }}</li>
           </ul>
         </div>
+
+        <section v-if="data.users || data.workloads" class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Users and workloads">
+          <div v-if="data.users" :class="card">
+            <div class="text-xs text-zinc-500">Users</div>
+            <div class="text-xl font-semibold text-white">{{ data.users.total }}</div>
+            <div class="text-xs text-zinc-500">{{ data.users.active }} active · {{ data.users.suspended }} suspended</div>
+          </div>
+          <div v-if="data.users" :class="[card, data.users.pending > 0 ? 'border-amber-500/40' : '']">
+            <div class="text-xs text-zinc-500">Pending approval</div>
+            <div :class="['text-xl font-semibold', data.users.pending > 0 ? 'text-amber-400' : 'text-white']">{{ data.users.pending }}</div>
+          </div>
+          <div v-if="data.workloads" :class="[card, 'col-span-2']">
+            <div class="text-xs text-zinc-500">Workloads</div>
+            <div class="text-xl font-semibold text-white">{{ data.workloads.apps_total }} <span class="text-sm font-normal text-zinc-500">apps</span></div>
+            <div class="flex flex-wrap gap-x-3 text-xs text-zinc-400">
+              <span
+                v-for="st in statuses"
+                :key="st"
+                :class="st === 'error' && (data.workloads.by_status[st] ?? 0) > 0 ? 'font-semibold text-status-error' : ''"
+              >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</span>
+            </div>
+            <div class="text-xs text-zinc-500">{{ data.workloads.with_db }} with DB · {{ data.workloads.with_storage }} with storage</div>
+          </div>
+        </section>
+
+        <section v-if="data.pending_users?.length" aria-label="Waiting for approval">
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-zinc-300">Waiting for approval</h2>
+            <RouterLink to="/admin" class="text-xs text-accent hover:underline">Admin page (suspend/delete)</RouterLink>
+          </div>
+          <ul class="divide-y divide-pico-border rounded-md border border-pico-border bg-pico-panel text-sm text-zinc-300">
+            <li v-for="u in data.pending_users" :key="u.id" class="flex items-center justify-between gap-2 p-2">
+              <span class="min-w-0 truncate">{{ u.email }}</span>
+              <span class="flex shrink-0 items-center gap-3">
+                <span class="text-xs text-zinc-500">waiting {{ waiting(u.created_at) }}</span>
+                <button
+                  class="rounded bg-accent-dark px-2 py-1 text-xs text-white hover:bg-accent disabled:opacity-50"
+                  :disabled="approving === u.id"
+                  @click="approve(u.id)"
+                >
+                  Approve
+                </button>
+              </span>
+            </li>
+          </ul>
+        </section>
+        <div v-else-if="data.users" class="text-right text-xs"><RouterLink to="/admin" class="text-accent hover:underline">Admin page</RouterLink></div>
 
         <section class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Summary">
           <div :class="card">
