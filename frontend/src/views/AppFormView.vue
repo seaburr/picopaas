@@ -219,7 +219,7 @@ async function onSubmit() {
         </p>
 
         <div class="space-y-3">
-          <h2 class="text-sm font-medium text-zinc-300">Health check</h2>
+          <h2 class="text-sm font-medium text-zinc-300">Health check <RouterLink to="/guide/user#8-health-checks" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-xs text-zinc-400 hover:text-white" title="Docs: health checks">?</RouterLink></h2>
           <div>
             <label class="flex items-center gap-2 text-sm text-zinc-300">
               <input
@@ -253,6 +253,7 @@ async function onSubmit() {
 
         <div>
           <label class="mb-2 block text-sm font-medium text-zinc-300">Env vars</label>
+          <RouterLink to="/guide/user#5-env-vars-secrets-and-references" target="_blank" class="mb-1 inline-block rounded-full border border-pico-border px-1.5 text-xs text-zinc-400 hover:text-white" title="Docs: env vars and references">? env refs</RouterLink>
           <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" />
         </div>
 

@@ -46,6 +46,11 @@ const input =
 
 <template>
   <form class="space-y-4 rounded-lg border border-pico-border bg-pico-panel p-5" @submit.prevent="apply">
+    <div class="text-xs text-zinc-500">
+      YAML spec
+      <RouterLink to="/guide/user#4-yaml-spec-reference" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-zinc-400 hover:text-white" title="Docs: YAML spec reference">?</RouterLink>
+      <RouterLink to="/guide/user#5-env-vars-secrets-and-references" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-zinc-400 hover:text-white" title="Docs: env refs">? env refs</RouterLink>
+    </div>
     <textarea v-model="spec" rows="14" spellcheck="false" :class="[input, 'w-full font-mono']" />
 
     <div>

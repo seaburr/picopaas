@@ -7,6 +7,8 @@ WORKDIR /frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+# docs/*.md are imported with ?raw (the in-product /guide pages); vite.config.ts aliases @docs -> ../docs.
+COPY docs/ /docs/
 # vite.config.ts outDir is "../static" (relative to /frontend), so this lands
 # the build at /static, picked up by `COPY --from=frontend-build /static` below.
 RUN npm run build

@@ -15,9 +15,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      '@docs': resolve(__dirname, '../docs'),
     },
   },
   server: {
+    fs: { allow: ['..'] },
     proxy: {
       '/auth': 'http://localhost:8000',
       '/apps': 'http://localhost:8000',

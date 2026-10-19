@@ -10,7 +10,7 @@ frontend/dist
 static
 data
 infra
-docs
+# docs/ is NOT ignored: the frontend build stage imports docs/*.md (?raw) for /guide
 tests
 *.db
 .env

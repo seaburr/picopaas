@@ -3,7 +3,13 @@ import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory('/'),
+  scrollBehavior(to, _from, saved) {
+    if (to.hash) return { el: to.hash, top: 8 }
+    return saved || { top: 0 }
+  },
   routes: [
+    { path: '/guide', redirect: '/guide/user' },
+    { path: '/guide/:doc(user|api|cli)', component: () => import('../views/GuideView.vue') }, // public, no auth
     { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true } },
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
@@ -37,6 +43,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.loaded) await auth.load()
+  if (to.path.startsWith('/guide')) return
   if (to.meta.requiresAuth && !auth.user) return '/login'
   if (auth.user && auth.user.status !== 'active') {
     return to.path === '/pending' ? undefined : '/pending'

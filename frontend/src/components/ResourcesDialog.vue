@@ -5,8 +5,8 @@ import type { AdminApp, ResourcesPatch } from '../types'
 const props = defineProps<{ app: AdminApp | null; error?: string }>()
 const emit = defineEmits<{ save: [body: ResourcesPatch]; cancel: [] }>()
 
-const CAPS = { cpu: 250, mem: 512 }
-const DEFAULTS = { cpu_request_m: 64, cpu_limit_m: 250, mem_request_mi: 128, mem_limit_mi: 512 }
+const CAPS = { cpu: 100, mem: 384 }
+const DEFAULTS = { cpu_request_m: 64, cpu_limit_m: 100, mem_request_mi: 128, mem_limit_mi: 384 }
 type Key = keyof typeof DEFAULTS
 const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limit_mi']
 const fields: { key: Key; label: string; unit: string }[] = [
@@ -62,7 +62,7 @@ function reset() {
       </div>
       <p v-if="invalid" class="mt-3 text-xs text-danger">Enter whole numbers only.</p>
       <p v-if="exceeds" class="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
-        Exceeds platform caps in bootstrap.md (250m CPU / 512Mi memory).
+        Exceeds platform caps in bootstrap.md (100m CPU / 384Mi memory).
       </p>
       <p v-if="error" class="mt-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{{ error }}</p>
       <div class="mt-5 flex flex-wrap items-center justify-between gap-2">

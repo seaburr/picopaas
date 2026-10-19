@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-19 [backend-dev] DONE: platform caps lowered (bucket 100MB, DB 50MB, image 256MB, CPU 100m, RAM 384Mi) via single source app/config.py; code, tests, docs, e2e sizes updated. Uncommitted. bootstrap.md pending Chas.
 - 2026-10-19 INCIDENT: ~50 min outage 19:50–20:45 UTC. Applying the DO LB hostname annotation (hairpin fix, #11) stopped the LB passing
   traffic; it happened during a usage-limit pause, so nobody noticed. Reverted (577f793). Rule: never test LB changes on the prod Service.
 - 2026-10-19 STATUS: e2e 12/12 green; pentest 33 pass / 1 fail (#11 hairpin) / 8 skipped (need kubectl). NEXT: E2E_SLOW quota tests;
@@ -435,3 +436,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend-dev] START: DB quota enforcement fix (stale stats, FLUSH, visibility)
 - 2026-10-19 [backend-dev] DONE: db_size_bytes sets information_schema_stats_expiry=0 (also in deploy/mysql app_size proc; initdb only runs on fresh volume); set_read_only drops FLUSH PRIVILEGES and best-effort KILLs app user's connections on revoke; poll_quotas logs INFO on revoke/restore + per-run summary, WARNING (scrubbed) on failures; quota_job no longer skips silently when Spaces is unconfigured (uses _NoStorage). Leader lock verified shared/guarded. Tests in tests/test_quota.py. Uncommitted.
 - 2026-10-19 [general-purpose] DONE: doc test vs live: JSON create/patch/list/delete, spec YAMLs (USER_GUIDE + testapps README incl. toolbox), CLI apply/apps/status/rotate, error cases all match. Fixed docs: spec returns 200 + is declarative, retry_at/resources fields, invalid-ref 422 text, app-limit-checked-first, rotate 409 wording, abacusaas port/path, CLI placeholder image + output/errors (docs/USER_GUIDE.md, docs/API.md, docs/CLI.md). Uncommitted.
+- 2026-10-19 [frontend-dev] START: in-product docs (/guide), new caps in UI, landing page fixes
+- 2026-10-19 [frontend-dev] DONE: /guide/{user,api,cli} public pages (GuideView.vue, marked+DOMPurify, ?raw from docs/ via @docs alias), NavBar/landing/"?" deep links, Dockerfile COPY docs/ + .dockerignore un-ignores docs, caps (100m/384Mi, 50MB DB, 100MB bucket, 256MB image) in landing + ResourcesDialog. Uncommitted.
+- 2026-10-19 [backend-dev] START: apply lowered platform caps everywhere (app/config.py single source)
+- 2026-10-19 [backend-dev] DONE: caps in app/config.py (env-overridable) used by k8s_manifests, quota, resources, image check; tests/docs/e2e updated; pytest green. Uncommitted.
