@@ -1,4 +1,4 @@
-# Request 0001: Core infrastructure (status: APPROVED 2026-10-19: NYC3, smallest SKUs: s-1vcpu-2gb node + basic 1 GiB MySQL + LB, ≈ $44.15/mo)
+# Request 0001: Core infrastructure (status: APPROVED 2026-10-19: NYC3, smallest SKUs: s-1vcpu-2gb-amd node + basic 1 GiB MySQL + LB, ≈ $46/mo)
 
 ## 2026-10-18 update from Chas
 - He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
@@ -10,7 +10,7 @@
 ### Managed option in ATL1 (estimate)
 | | Monthly |
 |---|---|
-| Node s-1vcpu-2gb $12 in NYC3 + LB $12 + Spaces $5 + managed MySQL basic 1 GiB $15.15 (`db-s-1vcpu-1gb`): smallest SKUs, scale later (Chas 2026-10-19) | **~$44.15, over the $40 budget by ~$4**; autoscaled 2nd node +$12 |
+| Node s-1vcpu-2gb-amd ~$14 in NYC3 (plain size has no capacity there) + LB $12 + Spaces $5 + managed MySQL basic 1 GiB $15.15 (`db-s-1vcpu-1gb`): smallest SKUs, scale later (Chas 2026-10-19) | **~$46, over the $40 budget by ~$6**; autoscaled 2nd node +~$14 |
 | Per deployed app | same as lean: ~$0 for the first ~8–10 apps, then ~$2/app |
 Middle ground: managed MySQL with no LB (~$49), or an LB with in-cluster MySQL (~$42). Chas decides.
 The code is identical in every variant. Only Terraform flags differ (`use_managed_mysql`, `use_load_balancer`).

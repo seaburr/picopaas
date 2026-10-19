@@ -5,7 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
-- 2026-10-19 BLOCKED (manager): DOKS create 422 "insufficient capacity" in atl1+nyc3 at all sizes, versions 1.37/1.36 and
+- 2026-10-19 UNBLOCKED (manager): cause = the region size list (plain sizes have no capacity in nyc3); now s-1vcpu-2gb-amd + preflight check. Was BLOCKED: DOKS create 422 "insufficient capacity" in atl1+nyc3 at all sizes, versions 1.37/1.36 and
   minimal request. MySQL (db-s-1vcpu-1gb) + VPC are up in nyc3. Waiting on Chas + DO support. Temporary debug settings
   to revert once the cluster exists: max_nodes=1 (approved 2) and the DOKS 1.36 pin in infra/cluster.tf.
   Ready to run after the cluster is up: bootstrap.yml → Chas makes the uberadmin + test account → tests/e2e + tests/pentest.

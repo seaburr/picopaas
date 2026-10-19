@@ -55,6 +55,12 @@ jobs:
           echo "$opts" | jq -e --arg s "$slug" '[.options.mysql.layouts[].sizes[]] | index($s)' >/dev/null \
             || { echo "::error::slug $slug not valid; mysql sizes:"; echo "$opts" | jq -c '[.options.mysql.layouts[].sizes[]]|unique'; exit 1; }
           echo "mysql slug $slug OK in $region"
+          # The region's size list is what has capacity right now; DOKS returns a vague "insufficient capacity" 422 otherwise.
+          node=$(sed -n '/variable "node_size"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
+          curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/regions?per_page=200" \
+            | jq -e --arg r "$region" --arg n "$node" '.regions[] | select(.slug == $r) | .sizes | index($n)' >/dev/null \
+            || { echo "::error::node size $node has no capacity in $region right now"; exit 1; }
+          echo "node size $node available in $region"
           curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/account \
             | jq -c '.account | {status, droplet_limit, volume_limit, email_verified}' | sed 's/^/account: /'
           echo "droplets in account: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets?per_page=1' | jq '.meta.total')"

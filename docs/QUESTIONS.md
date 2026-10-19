@@ -11,13 +11,13 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] **DOKS won't create: "region has insufficient capacity"** in ATL1 and NYC3 at every node size, even the
-      smallest `s-1vcpu-2gb`. The minimal request (no autoscale) and Kubernetes 1.36 failed the same way. The DO status
-      page is green, the account is active (droplet limit 25, 1 used), and MySQL creates fine. Please (a) try creating a
-      cluster in the DO panel to see if it's refused there too, and (b) send DO support the ticket Claude drafted (it
-      lists all 8 request IDs). Claude will re-apply as soon as DO answers. MySQL is up in NYC3 meanwhile (~$0.50/day).
+- (none right now)
 
 ## Resolved
+- 2026-10-19: DOKS "insufficient capacity" explained: a region's API size list shows what has capacity right now. NYC3 lists
+  only -amd/-intel variants of the small sizes (no plain s-1vcpu-2gb / s-2vcpu-4gb); ATL1, MKC1 and MEM1 list no small
+  sizes at all; RIC1 lists only -intel. Node → `s-1vcpu-2gb-amd` in NYC3 (~$14). The terraform workflow now fails early if the
+  size isn't listed. No DO ticket needed.
 - 2026-10-19: NYC3 also refused s-2vcpu-4gb → Chas: smallest SKUs everywhere (node `s-1vcpu-2gb` $12, MySQL `db-s-1vcpu-1gb` $15.15); ≈ $44.15/mo. Scale later.
 - 2026-10-19: ATL1 refused DOKS at every size (incl. 2 GB) → compute + MySQL move to **NYC3**, back to `s-2vcpu-4gb` ($24); total ≈ $60.30/mo. Spaces buckets stay in ATL1.
 - 2026-10-19: ATL1 also out of -amd and -intel 4 GB nodes → Chas chose `s-2vcpu-2gb` ($18) in ATL1; total ≈ $54.30/mo.
