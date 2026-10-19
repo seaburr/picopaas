@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-19 INCIDENT: ~50 min outage 19:50–20:45 UTC. Applying the DO LB hostname annotation (hairpin fix, #11) stopped the LB passing
+  traffic; it happened during a usage-limit pause, so nobody noticed. Reverted (577f793). Rule: never test LB changes on the prod Service.
+- 2026-10-19 STATUS: e2e 12/12 green; pentest 33 pass / 1 fail (#11 hairpin) / 8 skipped (need kubectl). NEXT: E2E_SLOW quota tests;
+  kubectl-based pentest items via diag; PENTEST #19 (platform SA cluster-wide Secret read); #11 via CoreDNS rewrite; issues #8 #9 #10.
 - 2026-10-19 [infra-ops] DONE: Traefik Service gets do-loadbalancer-hostname=lb.raisehellpraisedale.xyz (pod->own-LB hairpin fix); bootstrap upserts A `lb`, LB IP now read from doctl. Uncommitted; not applied.
 - LATER: add a platform PodDisruptionBudget (minAvailable 1) once the cluster runs ≥2 nodes. On 1 node it would block drains/upgrades (Chas, 2026-10-19).
 - 2026-10-19 UNBLOCKED (manager): cause = the region size list (plain sizes have no capacity in nyc3); now s-1vcpu-2gb-amd + preflight check. Was BLOCKED: DOKS create 422 "insufficient capacity" in atl1+nyc3 at all sizes, versions 1.37/1.36 and
