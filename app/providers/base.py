@@ -1,0 +1,105 @@
+"""Thin interfaces to external systems (k8s, MySQL admin, Spaces, image registries).
+
+See CLAUDE.md: "External systems ... go behind small interfaces in app/providers/
+with fake implementations for tests." Real implementations live in sibling
+modules; only `registry.py` is real so far (see its module docstring) —
+`kube.py`, `mysql.py`, and `spaces.py` are stubs that raise NotImplementedError.
+Fakes for all four live in `fake.py` and are what tests should depend on.
+"""
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+
+class KubeProvider(ABC):
+    """Applies rendered manifests (app/k8s_manifests.py) to the cluster."""
+
+    @abstractmethod
+    def apply(self, manifests: list[dict[str, Any]]) -> None:
+        """Create/update the given manifests (server-side apply semantics)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_namespace(self, namespace: str) -> None:
+        """Delete an app's namespace (and everything in it)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_status(self, namespace: str) -> str:
+        """Return a coarse status string (e.g. 'running', 'pending', 'unknown')."""
+        raise NotImplementedError
+
+
+class MySQLAdminError(Exception):
+    pass
+
+
+class MySQLAdmin(ABC):
+    """Manages one MySQL database + user per app (ARCHITECTURE.md §2 "DB")."""
+
+    @abstractmethod
+    def create_db_user(self, app_id: int) -> dict[str, Any]:
+        """Create `app_<id>` db + user, return creds (host/port/database/user/password)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def drop(self, app_id: int) -> None:
+        """Drop the app's database and user."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def db_size_bytes(self, app_id: int) -> int:
+        """Sum of the app database's table sizes, for the 100MB quota check."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_read_only(self, app_id: int, read_only: bool) -> None:
+        """Revoke/restore INSERT/UPDATE/CREATE once the app exceeds its DB quota."""
+        raise NotImplementedError
+
+
+class ObjectStoreError(Exception):
+    pass
+
+
+class ObjectStore(ABC):
+    """Manages one Spaces bucket + access key per app (ARCHITECTURE.md §2 "Storage")."""
+
+    @abstractmethod
+    def create_bucket_and_key(self, app_id: int) -> dict[str, Any]:
+        """Create bucket `pp-<id>` + a scoped key, return creds (endpoint/region/
+        bucket/access_key/secret_key)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete(self, app_id: int) -> None:
+        """Delete the app's bucket and key."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def bucket_size_bytes(self, app_id: int) -> int:
+        """Sum of object sizes in the app's bucket, for the 250MB quota check."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_read_only(self, app_id: int, read_only: bool) -> None:
+        """Swap the app's key to read-only once it exceeds its storage quota."""
+        raise NotImplementedError
+
+
+class RegistryError(Exception):
+    """Raised for any registry failure: not found, not public, or a malformed manifest."""
+
+
+class Registry(ABC):
+    """Reads image metadata without pulling the image."""
+
+    @abstractmethod
+    def image_size_bytes(self, image_ref: str) -> int:
+        """Return the summed compressed layer size (bytes) for `image_ref`.
+
+        Raises RegistryError if the image doesn't exist, isn't public, or the
+        registry response can't be parsed.
+        """
+        raise NotImplementedError

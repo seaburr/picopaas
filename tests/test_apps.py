@@ -147,3 +147,33 @@ def test_apps_start_pending_with_no_k8s_calls(client):
     resp = _create_app(client, name="pending-app")
     assert resp.status_code == 201
     assert resp.json()["status"] == "pending"
+
+
+def test_resending_masked_secret_keeps_stored_value(client, db_session):
+    from app import crypto, models
+
+    register_and_login(client, "keepsecret@example.com")
+    app_id = _create_app(
+        client,
+        name="keep",
+        env=[{"key": "API_TOKEN", "value": "original-secret", "is_secret": True}],
+    ).json()["id"]
+
+    # The UI round-trips the masked value it was shown, plus a changed plain var.
+    resp = client.patch(
+        f"/apps/{app_id}",
+        json={"env": [
+            {"key": "API_TOKEN", "value": "********", "is_secret": True},
+            {"key": "LOG_LEVEL", "value": "debug", "is_secret": False},
+        ]},
+    )
+    assert resp.status_code == 200
+
+    stored = db_session.query(models.AppEnvVar).filter_by(app_id=app_id, key="API_TOKEN").one()
+    assert crypto.decrypt(stored.value_encrypted) == "original-secret"
+
+    # An explicitly new secret value does replace it.
+    client.patch(f"/apps/{app_id}", json={"env": [{"key": "API_TOKEN", "value": "rotated", "is_secret": True}]})
+    db_session.expire_all()
+    stored = db_session.query(models.AppEnvVar).filter_by(app_id=app_id, key="API_TOKEN").one()
+    assert crypto.decrypt(stored.value_encrypted) == "rotated"

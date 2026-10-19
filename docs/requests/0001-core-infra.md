@@ -40,4 +40,5 @@ with DB + storage while staying under the $40/mo budget.
 - [ ] Create a DO API token (read/write) and add it as GitHub repo secret `DIGITALOCEAN_TOKEN`
 - [ ] Create a Spaces access key (full access, used by the platform to create per-app buckets/keys) and add
       it as repo secrets `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET_ACCESS_KEY`
-- [ ] Answer the open questions in ARCHITECTURE.md §3
+- [ ] Create a private Spaces bucket `picopaas-tfstate` in the chosen region (one-time, holds Terraform state)
+- [ ] Pick a final variant: lean / LB-only / managed-DB-only / both (see table above)

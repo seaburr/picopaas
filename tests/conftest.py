@@ -17,9 +17,15 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
+from app.dependencies import get_registry
 from app.main import app
+from app.providers.fake import FakeRegistry
 
 DEFAULT_PASSWORD = "correct-horse-battery"
+
+# Comfortably under the 512MB cap, so existing tests that create apps with
+# arbitrary image names don't need to know about the registry dependency.
+DEFAULT_FAKE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
 
 @pytest.fixture()
@@ -47,6 +53,9 @@ def make_client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_registry] = lambda: FakeRegistry(
+        default_size_bytes=DEFAULT_FAKE_IMAGE_SIZE_BYTES
+    )
     clients = []
 
     def _make() -> TestClient:

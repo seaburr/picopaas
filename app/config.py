@@ -45,6 +45,13 @@ JWT_EXPIRE_DAYS = 7
 DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 
+# Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
+APP_DOMAIN = os.environ.get("APP_DOMAIN", "seaburr.io")
+
+# Hard cap on (summed, compressed-layer) image size, enforced at app create/update
+# via app/providers/registry.py (ARCHITECTURE.md §2 "Image size").
+MAX_IMAGE_SIZE_BYTES = 512 * 1024 * 1024
+
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.
 SESSION_COOKIE_SECURE = not IS_DEV

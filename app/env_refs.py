@@ -33,6 +33,32 @@ def resolve_ref(value: str) -> str | None:
     return match.group(1) if match else None
 
 
+def resolve(env_vars: dict[str, str], refs: dict[str, str]) -> dict[str, str]:
+    """Substitute `${{ x.y }}`-style reference values with real values.
+
+    `env_vars` is a mapping of env var name -> raw value, where a value is either
+    a literal or a `${{ ref }}` placeholder (see ALLOWED_REFS). `refs` maps a
+    resolved dotted ref path (e.g. "db.url") to its real value for this app
+    (typically built from a provider's `create_db_user`/`create_bucket_and_key`
+    creds — see app/providers/).
+
+    Used at deploy time, after `validate_env_value` has already confirmed the
+    ref is syntactically valid and available (want_db/want_storage). Raises
+    EnvValidationError if a value looks like a ref but `refs` has no entry for
+    it — e.g. the provider call that should have populated it hasn't run yet.
+    """
+    resolved: dict[str, str] = {}
+    for key, value in env_vars.items():
+        ref = resolve_ref(value)
+        if ref is None:
+            resolved[key] = value
+            continue
+        if ref not in refs:
+            raise EnvValidationError(f"unknown reference {value!r}: no resolved value for {ref!r}")
+        resolved[key] = refs[ref]
+    return resolved
+
+
 def validate_env_value(value: str, want_db: bool, want_storage: bool) -> None:
     """Raise EnvValidationError if value looks like a ref but is invalid or unavailable."""
     ref = resolve_ref(value)

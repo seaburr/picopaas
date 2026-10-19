@@ -20,6 +20,24 @@ class UserLogin(BaseModel):
     password: str
 
 
+class ApiKeyCreateOut(BaseModel):
+    """Returned only once, at creation time — the raw key is never stored or shown again."""
+
+    id: int
+    key: str
+    prefix: str
+    created_at: datetime
+
+
+class ApiKeyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    prefix: str
+    created_at: datetime
+    revoked_at: Optional[datetime] = None
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

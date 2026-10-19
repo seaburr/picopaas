@@ -7,7 +7,18 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import SESSION_COOKIE_NAME
 from app.db import get_db
+from app.providers.base import Registry
+from app.providers.registry import RegistryClient
 from app.security import decode_access_token, hash_api_key
+
+# One shared RegistryClient (its own httpx.Client is reused across requests).
+# Overridden in tests via `app.dependency_overrides[get_registry]` with a
+# `app.providers.fake.FakeRegistry`.
+_registry_client = RegistryClient()
+
+
+def get_registry() -> Registry:
+    return _registry_client
 
 
 def _user_from_request(request: Request, db: Session) -> Optional[models.User]:

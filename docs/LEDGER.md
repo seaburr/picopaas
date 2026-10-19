@@ -5,16 +5,20 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
-- BLOCKED on Chas: request 0001 (infra approval + secrets). Infra work stops here, but app work does not.
-- DONE (backend-dev): `app/` scaffold (FastAPI, SQLAlchemy 2 models, dual auth, apps CRUD,
-  alembic, pytest) landed — see Log below.
-- NEXT (frontend-dev, after the backend auth endpoints exist): scaffold `frontend/` (Vue 3, Vite, Pinia, Tailwind), with login/register pages and an app list.
-- NEXT (infra-ops): `infra/` Terraform for request 0001 is written (not applied). Still TODO:
-  `deploy/` manifests (ingress-nginx, cert-manager, mysql, platform), and the `dns-sync` CronJob
-  for the no-load-balancer case.
-- NEXT (backend-dev): spike the DO API for per-bucket Spaces keys (ARCHITECTURE.md §2 ⚠).
-- NEXT (backend-dev): `app/providers/` interfaces (k8s, mysql-admin, Spaces) + reconciler loop —
-  apps currently stay 'pending' forever since nothing converges them yet. No k8s calls exist.
+(Session paused 2026-10-18 night. Resume here.)
+- BLOCKED on Chas: request 0001 (variant choice, DO token, Spaces key, `picopaas-tfstate` bucket).
+  Expected 2026-10-19. Infra apply waits on it. Code work does not.
+- DONE: backend scaffold + providers/manifests/registry/API keys (68 tests), frontend scaffold, infra
+  Terraform (validated). All committed, CI green.
+- NEXT (backend-dev): real `kube.py` (add the `kubernetes` dependency), `mysql.py`, `spaces.py`, plus the
+  reconciler loop (APScheduler) that moves apps out of 'pending'. Then quota polling (DB 100MB, bucket 250MB).
+- NEXT (backend-dev): spike the DO API for per-bucket Spaces keys (ARCHITECTURE.md §2 ⚠). Needs the DO token.
+- NEXT (frontend-dev): API-key management UI (`/api/keys` exists).
+- NEXT (infra-ops): `deploy/` manifests (ingress-nginx, cert-manager + wildcard cert via DO DNS-01, platform
+  Deployment, MySQL StatefulSet for the lean variant), Dockerfile for the platform image (tribal-style multi-stage),
+  GHCR build/push workflow, `dns-sync` CronJob for the no-LB variant.
+- DECISION for Chas (no code blocked yet): `RUN_AS_NON_ROOT=True` in `app/k8s_manifests.py` rejects images
+  that run as root, which many quick images do. Must decide before the reconciler applies manifests.
 
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
@@ -54,3 +58,86 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   Out of scope for this chunk, left for later: `app/providers/` (k8s/mysql/spaces), reconciler loop,
   API-key management endpoints (model + dual-auth support exist; no issue/revoke endpoint yet),
   schemas.py `AppUpdate` doesn't support partial env-var patch (replaces the whole list).
+- 2026-10-18 [frontend-dev] START: scaffold `frontend/` (Vue 3 + TS + Vite + Pinia + vue-router +
+  Tailwind) per CLAUDE.md layout and the seaburr/tribal `frontend/` style reference; wire FastAPI
+  to serve the built SPA.
+- 2026-10-18 [frontend-dev] DONE: scaffolded `frontend/` (package.json, vite.config.ts — outDir
+  `../static`, base `/static/`, dev proxy for `/auth`, `/apps`, `/api` — tailwind.config.ts,
+  postcss.config.cjs, tsconfig*.json, index.html). `src/api/client.ts` (typed fetch wrapper,
+  cookie-auth, surfaces FastAPI `{"detail": ...}` as `ApiError`), `src/api/auth.ts` + `src/api/apps.ts`
+  matching `app/schemas.py`/`app/routers/{auth,apps}.py` exactly (checked again after backend-dev's
+  concurrent api_keys/providers additions — AppOut/AppCreate/AppUpdate/MASKED_VALUE/ALLOWED_REFS all
+  unchanged). `src/stores/auth.ts`, `src/stores/apps.ts` (Pinia, setup style). Views: LoginView,
+  RegisterView, AppsListView (hostname link `https://<hostname>`, status badge, image, in-page
+  `ConfirmDialog` for delete — no `window.confirm`), AppFormView (create + edit; want_db/want_storage
+  locked on edit since `AppUpdate` doesn't carry them; `EnvVarEditor` component with a per-row secret
+  toggle, a masked/disabled display + explicit "Change" button for untouched secrets, and a
+  click-to-insert reference-variable panel (`${{ db.* }}` / `${{ storage.* }}`, shown only when
+  want_db/want_storage is set) that targets the last-focused value field). The app-limit 403 from
+  `routers/apps.py` (`"app limit reached (N); contact the uberadmin to raise it"`) is surfaced
+  verbatim as the form's error banner — no frontend-side copy of that message.
+  KNOWN GAP (flagged in `src/components/EnvVarEditor.vue` too): `AppUpdate.env` replaces the whole
+  env list and the API never returns a secret's real value, so an edit that doesn't touch a given
+  secret re-sends the masked placeholder string as if it were the value. Harmless today (reconciler
+  isn't live — see backend-dev's NEXT above, apps stay 'pending'), but will overwrite real secrets
+  once it is; needs a partial env-patch endpoint from backend-dev before that.
+  `app/main.py`: re-read immediately before editing (backend-dev had concurrently added the
+  `api_keys` router) and made a minimal additive change — mount `StaticFiles` at `/static` and add a
+  catch-all `GET /{full_path:path}` that serves `static/index.html` for any path not under
+  `auth/`, `apps/`, `api/`, `healthz`, or `static/` (client-side routing fallback). Both degrade
+  gracefully (404, not a crash) when `static/` doesn't exist, so `backend-tests` CI doesn't need a
+  frontend build. Verified via TestClient: `GET /` → 200 html, `GET /some/spa/route` → 200 html,
+  `GET /static/assets/missing.js` → 404, `GET /apps/999` (unauth) still → 401 (API routes untouched).
+  `.venv/bin/python -m pytest tests/ -q` → **57 passed** (backend-dev's concurrent additions included).
+  Added a `frontend` job to `.github/workflows/ci.yml` (actions/setup-node@v4, `npm ci`, `npm run
+  typecheck`, `npm run build`, working-directory `frontend`); other jobs (`secret-scan`, `terraform`,
+  `backend-tests`) untouched. `npm install` generated `frontend/package-lock.json`; verified `npm ci`
+  (clean node_modules), `npm run typecheck`, and `npm run build` (→ `../static`) all pass.
+  `node_modules/`, `frontend/dist/`, and `static/` were already gitignored from bootstrap — confirmed,
+  not re-added. Not committed (scm-security's job). Out of scope for this chunk, left for later:
+  API-key management UI (backend endpoints just landed concurrently), partial env-var patch support
+  (backend), real-time app status updates (polling or websocket — status just shows whatever the API
+  returns).
+- 2026-10-18 [backend-dev] START: `app/k8s_manifests.py` (pure manifest rendering), `app/env_refs.py`
+  `resolve()`, `app/providers/` (interfaces + fakes + real registry client + stubs), image-size-cap
+  enforcement, and `/api/keys` endpoints, per ARCHITECTURE.md §2.
+- 2026-10-18 [backend-dev] DONE: `app/k8s_manifests.py` — pure, no-cluster-access functions building
+  Namespace (pod-security.kubernetes.io/enforce=restricted + picopaas.io/app-id label),
+  ResourceQuota, LimitRange, 5 NetworkPolicies (default-deny + allow-ingress-nginx + allow-egress-dns
+  + allow-egress-internet [0.0.0.0/0 minus RFC1918/link-local] + allow-egress-mysql[cidr param]),
+  Secret, Deployment (runAsNonRoot/allowPrivilegeEscalation=false/drop ALL caps/seccomp
+  RuntimeDefault/automountServiceAccountToken=false/tcpSocket readiness), ClusterIP Service, and
+  Ingress (class nginx, host `<hostname>.seaburr.io` via new `app.config.APP_DOMAIN`, tls hosts-only
+  so it rides the ingress-nginx default wildcard cert — no secretName/per-app issuance) —
+  `render_app_manifests()` + `flatten_manifests()` tie them together. `RUN_AS_NON_ROOT = True` is a
+  documented module constant with a TODO (it'll reject root-user images); added a "Now / Next" bullet
+  above asking for a decision before the reconciler applies these. `app/env_refs.py`: added
+  `resolve(env_vars, refs)` (substitutes `${{ x.y }}` placeholders with real values; unknown ref →
+  `EnvValidationError`). `app/providers/`: `base.py` (ABCs — KubeProvider, MySQLAdmin, ObjectStore,
+  Registry — plus their error types), `fake.py` (in-memory fakes for all four, for tests), `registry.py`
+  (real: Docker Registry v2 HTTP API via httpx, anonymous Bearer-token flow for Docker Hub/GHCR-style
+  registries, sums compressed layer sizes, resolves manifest lists/OCI indexes to linux/amd64), and
+  `kube.py`/`mysql.py`/`spaces.py` (stubs raising NotImplementedError with TODOs — no `kubernetes`
+  client dependency added, per this chunk's scope). Image cap: `app/dependencies.py::get_registry`
+  (real RegistryClient by default, overridable via `app.dependency_overrides` as the other deps are);
+  `routers/apps.py` calls it on create and on update-when-image-changes, rejecting >512MB or any
+  RegistryError with 422 ("image not found or not public" for the latter) — update without an image
+  change never touches the registry. `tests/conftest.py`'s `make_client` now also overrides
+  `get_registry` with a small-size `FakeRegistry` by default, so existing image-agnostic tests didn't
+  need changes. API keys: `app/schemas.py` (`ApiKeyCreateOut`, `ApiKeyOut`), `app/routers/api_keys.py`
+  (`POST/GET /api/keys`, `DELETE /api/keys/{id}`, owner-scoped, registered in `app/main.py` — re-read
+  first, found frontend-dev's concurrent SPA-fallback edit already there and already including this
+  router, so no further main.py change was needed). New tests: `test_k8s_manifests.py` (caps, security
+  fields, netpol isolation rules incl. private-range exclusion and CIDR normalization),
+  `test_env_refs.py` (resolve), `test_providers_fake.py`, `test_registry.py` (httpx.MockTransport —
+  token flow, layer sum, manifest-list→amd64, 404/auth-denied→RegistryError, image-ref parsing),
+  `test_image_cap.py` (over/under cap, registry-error mapping, update skip-when-unchanged),
+  `test_api_keys.py` (plaintext-once, list masking, revoke, cross-user revoke→404, revoked
+  key→401 via the real Bearer flow). `.venv/bin/python -m pytest tests/ -q` → **67 passed**. Not
+  committed (scm-security's job). Out of scope for this chunk, left for later: real `kube.py`/
+  `mysql.py`/`spaces.py` + the reconciler loop (apps still stay 'pending'), the Spaces per-bucket-key
+  spike, private registry auth, partial env-var patch (frontend-dev's known gap, noted above).
+- 2026-10-18 [manager] DONE: reviewed + committed frontend and backend chunk 2. Fixed two bugs found
+  in review: (1) PATCH env re-sent the masked "********" and overwrote stored secrets, so the mask now means
+  "unchanged"; (2) PATCH env reusing an existing key hit the unique constraint (flush the deletes first).
+  Regression test added. 68 tests passing.

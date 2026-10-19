@@ -6,15 +6,38 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import crypto, models, schemas
+from app.config import MAX_IMAGE_SIZE_BYTES
 from app.db import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
+from app.providers.base import Registry, RegistryError
 from app.schemas import MASKED_VALUE
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 
 DOMAIN_SUFFIX = "seaburr.io"
+
+
+def _check_image_cap(registry: Registry, image: str) -> None:
+    """Enforce the 512MB image cap (ARCHITECTURE.md §2 "Image size").
+
+    Any registry failure (not found, private, unparsable manifest) is
+    reported the same way — a precise reason wouldn't be actionable for the
+    caller and would narrow a probing surface.
+    """
+    try:
+        size = registry.image_size_bytes(image)
+    except RegistryError:
+        raise HTTPException(status_code=422, detail="image not found or not public")
+    if size > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"image is {size} bytes, over the {MAX_IMAGE_SIZE_BYTES} byte "
+                "(512MB) platform cap"
+            ),
+        )
 
 
 def _env_var_out(env_var: models.AppEnvVar) -> schemas.EnvVarOut:
@@ -74,6 +97,7 @@ def create_app(
     payload: schemas.AppCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
+    registry: Registry = Depends(get_registry),
 ):
     if not current_user.is_uberadmin:
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
@@ -82,6 +106,7 @@ def create_app(
                 detail=f"app limit reached ({current_user.app_limit}); contact the uberadmin to raise it",
             )
 
+    _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)
 
     hostname = generate_unique_hostname(db)
@@ -143,25 +168,31 @@ def update_app(
     payload: schemas.AppUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
+    registry: Registry = Depends(get_registry),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user.id)
 
     if payload.name is not None:
         app.name = payload.name
     if payload.image is not None:
+        _check_image_cap(registry, payload.image)
         app.image = payload.image
     if payload.port is not None:
         app.port = payload.port
     if payload.env is not None:
         _validate_env(payload.env, want_db=app.want_db, want_storage=app.want_storage)
+        # Clients only ever see MASKED_VALUE for secrets, so sending it back means "unchanged":
+        # keep the stored ciphertext instead of overwriting the secret with the mask.
+        existing_secrets = {v.key: v.value_encrypted for v in app.env_vars if v.is_secret}
         app.env_vars.clear()
+        db.flush()  # delete old rows before inserting, or the (app_id, key) unique constraint trips
         for item in payload.env:
+            if item.is_secret and item.value == MASKED_VALUE and item.key in existing_secrets:
+                value_encrypted = existing_secrets[item.key]
+            else:
+                value_encrypted = crypto.encrypt(item.value)
             app.env_vars.append(
-                models.AppEnvVar(
-                    key=item.key,
-                    value_encrypted=crypto.encrypt(item.value),
-                    is_secret=item.is_secret,
-                )
+                models.AppEnvVar(key=item.key, value_encrypted=value_encrypted, is_secret=item.is_secret)
             )
 
     db.commit()
