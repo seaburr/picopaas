@@ -5,12 +5,9 @@ them is `app/providers/base.py::KubeProvider.apply()`'s job (real impl TODO,
 see `app/providers/kube.py`). Mirrors docs/ARCHITECTURE.md §2 "Tenancy and
 isolation" and "Reference variables".
 
-TODO (tracked in docs/LEDGER.md "Now / Next"): RUN_AS_NON_ROOT=True rejects
-any image whose default user is root, which is common for quick throwaway
-images. We're shipping it as a documented constant rather than hard-coding
-`True` inline so this is easy to find and revisit — options are (a) require
-users to supply a non-root image, (b) let the app spec override `runAsUser`,
-or (c) relax this for v1 and rely on the other `restricted` PSA controls.
+Root images are NOT supported (Chas, 2026-10-18). RUN_AS_NON_ROOT stays True, which
+matches the `restricted` Pod Security level enforced on every app namespace. Images
+must declare a non-root USER. See docs/ARCHITECTURE.md "Tenancy and isolation".
 """
 from __future__ import annotations
 

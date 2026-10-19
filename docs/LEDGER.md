@@ -17,8 +17,10 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - NEXT (infra-ops): `deploy/` manifests (ingress-nginx, cert-manager + wildcard cert via DO DNS-01, platform
   Deployment, MySQL StatefulSet for the lean variant), Dockerfile for the platform image (tribal-style multi-stage),
   GHCR build/push workflow, `dns-sync` CronJob for the no-LB variant.
-- DECISION for Chas (no code blocked yet): `RUN_AS_NON_ROOT=True` in `app/k8s_manifests.py` rejects images
-  that run as root, which many quick images do. Must decide before the reconciler applies manifests.
+- DECIDED (Chas, 2026-10-18): NO root images. `RUN_AS_NON_ROOT=True` stays.
+- NEXT (backend-dev): at app create/update, fetch the image config blob in `app/providers/registry.py`
+  and reject with 422 when `User` is empty/`root`/`0`/`0:*`, e.g. "image runs as root; add a non-root USER".
+  Test it with MockTransport. Frontend: show that error and link a Dockerfile `USER` example.
 
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
@@ -141,3 +143,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   in review: (1) PATCH env re-sent the masked "********" and overwrote stored secrets, so the mask now means
   "unchanged"; (2) PATCH env reusing an existing key hit the unique constraint (flush the deletes first).
   Regression test added. 68 tests passing.
+- 2026-10-18 [manager] DONE: recorded Chas's decision: no root images (ARCHITECTURE.md, k8s_manifests.py).
