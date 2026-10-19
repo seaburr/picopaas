@@ -336,3 +336,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] DONE: pushed ff9dc0d; terraform run 39270616109 FAILED at plan: DO API 401 + Spaces creds not configured (TF workspace vars/credentials issue, BLOCKED for infra owner/Chas)
 - 2026-10-19 [scm-security] START: commit terraform plan+apply workflow and LB-approved docs, push, watch CI (terraform workflow NOT dispatched)
 - 2026-10-19 [scm-security] DONE: pushed 0d6f851 (ci) + 2a31d66 (docs); CI + image green; deploy run 39271027882 FAILED (BLOCKED, expected: doctl 'no cluster goes by the name picopaas-atl1', cluster not provisioned until TFC creds fixed); terraform workflow not dispatched
+- 2026-10-19 [scm-security] START: commit terraform local-exec workflow change, push, dispatch plan-only (apply=false)

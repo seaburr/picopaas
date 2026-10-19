@@ -1,7 +1,7 @@
 name: terraform
 
 # Manual plan + apply (Chas, 2026-10-19). Run it only for changes covered by an APPROVED docs/requests entry.
-# Untick "apply" to get a plan only. Runs execute remotely in Terraform Cloud (workspace seaburr/picopaas).
+# Untick "apply" to get a plan only. Runs on the GitHub runner; Terraform Cloud (seaburr/picopaas) stores state only.
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +21,8 @@ jobs:
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+      SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
     defaults:
       run:
         working-directory: infra
@@ -53,7 +55,14 @@ jobs:
           echo "$opts" | jq -e --arg s "$slug" '[.options.mysql.layouts[].sizes[]] | index($s)' >/dev/null \
             || { echo "::error::slug $slug not valid; mysql sizes:"; echo "$opts" | jq -c '[.options.mysql.layouts[].sizes[]]|unique'; exit 1; }
           echo "mysql slug $slug OK in $region"
-      # Provider creds (DIGITALOCEAN_TOKEN, Spaces keys) are workspace env vars in Terraform Cloud.
+      # TFC holds state only: "local" execution runs Terraform here, so the provider reads the GitHub secrets above
+      # (no credentials stored in TFC). Idempotent.
+      - name: Set TFC workspace to local execution
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          curl -fsS -X PATCH https://app.terraform.io/api/v2/organizations/seaburr/workspaces/picopaas \
+            -H "Authorization: Bearer $TF_TOKEN_app_terraform_io" -H "Content-Type: application/vnd.api+json" \
+            -d '{"data":{"type":"workspaces","attributes":{"execution-mode":"local"}}}' >/dev/null
       - run: terraform init -input=false
         if: steps.gate.outputs.run == 'true'
       - run: terraform plan -input=false

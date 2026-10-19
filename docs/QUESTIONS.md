@@ -11,13 +11,10 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] **Terraform Cloud vars aren't reaching the plan** (run 39270616109: DO API 401 + "Spaces credentials not
-      configured"; the same token works from GitHub Actions). In TFC → `picopaas` → Variables, check that these three
-      exist with exactly these names, category **Environment variable** (not "Terraform variable"), marked sensitive:
-      `DIGITALOCEAN_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`. If they're in a variable set, make
-      sure it's applied to this workspace. Tell Claude when done and it re-runs the plan.
+- (none right now)
 
 ## Resolved
+- 2026-10-19: Credentials come from GitHub secrets, not TFC vars: the workflow sets the TFC workspace to local execution (TFC = state only).
 - 2026-10-19: Load balancer: yes. Final variant managed MySQL (AMD) + LB ≈ $60.30/mo. History rewrite run by Chas (force-pushed).
 - 2026-10-19: Managed MySQL, Premium AMD 1 GiB in ATL1, $19.30/mo (`db-amd-1vcpu-1gb`).
 - 2026-10-19: Autoscaler `max_nodes = 2` approved.
