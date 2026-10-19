@@ -25,7 +25,7 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 
 ### Trade-offs we accept with the lean option
 - **No LB:** when DOKS recycles the node, its public IP changes. A `dns-sync` CronJob (every 2 min,
-  using the DO API) repoints `*.seaburr.io` at the current node IP. Expect a few minutes of downtime
+  using the DO API) repoints `*.raisehellpraisedale.xyz` at the current node IP. Expect a few minutes of downtime
   during node upgrades. That's acceptable for throwaway apps.
 - **Self-run MySQL:** we own the backups. A nightly `mysqldump` CronJob writes to a private platform
   Spaces bucket and keeps 7 days.
@@ -34,12 +34,12 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 ## 2. Components
 
 ```
-               *.seaburr.io (wildcard A → node IP, kept fresh by dns-sync)
+               *.raisehellpraisedale.xyz (wildcard A → node IP, kept fresh by dns-sync)
                                 │
                      ingress-nginx (hostPort 80/443)
-              default cert = wildcard *.seaburr.io (cert-manager, DNS-01 via DO)
+              default cert = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
                 ┌───────────────┴──────────────────┐
-     picopaas.seaburr.io                 <pet>-<5char>.seaburr.io
+     picopaas.raisehellpraisedale.xyz                 <pet>-<5char>.raisehellpraisedale.xyz
    ns: picopaas-system                    ns: app-<id>  (one per app)
    ┌──────────────────────┐               ┌───────────────────────────┐
    │ api (FastAPI)        │──k8s API────▶ │ Deployment (1 replica)    │
@@ -95,6 +95,14 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 - **Nodes:** no inbound except 80/443 (no LB) or from the LB only.
 - Pentest items 8 and 10 (use of stolen creds) are informational, not blockers.
 
+### Abuse & moderation (Chas, 2026-10-19)
+- Audience is an internal team, not the public.
+- Signups are inert until the uberadmin approves them.
+- The uberadmin can suspend or delete users and apps. An audit log records these actions.
+- SMTP egress (ports 25/465/587) is blocked by NetworkPolicy.
+- Apps and the platform live on the separate throwaway domain `raisehellpraisedale.xyz`, which protects seaburr.io's reputation.
+- `hostUsers: false` (user namespaces) was considered and not adopted.
+
 ### Reference variables
 If an app requests a DB or storage, the platform exposes reference variables the user maps onto their
 own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
@@ -124,8 +132,8 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
   but the admin UI for it is deferred).
 
 ### DNS and TLS
-- Hostname format: `<adjective>-<animal>-<5 chars of [a-z0-9]>.seaburr.io`, with a uniqueness check in the DB.
-- One wildcard A record `*.seaburr.io`. Explicit records that already exist still take precedence.
+- Hostname format: `<adjective>-<animal>-<5 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
+- One wildcard A record `*.raisehellpraisedale.xyz`. Explicit records that already exist still take precedence.
 - One wildcard cert from cert-manager + Let's Encrypt, DNS-01 via the DO solver. It's the ingress default
   cert, so there's no per-app issuance and no LE rate-limit risk.
 
@@ -183,6 +191,6 @@ later without two loops fighting each other.
 
 ## 4. Open questions for Chas
 1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
-2. ~~Wildcard~~ → OK. Every record except the Bluesky TXT is disposable.
+2. ~~Wildcard~~ → OK. Domain is now the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
 3. ~~Region~~ → ATL1 (Chas, 2026-10-18). Managed MySQL in ATL1 is Premium Intel only.
 4. Autoscaler `max_nodes`, the compute spending ceiling. Proposed: 2 (worst case +$24/mo over static).
