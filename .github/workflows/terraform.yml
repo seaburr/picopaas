@@ -60,7 +60,14 @@ jobs:
           echo "droplets in account: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets?per_page=1' | jq '.meta.total')"
           echo "mysql versions: $(echo "$opts" | jq -c '.options.mysql.versions')"
           echo "doks options: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/kubernetes/options \
-            | jq -c '{versions: [.options.versions[].slug], nyc3: [.options.regions[] | select(.slug=="nyc3")]}')"
+            | jq -c '{versions: [.options.versions[].slug], doks_regions: [.options.regions[].slug]}')"
+          echo "mysql regions: $(echo "$opts" | jq -c '.options.mysql.regions')"
+          # Candidate regions (Chas, 2026-10-19): do they exist, are they available, which small sizes do they list?
+          curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/regions?per_page=200' \
+            | jq -c '.regions[] | select(.slug | test("^(mem1|mkc1|ric1|nyc1|nyc3|atl1|tor1|sfo3)$"))
+                     | {slug, name, available, small: [.sizes[] | select(test("^s-(1vcpu-2gb|2vcpu-2gb|2vcpu-4gb)"))]}' \
+            | sed 's/^/region: /'
+          echo "all region slugs: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/regions?per_page=200' | jq -c '[.regions[].slug]')"
       # TFC holds state only: "local" execution runs Terraform here, so the provider reads the GitHub secrets above
       # (no credentials stored in TFC). Idempotent.
       - name: Set TFC workspace to local execution
