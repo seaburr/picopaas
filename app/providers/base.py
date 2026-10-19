@@ -27,6 +27,11 @@ class KubeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def delete_ingress(self, namespace: str, name: str) -> None:
+        """Delete one Ingress (no error if absent). Used so suspended apps fall through to the catch-all."""
+        raise NotImplementedError
+
+    @abstractmethod
     def list_app_namespaces(self) -> set[str]:
         """Names of existing app namespaces (label picopaas.io/app-id), in one API call."""
         raise NotImplementedError

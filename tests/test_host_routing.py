@@ -68,3 +68,54 @@ def test_hostname_label_length_and_wordlists():
     assert len(naming.ADJECTIVES) >= 150 and len(naming.ANIMALS) >= 150
     assert all(w.isascii() and w.isalpha() and w.islower() for w in naming.ADJECTIVES + naming.ANIMALS)
     assert not (set(naming.ADJECTIVES + naming.ANIMALS) & naming.RESERVED_HOSTNAMES)
+
+
+def test_unknown_app_subdomain_gets_custom_404(make_client, pages):
+    (pages / "404.html").write_text("<title>NOPE</title>")
+    r = get(make_client, f"ghost-abc1234.{config.APP_DOMAIN}", "/anything")
+    assert r.status_code == 404 and "NOPE" in r.text
+    assert r.headers["cache-control"] == "no-store" and "noindex" in r.headers["x-robots-tag"]
+
+
+def test_unknown_app_subdomain_inline_fallback(make_client, pages):
+    r = get(make_client, f"ghost.{config.APP_DOMAIN}", "/")
+    assert r.status_code == 404 and "404" in r.text
+
+
+def test_known_hosts_not_404(make_client, pages):
+    assert get(make_client, PLATFORM, "/healthz").status_code == 200
+    assert get(make_client, APEX, "/healthz").status_code == 200
+    assert get(make_client, LEGACY, "/").status_code == 301
+
+
+def test_robots_txt_on_every_host(make_client, pages):
+    for host in (PLATFORM, APEX, LEGACY, f"ghost.{config.APP_DOMAIN}"):
+        r = get(make_client, host, "/robots.txt")
+        assert r.status_code == 200 and r.text == "User-agent: *\nDisallow: /\n"
+        assert r.headers["content-type"].startswith("text/plain")
+        assert r.headers["x-robots-tag"] == "noindex, nofollow"
+
+
+def test_noindex_header_on_platform_responses(make_client, pages):
+    assert get(make_client, PLATFORM, "/healthz").headers["x-robots-tag"] == "noindex, nofollow"
+    assert get(make_client, APEX, "/").headers["x-robots-tag"] == "noindex, nofollow"
+
+
+def test_suspended_host_gets_503_and_unknown_gets_404(make_client, db_session, pages):
+    from app import models
+    main._suspended_cache.clear()
+    (pages / "suspended.html").write_text("<title>PAUSED</title>")
+    owner = models.User(email="o@example.com", password_hash="x")
+    db_session.add(owner)
+    db_session.commit()
+    db_session.add_all([
+        models.App(owner_id=owner.id, name="a", hostname="sleepy-abc1234", image="i", port=80, status="suspended"),
+        models.App(owner_id=owner.id, name="b", hostname="live-abc1234", image="i", port=80, status="running"),
+    ])
+    db_session.commit()
+    r = get(make_client, f"sleepy-abc1234.{config.APP_DOMAIN}", "/")
+    assert r.status_code == 503 and "PAUSED" in r.text and "retry-after" not in r.headers
+    assert r.headers["cache-control"] == "no-store" and "noindex" in r.headers["x-robots-tag"]
+    assert get(make_client, f"nobody-abc1234.{config.APP_DOMAIN}", "/").status_code == 404
+    assert get(make_client, f"live-abc1234.{config.APP_DOMAIN}", "/").status_code == 404
+    main._suspended_cache.clear()

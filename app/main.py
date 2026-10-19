@@ -1,13 +1,15 @@
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import config
-from app.db import Base, engine
+from app import models
+from app.db import Base, engine, get_db
 from app.routers import admin, api_keys, apps, auth, spec
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
@@ -101,6 +103,65 @@ def _to_platform(request: Request) -> RedirectResponse:
     return RedirectResponse(url, status_code=301)
 
 
+_FALLBACK_404 = "<!doctype html><title>Not found</title><h1>404</h1><p>No app lives at this address.</p>"
+
+
+def _is_unknown_app_host(host: str) -> bool:
+    """A subdomain of APP_DOMAIN that isn't the platform, apex or a legacy host. Real apps are routed by their
+    own Ingress and never reach this service, so anything arriving here is an app that doesn't exist."""
+    d = config.APP_DOMAIN.lower()
+    return (
+        host.endswith("." + d)
+        and host != config.PLATFORM_HOST
+        and host != config.APEX_HOST
+        and host not in config.LEGACY_HOSTS
+    )
+
+
+_SUSPENDED_TTL = 10.0
+_suspended_cache: dict[str, tuple[float, bool]] = {}
+_FALLBACK_SUSPENDED = "<!doctype html><title>Suspended</title><h1>503</h1><p>This app is suspended.</p>"
+
+
+def _is_suspended_host(host: str) -> bool:
+    """Is there a suspended (not deleted) app with this hostname? Cached ~10s; hostname is a unique index."""
+    now = time.monotonic()
+    hit = _suspended_cache.get(host)
+    if hit and now - hit[0] < _SUSPENDED_TTL:
+        return hit[1]
+    label = host[: -(len(config.APP_DOMAIN) + 1)]
+    gen = app.dependency_overrides.get(get_db, get_db)()
+    db = next(gen)
+    try:
+        row = (
+            db.query(models.App.status)
+            .filter(models.App.hostname == label, models.App.deleted_at.is_(None))
+            .first()
+        )
+        result = row is not None and row[0] == "suspended"
+    except Exception:
+        result = False
+    finally:
+        gen.close()
+    if len(_suspended_cache) > 1000:
+        _suspended_cache.clear()
+    _suspended_cache[host] = (now, result)
+    return result
+
+
+def _unknown_app_page(host: str = ""):
+    headers = {"Cache-Control": "no-store"}
+    if host and _is_suspended_host(host):
+        f = _STATIC_DIR / "suspended.html"
+        if f.is_file():
+            return FileResponse(f, status_code=503, headers=headers)
+        return HTMLResponse(_FALLBACK_SUSPENDED, status_code=503, headers=headers)
+    f = _STATIC_DIR / "404.html"
+    if f.is_file():
+        return FileResponse(f, status_code=404, headers=headers)
+    return HTMLResponse(_FALLBACK_404, status_code=404, headers=headers)
+
+
 @app.middleware("http")
 async def host_routing(request: Request, call_next):
     """Legacy hosts 301 to the platform host; the apex serves the landing/privacy pages and redirects the rest
@@ -109,6 +170,8 @@ async def host_routing(request: Request, call_next):
     path = request.url.path
     if host in config.LEGACY_HOSTS:
         return _to_platform(request)
+    if _is_unknown_app_host(host):
+        return _unknown_app_page(host)
     if host == config.APEX_HOST:
         if path.startswith(("/static/", "/healthz")):
             return await call_next(request)
@@ -119,6 +182,18 @@ async def host_routing(request: Request, call_next):
     if host == config.PLATFORM_HOST and path == "/privacy" and request.method in ("GET", "HEAD"):
         return _page("privacy.html") or await call_next(request)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def robots_and_noindex(request: Request, call_next):
+    """Outermost middleware (registered last): /robots.txt on every host, and X-Robots-Tag on every response.
+    Only affects responses from this service, never tenant apps (served by their own pods)."""
+    if request.url.path == "/robots.txt" and request.method in ("GET", "HEAD"):
+        response = PlainTextResponse("User-agent: *\nDisallow: /\n")
+    else:
+        response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
 
 
 @app.get("/{full_path:path}")

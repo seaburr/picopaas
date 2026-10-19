@@ -169,3 +169,13 @@ Other known gaps:
 - A DB server cannot be created with a CA certificate via the API.
 - PodDisruptionBudget for the platform is deferred until 2+ nodes.
 - Spaces credential theft is out of scope (request 0002).
+
+## Unknown app hosts and suspended apps
+
+An unknown `*.raisehellpraisedale.xyz` host matches the low-priority catch-all Ingress
+(`deploy/platform/ingress.yaml`, `router.priority: "1"`) and gets the platform's custom 404 page
+(`static/404.html`, `noindex`, `no-store`).
+
+Suspended apps: the reconciler deletes their Ingress (Deployment stays at 0 replicas; unsuspend re-renders it), so
+the host falls through to the same catch-all. The platform looks the hostname up (cached 10s) and serves
+`static/suspended.html` with 503 if the app is suspended, otherwise the 404 page.

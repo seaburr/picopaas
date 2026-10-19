@@ -305,6 +305,7 @@ def reconcile_app(
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         resources=resources.effective(app),
+        include_ingress=app.status != "suspended",
     )
     suspended = app.status == "suspended"
     flat = k8s_manifests.flatten_manifests(manifests)
@@ -323,6 +324,9 @@ def reconcile_app(
     namespace = k8s_manifests.namespace_name(app.id)
     try:
         kube.apply(flat)
+        if suspended:
+            # No Ingress while suspended: the host falls through to the wildcard catch-all (suspended page).
+            kube.delete_ingress(namespace, k8s_manifests.ingress_name(app.id))
         status = kube.get_status(namespace)
     except Exception as exc:
         # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.

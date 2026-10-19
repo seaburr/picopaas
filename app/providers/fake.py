@@ -52,6 +52,12 @@ class FakeKubeProvider(KubeProvider):
         self.applied.pop(namespace, None)
         self.statuses[namespace] = "deleted"
 
+    def delete_ingress(self, namespace: str, name: str) -> None:
+        self.applied[namespace] = [
+            m for m in self.applied.get(namespace, [])
+            if not (m.get("kind") == "Ingress" and m["metadata"]["name"] == name)
+        ]
+
     def list_app_namespaces(self) -> set[str]:
         self.list_ns_calls += 1
         return {ns for ns in self.applied if ns.startswith("app-")}

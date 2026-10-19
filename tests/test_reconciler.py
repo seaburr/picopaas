@@ -509,3 +509,24 @@ def test_config_change_resets_error_state(session):
     assert app.error_count == 1
     app.reset_retry()
     assert (app.error_count, app.last_attempt_at, app.error_retryable) == (0, None, True)
+
+
+def test_suspended_app_has_no_ingress_and_unsuspend_restores_it(session):
+    app = _make_app(session)
+    kube = FakeKubeProvider()
+    kinds = lambda: [m["kind"] for m in kube.applied.get(f"app-{app.id}", [])]  # noqa: E731
+    reconcile_app(session, app, kube=kube, mysql_admin_factory=lambda s: FakeMySQLAdmin(),
+                  object_store=FakeObjectStore(), settings={"mysql_cidr": "10.1.0.0/16"})
+    assert "Ingress" in kinds()
+    app = session.get(models.App, app.id)
+    app.status = "suspended"
+    session.commit()
+    reconcile_app(session, app, kube=kube, mysql_admin_factory=lambda s: FakeMySQLAdmin(),
+                  object_store=FakeObjectStore(), settings={"mysql_cidr": "10.1.0.0/16"})
+    assert "Ingress" not in kinds() and "Deployment" in kinds()
+    app = session.get(models.App, app.id)
+    app.status = "pending"
+    session.commit()
+    reconcile_app(session, app, kube=kube, mysql_admin_factory=lambda s: FakeMySQLAdmin(),
+                  object_store=FakeObjectStore(), settings={"mysql_cidr": "10.1.0.0/16"})
+    assert "Ingress" in kinds()

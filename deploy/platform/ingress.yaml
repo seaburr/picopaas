@@ -45,3 +45,31 @@ spec:
                 name: picopaas
                 port:
                   number: 80
+---
+# Catch-all for app subdomains that don't exist: the platform app serves a custom 404 page for them.
+# Traefik's default router priority is the rule length, and a wildcard Host becomes a HostRegexp that is LONGER
+# than a concrete Host(`x.domain`) rule, so without an explicit priority it would shadow real apps.
+# priority "1" makes it the lowest, so every real app Ingress (and platform/apex above) wins.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: picopaas-unknown-apps
+  namespace: picopaas-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.priority: "1"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - "*.raisehellpraisedale.xyz"
+  rules:
+    - host: "*.raisehellpraisedale.xyz"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80

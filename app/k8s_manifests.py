@@ -478,8 +478,9 @@ def render_app_manifests(
     mysql_port: int | None = None,
     storage_ips: list[str] | None = None,
     resources: dict[str, int] | None = None,
+    include_ingress: bool = True,
 ) -> dict[str, Any]:
-    """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
+    """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id, resources),
@@ -492,7 +493,7 @@ def render_app_manifests(
                                        health_check_path=health_check_path, user_env=env,
                                        resources=resources),
         "service": service_manifest(app_id, port),
-        "ingress": ingress_manifest(app_id, hostname, port),
+        "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
     }
 
 
@@ -506,6 +507,11 @@ def flatten_manifests(rendered: dict[str, Any]) -> list[dict[str, Any]]:
         rendered["secret"],
         rendered["deployment"],
         rendered["service"],
-        rendered["ingress"],
     ]
+    if rendered.get("ingress") is not None:
+        flat.append(rendered["ingress"])
     return flat
+
+
+def ingress_name(app_id: int) -> str:
+    return _resource_name(app_id)

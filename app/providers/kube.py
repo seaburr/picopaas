@@ -98,6 +98,15 @@ class KubeClientProvider(KubeProvider):
         except NotFoundError:
             pass
 
+    def delete_ingress(self, namespace: str, name: str) -> None:
+        from kubernetes.dynamic.exceptions import NotFoundError
+
+        resource = self.dyn.resources.get(api_version="networking.k8s.io/v1", kind="Ingress")
+        try:
+            resource.delete(name=name, namespace=namespace)
+        except NotFoundError:
+            pass
+
     def list_app_namespaces(self) -> set[str]:
         resource = self.dyn.resources.get(api_version="v1", kind="Namespace")
         res = _as_dict(resource.get(label_selector="picopaas.io/app-id"))
