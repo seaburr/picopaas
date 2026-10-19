@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "node_size" {
-  description = "Droplet size slug for the DOKS worker node pool. Moved to NYC3 after ATL1 had no DOKS capacity for any size (Chas, 2026-10-19)."
+  description = "Droplet size slug for the DOKS worker node pool. Smallest DOKS size ($12); Chas: smallest SKUs everywhere for now, scale later (2026-10-19)."
   type        = string
-  default     = "s-2vcpu-4gb"
+  default     = "s-1vcpu-2gb"
 }
 
 variable "node_count" {
@@ -33,11 +33,11 @@ variable "use_managed_mysql" {
 
 variable "mysql_size" {
   description = <<-EOT
-    DO managed MySQL size slug. Chas chose Premium AMD 1 vCPU / 1 GiB in ATL1 ($19.30/mo, 2026-10-19).
+    DO managed MySQL size slug. Smallest basic plan ($15.15/mo); Chas: smallest SKUs for now (2026-10-19).
     The terraform workflow checks this slug against GET /v2/databases/options before planning.
   EOT
   type        = string
-  default     = "db-amd-1vcpu-1gb"
+  default     = "db-s-1vcpu-1gb"
 }
 
 variable "use_load_balancer" {
