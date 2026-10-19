@@ -47,6 +47,9 @@ JWT_EXPIRE_DAYS = 7
 # leave unset for managed MySQL where the admin user holds real privileges.
 MYSQL_ADMIN_USE_PROCEDURES = os.environ.get("MYSQL_ADMIN_USE_PROCEDURES") == "1"
 
+# Path to a CA bundle for TLS to tenant MySQL servers (DO managed MySQL requires TLS). Empty = no TLS.
+MYSQL_SSL_CA = os.environ.get("MYSQL_SSL_CA", "")
+
 DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 

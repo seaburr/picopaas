@@ -75,10 +75,16 @@ class MySQLAdminClient(MySQLAdmin):
         self._admin_user = server.admin_user
         self._admin_password = decrypt(server.admin_password_encrypted)
         self._use_procs = config.MYSQL_ADMIN_USE_PROCEDURES
+        self._ssl_ca = config.MYSQL_SSL_CA
 
     def _connect(self) -> pymysql.connections.Connection:
+        kwargs: dict[str, Any] = {}
+        if self._ssl_ca:
+            # Managed MySQL requires TLS: verify the server cert against the CA and hostname.
+            kwargs.update(ssl={"ca": self._ssl_ca}, ssl_verify_cert=True, ssl_verify_identity=True)
         try:
             return pymysql.connect(
+                **kwargs,
                 host=self._host,
                 port=self._port,
                 user=self._admin_user,
