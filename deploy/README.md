@@ -9,7 +9,7 @@ entry and this chunk didn't create one (no new paid resource — LB cost is alre
 ## Automated bring-up (managed MySQL + LB variant)
 
 `.github/workflows/bootstrap.yml` (workflow_dispatch, run by hand after the `terraform` workflow) automates steps 2-8
-below for the managed-MySQL + LB variant: Traefik and cert-manager (pinned chart versions in the workflow `env`),
+below for the managed-MySQL + LB variant: Traefik, cert-manager and metrics-server (`deploy/metrics-server/values.yaml`; installed by bootstrap, needed for `/admin/health` metrics; pinned chart versions in the workflow `env`),
 DNS A records `*` and `picopaas` -> LB IP (it owns them; leave Terraform `wildcard_lb_ip` empty), the
 `digitalocean-dns` / `picopaas-env` / `picopaas-db-ca` secrets, the platform `picopaas` database + user on the managed
 cluster, issuers/certificate, platform workload at the current short-sha image, and a `/healthz` check. It is safe to

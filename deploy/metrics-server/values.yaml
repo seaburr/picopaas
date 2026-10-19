@@ -1,0 +1,14 @@
+# metrics-server (kubernetes-sigs chart). Installed by .github/workflows/bootstrap.yml into kube-system.
+# Tiny footprint: the single s-1vcpu-2gb node is ~95% requested.
+replicas: 1
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+args:
+  - --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP
+  # --kubelet-insecure-tls intentionally omitted: DOKS kubelet serving certs are signed by the cluster CA.
+  # Add it only if the APIService stays unavailable with x509 errors in the metrics-server logs.

@@ -25,6 +25,9 @@ spec:
       app: picopaas
   template:
     metadata:
+      annotations:
+        # Placeholder; bootstrap.yml and deploy.yml sed in sha256 of the live picopaas-env data so any secret change rolls the pods.
+        picopaas.io/env-checksum: "unset"
       labels:
         app: picopaas
     spec:
