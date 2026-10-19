@@ -87,6 +87,21 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
       # ---- step 3: Traefik (creates the DO load balancer; chart CRDs installed for the default TLSStore) ----
+      # Cluster replacement leaves the old cluster's load balancer behind (DOKS tags it k8s:<cluster-id>).
+      # Delete only LBs tagged for a k8s cluster that no longer exists.
+      - name: Delete orphaned load balancers
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          live=$(doctl kubernetes cluster list -o json | jq -r '.[].id')
+          doctl compute load-balancer list -o json | jq -r '.[] | [.id, .name, ((.tags // []) | map(select(startswith("k8s:"))) | .[0] // "")] | @tsv' \
+            | while IFS=$'\t' read -r id name tag; do
+                cid=${tag#k8s:}
+                [ -n "$tag" ] || continue
+                if ! grep -qx "$cid" <<<"$live"; then
+                  echo "deleting orphaned LB $name ($id), tagged for gone cluster $cid"
+                  doctl compute load-balancer delete "$id" --force
+                fi
+              done
       - name: Install Traefik
         if: steps.gate.outputs.run == 'true'
         run: |
@@ -145,21 +160,6 @@ jobs:
           echo "LB IP: $ip"
 
       # ---- DNS: only A records `*` and `picopaas`. TXT and everything else are never listed for write. ----
-      # Cluster replacement leaves the old cluster's load balancer behind (DOKS tags it k8s:<cluster-id>).
-      # Delete only LBs tagged for a k8s cluster that no longer exists.
-      - name: Delete orphaned load balancers
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          live=$(doctl kubernetes cluster list -o json | jq -r '.[].id')
-          doctl compute load-balancer list -o json | jq -r '.[] | [.id, .name, ((.tags // []) | map(select(startswith("k8s:"))) | .[0] // "")] | @tsv' \
-            | while IFS=$'\t' read -r id name tag; do
-                cid=${tag#k8s:}
-                [ -n "$tag" ] || continue
-                if ! grep -qx "$cid" <<<"$live"; then
-                  echo "deleting orphaned LB $name ($id), tagged for gone cluster $cid"
-                  doctl compute load-balancer delete "$id" --force
-                fi
-              done
       - name: Upsert DNS A records
         if: steps.gate.outputs.run == 'true'
         run: |
