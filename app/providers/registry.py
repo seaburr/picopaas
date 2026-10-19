@@ -13,7 +13,10 @@ entry (falling back to the first entry if none matches) before summing.
 """
 from __future__ import annotations
 
+import ipaddress
+import logging
 import re
+import socket
 from typing import Any, Optional
 
 import httpx
@@ -34,7 +37,10 @@ _MANIFEST_ACCEPT = ", ".join(
     ]
 )
 
+log = logging.getLogger(__name__)
+
 _DOCKER_HUB_REGISTRY = "registry-1.docker.io"
+_DOCKER_HUB_ALIASES = {"docker.io", "index.docker.io", "registry.hub.docker.com", "registry-1.docker.io"}
 _WWW_AUTH_PARAM_RE = re.compile(r'(\w+)="([^"]*)"')
 
 
@@ -58,11 +64,29 @@ def _parse_image_ref(image_ref: str) -> tuple[str, str, str]:
     looks_like_host = "." in first_segment or ":" in first_segment or first_segment == "localhost"
     if looks_like_host and rest:
         registry, repository = first_segment, rest
+        if registry in _DOCKER_HUB_ALIASES:
+            registry = _DOCKER_HUB_REGISTRY
+            if "/" not in repository:
+                repository = f"library/{repository}"
     else:
         registry = _DOCKER_HUB_REGISTRY
         repository = name if "/" in name else f"library/{name}"
 
     return registry, repository, reference
+
+
+def _check_public_host(host: str) -> None:
+    """SSRF guard: refuse registry/token hosts that resolve to non-public addresses.
+
+    Unresolvable names pass (the request itself will fail to connect)."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not ip.is_global:
+            raise RegistryError("image registry not allowed")
 
 
 def _parse_www_authenticate(header: str) -> dict[str, str]:
@@ -72,6 +96,11 @@ def _parse_www_authenticate(header: str) -> dict[str, str]:
 class RegistryClient(Registry):
     def __init__(self, client: Optional[httpx.Client] = None, timeout: float = 10.0) -> None:
         self._client = client or httpx.Client(timeout=timeout)
+
+    def _get(self, url: str, **kw: Any) -> httpx.Response:
+        host = httpx.URL(url).host
+        _check_public_host(host)
+        return self._client.get(url, **kw)
 
     def image_size_bytes(self, image_ref: str) -> int:
         return self._sum_layer_sizes(self._wrap(lambda: self._resolve(image_ref)[0]))
@@ -85,10 +114,11 @@ class RegistryClient(Registry):
                 raise RegistryError("manifest has no config digest; unsupported schema")
             headers = {"Authorization": f"Bearer {token}"} if token else {}
             # Blobs are commonly served via a redirect to object storage.
-            resp = self._client.get(
+            resp = self._get(
                 f"https://{registry}/v2/{repository}/blobs/{digest}", headers=headers, follow_redirects=True
             )
             if resp.status_code != 200:
+                log.warning("registry blob fetch %s/%s: HTTP %s", registry, repository, resp.status_code)
                 raise RegistryError("image not found or not public")
             user = (resp.json().get("config") or {}).get("User") or ""
             return ImageInfo(size_bytes=size, user=user)
@@ -113,7 +143,7 @@ class RegistryClient(Registry):
             raise RegistryError(f"registry request failed: {exc}") from exc
 
     def _get_token(self, registry: str, repository: str) -> Optional[str]:
-        resp = self._client.get(f"https://{registry}/v2/")
+        resp = self._get(f"https://{registry}/v2/")
         if resp.status_code == 200:
             return None
         if resp.status_code != 401:
@@ -128,8 +158,11 @@ class RegistryClient(Registry):
         if "service" in params:
             query["service"] = params["service"]
 
-        token_resp = self._client.get(realm, params=query)
+        if not realm.startswith("https://"):
+            raise RegistryError("registry advertised an insecure token realm")
+        token_resp = self._get(realm, params=query)
         if token_resp.status_code != 200:
+            log.warning("registry token fetch %s: HTTP %s", registry, token_resp.status_code)
             raise RegistryError("image not found or not public")
         data = token_resp.json()
         return data.get("token") or data.get("access_token")
@@ -141,8 +174,9 @@ class RegistryClient(Registry):
         if token:
             headers["Authorization"] = f"Bearer {token}"
         url = f"https://{registry}/v2/{repository}/manifests/{reference}"
-        resp = self._client.get(url, headers=headers)
+        resp = self._get(url, headers=headers, follow_redirects=True)
         if resp.status_code in (401, 404):
+            log.warning("registry manifest %s/%s: HTTP %s", registry, repository, resp.status_code)
             raise RegistryError("image not found or not public")
         if resp.status_code != 200:
             raise RegistryError(f"registry returned HTTP {resp.status_code} for {image_ref_desc(repository, reference)}")
@@ -165,7 +199,10 @@ class RegistryClient(Registry):
             platform = entry.get("platform", {})
             if platform.get("os") == "linux" and platform.get("architecture") == "amd64":
                 return entry["digest"]
-        # No exact linux/amd64 match (e.g. attestation-only lists) — fall back to the first entry.
+        # No exact linux/amd64 match: fall back to the first non-attestation entry.
+        for entry in candidates:
+            if entry.get("platform", {}).get("os") != "unknown":
+                return entry["digest"]
         return candidates[0]["digest"]
 
     @staticmethod
