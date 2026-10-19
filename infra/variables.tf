@@ -84,7 +84,7 @@ variable "wildcard_lb_ip" {
 }
 
 variable "control_plane_allowed_cidrs" {
-  description = "CIDRs allowed to reach the Kubernetes API (e.g. Chas's IP as x.x.x.x/32). Empty leaves the firewall off; set it before the first real apply."
+  description = "CIDRs allowed to reach the Kubernetes API (e.g. Chas's IP as x.x.x.x/32). Empty (default) leaves the API public, which Chas OK'd for now."
   type        = list(string)
   default     = []
 }
