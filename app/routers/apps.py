@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,7 @@ from app.db import get_db
 from app.dependencies import get_current_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
-from app.providers.base import Registry, RegistryError
+from app.providers.base import MySQLAdmin, MySQLAdminError, ObjectStore, ObjectStoreError, Registry, RegistryError
 from app.schemas import MASKED_VALUE
 
 router = APIRouter(prefix="/apps", tags=["apps"])
@@ -75,6 +76,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         want_db=app.want_db,
         want_storage=app.want_storage,
         status=app.status,
+        status_detail=app.status_detail,
         created_at=app.created_at,
         env=[_env_var_out(e) for e in app.env_vars],
     )
@@ -229,3 +231,56 @@ def delete_app(
     app.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return None
+
+
+# --- credential rotation ---------------------------------------------------
+
+class RotateIn(BaseModel):
+    target: Literal["db", "storage"]
+
+
+def get_mysql_admin_factory():
+    """Overridden in tests with a FakeMySQLAdmin factory."""
+    from app.providers.mysql import MySQLAdminClient
+
+    return MySQLAdminClient
+
+
+def get_object_store() -> ObjectStore:
+    """Overridden in tests with a FakeObjectStore."""
+    from app.providers.spaces import SpacesStore
+
+    return SpacesStore.from_env()
+
+
+@router.post("/{app_id}/rotate-credentials", response_model=schemas.AppOut)
+def rotate_credentials(
+    app_id: int,
+    body: RotateIn,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    mysql_admin_factory=Depends(get_mysql_admin_factory),
+    object_store: ObjectStore = Depends(get_object_store),
+):
+    app = _get_owned_app_or_404(db, app_id, user.id)
+    try:
+        if body.target == "db":
+            row = app.database
+            if row is None:
+                raise HTTPException(status_code=409, detail="database not provisioned yet")
+            creds = mysql_admin_factory(row.server).rotate_password(app.id)
+            row.password_encrypted = crypto.encrypt(creds["password"])
+        else:
+            row = app.storage
+            if row is None:
+                raise HTTPException(status_code=409, detail="storage not provisioned yet")
+            creds = object_store.rotate_key(app.id)
+            row.access_key = creds["access_key"]
+            row.secret_key_encrypted = crypto.encrypt(creds["secret_key"])
+    except (MySQLAdminError, ObjectStoreError):
+        raise HTTPException(status_code=502, detail="credential rotation failed")
+    # The reconciler re-renders the Secret from the stored creds and rolls the pod.
+    app.status = "pending"
+    db.commit()
+    db.refresh(app)
+    return _app_out(app)

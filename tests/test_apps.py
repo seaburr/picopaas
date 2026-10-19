@@ -177,3 +177,15 @@ def test_resending_masked_secret_keeps_stored_value(client, db_session):
     db_session.expire_all()
     stored = db_session.query(models.AppEnvVar).filter_by(app_id=app_id, key="API_TOKEN").one()
     assert crypto.decrypt(stored.value_encrypted) == "rotated"
+
+
+def test_status_detail_is_exposed(client, db_session):
+    from app import models
+
+    register_and_login(client, "detail@example.com")
+    app_id = _create_app(client, name="detail").json()["id"]
+    row = db_session.get(models.App, app_id)
+    row.status, row.status_detail = "error", "ImagePullBackOff"
+    db_session.commit()
+    body = client.get(f"/apps/{app_id}").json()
+    assert body["status"] == "error" and body["status_detail"] == "ImagePullBackOff"

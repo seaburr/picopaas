@@ -99,5 +99,6 @@ class AppOut(BaseModel):
     want_db: bool
     want_storage: bool
     status: str
+    status_detail: Optional[str] = None
     created_at: datetime
     env: List[EnvVarOut] = Field(default_factory=list)
