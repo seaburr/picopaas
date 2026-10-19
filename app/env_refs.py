@@ -61,14 +61,24 @@ def resolve(env_vars: dict[str, str], refs: dict[str, str]) -> dict[str, str]:
 
 
 def validate_env_value(value: str, want_db: bool, want_storage: bool) -> None:
-    """Raise EnvValidationError if value looks like a ref but is invalid or unavailable."""
-    ref = resolve_ref(value)
-    if ref is None:
+    """Raise EnvValidationError unless value is a plain literal or exactly one valid, available ref.
+
+    Any value containing `${{` must be exactly one allowed reference (whitespace inside the
+    braces is fine); look-alikes, wrong case, and mid-string use are rejected to avoid confusion.
+    """
+    if "${{" not in value:
         return
-    if ref not in ALLOWED_REFS:
-        raise EnvValidationError(f"unknown reference {value!r}; allowed: {sorted(ALLOWED_REFS)}")
+    ref = resolve_ref(value)
+    allowed = ", ".join("${{ %s }}" % r for r in sorted(ALLOWED_REFS))
+    if ref is None or ref not in ALLOWED_REFS:
+        raise EnvValidationError(
+            f"invalid reference in value: a value containing '${{{{' must be exactly one "
+            f"reference. Allowed: {allowed}"
+        )
     domain = ref.split(".", 1)[0]
     if domain == "db" and not want_db:
-        raise EnvValidationError(f"{value!r} references a database, but this app did not request one")
+        raise EnvValidationError(
+            f"${{{{ {ref} }}}} references a database, but this app did not request one (set want_db)")
     if domain == "storage" and not want_storage:
-        raise EnvValidationError(f"{value!r} references storage, but this app did not request any")
+        raise EnvValidationError(
+            f"${{{{ {ref} }}}} references storage, but this app did not request any (set want_storage)")
