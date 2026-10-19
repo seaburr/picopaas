@@ -19,7 +19,7 @@ variable "node_count" {
 variable "max_nodes" {
   description = "Autoscaler ceiling. Each node above node_count can add $24/mo. Equal to node_count disables autoscaling."
   type        = number
-  default     = 1 # autoscale off while debugging DOKS create 422s (2026-10-19); Chas approved 2, restore once the cluster exists
+  default     = 2
 }
 
 variable "use_managed_mysql" {

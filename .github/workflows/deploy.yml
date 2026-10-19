@@ -66,9 +66,16 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: doctl kubernetes cluster kubeconfig save picopaas-nyc3
 
-      - name: Roll out image
+      - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
+
+      # Apply the platform manifests too (not just the image), so changes like replicas/RBAC ship with every deploy.
+      - name: Roll out image + platform manifests
+        if: steps.gate.outputs.run == 'true'
+        env:
+          IMAGE: ghcr.io/seaburr/picopaas:${{ steps.tag.outputs.short }}
         run: |
-          kubectl -n picopaas-system set image deployment/picopaas \
-            picopaas=ghcr.io/seaburr/picopaas:${{ steps.tag.outputs.short }}
+          kubectl apply -f deploy/platform/rbac.yaml
+          sed "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" deploy/platform/deployment.yaml | kubectl apply -f -
+          kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
           kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s

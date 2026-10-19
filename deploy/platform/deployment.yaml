@@ -12,7 +12,14 @@ metadata:
   labels:
     app: picopaas
 spec:
-  replicas: 1
+  # HA (Chas, 2026-10-19): two replicas so deploys/node drains never take the API down. The reconciler/quota
+  # jobs are leader-elected via MySQL GET_LOCK, so only one replica runs them.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: picopaas
@@ -21,6 +28,14 @@ spec:
       labels:
         app: picopaas
     spec:
+      # Spread across nodes when there are several (the autoscaler may add one); still schedules on one node.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: picopaas
       serviceAccountName: picopaas
       automountServiceAccountToken: true # the reconciler needs the k8s API; app pods disable this (ARCHITECTURE.md)
       securityContext:
