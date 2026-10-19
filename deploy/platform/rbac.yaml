@@ -22,10 +22,11 @@ kind: ClusterRole
 metadata:
   name: picopaas-reconciler
 rules:
-  # Create/teardown of per-app namespaces (ns: app-<id>).
+  # Create/teardown of per-app namespaces (ns: app-<id>). `patch` is required: the reconciler uses server-side apply,
+  # which is a PATCH even for creation. (It also lets the platform relabel any namespace; see PENTEST #19.)
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["create", "delete", "get", "list"]
+    verbs: ["create", "delete", "get", "list", "patch"]
 
   # Per-app-namespace objects the reconciler manages (quota, env/cred secrets, Service).
   - apiGroups: [""]
