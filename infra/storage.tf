@@ -11,7 +11,7 @@ import {
 
 resource "digitalocean_spaces_bucket" "platform" {
   name   = "pico-paas-s3-a"
-  region = var.region
+  region = "atl1" # Spaces stays in ATL1 even though compute moved to NYC3; changing it would replace the bucket
   acl    = "private"
 
   force_destroy = false

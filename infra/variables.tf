@@ -1,13 +1,13 @@
 variable "region" {
-  description = "DigitalOcean region. ATL1 preferred per Chas (2026-10-18); NYC3 is the fallback."
+  description = "Region for compute, VPC and MySQL. NYC3 (Chas, 2026-10-19): ATL1 had no DOKS capacity. Spaces stays in atl1 (see storage.tf)."
   type        = string
-  default     = "atl1"
+  default     = "nyc3"
 }
 
 variable "node_size" {
-  description = "Droplet size slug for the DOKS worker node pool. s-2vcpu-2gb ($18): ATL1 had no capacity for any s-2vcpu-4gb variant (Chas chose smaller nodes, 2026-10-19). ~1 GB usable per node."
+  description = "Droplet size slug for the DOKS worker node pool. Moved to NYC3 after ATL1 had no DOKS capacity for any size (Chas, 2026-10-19)."
   type        = string
-  default     = "s-2vcpu-2gb"
+  default     = "s-2vcpu-4gb"
 }
 
 variable "node_count" {

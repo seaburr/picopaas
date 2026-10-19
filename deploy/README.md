@@ -24,7 +24,7 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
 1. **Terraform apply [0001: approval + variant + tokens]** - from `infra/`, with `TF_TOKEN_app_terraform_io`
    set (or via Terraform Cloud UI). `terraform apply` only after request 0001 says APPROVED. Variant flags:
    `use_load_balancer`, `use_managed_mysql`.
-2. **Kubeconfig [0001: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-atl1`.
+2. **Kubeconfig [0001: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-nyc3`.
 3. **Traefik** (helm, Ingress API only; install the chart's CRDs, needed for the default TLSStore)
    ```
    helm repo add traefik https://traefik.github.io/charts && helm repo update

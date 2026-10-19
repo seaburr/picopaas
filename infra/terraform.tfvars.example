@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars and fill in, OR set as TF_VAR_* env vars (preferred for secrets-adjacent
 # values). terraform.tfvars itself is gitignored — never commit it.
 
-region     = "atl1"
+region     = "nyc3"
 node_size  = "s-2vcpu-4gb"
 node_count = 1
 
