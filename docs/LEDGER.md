@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- LATER: add a platform PodDisruptionBudget (minAvailable 1) once the cluster runs ≥2 nodes. On 1 node it would block drains/upgrades (Chas, 2026-10-19).
 - 2026-10-19 UNBLOCKED (manager): cause = the region size list (plain sizes have no capacity in nyc3); now s-1vcpu-2gb-amd + preflight check. Was BLOCKED: DOKS create 422 "insufficient capacity" in atl1+nyc3 at all sizes, versions 1.37/1.36 and
   minimal request. MySQL (db-s-1vcpu-1gb) + VPC are up in nyc3. Waiting on Chas + DO support. Temporary debug settings
   to revert once the cluster exists: max_nodes=1 (approved 2) and the DOKS 1.36 pin in infra/cluster.tf.
@@ -373,3 +374,11 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend] START: live e2e + pentest harness (tests/e2e, tests/pentest)
 - 2026-10-19 [backend] DONE: tests/e2e/{harness,conftest,test_live}.py + README, tests/pentest/{test_isolation.py,README.md}, pytest markers e2e/pentest in pytest.ini. Skipped unless E2E_USER_TOKEN+E2E_ADMIN_TOKEN set; 159 pass, 56 skipped offline. Never run against the live env yet. Not committed.
 - 2026-10-19 [scm-security] DONE: committed+pushed infra SKUs, db.ca_cert/db.tls refs (#6), testapps + workflow; tests/e2e, tests/pentest, pytest.ini left uncommitted (other agent).
+- 2026-10-19 [frontend] START: admin Health view (/admin/health)
+- 2026-10-19 [frontend] DONE: HealthView.vue, DbCapacityBar.vue (shared w/ AdminView), types/api/router/NavBar; typecheck+build pass; needs GET /admin/health. Uncommitted.
+- 2026-10-19 [backend-dev] START: GET /admin/health (admin dashboard backend)
+- 2026-10-19 [backend-dev] DONE: GET /admin/health, 15s in-process cache (app/health.py, routers/admin.py, dependencies.get_kube); KubeProvider.cluster_snapshot (base/kube/fake); MAX_NODES config + bootstrap.yml literal (2); RBAC read-only nodes + metrics.k8s.io nodes/pods get/list; tests/test_admin_health.py. Uncommitted.
+- 2026-10-19 [frontend] START: per-app health check fields (form, list, spec sample)
+- 2026-10-19 [frontend] DONE: types, AppFormView section+validation, AppsListView line, SpecEditor sample; typecheck+build pass. Uncommitted.
+- 2026-10-19 [backend-dev] START: per-app HTTP health checks (opt-in, custom path) + PORT env injection
+- 2026-10-19 [backend-dev] DONE: App.health_check_enabled/health_check_path (migration a7d4e0c3b9f1), app/health_path.py validator, schemas/spec (`healthCheck`)/routers/reconciler/k8s_manifests probes; PORT=<port> container env unless user env defines PORT; PATCH and spec update set status=pending on health change so the reconciler rolls the pod; docs/CLI.md; tests/test_health_check.py; test_db_ca_cert downgrade target fixed. Uncommitted.
