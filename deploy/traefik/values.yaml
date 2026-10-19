@@ -71,6 +71,10 @@ service:
     service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
     service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
     service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "false"
+    # Hairpin fix: makes the CCM publish status.hostname instead of status.ip, so kube-proxy does not
+    # add the LB IP to node iptables and short-circuit in-cluster clients (pods reaching
+    # https://<app>.raisehellpraisedale.xyz). bootstrap.yml upserts the A record `lb` -> LB IP.
+    service.beta.kubernetes.io/do-loadbalancer-hostname: "lb.raisehellpraisedale.xyz"
   spec:
     externalTrafficPolicy: Local
 

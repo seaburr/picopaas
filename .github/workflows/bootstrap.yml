@@ -3,7 +3,7 @@ name: bootstrap
 # One-shot, re-runnable cluster bring-up for the managed-MySQL + LB variant (deploy/README.md steps 2-8).
 # Run by hand after the terraform workflow has created the cluster. Idempotent: helm upgrade --install,
 # kubectl apply, DNS upserts, and existing secrets (platform DB password) are
-# read back and never rotated. Never touches TXT or any DNS record other than A `*` and `picopaas`.
+# read back and never rotated. Never touches TXT or any DNS record other than A `*`, `picopaas` and `lb`.
 on:
   workflow_dispatch:
     inputs:
@@ -88,21 +88,27 @@ jobs:
 
       # ---- step 3: Traefik (creates the DO load balancer; chart CRDs installed for the default TLSStore) ----
       # Cluster replacement leaves the old cluster's load balancer behind, still holding the LB name we use
-      # (deploy/traefik/values.yaml do-loadbalancer-name: picopaas). Delete it unless it belongs to THIS cluster.
+      # (deploy/traefik/values.yaml do-loadbalancer-name: picopaas). DO LBs here carry no tags, so identify the LIVE
+      # one by the id the DO cloud-controller writes onto the Traefik Service, and only ever delete other LBs named
+      # picopaas. If the Service exists but its LB id can't be read, delete nothing.
       - name: Delete orphaned load balancers
         if: steps.gate.outputs.run == 'true'
         run: |
-          cur=$(doctl kubernetes cluster get "$CLUSTER_NAME" -o json | jq -r 'if type=="array" then .[0] else . end | .id')
-          curip=$(kubectl -n traefik get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-          lbs=$(doctl compute load-balancer list -o json)
-          echo "$lbs" | jq -c '.[] | {id, name, tag, tags}'
-          echo "$lbs" | jq -r --arg cur "$cur" --arg curip "$curip" '.[]
-              | select(.name == "picopaas")
-              | select($curip == "" or .ip != $curip)
-              | select((((.tags // []) + [(.tag // "")]) | map(select(contains($cur))) | length) == 0)
-              | .id' \
+          set -euo pipefail
+          live_id=""
+          if kubectl -n traefik get svc traefik >/dev/null 2>&1; then
+            live_id=$(kubectl -n traefik get svc traefik \
+              -o jsonpath='{.metadata.annotations.kubernetes\.digitalocean\.com/load-balancer-id}')
+            if [ -z "$live_id" ]; then
+              echo "::warning::traefik Service exists but has no load-balancer-id yet; skipping orphan cleanup"
+              exit 0
+            fi
+          fi
+          echo "live LB id: ${live_id:-<none: no traefik Service in this cluster yet>}"
+          doctl compute load-balancer list -o json \
+            | jq -r --arg live "$live_id" '.[] | select(.name == "picopaas" and .id != $live) | .id' \
             | while read -r id; do
-                echo "deleting orphaned LB picopaas ($id): not tagged for current cluster $cur"
+                echo "deleting orphaned LB picopaas ($id)"
                 doctl compute load-balancer delete "$id" --force
               done
       - name: Install Traefik
@@ -148,13 +154,15 @@ jobs:
           kubectl get apiservice v1beta1.metrics.k8s.io -o yaml || true
           exit 1
 
+      # The Service carries do-loadbalancer-hostname, so the CCM publishes status.hostname (not .ip) and the IP
+      # comes from the DO API. The annotation only sets that field; it does not need the DNS record to exist first.
       - name: Wait for the load balancer IP
         if: steps.gate.outputs.run == 'true'
         run: |
           ip=""
           for i in $(seq 1 60); do
-            ip=$(kubectl -n traefik get svc traefik \
-              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            ip=$(doctl compute load-balancer list -o json \
+              | jq -r '[.[] | select(.name == "picopaas" and .status == "active" and .ip != "")][0].ip // empty')
             [ -n "$ip" ] && break
             echo "waiting for LB IP ($i/60)"; sleep 10
           done
@@ -162,12 +170,12 @@ jobs:
           echo "LB_IP=$ip" >> "$GITHUB_ENV"
           echo "LB IP: $ip"
 
-      # ---- DNS: only A records `*` and `picopaas`. TXT and everything else are never listed for write. ----
+      # ---- DNS: only A records `*`, `picopaas` and `lb` (lb = do-loadbalancer-hostname hairpin fix). TXT and everything else are never listed for write. ----
       - name: Upsert DNS A records
         if: steps.gate.outputs.run == 'true'
         run: |
           records=$(doctl compute domain records list "$DOMAIN" -o json)
-          for name in '*' picopaas; do
+          for name in '*' picopaas lb; do
             id=$(echo "$records" | jq -r --arg n "$name" '[.[] | select(.type == "A" and .name == $n)][0].id // empty')
             cur=$(echo "$records" | jq -r --arg n "$name" '[.[] | select(.type == "A" and .name == $n)][0].data // empty')
             if [ -z "$id" ]; then

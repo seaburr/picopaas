@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-19 [infra-ops] DONE: Traefik Service gets do-loadbalancer-hostname=lb.raisehellpraisedale.xyz (pod->own-LB hairpin fix); bootstrap upserts A `lb`, LB IP now read from doctl. Uncommitted; not applied.
 - LATER: add a platform PodDisruptionBudget (minAvailable 1) once the cluster runs ≥2 nodes. On 1 node it would block drains/upgrades (Chas, 2026-10-19).
 - 2026-10-19 UNBLOCKED (manager): cause = the region size list (plain sizes have no capacity in nyc3); now s-1vcpu-2gb-amd + preflight check. Was BLOCKED: DOKS create 422 "insufficient capacity" in atl1+nyc3 at all sizes, versions 1.37/1.36 and
   minimal request. MySQL (db-s-1vcpu-1gb) + VPC are up in nyc3. Waiting on Chas + DO support. Temporary debug settings
@@ -402,3 +403,11 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [frontend-dev] START: uberadmin lands on Health; Deploy button; users/workloads/pending-approval on Health
 - 2026-10-19 [frontend-dev] DONE: / redirects by role (uberadmin -> /admin/health, users -> /apps; list now at /apps, nav 'My apps'); Health: Deploy button, users/pending/workloads cards, approve list (fields optional). Uncommitted.
 - 2026-10-19 [backend-dev] DONE: /admin/health adds users, pending_users, workloads (health.db_counts, uncached, merged per request); test_platform_counts. Uncommitted.
+- 2026-10-19 [backend-dev] START: docs — USER_GUIDE.md, OPERATIONS.md, API.md (verified against code)
+- 2026-10-19 [backend-dev] DONE: docs/USER_GUIDE.md, docs/OPERATIONS.md, docs/API.md + README link line. Docs only. Uncommitted.
+- 2026-10-19 [backend-dev] START: review fixes (teardown retry, admin audit, db ca_cert, testapps README, cost docs)
+- 2026-10-19 [backend-dev] DONE: review fixes: delete_app keeps rows+soft-delete on failed drop/bucket delete (not-found = ok, logged via _provider_error_summary); PATCH /admin/users audited + 404 deleted; db-server create/patch audited; ca_cert on create/patch (x509 validated, "" clears); testapps README valid specs + test; cost docs ≈$60 (+$28 2nd node). Tests pass. Uncommitted.
+- 2026-10-19 [infra-ops] START: LB hairpin fix (do-loadbalancer-hostname annotation + lb A record)
+- 2026-10-19 [infra-ops] DONE: deploy/traefik/values.yaml annotation; bootstrap.yml lb A record + IP via doctl (svc status has hostname now). externalTrafficPolicy/proxy-protocol unchanged. Uncommitted.
+- START (backend): env ref validation (pentest #16) + pentest harness toolbox arg fixes
+- DONE (backend): validate_env_value rejects any value containing `${{` unless exactly one allowed, available ref (422 lists allowed refs; create/PATCH/spec); tests in tests/test_env_refs.py; pentest port_scan now passes int list, mysql_login no longer sends empty ca_pem. Uncommitted.
