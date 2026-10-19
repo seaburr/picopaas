@@ -8,10 +8,11 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, health, models
+from app import audit, crypto, health, models, resources
 from app.db import get_db
 from app.dependencies import get_kube, require_uberadmin
 from app.routers.apps import DOMAIN_SUFFIX
+from app.schemas import ResourcesOut
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_uberadmin)])
 
@@ -37,6 +38,8 @@ class AdminAppOut(BaseModel):
     owner_email: str
     image: str
     created_at: datetime
+    resources: Optional[ResourcesOut] = None
+    exceeds_platform_caps: Optional[bool] = None  # only set on the PATCH /resources response
 
 
 class AuditOut(BaseModel):
@@ -201,7 +204,8 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 
 def _app_admin_out(a: models.App) -> AdminAppOut:
     return AdminAppOut(id=a.id, name=a.name, hostname=f"{a.hostname}.{DOMAIN_SUFFIX}", status=a.status,
-                       owner_id=a.owner_id, owner_email=a.owner.email, image=a.image, created_at=a.created_at)
+                       owner_id=a.owner_id, owner_email=a.owner.email, image=a.image, created_at=a.created_at,
+                       resources=resources.describe(a))
 
 
 def _get_app_or_404(db: Session, app_id: int) -> models.App:
@@ -242,6 +246,46 @@ def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User
     return _app_admin_out(a)
 
 
+class AppResourcesPatch(BaseModel):
+    """Omitted field = unchanged; explicit null = reset to the platform default."""
+    model_config = ConfigDict(extra="forbid")
+    cpu_request_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=resources.CPU_MAX_M)
+    cpu_limit_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=resources.CPU_MAX_M)
+    mem_request_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
+    mem_limit_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
+
+
+def _res_str(a: models.App) -> str:
+    return ",".join(f"{f}={getattr(a, f)}" for f in resources.FIELDS)
+
+
+@router.patch("/apps/{app_id}/resources", response_model=AdminAppOut)
+def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = Depends(get_db),
+                        admin: models.User = Depends(require_uberadmin)):
+    a = _get_app_or_404(db, app_id)
+    changes = {f: getattr(payload, f) for f in payload.model_fields_set}
+    new = {f: changes.get(f, getattr(a, f)) for f in resources.FIELDS}
+    eff = resources.effective(type("N", (), new))  # unclamped check below uses raw merged values
+    cpu_req = new["cpu_request_m"] or resources.DEFAULT_CPU_REQUEST_M
+    mem_req = new["mem_request_mi"] or resources.DEFAULT_MEM_REQUEST_MI
+    if cpu_req > eff["cpu_limit_m"]:
+        raise HTTPException(status_code=422, detail="cpu_request_m must be <= cpu_limit_m")
+    if mem_req > eff["mem_limit_mi"]:
+        raise HTTPException(status_code=422, detail="mem_request_mi must be <= mem_limit_mi")
+    old = _res_str(a)
+    for f, v in new.items():
+        setattr(a, f, v)
+    if a.status != "suspended":  # suspended apps pick this up when unsuspended
+        a.status = "pending"
+        a.status_detail = None
+    a.reset_retry()
+    db.commit()
+    audit.record(db, admin, "app.resources", "app", a.id, f"{old} -> {_res_str(a)}")
+    out = _app_admin_out(a)
+    out.exceeds_platform_caps = out.resources.exceeds_platform_caps
+    return out
+
+
 @router.delete("/apps/{app_id}", status_code=204)
 def admin_delete_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
     a = _get_app_or_404(db, app_id)
@@ -279,12 +323,8 @@ def list_db_servers(db: Session = Depends(get_db)):
 
 @router.get("/health")
 def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
-    def _build():
-        servers = [_server_out(db, s).model_dump()
-                   for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
-        return health.build(db, kube, servers)
-
-    return {**health.get_cached(_build), **health.db_counts(db)}
+    servers = [_server_out(db, s).model_dump() for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
+    return {**health.build(db, kube, servers), **health.db_counts(db)}
 
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)

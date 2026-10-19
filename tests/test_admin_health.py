@@ -149,3 +149,27 @@ def test_platform_counts(make_client, kube, db_session):
     w = admin.get("/admin/health").json()["workloads"]
     assert w == {"apps_total": 4, "with_db": 2, "with_storage": 2,
                  "by_status": {"running": 2, "deploying": 0, "pending": 0, "error": 1, "suspended": 1}}
+
+
+def test_background_mode_never_blocks_and_warms(make_client, kube):
+    admin = _admin(make_client)
+    health._background = True  # as after scheduler.start_background
+    d = admin.get("/admin/health").json()
+    assert d["warming"] is True and d["generated_at"] is None and d["nodes"] == [] and d["platform"] == []
+    assert "users" in d and kube.snapshot_calls == 0  # DB counts still served, k8s untouched
+    kube.snapshot = {"nodes": [_node()], "pods": [], "metrics_available": True, "errors": []}
+    health.refresh(kube)
+    d = admin.get("/admin/health").json()
+    assert d["warming"] is False and d["generated_at"] and d["cluster"]["node_count"] == 1
+    admin.get("/admin/health")
+    assert kube.snapshot_calls == 1  # requests only read the cache
+
+
+def test_start_background_warms_in_thread(kube):
+    import time as _t
+    health.start_background(lambda: kube)
+    for _ in range(50):
+        if kube.snapshot_calls:
+            break
+        _t.sleep(0.05)
+    assert kube.snapshot_calls == 1 and health._cache["value"] is not None

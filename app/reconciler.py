@@ -27,7 +27,7 @@ from typing import Any, Callable, Optional
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app import config, crypto, env_refs, k8s_manifests, models
+from app import config, crypto, env_refs, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
@@ -304,6 +304,7 @@ def reconcile_app(
         replicas=0 if app.status == "suspended" else 1,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
+        resources=resources.effective(app),
     )
     suspended = app.status == "suspended"
     flat = k8s_manifests.flatten_manifests(manifests)

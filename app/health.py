@@ -1,6 +1,8 @@
 """Admin health dashboard payload (GET /admin/health). Cached in-process for CACHE_TTL_S."""
 from __future__ import annotations
 
+import logging
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -8,25 +10,68 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import config, models
-from app.k8s_manifests import POD_LIMIT_CPU, POD_LIMIT_MEMORY, namespace_name
+from app import resources
+from app.k8s_manifests import namespace_name
 from app.providers.base import KubeProvider
+
+log = logging.getLogger(__name__)
 
 CACHE_TTL_S = 15
 PLATFORM_NAMESPACES = ("picopaas-system", "traefik", "cert-manager")
 
+# Cache of the (slow) k8s snapshot only; DB-derived data is built per request.
+# {"at": monotonic secs, "generated_at": iso str, "snap": dict, "errors": [str]}
 _cache: dict[str, Any] = {"at": None, "value": None}
+_lock = threading.Lock()
+_background = False  # True once start_background() ran: requests then never block on k8s
 
 
 def reset_cache() -> None:
+    global _background
     _cache["at"] = _cache["value"] = None
+    _background = False
 
 
-def _limit_cpu_m() -> int:
-    return int(POD_LIMIT_CPU[:-1]) if POD_LIMIT_CPU.endswith("m") else int(float(POD_LIMIT_CPU) * 1000)
+def refresh(kube: KubeProvider) -> None:
+    """Fetch a fresh cluster snapshot into the cache. Never raises; no exception text is kept."""
+    errors: list[str] = []
+    try:
+        snap = kube.cluster_snapshot()
+    except Exception as exc:  # noqa: BLE001 - never leak exception text (could echo URLs/creds)
+        snap = {"nodes": [], "pods": [], "metrics_available": False, "errors": []}
+        errors.append(f"cluster snapshot failed ({type(exc).__name__})")
+    errors.extend(snap.get("errors", []))
+    value = {"snap": snap, "errors": errors, "generated_at": datetime.now(timezone.utc).isoformat()}
+    with _lock:
+        _cache["at"], _cache["value"] = time.monotonic(), value
 
 
-def _limit_mem_mi() -> int:
-    return int(POD_LIMIT_MEMORY[:-2])  # "512Mi"
+def start_background(kube_getter) -> None:
+    """Mark the cache as background-refreshed (requests never block) and warm it in a thread.
+    The caller schedules `refresh` every CACHE_TTL_S (see app/scheduler.py)."""
+    global _background
+    _background = True
+
+    def _warm():
+        try:
+            refresh(kube_getter())
+        except Exception:  # noqa: BLE001
+            log.exception("health warm-up failed")
+
+    threading.Thread(target=_warm, name="health-warmup", daemon=True).start()
+
+
+def _get_snapshot(kube: KubeProvider) -> dict[str, Any] | None:
+    """Cached snapshot. None = still warming (background mode, nothing cached yet).
+    Without a background refresher (dev/tests) falls back to a synchronous refresh every CACHE_TTL_S."""
+    with _lock:
+        value, at = _cache["value"], _cache["at"]
+    if _background:
+        return value
+    if value is None or time.monotonic() - at >= CACHE_TTL_S:
+        refresh(kube)
+        value = _cache["value"]
+    return value
 
 
 def _sum(vals: list) -> Any:
@@ -35,13 +80,12 @@ def _sum(vals: list) -> Any:
 
 
 def build(db: Session, kube: KubeProvider, server_outs: list[dict]) -> dict[str, Any]:
-    errors: list[str] = []
-    try:
-        snap = kube.cluster_snapshot()
-    except Exception as exc:  # noqa: BLE001 - never leak exception text (could echo URLs/creds)
-        snap = {"nodes": [], "pods": [], "metrics_available": False, "errors": []}
-        errors.append(f"cluster snapshot failed ({type(exc).__name__})")
-    errors.extend(snap.get("errors", []))
+    cached = _get_snapshot(kube)
+    warming = cached is None
+    if warming:
+        snap, errors, generated_at = {"nodes": [], "pods": [], "metrics_available": False}, [], None
+    else:
+        snap, errors, generated_at = cached["snap"], list(cached["errors"]), cached["generated_at"]
     nodes, pods = snap.get("nodes", []), snap.get("pods", [])
 
     by_ns: dict[str, list[dict]] = {}
@@ -58,12 +102,13 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict]) -> dict[str,
     for app_, email in q.all():
         ns = namespace_name(app_.id)
         ps = by_ns.get(ns, [])
+        eff = resources.effective(app_)
         apps.append({
             "id": app_.id, "name": app_.name, "owner_email": email, "status": app_.status, "namespace": ns,
             "pods_ready": sum(1 for p in ps if p["ready"]), "pods_total": len(ps),
             "restarts": sum(p["restarts"] for p in ps),
             "cpu_used_m": _sum([p["cpu_used_m"] for p in ps]), "mem_used_mi": _sum([p["mem_used_mi"] for p in ps]),
-            "cpu_limit_m": _limit_cpu_m(), "mem_limit_mi": _limit_mem_mi(),
+            "cpu_limit_m": eff["cpu_limit_m"], "mem_limit_mi": eff["mem_limit_mi"],
         })
 
     platform = [
@@ -73,7 +118,8 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict]) -> dict[str,
     ]
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": generated_at,  # when the k8s snapshot was taken (null while warming)
+        "warming": warming,
         "metrics_available": bool(snap.get("metrics_available", False)),
         "errors": errors,
         "cluster": {"node_count": len(nodes), "max_nodes": config.MAX_NODES, "pods_total": len(pods)},
@@ -82,15 +128,6 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict]) -> dict[str,
         "platform": platform,
         "db_servers": server_outs,
     }
-
-
-def get_cached(builder) -> dict[str, Any]:
-    now = time.monotonic()
-    if _cache["value"] is not None and now - _cache["at"] < CACHE_TTL_S:
-        return _cache["value"]
-    value = builder()
-    _cache["at"], _cache["value"] = now, value
-    return value
 
 
 WORKLOAD_STATUSES = ("running", "deploying", "pending", "error", "suspended")

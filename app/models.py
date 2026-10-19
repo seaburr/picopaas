@@ -88,6 +88,11 @@ class App(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # False when only a user change can fix the error (invalid env refs, unreadable secrets): never auto-retried.
     error_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
+    # Uberadmin resource overrides; NULL = platform default (app/resources.py).
+    cpu_request_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cpu_limit_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mem_request_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mem_limit_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 

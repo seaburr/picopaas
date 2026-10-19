@@ -113,6 +113,15 @@ class AppUpdate(BaseModel):
         return None if v is None else validate_health_path(v)
 
 
+class ResourcesOut(BaseModel):
+    cpu_request_m: int
+    cpu_limit_m: int
+    mem_request_mi: int
+    mem_limit_mi: int
+    overridden: bool = False
+    exceeds_platform_caps: bool = False
+
+
 class AppOut(BaseModel):
     id: int
     owner_id: int
@@ -128,4 +137,5 @@ class AppOut(BaseModel):
     status_detail: Optional[str] = None
     retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)
     created_at: datetime
+    resources: Optional[ResourcesOut] = None
     env: List[EnvVarOut] = Field(default_factory=list)

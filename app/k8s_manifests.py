@@ -88,17 +88,25 @@ def namespace_manifest(app_id: int) -> dict[str, Any]:
     }
 
 
-def resource_quota_manifest(app_id: int) -> dict[str, Any]:
+def _res(resources: dict[str, int] | None) -> dict[str, int]:
+    from app import resources as r
+
+    return resources or r.effective(None)
+
+
+def resource_quota_manifest(app_id: int, resources: dict[str, int] | None = None) -> dict[str, Any]:
+    # 2x the effective limits: headroom for the rolling-update surge pod (see comment above).
+    e = _res(resources)
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
         "metadata": {"name": "app-quota", "namespace": namespace_name(app_id)},
         "spec": {
             "hard": {
-                "limits.cpu": QUOTA_LIMITS_CPU,
-                "limits.memory": QUOTA_LIMITS_MEMORY,
-                "requests.cpu": QUOTA_REQUESTS_CPU,
-                "requests.memory": QUOTA_REQUESTS_MEMORY,
+                "limits.cpu": f"{2 * e['cpu_limit_m']}m",
+                "limits.memory": f"{2 * e['mem_limit_mi']}Mi",
+                "requests.cpu": f"{2 * e['cpu_limit_m']}m",
+                "requests.memory": f"{2 * e['mem_limit_mi']}Mi",
                 "pods": QUOTA_PODS,
                 "services": QUOTA_SERVICES,
                 # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
@@ -110,7 +118,8 @@ def resource_quota_manifest(app_id: int) -> dict[str, Any]:
     }
 
 
-def limit_range_manifest(app_id: int) -> dict[str, Any]:
+def limit_range_manifest(app_id: int, resources: dict[str, int] | None = None) -> dict[str, Any]:
+    e = _res(resources)
     return {
         "apiVersion": "v1",
         "kind": "LimitRange",
@@ -119,14 +128,9 @@ def limit_range_manifest(app_id: int) -> dict[str, Any]:
             "limits": [
                 {
                     "type": "Container",
-                    "default": {
-                        "cpu": LIMIT_RANGE_DEFAULT_CPU,
-                        "memory": LIMIT_RANGE_DEFAULT_MEMORY,
-                    },
-                    "defaultRequest": {
-                        "cpu": LIMIT_RANGE_DEFAULT_REQUEST_CPU,
-                        "memory": LIMIT_RANGE_DEFAULT_REQUEST_MEMORY,
-                    },
+                    "max": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
+                    "default": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
+                    "defaultRequest": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi"},
                 }
             ]
         },
@@ -332,7 +336,9 @@ def deployment_manifest(
     health_check_enabled: bool = False,
     health_check_path: str = "/healthz",
     user_env: dict[str, str] | None = None,
+    resources: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    e = _res(resources)
     name = _resource_name(app_id)
     pod_labels = {"app": name}
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
@@ -390,6 +396,10 @@ def deployment_manifest(
                             "name": "app",
                             "image": image,
                             "ports": [{"containerPort": port}],
+                            "resources": {
+                                "requests": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi"},
+                                "limits": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
+                            },
                             "envFrom": [{"secretRef": {"name": _secret_name(app_id)}}],
                             "securityContext": {
                                 "runAsNonRoot": RUN_AS_NON_ROOT,
@@ -467,18 +477,20 @@ def render_app_manifests(
     health_check_path: str = "/healthz",
     mysql_port: int | None = None,
     storage_ips: list[str] | None = None,
+    resources: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
-        "resource_quota": resource_quota_manifest(app_id),
-        "limit_range": limit_range_manifest(app_id),
+        "resource_quota": resource_quota_manifest(app_id, resources),
+        "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,
                                        health_check_enabled=health_check_enabled,
-                                       health_check_path=health_check_path, user_env=env),
+                                       health_check_path=health_check_path, user_env=env,
+                                       resources=resources),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port),
     }

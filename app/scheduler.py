@@ -202,5 +202,15 @@ def start_scheduler() -> BackgroundScheduler:
     sched = BackgroundScheduler()
     sched.add_job(reconcile_job, "interval", seconds=15, max_instances=1, coalesce=True, id="reconcile")
     sched.add_job(quota_job, "interval", minutes=5, max_instances=1, coalesce=True, id="quota")
+    # Health snapshot refresh runs on EVERY replica (each has its own in-memory cache), not just the leader.
+    from app import health
+    from app.dependencies import get_kube
+
+    def _health_refresh() -> None:
+        health.refresh(get_kube())
+
+    sched.add_job(_health_refresh, "interval", seconds=health.CACHE_TTL_S, max_instances=1, coalesce=True,
+                  id="health")
+    health.start_background(get_kube)
     sched.start()
     return sched
