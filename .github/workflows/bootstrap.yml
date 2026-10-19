@@ -87,20 +87,23 @@ jobs:
           kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
       # ---- step 3: Traefik (creates the DO load balancer; chart CRDs installed for the default TLSStore) ----
-      # Cluster replacement leaves the old cluster's load balancer behind (DOKS tags it k8s:<cluster-id>).
-      # Delete only LBs tagged for a k8s cluster that no longer exists.
+      # Cluster replacement leaves the old cluster's load balancer behind, still holding the LB name we use
+      # (deploy/traefik/values.yaml do-loadbalancer-name: picopaas). Delete it unless it belongs to THIS cluster.
       - name: Delete orphaned load balancers
         if: steps.gate.outputs.run == 'true'
         run: |
-          live=$(doctl kubernetes cluster list -o json | jq -r '.[].id')
-          doctl compute load-balancer list -o json | jq -r '.[] | [.id, .name, ((.tags // []) | map(select(startswith("k8s:"))) | .[0] // "")] | @tsv' \
-            | while IFS=$'\t' read -r id name tag; do
-                cid=${tag#k8s:}
-                [ -n "$tag" ] || continue
-                if ! grep -qx "$cid" <<<"$live"; then
-                  echo "deleting orphaned LB $name ($id), tagged for gone cluster $cid"
-                  doctl compute load-balancer delete "$id" --force
-                fi
+          cur=$(doctl kubernetes cluster get "$CLUSTER_NAME" -o json | jq -r 'if type=="array" then .[0] else . end | .id')
+          curip=$(kubectl -n traefik get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+          lbs=$(doctl compute load-balancer list -o json)
+          echo "$lbs" | jq -c '.[] | {id, name, tag, tags}'
+          echo "$lbs" | jq -r --arg cur "$cur" --arg curip "$curip" '.[]
+              | select(.name == "picopaas")
+              | select($curip == "" or .ip != $curip)
+              | select((((.tags // []) + [(.tag // "")]) | map(select(contains($cur))) | length) == 0)
+              | .id' \
+            | while read -r id; do
+                echo "deleting orphaned LB picopaas ($id): not tagged for current cluster $cur"
+                doctl compute load-balancer delete "$id" --force
               done
       - name: Install Traefik
         if: steps.gate.outputs.run == 'true'
