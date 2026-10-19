@@ -127,6 +127,7 @@ function onClick(e: MouseEvent) {
 .doc table { border-collapse: collapse; font-size: 14px; width: 100%; background: #16161f; border: 1px solid #2c2c3c; }
 .doc th, .doc td { padding: 6px 12px; border: 1px solid #2c2c3c; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: normal; }
 .doc th { white-space: nowrap; }
+.doc td code { overflow-wrap: normal; white-space: nowrap; }
 .doc .tbl { overflow-x: auto; }
 .doc th { background: #1c1c28; color: #fff; }
 .doc blockquote { border-left: 3px solid #2c2c3c; padding-left: 1rem; color: #a1a1aa; margin: .8rem 0; }
