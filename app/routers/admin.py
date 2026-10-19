@@ -51,6 +51,7 @@ class AuditOut(BaseModel):
 
 
 class AdminUserPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     app_limit: int = Field(ge=0)
 
 
@@ -67,6 +68,7 @@ class DbServerOut(BaseModel):
 
 
 class DbServerCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: str = Field(min_length=1, max_length=255)
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(default=3306, gt=0, le=65535)
@@ -76,6 +78,7 @@ class DbServerCreate(BaseModel):
 
 
 class DbServerPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     status: Optional[Literal["active", "draining", "full"]] = None
     max_databases: Optional[int] = Field(default=None, gt=0)
 

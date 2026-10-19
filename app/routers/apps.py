@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -256,6 +256,7 @@ def delete_app(
 # --- credential rotation ---------------------------------------------------
 
 class RotateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     target: Literal["db", "storage"]
 
 

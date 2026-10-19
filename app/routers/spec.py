@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ router = APIRouter(prefix="/apps", tags=["apps"])
 
 
 class SpecDeploy(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     spec: str = Field(max_length=MAX_SPEC_BYTES)
     secrets: Dict[str, str] = Field(default_factory=dict)
 

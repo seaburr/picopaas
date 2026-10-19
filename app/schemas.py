@@ -11,11 +11,13 @@ MASKED_VALUE = "********"
 # --- Auth ---
 
 class UserRegister(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     email: EmailStr
     password: str = Field(min_length=8, max_length=256)
 
 
 class UserLogin(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     email: EmailStr
     password: str
 
@@ -52,6 +54,7 @@ class UserOut(BaseModel):
 # --- Env vars ---
 
 class EnvVarIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     key: str
     value: str
     is_secret: bool = False
@@ -75,6 +78,7 @@ class EnvVarOut(BaseModel):
 # --- Apps ---
 
 class AppCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: str = Field(min_length=1, max_length=255)
     image: str = Field(min_length=1, max_length=512)
     port: int = Field(gt=0, le=65535)
@@ -84,6 +88,7 @@ class AppCreate(BaseModel):
 
 
 class AppUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     image: Optional[str] = Field(default=None, min_length=1, max_length=512)
     port: Optional[int] = Field(default=None, gt=0, le=65535)
