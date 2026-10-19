@@ -6,6 +6,9 @@ MySQL DB (100MB) and Spaces bucket (250MB). Caps: 250m CPU, 512MB RAM, 512MB ima
 **`bootstrap.md` is the non-negotiable contract. Read it before doing anything.** Then read:
 - `docs/LEDGER.md`: what's done and what's next (start at "Now / Next")
 - `docs/ARCHITECTURE.md`: design decisions and the cost model
+- `docs/QUESTIONS.md`: **Chas's file.** Open questions + to-dos for him; he answers inline. Read it first every session,
+  carry answers into ARCHITECTURE/requests, and move answered items to its Resolved section. Put every new question for
+  Chas here (one place to look), linking to the request file for background.
 - `docs/requests/`: infra requests to Chas (what / why / monthly cost). Never provision without an approved request.
 
 ## Hard rules

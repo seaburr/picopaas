@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- **Chas's open questions/to-dos live in `docs/QUESTIONS.md`. Check it first.**
 - DONE (backend-dev, 2026-10-19): issues #3/#4/#5 fixed + gitleaks test-value rename (migration e5b2c8d1f3a7). Uncommitted.
 - DONE (backend-dev, 2026-10-19): signup approval + user/app suspend/delete + audit log + SMTP egress block (migration d4e1a7b9c2f6; see Log). Frontend can build against it.
 - NEXT (backend-dev): scheduler imports `app.providers.spaces.SpacesStore` (optional `from_config()`); rename/add it when Spaces lands (current stub is `SpacesObjectStore`). Until then storage reconcile/quota is skipped with a log.
@@ -327,3 +328,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend] DONE: #1 root cause = MySQL 8.4 GRANT ignores wildcard-db grants for the grantor check (1044 even for SELECT). Fix: picopaas_ops SECURITY DEFINER procs + MYSQL_ADMIN_USE_PROCEDURES=1; branch fix/mysql-admin-grants, CI green run 39242817676 (not merged).
 - 2026-10-19 [scm-security] note: .gitleaksignore fingerprint for historical test dummy password (commit 58e2897 line 146); current tree no longer contains it
 - 2026-10-19 [scm-security] DONE: pushed 58c56b5 (#3/#4/#5), merge 3722fb8 (#1), gitleaks ignore; CI all green; procedures reviewed OK (int-validated ids, QUOTE() for passwords); issues 1,3,4,5 closed; branch deleted
+- 2026-10-19 [manager] DONE: added docs/QUESTIONS.md as Chas's answer file; CLAUDE.md points every session at it.
