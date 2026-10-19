@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listAudit, listDbServers, listUsers,
@@ -245,15 +246,7 @@ const input =
               <td class="p-2">{{ s.name }}</td>
               <td class="p-2 font-mono text-xs">{{ s.host }}:{{ s.port }}</td>
               <td class="p-2">
-                <div class="h-2 w-40 overflow-hidden rounded bg-pico-card">
-                  <div
-                    :class="['h-full', s.warn ? 'bg-amber-500' : 'bg-accent']"
-                    :style="{ width: Math.min(100, s.max_databases ? (s.used / s.max_databases) * 100 : 100) + '%' }"
-                  />
-                </div>
-                <span class="text-xs" :class="s.warn ? 'text-amber-400' : 'text-zinc-500'">
-                  {{ s.used }}/{{ s.max_databases }}
-                </span>
+                <DbCapacityBar :server="s" />
               </td>
               <td class="p-2">
                 <select
@@ -272,19 +265,58 @@ const input =
         </table>
 
         <form class="mt-3 grid grid-cols-2 gap-2 rounded-md border border-pico-border bg-pico-panel p-3 sm:grid-cols-3" @submit.prevent="addServer">
-          <input v-model="form.name" required placeholder="name" :class="input" />
-          <input v-model="form.host" required placeholder="host" :class="input" />
-          <input v-model.number="form.port" required type="number" min="1" max="65535" placeholder="port" :class="input" />
-          <input v-model="form.admin_user" required placeholder="admin user" autocomplete="off" :class="input" />
-          <input
-            v-model="form.admin_password"
-            required
-            type="password"
-            placeholder="admin password"
-            autocomplete="new-password"
-            :class="input"
-          />
-          <input v-model.number="form.max_databases" required type="number" min="1" placeholder="max databases" :class="input" />
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Name</span>
+            <input v-model="form.name" required placeholder="primary" :class="input" />
+            <span>Label shown in the admin UI.</span>
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Host</span>
+            <input v-model="form.host" required placeholder="private-….db.ondigitalocean.com" :class="input" />
+            <span>Hostname the platform connects to. For DO managed MySQL use the private host.</span>
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Port</span>
+            <input
+              v-model.number="form.port"
+              required
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]{1,5}"
+              placeholder="25060"
+              :class="input"
+            />
+            <span>MySQL port: 25060 for DO managed, 3306 in-cluster.</span>
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Admin user</span>
+            <input v-model="form.admin_user" required placeholder="doadmin" autocomplete="off" :class="input" />
+            <span>Account used to create each app's database and user. Never root.</span>
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Admin password</span>
+            <input
+              v-model="form.admin_password"
+              required
+              type="password"
+              autocomplete="new-password"
+              :class="input"
+            />
+            <span>Stored encrypted; never shown again.</span>
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+            <span class="font-medium text-zinc-200">Max databases</span>
+            <input
+              v-model.number="form.max_databases"
+              required
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]{1,4}"
+              placeholder="25"
+              :class="input"
+            />
+            <span>App databases placed here before it counts as full (~25 for a 1 GiB server).</span>
+          </label>
           <div class="col-span-full flex justify-end">
             <button
               type="submit"
