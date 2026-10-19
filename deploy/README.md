@@ -47,6 +47,12 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
      kubectl -n picopaas-data rollout status statefulset/mysql
      kubectl apply -f deploy/mysql/backup-cronjob.yaml
      ```
+     root is localhost-only. Register the platform's `picopaas-env` with `BOOTSTRAP_DB_HOST=mysql.picopaas-data.svc`,
+     `BOOTSTRAP_DB_USER=picopaas_admin`, `BOOTSTRAP_DB_PASSWORD=<MYSQL_ADMIN_PASSWORD>` (never root). Backups use
+     `picopaas_backup` (read-only). Users are created by the `mysql-initdb` ConfigMap on first init only.
+     Hardening an existing MySQL (initdb won't rerun): `kubectl -n picopaas-data exec -it mysql-0 -- sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'`,
+     run the SQL from `deploy/mysql/statefulset.yaml` (`10-users.sh`) with real passwords, then
+     `RENAME USER 'root'@'%' TO 'root'@'localhost'` (or `DROP USER 'root'@'%'`) and remove `MYSQL_ROOT_HOST`.
      Verify a manual backup: `kubectl -n picopaas-data create job --from=cronjob/mysql-backup test-backup`.
 7. **Platform workload**
    ```
@@ -91,7 +97,9 @@ kubectl create secret generic picopaas-env -n picopaas-system \
 
 # in-cluster MySQL only
 kubectl create secret generic mysql-root -n picopaas-data \
-  --from-literal=MYSQL_ROOT_PASSWORD='<placeholder>'
+  --from-literal=MYSQL_ROOT_PASSWORD='<placeholder>' \
+  --from-literal=MYSQL_ADMIN_PASSWORD='<placeholder, >=32 chars e.g. openssl rand -hex 24>' \
+  --from-literal=MYSQL_BACKUP_PASSWORD='<placeholder>'
 kubectl create secret generic mysql-backup-spaces -n picopaas-data \
   --from-literal=SPACES_ACCESS_KEY_ID='<placeholder>' --from-literal=SPACES_SECRET_ACCESS_KEY='<placeholder>' \
   --from-literal=SPACES_BUCKET='<platform bucket name>' --from-literal=SPACES_ENDPOINT='https://atl1.digitaloceanspaces.com'

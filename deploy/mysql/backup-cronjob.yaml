@@ -1,6 +1,6 @@
 # Nightly logical backup -> private platform Spaces bucket, 7-day retention.
 # initContainer dumps+gzips into an emptyDir; main container uploads and prunes.
-# Secrets (by hand, placeholders in README): mysql-root, mysql-backup-spaces
+# Secrets (by hand, placeholders in README): mysql-root (only MYSQL_BACKUP_PASSWORD is read), mysql-backup-spaces
 #   (SPACES_ACCESS_KEY_ID, SPACES_SECRET_ACCESS_KEY, SPACES_BUCKET, SPACES_ENDPOINT e.g. https://atl1.digitaloceanspaces.com)
 apiVersion: batch/v1
 kind: CronJob
@@ -37,16 +37,16 @@ spec:
                 - -c
                 - |
                   set -eu
-                  mysqldump -h mysql.picopaas-data.svc -uroot -p"$MYSQL_ROOT_PASSWORD" \
+                  mysqldump -h mysql.picopaas-data.svc -upicopaas_backup -p"$MYSQL_BACKUP_PASSWORD" \
                     --all-databases --single-transaction --routines --events --triggers \
                     | gzip -9 > /backup/dump.sql.gz
                   test -s /backup/dump.sql.gz
               env:
-                - name: MYSQL_ROOT_PASSWORD
+                - name: MYSQL_BACKUP_PASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: mysql-root
-                      key: MYSQL_ROOT_PASSWORD
+                      key: MYSQL_BACKUP_PASSWORD
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:

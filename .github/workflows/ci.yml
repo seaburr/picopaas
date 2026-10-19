@@ -87,6 +87,22 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m pytest tests/ -m mysql -q
+      # Prove deploy/mysql's initdb script works and that picopaas_admin's narrowed
+      # privileges are enough for MySQLAdminClient (issue #1).
+      - name: Apply deploy/mysql initdb users
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_ADMIN_PASSWORD: ci-admin-password-0123456789abcdef
+          MYSQL_BACKUP_PASSWORD: ci-backup-password-0123456789abcdef
+        run: |
+          ruby -ryaml -e 'YAML.load_stream(File.read("deploy/mysql/statefulset.yaml")).each { |d| puts d["data"]["10-users.sh"] if d && d["kind"] == "ConfigMap" && d["metadata"]["name"] == "mysql-initdb" }' > /tmp/10-users.sh
+          test -s /tmp/10-users.sh
+          bash /tmp/10-users.sh
+      - name: MySQL tests as picopaas_admin
+        env:
+          MYSQL_ADMIN_URL: mysql://picopaas_admin:ci-admin-password-0123456789abcdef@127.0.0.1:3306
+        run: python -m pytest tests/ -m mysql -q
 
   frontend:
     runs-on: ubuntu-latest

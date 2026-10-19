@@ -1,5 +1,6 @@
 # In-cluster MySQL (use_managed_mysql = false). Private: ClusterIP only, NetworkPolicy-restricted.
-# Root password comes from the hand-made Secret `mysql-root` (key MYSQL_ROOT_PASSWORD), see README.
+# Hand-made Secret `mysql-root` (see README) holds MYSQL_ROOT_PASSWORD, MYSQL_ADMIN_PASSWORD,
+# MYSQL_BACKUP_PASSWORD. root is localhost-only; the platform uses `picopaas_admin`, backups use `picopaas_backup`.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,6 +17,45 @@ data:
     skip-name-resolve
     character-set-server=utf8mb4
     collation-server=utf8mb4_0900_ai_ci
+---
+# Runs once, on first initialization of an empty data dir (official image entrypoint). Existing
+# installs: apply the same SQL by hand (see deploy/README.md "Hardening an existing MySQL").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-initdb
+  namespace: picopaas-data
+data:
+  10-users.sh: |
+    #!/bin/bash
+    set -eu
+    # Passwords come from env (Secret mysql-root); they are generated hex/alnum, no quoting issues.
+    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
+    -- Platform admin (MySQLAdminClient). Host '%' because platform pod IPs are ephemeral and a
+    -- pod-CIDR host match would also cover tenant pods (same cluster CIDR), so it gives no real
+    -- isolation. Protection = NetworkPolicy + a >=32 char random password (README: generate with
+    -- openssl rand -hex 24 or longer). Tenants cannot log in without the password.
+    CREATE USER IF NOT EXISTS 'picopaas_admin'@'%' IDENTIFIED BY '${MYSQL_ADMIN_PASSWORD}';
+    -- CREATE USER (global): CREATE USER / ALTER USER / DROP USER for app_<id> users. Cannot be scoped.
+    GRANT CREATE USER ON *.* TO 'picopaas_admin'@'%';
+    -- RELOAD (global): FLUSH PRIVILEGES, which MySQLAdminClient runs after each change. (Redundant after
+    -- GRANT/CREATE USER in MySQL 8; drop this line if the client stops calling FLUSH.)
+    GRANT RELOAD ON *.* TO 'picopaas_admin'@'%';
+    -- Per-app databases only (pattern 'app\_%', underscore escaped): CREATE/DROP DATABASE, plus ALL so that
+    -- the client can run GRANT ALL ON app_<id>.* to the tenant user and REVOKE/GRANT the write privileges
+    -- for read-only quota enforcement. MySQL only lets you grant privileges you hold, with GRANT OPTION,
+    -- so ALL ... WITH GRANT OPTION on this pattern is the tightest set that works. It also lets the
+    -- information_schema.TABLES size query see those schemas. It has NO access to mysql.*, other schemas,
+    -- or global admin privileges.
+    GRANT ALL ON \`app\\_%\`.* TO 'picopaas_admin'@'%' WITH GRANT OPTION;
+
+    -- Backup: read-only, exactly what mysqldump --all-databases --single-transaction --routines --events --triggers needs.
+    CREATE USER IF NOT EXISTS 'picopaas_backup'@'%' IDENTIFIED BY '${MYSQL_BACKUP_PASSWORD}';
+    -- SELECT (read data), SHOW VIEW (views), TRIGGER (--triggers), LOCK TABLES (mysqldump default lock),
+    -- EVENT (--events), PROCESS (tablespace/consistent snapshot metadata queries).
+    GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES, EVENT, PROCESS ON *.* TO 'picopaas_backup'@'%';
+    FLUSH PRIVILEGES;
+    SQL
 ---
 apiVersion: v1
 kind: Service
@@ -69,10 +109,18 @@ spec:
                 secretKeyRef:
                   name: mysql-root
                   key: MYSQL_ROOT_PASSWORD
-            # Allow root from other pods (the platform creates per-app users/DBs as root).
-            # Network access is limited by the NetworkPolicy, not by the MySQL host column.
-            - name: MYSQL_ROOT_HOST
-              value: "%"
+            # MYSQL_ROOT_HOST deliberately NOT set: the official image then creates only root@localhost,
+            # so root cannot log in over the network from any pod (issue #1). Do not set it to "%".
+            - name: MYSQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-root
+                  key: MYSQL_ADMIN_PASSWORD
+            - name: MYSQL_BACKUP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-root
+                  key: MYSQL_BACKUP_PASSWORD
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -86,13 +134,13 @@ spec:
               memory: 768Mi
           readinessProbe:
             exec:
-              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+              command: ["sh", "-c", "mysqladmin ping -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
           livenessProbe:
             exec:
-              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
+              command: ["sh", "-c", "mysqladmin ping -uroot -p\"$MYSQL_ROOT_PASSWORD\""]
             initialDelaySeconds: 60
             periodSeconds: 20
             timeoutSeconds: 5
@@ -105,10 +153,17 @@ spec:
             - name: config
               mountPath: /etc/mysql/conf.d
               readOnly: true
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: mysql-config
+        - name: initdb
+          configMap:
+            name: mysql-initdb
+            defaultMode: 0555
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -3,6 +3,8 @@
 #    tenants cannot edit namespace labels)
 #  - picopaas-system (the platform: provisions per-app DBs)
 #  - pods in picopaas-data itself (the backup CronJob)
+# NetworkPolicy cannot tell platform from tenant at the MySQL layer, so account security is MySQL-side:
+# root is localhost-only; picopaas_admin has a long random password (issue #1).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
