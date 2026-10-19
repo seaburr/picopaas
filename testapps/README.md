@@ -19,8 +19,11 @@ Smoke-tests a basic deploy.
 
 ```yaml
 # app.yaml
+apiVersion: picopaas/v1
 name: hello
 image: ghcr.io/seaburr/picopaas-testapp-hello:latest
+port: 8080
+healthCheck: {enabled: true, path: /healthz}
 env:
   APP_VERSION: "1.0.0"
 ```
@@ -42,8 +45,12 @@ credential):
 
 ```yaml
 # app.yaml
+apiVersion: picopaas/v1
 name: probe
 image: ghcr.io/seaburr/picopaas-testapp-probe:latest
+port: 8080
+resources: {db: true, storage: true}
+healthCheck: {enabled: true, path: /healthz}
 env:
   DB_HOST: ${{ db.host }}
   DB_PORT: ${{ db.port }}
@@ -82,10 +89,12 @@ Checks: `tcp_connect`, `port_scan` (<=100 ports), `http_get` (status + <=2KB bod
 
 ```yaml
 # app.yaml
+apiVersion: picopaas/v1
 name: toolbox
 image: ghcr.io/seaburr/picopaas-testapp-toolbox:latest
-env:
-  TOOLBOX_TOKEN: ${{ secret.toolbox_token }}
+port: 8080
+healthCheck: {enabled: true, path: /healthz}
+secrets: [TOOLBOX_TOKEN]   # value supplied at apply time, never written in the spec
 ```
 
 Never give toolbox real tenant credentials in a shared/long-lived env var; pass them per-request in
@@ -103,6 +112,7 @@ through the platform. Strict `Content-Security-Policy: default-src 'self'`.
 
 ```yaml
 # app.yaml
+apiVersion: picopaas/v1
 name: webpage
 image: ghcr.io/seaburr/picopaas-testapp-webpage:latest
 port: 8080
