@@ -121,9 +121,8 @@ def quota_job() -> None:
     except ImportError:
         log.warning("app.quota missing; quota poll skipped")
         return
-    store = _object_store()
-    if store is None:
-        return
+    # Without Spaces, still enforce DB quotas (storage polls then fail per-row and are logged).
+    store = _object_store() or _NoStorage()
     session = SessionLocal()
     try:
         poll_quotas(session, mysql_admin_factory=_mysql_factory, object_store=store)

@@ -124,6 +124,7 @@ data:
       IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
       END IF;
+      SET SESSION information_schema_stats_expiry = 0; -- MySQL 8 caches TABLES sizes for 24h otherwise
       SELECT COALESCE(SUM(data_length + index_length), 0) AS size_bytes
         FROM information_schema.TABLES WHERE table_schema = CONCAT('app_', p_id);
     END$$

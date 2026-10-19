@@ -19,6 +19,7 @@ ever needs one instead.
 """
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 import string
@@ -31,6 +32,8 @@ from app import config
 from app.crypto import decrypt
 from app.db_tls import mysql_ssl_context
 from app.providers.base import MySQLAdmin, MySQLAdminError
+
+log = logging.getLogger(__name__)
 
 # We only ever generate `app_<int>` ourselves (see _db_name/_db_user below),
 # but validate before interpolating into SQL anyway since MySQL identifiers
@@ -167,6 +170,9 @@ class MySQLAdminClient(MySQLAdmin):
                         cur.execute("CALL picopaas_ops.app_size(%s)", (app_id,))
                         (total,) = cur.fetchone()
                         return int(total)
+                    # MySQL 8 caches information_schema.TABLES sizes for 24h
+                    # (information_schema_stats_expiry=86400); force fresh stats.
+                    cur.execute("SET SESSION information_schema_stats_expiry = 0")
                     cur.execute(
                         "SELECT COALESCE(SUM(data_length + index_length), 0) "
                         "FROM information_schema.TABLES WHERE table_schema = %s",
@@ -193,11 +199,31 @@ class MySQLAdminClient(MySQLAdmin):
                     cur.execute(
                         f"{verb} {_WRITE_PRIVILEGES} ON `{db_name}`.* {preposition} '{db_user}'@'%'"
                     )
-                    cur.execute("FLUSH PRIVILEGES")
+                    # No FLUSH PRIVILEGES: GRANT/REVOKE take effect without it, and it needs RELOAD,
+                    # which managed MySQL admins may lack.
+                    if read_only:
+                        self._kill_connections(cur, db_user)
             finally:
                 conn.close()
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"set_read_only({app_id}, {read_only}) failed: {exc}") from exc
+
+    @staticmethod
+    def _kill_connections(cur: Any, db_user: str) -> None:
+        """Best-effort: enforcement is guaranteed for NEW connections; an already-open session may keep
+        working under cached grants. Kill the app user's open sessions (needs CONNECTION_ADMIN/PROCESS);
+        failures are logged, not raised."""
+        try:
+            cur.execute("SELECT id FROM information_schema.PROCESSLIST WHERE user = %s", (db_user,))
+            ids = [row[0] for row in cur.fetchall()]
+        except pymysql.MySQLError as exc:
+            log.warning("could not list connections of %s: %s", db_user, exc)
+            return
+        for cid in ids:
+            try:
+                cur.execute("KILL %s", (int(cid),))
+            except pymysql.MySQLError as exc:
+                log.warning("could not kill connection %s of %s: %s", cid, db_user, exc)
 
     def set_password(self, app_id: int, password: str) -> dict[str, Any]:
         db_name = _validate_identifier(_db_name(app_id))

@@ -22,21 +22,38 @@ STORAGE_QUOTA_BYTES = 250 * 1024 * 1024
 CAPACITY_WARN_PCT = 80
 
 
-def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> None:
+def _summary(exc: Exception) -> str:
+    from app.reconciler import _provider_error_summary
+
+    return _provider_error_summary(exc)
+
+
+def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bool:
+    """Returns True if the DB is over its limit. Enforcement via REVOKE applies to new
+    connections (open ones are killed best-effort by the provider)."""
     size = admin.db_size_bytes(row.app_id)
     over = size > DB_QUOTA_BYTES
     if over != row.over_quota:
         admin.set_read_only(row.app_id, over)
         row.over_quota = over
+        log.info(
+            "quota: app %s db write access %s (%.1f MB, limit %d MB)",
+            row.app_id, "REVOKED" if over else "restored", size / 1024 / 1024, DB_QUOTA_BYTES // 1024 // 1024,
+        )
     row.size_bytes = size
     session.commit()
+    return over
 
 
-def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) -> None:
+def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) -> bool:
     size = store.bucket_size_bytes(row.app_id)
     over = size > STORAGE_QUOTA_BYTES
     new_creds = None
     if over != row.over_quota:
+        log.info(
+            "quota: app %s storage write access %s (%.1f MB, limit %d MB)",
+            row.app_id, "REVOKED" if over else "restored", size / 1024 / 1024, STORAGE_QUOTA_BYTES // 1024 // 1024,
+        )
         new_creds = store.set_read_only(row.app_id, over)
         row.over_quota = over
         if new_creds:
@@ -63,6 +80,7 @@ def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) 
         store.revoke_other_keys(row.app_id, row.access_key)
     except Exception:
         log.warning("could not revoke old storage key for app %s", row.app_id)
+    return over
 
 
 def poll_quotas(
@@ -71,18 +89,24 @@ def poll_quotas(
     mysql_admin_factory: Callable[[Any], MySQLAdmin],
     object_store: ObjectStore,
 ) -> None:
+    dbs = buckets = over_n = 0
     for row in session.query(models.AppDatabase).all():
+        app_id = row.app_id
         try:
-            _poll_db(session, row, mysql_admin_factory(row.server))
-        except Exception:
+            over_n += bool(_poll_db(session, row, mysql_admin_factory(row.server)))
+            dbs += 1
+        except Exception as exc:
             session.rollback()
-            log.exception("db quota poll failed for app %s", row.app_id)
+            log.warning("quota: db check/enforcement failed for app %s: %s", app_id, _summary(exc))
     for srow in session.query(models.AppStorage).all():
+        app_id = srow.app_id
         try:
-            _poll_storage(session, srow, object_store)
-        except Exception:
+            over_n += bool(_poll_storage(session, srow, object_store))
+            buckets += 1
+        except Exception as exc:
             session.rollback()
-            log.exception("storage quota poll failed for app %s", srow.app_id)
+            log.warning("quota: storage check/enforcement failed for app %s: %s", app_id, _summary(exc))
+    log.info("quota poll: %d dbs, %d buckets checked, %d over limit", dbs, buckets, over_n)
 
 
 def capacity_summary(session: Session) -> list[dict]:

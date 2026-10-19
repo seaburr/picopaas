@@ -118,3 +118,92 @@ def test_storage_swap_revoke_failure_is_retried_next_poll(db_session):
     store.fail.clear()
     poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
     assert store.valid_keys[app.id] == {new}
+
+
+# --- provider-level behaviour with a fake cursor / logging ---
+import logging
+
+import pymysql
+
+
+class _Cur:
+    def __init__(self, fail_kill=False, fail_list=False):
+        self.sql, self.fail_kill, self.fail_list = [], fail_kill, fail_list
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, q, params=None):
+        self.sql.append(q)
+        if self.fail_kill and q.startswith("KILL"):
+            raise pymysql.err.OperationalError(1227, "denied")
+        if self.fail_list and "PROCESSLIST" in q:
+            raise pymysql.err.OperationalError(1227, "denied")
+
+    def fetchone(self):
+        return (123,)
+
+    def fetchall(self):
+        return [(7,), (8,)]
+
+
+def _client(cur):
+    from app.providers.mysql import MySQLAdminClient
+
+    c = MySQLAdminClient.__new__(MySQLAdminClient)
+    c._use_procs = False
+    conn = type("C", (), {"cursor": lambda self: cur, "close": lambda self: None})()
+    c._connect = lambda: conn
+    return c
+
+
+def test_size_sets_stats_expiry_before_sum():
+    cur = _Cur()
+    assert _client(cur).db_size_bytes(5) == 123
+    assert cur.sql[0] == "SET SESSION information_schema_stats_expiry = 0"
+    assert "SUM(" in cur.sql[1]
+
+
+def test_set_read_only_no_flush_and_kills_connections():
+    cur = _Cur()
+    _client(cur).set_read_only(5, True)
+    assert not any("FLUSH" in q for q in cur.sql)
+    assert cur.sql[0].startswith("REVOKE")
+    assert [q for q in cur.sql if q.startswith("KILL")] == ["KILL %s", "KILL %s"]
+
+
+def test_restore_does_not_kill():
+    cur = _Cur()
+    _client(cur).set_read_only(5, False)
+    assert cur.sql[0].startswith("GRANT") and len(cur.sql) == 1
+
+
+def test_kill_errors_tolerated(caplog):
+    for kw in ({"fail_kill": True}, {"fail_list": True}):
+        _client(_Cur(**kw)).set_read_only(5, True)  # must not raise
+    assert "could not" in caplog.text
+
+
+def test_poll_logs_revoke_restore_failure_and_summary(db_session, caplog):
+    caplog.set_level(logging.INFO)
+    _, (app,) = _setup(db_session)
+    admin, store = FakeMySQLAdmin(), FakeObjectStore()
+    admin.sizes[app.id] = DB_QUOTA_BYTES + 1
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    assert f"app {app.id} db write access REVOKED" in caplog.text
+    assert "quota poll: 1 dbs" in caplog.text and "1 over limit" in caplog.text
+    admin.sizes[app.id] = 1
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    assert "db write access restored" in caplog.text
+
+    def boom(_):
+        raise RuntimeError("password=hunter2 failed")
+
+    caplog.clear()
+    admin.sizes[app.id] = DB_QUOTA_BYTES + 1
+    admin.set_read_only = boom
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    assert "db check/enforcement failed" in caplog.text and "hunter2" not in caplog.text
