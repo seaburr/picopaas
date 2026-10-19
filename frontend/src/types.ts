@@ -15,6 +15,22 @@ export interface EnvVar {
   is_secret: boolean
 }
 
+export interface ApiKey {
+  id: number
+  prefix: string
+  created_at: string
+  revoked_at: string | null
+}
+
+// Returned only once, at creation time (app/schemas.py ApiKeyCreateOut) — the
+// raw `key` is never stored or shown again after this response.
+export interface ApiKeyCreated {
+  id: number
+  key: string
+  prefix: string
+  created_at: string
+}
+
 export interface App {
   id: number
   owner_id: number

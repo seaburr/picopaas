@@ -10,10 +10,17 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   Expected 2026-10-19. Infra apply waits on it. Code work does not.
 - DONE: backend scaffold + providers/manifests/registry/API keys (68 tests), frontend scaffold, infra
   Terraform (validated). All committed, CI green.
-- NEXT (backend-dev): real `kube.py` (add the `kubernetes` dependency), `mysql.py`, `spaces.py`, plus the
-  reconciler loop (APScheduler) that moves apps out of 'pending'. Then quota polling (DB 100MB, bucket 250MB).
+- DONE (backend-dev, 2026-10-18): horizontal DB scaling baked into the model — `DbServer`/`AppDatabase`
+  models + migration, `app/db_placement.py::choose_server`, real `app/providers/mysql.py::MySQLAdminClient`
+  (constructed per `DbServer`). See Log entry below for detail. `max_databases` default is 25 (manager's
+  call: 1 GiB managed MySQL's 75-connection cap ÷ 5 per app user, with headroom for oversubscription).
+- NEXT (backend-dev): real `kube.py` (add the `kubernetes` dependency), `spaces.py`, plus the
+  reconciler loop (APScheduler) that moves apps out of 'pending' — the reconciler's DB provisioning step
+  should call `db_placement.choose_server()` then `MySQLAdminClient(server).create_db_user(app.id)` and
+  store the result in a new `AppDatabase` row; nothing calls the new mysql.py yet. Then quota polling
+  (DB 100MB via `db_size_bytes`/`set_read_only`, bucket 250MB).
 - NEXT (backend-dev): spike the DO API for per-bucket Spaces keys (ARCHITECTURE.md §2 ⚠). Needs the DO token.
-- NEXT (frontend-dev): API-key management UI (`/api/keys` exists).
+- DONE (frontend-dev, 2026-10-18): API-key management UI at `/keys` (NavBar link).
 - NEXT (infra-ops): `deploy/` manifests (ingress-nginx, cert-manager + wildcard cert via DO DNS-01, platform
   Deployment, MySQL StatefulSet for the lean variant), `dns-sync` CronJob for the no-LB variant.
 - DONE (infra-ops, 2026-10-18): Dockerfile (multi-stage, non-root `USER 10001:10001`), `.dockerignore`,
@@ -23,7 +30,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - DECIDED (Chas, 2026-10-18): NO root images. `RUN_AS_NON_ROOT=True` stays.
 - DONE: root-image check at create/update (`Registry.inspect` reads the config blob's `User`; empty/0/root → 422,
   a non-numeric user → 422 because kubelet can't verify it).
-- NEXT (frontend-dev): show a Dockerfile `USER 10001` example next to the image field.
+- DONE (frontend-dev, 2026-10-18): `USER 10001` hint + verbatim image-field 422s added to AppFormView.
 
 ## Log
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
@@ -151,3 +158,53 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-18 [infra-ops] DONE: containerize platform. `Dockerfile` (node:22-slim builds frontend/ -> ../static, python:3.13-slim final stage, non-root `USER 10001:10001`, ENV ENVIRONMENT=production so SECRET_KEY/FERNET_KEY are required), `.dockerignore`, `entrypoint.sh` (alembic upgrade head && exec uvicorn), `.github/workflows/image.yml` (buildx + build-push-action, GHA cache, PR=build-only, main push=ghcr.io/seaburr/picopaas:latest + short-sha). `/healthz` already existed in app/main.py (no edit needed); added `tests/test_healthz.py` since no test covered it. `.venv/bin/python -m pytest tests/ -q` -> 69 passed. Did not touch routers/apps.py or providers/registry.py. Not committed (scm-security's job). Docker daemon not running locally so `docker build .` was not actually exercised; flagged in Now/Next for CI to verify.
 - 2026-10-18 [manager] DONE: root-image preflight (registry.py inspect, apps.py _check_non_root, tests/test_non_root.py);
   Terraform backend moved from S3 to Terraform Cloud (org seaburr, workspace picopaas), per Chas. 79 tests passing.
+- 2026-10-18 [frontend-dev] START: API-key management UI (`/keys`) and image-field UX (non-root hint +
+  verbatim 422s) in `frontend/`.
+- 2026-10-18 [frontend-dev] DONE: `src/api/keys.ts`, `src/stores/apiKeys.ts`, `src/views/ApiKeysView.vue`
+  (list prefix/created/revoked state; create shows the one-time plaintext key in a copyable box with a
+  "won't see it again" note and a Dismiss action; revoke uses the existing `ConfirmDialog`, not
+  `window.confirm`), route `/keys` in `src/router/index.ts`, NavBar link. `src/types.ts` got `ApiKey`/
+  `ApiKeyCreated` (mirrors `app/schemas.py` ApiKeyOut/ApiKeyCreateOut exactly, re-read before adding).
+  `AppFormView.vue`: added the `USER 10001` hint under the image field, plus an `imageError` computed that
+  detects backend 422 `detail` strings for the image field (`app/routers/apps.py` `_check_non_root`/
+  `_check_image_cap` — root user, non-numeric UID, size cap, not-found/not-public all start with "image")
+  and renders them verbatim next to the field instead of the generic bottom banner; other errors (e.g. app
+  limit, duplicate env key) still use the bottom banner unchanged. Re-read `app/routers/api_keys.py` and
+  `app/schemas.py` first to get the real shapes; no backend files touched. `npm run typecheck` and `npm run
+  build` (→ `../static`) both pass. Not committed (scm-security's job). Out of scope for this chunk: no
+  "copy" fallback UI beyond the box itself if `navigator.clipboard` is unavailable (key is still visible for
+  manual copy).
+- 2026-10-18 [backend-dev] START: bake horizontal DB scaling into the model — `DbServer`/`AppDatabase`,
+  `app/db_placement.py`, real `app/providers/mysql.py::MySQLAdminClient` (PyMySQL), placement + mysql
+  integration tests, `mysql-integration` CI job.
+- 2026-10-18 [backend-dev] DONE: `app/models.py` — `DbServer` (name unique, host/port, admin creds
+  Fernet-encrypted via `app/crypto`, `max_databases` default 25 per manager's call — DO's 1 GiB managed
+  MySQL caps at 75 connections, ÷5 per app user ≈ 25 lightly-used apps with headroom — status
+  active/draining/full) and `AppDatabase` (app_id unique FK, db_server_id FK, db_name/db_user,
+  password_encrypted, size_bytes, over_quota). Alembic migration `8870a895c11e` (autogenerated; sanity
+  checked with upgrade → downgrade → upgrade round-trip against a throwaway sqlite file). `app/db_placement.py`
+  — `choose_server(session)`: among `status='active'` `DbServer` rows, picks the one with the most free
+  slots (`max_databases` − its `AppDatabase` count), ties broken by lowest id; raises `NoDbCapacity` if
+  none qualify. Pure SQLAlchemy, no provider calls. `app/providers/mysql.py`: real `MySQLAdminClient`,
+  constructed per `DbServer` (host/port/admin creds come from `__init__`, not per call — updated
+  `MySQLAdmin`'s docstring in `base.py` to say so, and gave `FakeMySQLAdmin` an optional unused `server`
+  param for the same calling convention without breaking its existing no-arg test). `create_db_user`
+  creates `app_<id>` db + user with a random 32-char password and `MAX_USER_CONNECTIONS 5`, grants ALL
+  scoped to that one db; `drop` does `DROP DATABASE/USER IF EXISTS`; `db_size_bytes` sums
+  `information_schema.TABLES.(data_length+index_length)`; `set_read_only` revokes/restores only
+  INSERT/UPDATE/CREATE/ALTER (SELECT/DELETE/DROP always stay granted so a quota-exceeding app can still
+  read and clean up). Identifiers are our own `app_<id>` generation but still regex-validated before
+  SQL interpolation (MySQL has no parameterized identifiers); passwords go through query parameters
+  (`IDENTIFIED BY %s`) since PyMySQL escapes those client-side. Tests: `tests/test_db_placement.py`
+  (7 cases, plain SQLite, no providers) and `tests/test_mysql_admin.py` (`@pytest.mark.mysql`, module-level
+  skip unless `MYSQL_ADMIN_URL` is set — create+grant, cross-app isolation via `USE`, size reporting,
+  read-only blocks INSERT but allows SELECT/DELETE, drop). Registered the `mysql` marker in new
+  `pytest.ini`. CI: added a `mysql-integration` job to `.github/workflows/ci.yml` with a `mysql:8.4`
+  service (root password `test`, healthcheck via `mysqladmin ping`), `MYSQL_ADMIN_URL=mysql://root:test@127.0.0.1:3306`,
+  running `pytest tests/ -m mysql -q`; `backend-tests` untouched and still self-skips the mysql tests
+  (no `MYSQL_ADMIN_URL` there). Docker wasn't running locally so only the SQLite suite was exercised here:
+  `.venv/bin/python -m pytest tests/ -q` → **86 passed, 1 skipped** (the skip is the whole
+  `test_mysql_admin.py` module). Not committed (scm-security's job). Out of scope for this chunk, left for
+  later: nothing calls `db_placement`/`MySQLAdminClient` yet — that's the reconciler's job (see Now/Next);
+  no admin UI/endpoint to register a `DbServer` row yet either (today there'd be zero active servers, so
+  `choose_server` would raise `NoDbCapacity` — fine until the reconciler and a seed/admin path exist).

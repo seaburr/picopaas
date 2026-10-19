@@ -27,6 +27,15 @@ const loading = ref(isEdit.value)
 const saving = ref(false)
 const error = ref('')
 
+// Backend 422s for the image field (app/routers/apps.py _check_non_root /
+// _check_image_cap) are plain strings that all start with "image" — e.g.
+// "image runs as root, which isn't supported...", "image USER '...' must be
+// a numeric UID...", "image not found or not public", "image is N bytes,
+// over the M byte limit...". Show those verbatim next to the field instead
+// of (or in addition to) the generic error banner.
+const imageError = computed(() => (error.value.toLowerCase().startsWith('image') ? error.value : ''))
+const formError = computed(() => (imageError.value ? '' : error.value))
+
 onMounted(async () => {
   if (!isEdit.value || appId.value === null) return
   try {
@@ -108,6 +117,11 @@ async function onSubmit() {
             placeholder="ghcr.io/me/app:1.2"
             class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
           />
+          <p class="mt-1 text-xs text-zinc-500">
+            Images must run as a non-root numeric user — add <code class="font-mono">USER 10001</code> to your
+            Dockerfile.
+          </p>
+          <p v-if="imageError" class="mt-1 text-xs text-danger">{{ imageError }}</p>
         </div>
 
         <div>
@@ -151,8 +165,8 @@ async function onSubmit() {
           <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" />
         </div>
 
-        <div v-if="error" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {{ error }}
+        <div v-if="formError" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {{ formError }}
         </div>
 
         <div class="flex justify-end gap-2">

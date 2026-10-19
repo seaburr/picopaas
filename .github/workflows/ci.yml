@@ -46,7 +46,34 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
+      # MYSQL_ADMIN_URL is unset here, so tests/test_mysql_admin.py
+      # (@pytest.mark.mysql) self-skips at module level — see mysql-integration below.
       - run: python -m pytest tests/ -q
+
+  mysql-integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptest"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      MYSQL_ADMIN_URL: mysql://root:test@127.0.0.1:3306
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/ -m mysql -q
 
   frontend:
     runs-on: ubuntu-latest

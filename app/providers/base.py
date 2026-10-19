@@ -37,7 +37,12 @@ class MySQLAdminError(Exception):
 
 
 class MySQLAdmin(ABC):
-    """Manages one MySQL database + user per app (ARCHITECTURE.md §2 "DB")."""
+    """Manages one MySQL database + user per app (ARCHITECTURE.md §2 "DB").
+
+    Implementations are constructed per `DbServer` (host/port/admin creds come
+    from `__init__`, chosen via `app/db_placement.py::choose_server` —
+    never passed per call), since a platform can run several MySQL servers
+    once a single one fills up (ARCHITECTURE.md "Scaling")."""
 
     @abstractmethod
     def create_db_user(self, app_id: int) -> dict[str, Any]:

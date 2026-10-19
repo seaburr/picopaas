@@ -18,6 +18,7 @@ const router = createRouter({
       meta: { requiresAuth: true },
       props: true,
     },
+    { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true } },
   ],
 })
 

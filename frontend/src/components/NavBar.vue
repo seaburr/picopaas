@@ -13,7 +13,10 @@ async function onLogout() {
 
 <template>
   <header class="flex items-center justify-between border-b border-pico-border bg-pico-panel px-4 py-3">
-    <RouterLink to="/" class="text-sm font-semibold text-white">PicoPaaS</RouterLink>
+    <div class="flex items-center gap-4">
+      <RouterLink to="/" class="text-sm font-semibold text-white">PicoPaaS</RouterLink>
+      <RouterLink to="/keys" class="text-sm text-zinc-400 hover:text-white">API keys</RouterLink>
+    </div>
     <div class="flex items-center gap-3 text-sm text-zinc-400">
       <span v-if="auth.user">{{ auth.user.email }}</span>
       <button type="button" class="rounded border border-pico-border px-2 py-1 hover:bg-pico-card" @click="onLogout">

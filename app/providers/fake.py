@@ -48,7 +48,11 @@ class FakeKubeProvider(KubeProvider):
 
 
 class FakeMySQLAdmin(MySQLAdmin):
-    def __init__(self) -> None:
+    def __init__(self, server: Any = None) -> None:
+        # `server` (a DbServer, in real use) is accepted but unused — kept
+        # for API parity with the real MySQLAdminClient, which is
+        # constructed per-server (see app/providers/base.py::MySQLAdmin).
+        self.server = server
         self.creds: dict[int, dict[str, Any]] = {}
         self.sizes: dict[int, int] = {}
         self.read_only: dict[int, bool] = {}

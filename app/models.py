@@ -68,6 +68,9 @@ class App(Base):
     env_vars: Mapped[List["AppEnvVar"]] = relationship(
         back_populates="app", cascade="all, delete-orphan"
     )
+    database: Mapped[Optional["AppDatabase"]] = relationship(
+        back_populates="app", cascade="all, delete-orphan"
+    )
 
 
 class AppEnvVar(Base):
@@ -84,3 +87,50 @@ class AppEnvVar(Base):
     is_secret: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     app: Mapped["App"] = relationship(back_populates="env_vars")
+
+
+class DbServer(Base):
+    """One MySQL instance (platform-managed or self-hosted) that can host app
+    databases (ARCHITECTURE.md "Scaling"). `app/db_placement.py` picks which
+    server a new `AppDatabase` lands on; `app/providers/mysql.py`'s real
+    `MySQLAdmin` is constructed per-server from these fields."""
+
+    __tablename__ = "db_servers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(default=3306, nullable=False)
+    admin_user: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Fernet token (ciphertext) — the platform-admin password, via app/crypto.
+    admin_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    # Soft cap on how many AppDatabase rows this server should host; placement
+    # (app/db_placement.py) treats it as the denominator for free-slot counts.
+    max_databases: Mapped[int] = mapped_column(default=25, nullable=False)
+    # 'active' (eligible for new placements), 'draining' (keep existing dbs,
+    # no new ones), or 'full' (at/over max_databases).
+    status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+    databases: Mapped[List["AppDatabase"]] = relationship(back_populates="server")
+
+
+class AppDatabase(Base):
+    """The one MySQL database + user provisioned for an app that opted into
+    `want_db` (ARCHITECTURE.md §2 "DB"). One-to-one with App."""
+
+    __tablename__ = "app_databases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), unique=True, nullable=False)
+    db_server_id: Mapped[int] = mapped_column(ForeignKey("db_servers.id"), nullable=False)
+    db_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    db_user: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Fernet token (ciphertext) — the app db user's password, via app/crypto.
+    password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(default=0, nullable=False)
+    over_quota: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+    app: Mapped["App"] = relationship(back_populates="database")
+    server: Mapped["DbServer"] = relationship(back_populates="databases")
