@@ -190,3 +190,20 @@ def test_drop_removes_database_and_user(admin):
             assert cur.fetchone()[0] == 0
     finally:
         conn.close()
+
+
+def test_rotate_password_invalidates_old_and_keeps_grants(admin):
+    old = admin.create_db_user(90001)
+    new = admin.rotate_password(90001)
+    assert new["password"] != old["password"] and new["user"] == old["user"]
+    assert new["url"].startswith("mysql://app_90001:")
+
+    with pytest.raises(pymysql.err.OperationalError):
+        _connect_as(old)
+    conn = _connect_as(new, database=new["name"])
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE TABLE t (id INT PRIMARY KEY)")
+            cur.execute("INSERT INTO t VALUES (1)")
+    finally:
+        conn.close()

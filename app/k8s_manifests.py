@@ -11,6 +11,8 @@ must declare a non-root USER. See docs/ARCHITECTURE.md "Tenancy and isolation".
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from app.config import APP_DOMAIN
@@ -126,7 +128,7 @@ def limit_range_manifest(app_id: int) -> dict[str, Any]:
     }
 
 
-def network_policies(app_id: int, app_port: int, mysql_cidr: str) -> list[dict[str, Any]]:
+def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
     Kubernetes NetworkPolicy semantics are additive per matched pod: the
@@ -222,6 +224,16 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str) -> list[dict[s
         },
     }
 
+    # mysql_cidr=None -> in-cluster MySQL (ns picopaas-data, pod app=mysql);
+    # otherwise a managed DB reached by CIDR.
+    if mysql_cidr is None:
+        mysql_peer: dict[str, Any] = {
+            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "picopaas-data"}},
+            "podSelector": {"matchLabels": {"app": "mysql"}},
+        }
+    else:
+        mysql_peer = {"ipBlock": {"cidr": _to_cidr(mysql_cidr)}}
+
     allow_egress_mysql = {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "NetworkPolicy",
@@ -231,7 +243,7 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str) -> list[dict[s
             "policyTypes": ["Egress"],
             "egress": [
                 {
-                    "to": [{"ipBlock": {"cidr": _to_cidr(mysql_cidr)}}],
+                    "to": [mysql_peer],
                     "ports": [{"protocol": "TCP", "port": MYSQL_PORT}],
                 }
             ],
@@ -247,6 +259,10 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str) -> list[dict[s
     ]
 
 
+def _env_checksum(env: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(env, sort_keys=True).encode()).hexdigest()[:16]
+
+
 def secret_manifest(app_id: int, env: dict[str, str]) -> dict[str, Any]:
     """`env` must already be resolved (see app/env_refs.py::resolve) — no `${{ }}` refs here."""
     return {
@@ -258,9 +274,12 @@ def secret_manifest(app_id: int, env: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def deployment_manifest(app_id: int, image: str, port: int) -> dict[str, Any]:
+def deployment_manifest(app_id: int, image: str, port: int, env_checksum: str = "") -> dict[str, Any]:
     name = _resource_name(app_id)
     pod_labels = {"app": name}
+    # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
+    # envFrom alone never restarts a running pod.
+    pod_annotations = {"picopaas.io/env-checksum": env_checksum} if env_checksum else {}
     return {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -269,7 +288,7 @@ def deployment_manifest(app_id: int, image: str, port: int) -> dict[str, Any]:
             "replicas": 1,
             "selector": {"matchLabels": pod_labels},
             "template": {
-                "metadata": {"labels": pod_labels},
+                "metadata": {"labels": pod_labels, "annotations": pod_annotations},
                 "spec": {
                     "automountServiceAccountToken": False,
                     "securityContext": {
@@ -355,7 +374,7 @@ def render_app_manifests(
     image: str,
     port: int,
     env: dict[str, str],
-    mysql_cidr: str,
+    mysql_cidr: str | None,
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
@@ -364,7 +383,7 @@ def render_app_manifests(
         "limit_range": limit_range_manifest(app_id),
         "network_policies": network_policies(app_id, port, mysql_cidr),
         "secret": secret_manifest(app_id, env),
-        "deployment": deployment_manifest(app_id, image, port),
+        "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env)),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port),
     }

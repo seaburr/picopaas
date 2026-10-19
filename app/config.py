@@ -55,3 +55,10 @@ MAX_IMAGE_SIZE_BYTES = 512 * 1024 * 1024
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.
 SESSION_COOKIE_SECURE = not IS_DEV
+
+# --- Reconciler / scheduler (app/scheduler.py) ---
+RECONCILER_ENABLED = os.environ.get("RECONCILER_ENABLED") == "1"
+# Where per-app NetworkPolicy allows MySQL egress: "in-cluster" (ns picopaas-data,
+# pod app=mysql) or "cidr" (managed DB, MYSQL_EGRESS_CIDR).
+MYSQL_EGRESS_MODE = os.environ.get("MYSQL_EGRESS_MODE", "cidr")
+MYSQL_EGRESS_CIDR = os.environ.get("MYSQL_EGRESS_CIDR", "")

@@ -84,6 +84,17 @@ class FakeMySQLAdmin(MySQLAdmin):
     def set_read_only(self, app_id: int, read_only: bool) -> None:
         self.read_only[app_id] = read_only
 
+    def rotate_password(self, app_id: int) -> dict[str, Any]:
+        creds = self.creds.get(app_id)
+        if creds is None:
+            creds = self.create_db_user(app_id)
+        creds = dict(creds, password=secrets.token_urlsafe(24))
+        creds["url"] = (
+            f"mysql://{creds['user']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['name']}"
+        )
+        self.creds[app_id] = creds
+        return creds
+
 
 class FakeObjectStore(ObjectStore):
     def __init__(self) -> None:
@@ -112,8 +123,20 @@ class FakeObjectStore(ObjectStore):
     def bucket_size_bytes(self, app_id: int) -> int:
         return self.sizes.get(app_id, 0)
 
-    def set_read_only(self, app_id: int, read_only: bool) -> None:
+    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
+        """Like the real store: no-op (None) if unchanged, else swaps the key and returns new creds."""
+        if self.read_only.get(app_id, False) == read_only:
+            return None
         self.read_only[app_id] = read_only
+        return self.rotate_key(app_id)
+
+    def rotate_key(self, app_id: int) -> dict[str, Any]:
+        creds = self.creds.get(app_id)
+        if creds is None:
+            creds = self.create_bucket_and_key(app_id)
+        creds = dict(creds, access_key=secrets.token_hex(10), secret_key=secrets.token_urlsafe(32))
+        self.creds[app_id] = creds
+        return creds
 
 
 class FakeRegistry(Registry):

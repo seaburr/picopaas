@@ -172,3 +172,27 @@ class MySQLAdminClient(MySQLAdmin):
                 conn.close()
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"set_read_only({app_id}, {read_only}) failed: {exc}") from exc
+
+    def rotate_password(self, app_id: int) -> dict[str, Any]:
+        db_name = _validate_identifier(_db_name(app_id))
+        db_user = _validate_identifier(_db_user(app_id))
+        password = _generate_password()
+        try:
+            conn = self._connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"ALTER USER '{db_user}'@'%%' IDENTIFIED BY %s", (password,))
+                    cur.execute("FLUSH PRIVILEGES")
+            finally:
+                conn.close()
+        except pymysql.MySQLError as exc:
+            raise MySQLAdminError(f"rotate_password({app_id}) failed: {exc}") from exc
+        creds = {
+            "host": self._host,
+            "port": self._port,
+            "name": db_name,
+            "user": db_user,
+            "password": password,
+        }
+        creds["url"] = f"mysql://{db_user}:{password}@{self._host}:{self._port}/{db_name}"
+        return creds

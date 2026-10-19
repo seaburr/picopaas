@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 class KubeProvider(ABC):
@@ -64,6 +64,11 @@ class MySQLAdmin(ABC):
         """Revoke/restore INSERT/UPDATE/CREATE once the app exceeds its DB quota."""
         raise NotImplementedError
 
+    @abstractmethod
+    def rotate_password(self, app_id: int) -> dict[str, Any]:
+        """Set a new random password for the app's db user; return the full new creds."""
+        raise NotImplementedError
+
 
 class ObjectStoreError(Exception):
     pass
@@ -89,8 +94,15 @@ class ObjectStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def set_read_only(self, app_id: int, read_only: bool) -> None:
-        """Swap the app's key to read-only once it exceeds its storage quota."""
+    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
+        """Make the app's key read-only (or restore readwrite). Spaces grants are
+        immutable, so this may replace the key: returns the NEW creds when the key
+        changed (caller must persist them), None when nothing changed. Idempotent."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def rotate_key(self, app_id: int) -> dict[str, Any]:
+        """Create a new key with the same grant, delete the old one; return new creds."""
         raise NotImplementedError
 
 

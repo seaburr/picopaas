@@ -27,10 +27,17 @@ MySQLAdminFactory = Callable[[models.DbServer], MySQLAdmin]
 DEFAULT_MYSQL_CIDR = "0.0.0.0/32"  # TODO: real per-DbServer/VPC CIDR once infra wires it
 
 
-def _mysql_cidr(settings: Any) -> str:
+def _get(settings: Any, key: str, default: Any) -> Any:
     if isinstance(settings, dict):
-        return settings.get("mysql_cidr", DEFAULT_MYSQL_CIDR)
-    return getattr(settings, "mysql_cidr", DEFAULT_MYSQL_CIDR)
+        return settings.get(key, default)
+    return getattr(settings, key, default)
+
+
+def _mysql_cidr(settings: Any) -> str | None:
+    """None means "in-cluster MySQL" (MYSQL_EGRESS_MODE=in-cluster); else a CIDR."""
+    if _get(settings, "mysql_egress_mode", "cidr") == "in-cluster":
+        return None
+    return _get(settings, "mysql_cidr", None) or DEFAULT_MYSQL_CIDR
 
 
 def _db_refs(app: models.App) -> dict[str, str]:
@@ -171,8 +178,12 @@ def reconcile_app(
         _fail(session, app, "deployment failed")
         return
 
-    app.status = status
-    app.status_detail = None
+    if status.startswith("error:"):
+        app.status = "error"
+        app.status_detail = status[len("error:"):].strip()[:255] or None
+    else:
+        app.status = status
+        app.status_detail = None
     session.commit()
 
 

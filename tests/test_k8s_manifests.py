@@ -103,6 +103,14 @@ def test_mysql_cidr_passthrough_when_already_a_cidr():
     assert mysql["spec"]["egress"][0]["to"][0]["ipBlock"]["cidr"] == "10.0.0.0/24"
 
 
+def test_network_policy_mysql_egress_in_cluster_selectors():
+    policies = k8s.network_policies(APP_ID, PORT, None)
+    peer = _policy(policies, "allow-egress-mysql")["spec"]["egress"][0]["to"][0]
+    assert "ipBlock" not in peer
+    assert peer["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "picopaas-data"}
+    assert peer["podSelector"]["matchLabels"] == {"app": "mysql"}
+
+
 def test_secret_contains_resolved_env_only():
     secret = k8s.secret_manifest(APP_ID, ENV)
     assert secret["kind"] == "Secret"
@@ -174,3 +182,14 @@ def test_flatten_manifests_order_and_count():
     assert flat[10]["kind"] == "Service"
     assert flat[11]["kind"] == "Ingress"
     assert len(flat) == 12
+
+
+def test_env_change_rolls_pod_via_checksum_annotation():
+    from app.k8s_manifests import deployment_manifest, _env_checksum
+
+    a = deployment_manifest(1, "img:1", 8080, env_checksum=_env_checksum({"DB_PASSWORD": "old"}))
+    b = deployment_manifest(1, "img:1", 8080, env_checksum=_env_checksum({"DB_PASSWORD": "new"}))
+    ann = lambda d: d["spec"]["template"]["metadata"]["annotations"]["picopaas.io/env-checksum"]
+    assert ann(a) != ann(b)
+    # The checksum must not reveal the values themselves.
+    assert "old" not in ann(a) and "new" not in ann(b)

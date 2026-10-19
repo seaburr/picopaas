@@ -1,3 +1,5 @@
+import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -5,18 +7,36 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import Base, engine
-from app.routers import api_keys, apps, auth
+from app.routers import admin, api_keys, apps, auth, spec
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
 # create_all is a no-op against tables that already exist, which keeps the SQLite
 # test suite (in-memory, no migrations run) working without duplicating schema logic.
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="PicoPaaS API")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Scheduler/bootstrap are opt-in so tests and `uvicorn --reload` stay inert.
+    sched = None
+    if os.environ.get("RECONCILER_ENABLED") == "1":
+        from app import scheduler
+
+        scheduler.bootstrap_db_server()
+        sched = scheduler.start_scheduler()
+    try:
+        yield
+    finally:
+        if sched is not None:
+            sched.shutdown(wait=False)
+
+
+app = FastAPI(title="PicoPaaS API", lifespan=lifespan)
 
 app.include_router(auth.router)
 app.include_router(apps.router)
 app.include_router(api_keys.router)
+app.include_router(spec.router)
+app.include_router(admin.router)
 
 
 @app.get("/healthz")
@@ -32,7 +52,7 @@ def healthz():
 # missing — tests and a bare `uvicorn app.main:app` don't need a frontend build.
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _INDEX_HTML = _STATIC_DIR / "index.html"
-_API_PREFIXES = ("auth", "apps", "api", "healthz", "static")
+_API_PREFIXES = ("auth", "apps", "admin", "api", "healthz", "static")
 
 if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
