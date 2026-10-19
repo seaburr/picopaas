@@ -28,7 +28,7 @@ data/*.db
 # --- Node / frontend ---
 node_modules/
 frontend/dist/
-static/
+/static/
 
 # --- OS / editor ---
 .DS_Store
