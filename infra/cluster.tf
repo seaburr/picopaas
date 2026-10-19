@@ -49,4 +49,9 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
   }
 
   tags = ["picopaas"]
+
+  lifecycle {
+    # The autoscaler owns the live node count; don't let an apply scale it back to node_count.
+    ignore_changes = [node_pool[0].node_count]
+  }
 }
