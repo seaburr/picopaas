@@ -5,7 +5,7 @@ resource "digitalocean_database_cluster" "mysql" {
 
   name       = "picopaas-mysql-${var.region}"
   engine     = "mysql"
-  version    = "8.4" # DO only offers 8.4 (options API, 2026-10-19)
+  version    = "8.4"          # DO only offers 8.4 (options API, 2026-10-19)
   size       = var.mysql_size # see variables.tf WARNING re: ATL1 Premium Intel only
   region     = var.region
   node_count = 1 # single node, no HA — matches the rest of the lean/managed trade-off
