@@ -17,9 +17,14 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
 
   # Optional Kubernetes API allowlist. Off by default: Chas OK'd a public API for now
   # (2026-10-18). The platform's reconciler runs in-cluster and never needs an entry.
-  control_plane_firewall {
-    enabled           = length(var.control_plane_allowed_cidrs) > 0
-    allowed_addresses = var.control_plane_allowed_cidrs
+  # Only sent when an allowlist is configured (2026-10-19: keep the create request minimal while debugging
+  # DO's "insufficient capacity" 422s).
+  dynamic "control_plane_firewall" {
+    for_each = length(var.control_plane_allowed_cidrs) > 0 ? [1] : []
+    content {
+      enabled           = true
+      allowed_addresses = var.control_plane_allowed_cidrs
+    }
   }
 
   maintenance_policy {

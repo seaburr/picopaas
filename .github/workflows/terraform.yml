@@ -59,8 +59,8 @@ jobs:
             | jq -c '.account | {status, droplet_limit, volume_limit, email_verified}' | sed 's/^/account: /'
           echo "droplets in account: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets?per_page=1' | jq '.meta.total')"
           echo "mysql versions: $(echo "$opts" | jq -c '.options.mysql.versions')"
-          echo "doks sizes: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/kubernetes/options \
-            | jq -c '[.options.sizes[].slug | select(test("^s-2vcpu-4gb|^s-4vcpu-8gb|^c-2|^g-2"))]')"
+          echo "doks options: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/kubernetes/options \
+            | jq -c '{versions: [.options.versions[].slug], nyc3: [.options.regions[] | select(.slug=="nyc3")]}')"
       # TFC holds state only: "local" execution runs Terraform here, so the provider reads the GitHub secrets above
       # (no credentials stored in TFC). Idempotent.
       - name: Set TFC workspace to local execution
