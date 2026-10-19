@@ -85,6 +85,8 @@ def _app_out(app: models.App) -> schemas.AppOut:
         port=app.port,
         want_db=app.want_db,
         want_storage=app.want_storage,
+        health_check_enabled=app.health_check_enabled,
+        health_check_path=app.health_check_path,
         status=app.status,
         status_detail=app.status_detail,
         created_at=app.created_at,
@@ -154,6 +156,8 @@ def create_app(
         port=payload.port,
         want_db=payload.want_db,
         want_storage=payload.want_storage,
+        health_check_enabled=payload.health_check_enabled,
+        health_check_path=payload.health_check_path,
         status="pending",
     )
     for item in payload.env:
@@ -217,6 +221,15 @@ def update_app(
         app.image = payload.image
     if payload.port is not None:
         app.port = payload.port
+    health_changed = False
+    if payload.health_check_enabled is not None and payload.health_check_enabled != app.health_check_enabled:
+        app.health_check_enabled = payload.health_check_enabled
+        health_changed = True
+    if payload.health_check_path is not None and payload.health_check_path != app.health_check_path:
+        app.health_check_path = payload.health_check_path
+        health_changed = True
+    if health_changed:
+        app.status = "pending"  # reconciler re-renders the Deployment probes and rolls the pod
     if payload.env is not None:
         _validate_env(payload.env, want_db=app.want_db, want_storage=app.want_storage)
         # Clients only ever see MASKED_VALUE for secrets, so sending it back means "unchanged":

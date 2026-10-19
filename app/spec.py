@@ -6,7 +6,9 @@ Safety: yaml.safe_load only, a 64KB size cap, and YAML aliases/anchors are rejec
 from typing import Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError, field_validator
+
+from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 MAX_SPEC_BYTES = 64 * 1024
 
@@ -21,6 +23,17 @@ class _Resources(BaseModel):
     storage: StrictBool = False
 
 
+class _HealthCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool = False
+    path: StrictStr = DEFAULT_HEALTH_PATH
+
+    @field_validator("path")
+    @classmethod
+    def _validate_path(cls, v: str) -> str:
+        return validate_health_path(v)
+
+
 class AppSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -29,6 +42,7 @@ class AppSpec(BaseModel):
     image: StrictStr = Field(min_length=1, max_length=512)
     port: StrictInt = Field(gt=0, le=65535)
     resources: _Resources = Field(default_factory=_Resources)
+    healthCheck: _HealthCheck = Field(default_factory=_HealthCheck)
     env: Dict[StrictStr, StrictStr] = Field(default_factory=dict)
     secrets: List[StrictStr] = Field(default_factory=list)
 

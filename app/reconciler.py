@@ -191,6 +191,8 @@ def reconcile_app(
         env=resolved_env,
         mysql_cidr=_mysql_cidr(settings),
         replicas=0 if app.status == "suspended" else 1,
+        health_check_enabled=app.health_check_enabled,
+        health_check_path=app.health_check_path,
     )
     suspended = app.status == "suspended"
     flat = k8s_manifests.flatten_manifests(manifests)

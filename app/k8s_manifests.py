@@ -293,13 +293,50 @@ def secret_manifest(app_id: int, env: dict[str, str]) -> dict[str, Any]:
 
 
 def deployment_manifest(
-    app_id: int, image: str, port: int, env_checksum: str = "", replicas: int = 1
+    app_id: int,
+    image: str,
+    port: int,
+    env_checksum: str = "",
+    replicas: int = 1,
+    health_check_enabled: bool = False,
+    health_check_path: str = "/healthz",
+    user_env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     name = _resource_name(app_id)
     pod_labels = {"app": name}
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
     # envFrom alone never restarts a running pod.
     pod_annotations = {"picopaas.io/env-checksum": env_checksum} if env_checksum else {}
+    if health_check_enabled:
+        probes: dict[str, Any] = {
+            "readinessProbe": {
+                "httpGet": {"path": health_check_path, "port": port},
+                "initialDelaySeconds": 5,
+                "periodSeconds": 10,
+                "timeoutSeconds": 3,
+                "failureThreshold": 3,
+            },
+            "livenessProbe": {
+                "httpGet": {"path": health_check_path, "port": port},
+                "initialDelaySeconds": 30,
+                "periodSeconds": 20,
+                "timeoutSeconds": 5,
+                "failureThreshold": 3,
+            },
+        }
+    else:
+        probes = {
+            "readinessProbe": {
+                "tcpSocket": {"port": port},
+                "initialDelaySeconds": 2,
+                "periodSeconds": 5,
+            }
+        }
+    # Heroku-style PORT. An explicit container `env` entry beats `envFrom`, so only add it
+    # when the user's own env doesn't define PORT (user value wins).
+    port_env: dict[str, Any] = (
+        {} if "PORT" in (user_env or {}) else {"env": [{"name": "PORT", "value": str(port)}]}
+    )
     return {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -327,11 +364,8 @@ def deployment_manifest(
                                 "capabilities": {"drop": ["ALL"]},
                                 "seccompProfile": {"type": "RuntimeDefault"},
                             },
-                            "readinessProbe": {
-                                "tcpSocket": {"port": port},
-                                "initialDelaySeconds": 2,
-                                "periodSeconds": 5,
-                            },
+                            **port_env,
+                            **probes,
                         }
                     ],
                 },
@@ -396,6 +430,8 @@ def render_app_manifests(
     env: dict[str, str],
     mysql_cidr: str | None,
     replicas: int = 1,
+    health_check_enabled: bool = False,
+    health_check_path: str = "/healthz",
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
@@ -405,7 +441,9 @@ def render_app_manifests(
         "network_policies": network_policies(app_id, port, mysql_cidr),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
-                                       replicas=replicas),
+                                       replicas=replicas,
+                                       health_check_enabled=health_check_enabled,
+                                       health_check_path=health_check_path, user_env=env),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port),
     }

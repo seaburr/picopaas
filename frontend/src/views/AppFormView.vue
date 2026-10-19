@@ -23,6 +23,8 @@ const form = reactive({
   port: 8080,
   want_db: false,
   want_storage: false,
+  health_check_enabled: false,
+  health_check_path: '/healthz',
 })
 const env = ref<EnvVar[]>([])
 
@@ -68,6 +70,8 @@ onMounted(async () => {
     form.port = app.port
     form.want_db = app.want_db
     form.want_storage = app.want_storage
+    form.health_check_enabled = app.health_check_enabled ?? false
+    form.health_check_path = app.health_check_path || '/healthz'
     env.value = app.env
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Failed to load app'
@@ -76,8 +80,17 @@ onMounted(async () => {
   }
 })
 
+const pathError = computed(() => {
+  if (!form.health_check_enabled) return ''
+  const p = form.health_check_path
+  if (!p.startsWith('/')) return 'Path must start with /'
+  if (/\s/.test(p)) return 'Path must not contain spaces'
+  return ''
+})
+
 async function onSubmit() {
   error.value = ''
+  if (pathError.value) return
   saving.value = true
   try {
     if (isEdit.value && appId.value !== null) {
@@ -85,6 +98,8 @@ async function onSubmit() {
         name: form.name,
         image: form.image,
         port: form.port,
+        health_check_enabled: form.health_check_enabled,
+        health_check_path: form.health_check_path,
         env: env.value,
       })
     } else {
@@ -94,6 +109,8 @@ async function onSubmit() {
         port: form.port,
         want_db: form.want_db,
         want_storage: form.want_storage,
+        health_check_enabled: form.health_check_enabled,
+        health_check_path: form.health_check_path,
         env: env.value,
       })
     }
@@ -200,6 +217,39 @@ async function onSubmit() {
         <p v-if="isEdit" class="text-xs text-zinc-500">
           Database and storage can't be changed after an app is created.
         </p>
+
+        <div class="space-y-3">
+          <h2 class="text-sm font-medium text-zinc-300">Health check</h2>
+          <div>
+            <label class="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                v-model="form.health_check_enabled"
+                type="checkbox"
+                aria-describedby="hc-enabled-help"
+                class="accent-accent"
+              />
+              Enable HTTP health check
+            </label>
+            <p id="hc-enabled-help" class="mt-1 text-xs text-zinc-500">
+              Off: traffic is sent once the port accepts connections. On: the platform calls this path; non-2xx/3xx
+              responses take the app out of rotation and restart it if they persist.
+            </p>
+          </div>
+          <div>
+            <label for="hc-path" class="mb-1 block text-sm text-zinc-300">Health check path</label>
+            <input
+              id="hc-path"
+              v-model="form.health_check_path"
+              type="text"
+              maxlength="255"
+              :disabled="!form.health_check_enabled"
+              aria-describedby="hc-path-help"
+              class="w-64 rounded-md border border-pico-border bg-pico-card px-3 py-2 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent disabled:opacity-50"
+            />
+            <p id="hc-path-help" class="mt-1 text-xs text-zinc-500">Must start with /. Default /healthz.</p>
+            <p v-if="pathError" class="mt-1 text-xs text-danger">{{ pathError }}</p>
+          </div>
+        </div>
 
         <div>
           <label class="mb-2 block text-sm font-medium text-zinc-300">Env vars</label>

@@ -10,6 +10,7 @@ const spec = ref(`apiVersion: picopaas/v1
 name: my-app              # display name only; hostname is generated
 image: ghcr.io/me/app:1.2
 port: 8080
+# healthCheck: { enabled: true, path: /healthz }   # opt-in; default off
 resources: { db: true, storage: false }
 env:
   LOG_LEVEL: info

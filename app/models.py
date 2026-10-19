@@ -69,6 +69,8 @@ class App(Base):
     port: Mapped[int] = mapped_column(nullable=False)
     want_db: Mapped[bool] = mapped_column(default=False, nullable=False)
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
+    health_check_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    health_check_path: Mapped[str] = mapped_column(String(255), nullable=False, default="/healthz", server_default="/healthz")
     # Set by app/reconciler.py: 'pending' -> 'deploying' -> 'running', or 'error'
     # (see status_detail); 'deleted' once delete_app has torn everything down.
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)

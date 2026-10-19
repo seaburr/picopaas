@@ -111,6 +111,9 @@ async function confirmDelete() {
               {{ app.hostname }}
             </a>
             <p class="truncate text-xs text-zinc-500">{{ app.image }}</p>
+            <p class="truncate text-xs text-zinc-500">
+              Health check: {{ app.health_check_enabled ? app.health_check_path : 'off' }}
+            </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <span

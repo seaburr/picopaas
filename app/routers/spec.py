@@ -99,6 +99,8 @@ def deploy_spec(
             port=spec.port,
             want_db=spec.resources.db,
             want_storage=spec.resources.storage,
+            health_check_enabled=spec.healthCheck.enabled,
+            health_check_path=spec.healthCheck.path,
             status="pending",
         )
         db.add(app)
@@ -107,6 +109,10 @@ def deploy_spec(
         app.port = spec.port
         app.want_db = spec.resources.db
         app.want_storage = spec.resources.storage
+        if (app.health_check_enabled, app.health_check_path) != (spec.healthCheck.enabled, spec.healthCheck.path):
+            app.health_check_enabled = spec.healthCheck.enabled
+            app.health_check_path = spec.healthCheck.path
+            app.status = "pending"
         app.env_vars.clear()
         db.flush()
 

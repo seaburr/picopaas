@@ -17,6 +17,7 @@ apiVersion: picopaas/v1
 name: my-app
 image: ghcr.io/me/app:1.2
 port: 8080
+healthCheck: { enabled: true, path: /healthz }   # optional; off by default, path defaults to /healthz
 resources: { db: true, storage: false }
 env:
   LOG_LEVEL: info
@@ -27,6 +28,14 @@ secrets:
 
 `apply` creates the app, or updates it if you already have one with that `name`. On update, a secret
 without `--secret` keeps its stored value. Env values must be strings (quote numbers and booleans).
+
+`healthCheck` (optional, unknown keys rejected): `enabled` (bool, default false) turns on HTTP readiness
+and liveness probes against `path` on your app's port; a 2xx/3xx response is healthy. `path` defaults to
+`/healthz`, must start with `/` (max 255 chars, letters, digits and `._~!$&()*+,;=:@/%-` only, no `..`
+segments, spaces or quotes). When disabled, readiness is a plain TCP connect and there is no liveness probe.
+Changing it redeploys the app.
+
+`PORT` is set to your app's port unless you set it yourself in `env`.
 
 ## Connecting to your database
 

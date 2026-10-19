@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
+
 from app.env_refs import EnvValidationError, validate_env_key
 
 MASKED_VALUE = "********"
@@ -85,6 +87,13 @@ class AppCreate(BaseModel):
     want_db: bool = False
     want_storage: bool = False
     env: List[EnvVarIn] = Field(default_factory=list)
+    health_check_enabled: bool = False
+    health_check_path: str = Field(default=DEFAULT_HEALTH_PATH, max_length=255)
+
+    @field_validator("health_check_path")
+    @classmethod
+    def _validate_path(cls, v: str) -> str:
+        return validate_health_path(v)
 
 
 class AppUpdate(BaseModel):
@@ -93,6 +102,13 @@ class AppUpdate(BaseModel):
     image: Optional[str] = Field(default=None, min_length=1, max_length=512)
     port: Optional[int] = Field(default=None, gt=0, le=65535)
     env: Optional[List[EnvVarIn]] = None
+    health_check_enabled: Optional[bool] = None
+    health_check_path: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("health_check_path")
+    @classmethod
+    def _validate_path(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else validate_health_path(v)
 
 
 class AppOut(BaseModel):
@@ -104,6 +120,8 @@ class AppOut(BaseModel):
     port: int
     want_db: bool
     want_storage: bool
+    health_check_enabled: bool = False
+    health_check_path: str = DEFAULT_HEALTH_PATH
     status: str
     status_detail: Optional[str] = None
     created_at: datetime

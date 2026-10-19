@@ -44,7 +44,7 @@ def test_migration_round_trip(tmp_path):
     cols = lambda: {c["name"] for c in inspect(create_engine(url)).get_columns("db_servers")}
     alembic("upgrade", "head")
     assert "ca_cert" in cols()
-    alembic("downgrade", "-1")
+    alembic("downgrade", "e5b2c8d1f3a7")
     assert "ca_cert" not in cols()
     alembic("upgrade", "head")
     assert "ca_cert" in cols()
