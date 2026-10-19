@@ -26,8 +26,14 @@ secrets:
   - API_TOKEN
 ```
 
-`apply` creates the app, or updates it if you already have one with that `name`. On update, a secret
-without `--secret` keeps its stored value. Env values must be strings (quote numbers and booleans).
+`image` above is a placeholder: use your own public image (or `ghcr.io/seaburr/picopaas-testapp-hello:latest`
+to try it), otherwise `apply` fails with `Error: 422: image not found or not public`.
+
+`apply` creates the app, or updates it if you already have one with that `name`, and prints
+`created|updated <name>: https://<hostname> (<status>)`. On update, a secret without `--secret` keeps its
+stored value; anything removed from the file (env, secrets, healthCheck) is removed from the app. `rotate`
+prints `rotated db credentials for <name>`. On an API error every command prints the status and detail
+(for example `error: 409: storage not provisioned yet`) and exits 1. Env values must be strings (quote numbers and booleans).
 
 `healthCheck` (optional, unknown keys rejected): `enabled` (bool, default false) turns on HTTP readiness
 and liveness probes against `path` on your app's port; a 2xx/3xx response is healthy. `path` defaults to

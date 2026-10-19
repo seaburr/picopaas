@@ -65,7 +65,9 @@ created_at`. New users get `app_limit` 1.
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.raisehellpraisedale.xyz), image, port,
-want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, created_at, env[]`.
+want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, retry_at, created_at, resources, env[]`.
+`retry_at` is when an app in `error` will next be retried (or null). `resources` is
+`{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, overridden, exceeds_platform_caps}`.
 Each `env` item: `{key, value, is_secret, undecryptable}`. Secret values are returned as `********`. If a stored
 value cannot be decrypted (platform key changed) `undecryptable` is true and `value` is empty.
 
@@ -78,7 +80,7 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | GET | `/apps/{app_id}` | none | `App`; 404 `app not found`. |
 | PATCH | `/apps/{app_id}` | `AppUpdate` | `App`. 403 `app suspended`. Changing image, port, env or health check sets status `pending` and redeploys. |
 | DELETE | `/apps/{app_id}` | none | 204. Soft delete; the reconciler tears down namespace, DB and bucket. 403 `app suspended`. |
-| POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 `database|storage not provisioned yet`; 502 `credential rotation failed`; 403 if suspended. |
+| POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 `database|storage not provisioned yet` (also when the app has no DB/bucket); 502 `credential rotation failed`; 403 if suspended. |
 | POST | `/apps/spec` | `{spec, secrets}` | Create-or-update from YAML; see below. |
 
 `AppCreate`:
@@ -112,10 +114,13 @@ found or not public`), the USER must be numeric and non-root (422), and the summ
 Request: `{"spec": "<YAML, max 64KB>", "secrets": {"NAME": "value"}}` (`secrets` optional; each key must be in the
 spec's `secrets` list).
 
-Response: `App` plus `created: bool`. The app is matched by `(you, spec.name)`; if it exists it is updated.
+Response: 200 `App` plus `created: bool` (200 for both create and update). The app is matched by
+`(you, spec.name)`; if it exists it is updated, declaratively: env, secrets and health check become exactly what
+the spec says (missing ones are removed; a secret still listed but not resupplied keeps its value).
 Errors: 422 for YAML/spec errors (message lists `field: problem`), `secret values supplied for names not listed in
 spec.secrets`, `missing values for secrets: ...`, `removing a db/storage resource from an existing app is not
-supported via spec`; 403 `app suspended` or app limit. The YAML format is in USER_GUIDE.md section 4.
+supported via spec`, `invalid reference in value: ...`; 403 `app suspended` or app limit. On create the app
+limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
 ## Admin (`/admin`, admin only)
 

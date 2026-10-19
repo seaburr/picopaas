@@ -71,7 +71,8 @@ curl -sS -X POST "$PP/apps/spec" \
 ```
 
 Body shape for `POST /apps/spec`: `{"spec": "<yaml text>", "secrets": {"NAME": "value"}}`. `secrets` is optional,
-and every key must be listed in the spec's `secrets` list. The response is the app plus `created: true|false`.
+and every key must be listed in the spec's `secrets` list. The response is `200` with the app plus
+`created: true|false` (also `200` when it creates the app).
 
 Plain JSON endpoints:
 
@@ -151,6 +152,9 @@ Strict typing: `port: "8080"` (a string) or `db: "yes"` is rejected.
 - Create: every name in `secrets` needs a value (`secrets` in the API body, `--secret K=V` in the CLI), otherwise
   `422 missing values for secrets: ...`.
 - Update: a secret you do not resupply keeps its stored value. A new secret name needs a value.
+- Update is declarative: the app's `image`, `port`, `env`, `secrets` and `healthCheck` become exactly what the
+  spec says. An env var or secret missing from the spec is removed, and a spec without `healthCheck` turns the
+  health check off.
 - Secret values are encrypted at rest and shown as `********` in API responses.
 
 ## 5. Env vars, secrets and `${{ }}` references
@@ -159,8 +163,10 @@ User env vars (plain or secret) are put into a Kubernetes Secret in your app's n
 container as environment variables. Changing them redeploys (restarts) the app.
 
 A value that is **exactly** `${{ ref }}` (whole value, optional inner spaces) is replaced at deploy time. You
-cannot embed a reference inside a longer string. An unknown reference is a 422, and `db.*` requires
-`resources.db: true` (`storage.*` requires `resources.storage: true`).
+cannot embed a reference inside a longer string. An unknown or embedded reference is a
+`422 invalid reference in value: ...` (the message lists the allowed references), and `db.*` requires
+`resources.db: true` (`storage.*` requires `resources.storage: true`), otherwise
+`422 ${{ db.url }} references a database, but this app did not request one (set want_db)`.
 
 | Reference | Value |
 |---|---|
@@ -273,8 +279,8 @@ ready.
 
 Rotate DB password or storage keys from the app edit page, with `picopaas rotate NAME --db|--storage`, or
 `POST /apps/{id}/rotate-credentials` with `{"target": "db"}` or `{"target": "storage"}`. The app moves to
-`pending`, is re-rendered with the new credentials and restarts. It returns `409` if the DB or bucket is not
-provisioned yet, and `502 credential rotation failed` if the provider call failed (the old credentials are kept).
+`pending`, is re-rendered with the new credentials and restarts. It returns `409 database not provisioned yet`
+(or `storage ...`) if the DB or bucket is not provisioned yet or the app never asked for one, and `502 credential rotation failed` if the provider call failed (the old credentials are kept).
 Rotation also repairs an app showing "stored secrets unreadable".
 
 ## 10. Quotas
@@ -318,8 +324,9 @@ Deleting an app removes its namespace, database and bucket.
 | `422 image runs as root` / `must be a numeric UID` | Add `USER 10001` (numeric) to your Dockerfile. |
 | `422 image not found or not public` | Wrong tag, or private image. Make the package public. |
 | `422 ... over the 536870912 byte (512MB) platform cap` | Shrink the image. |
-| `403 app limit reached` | Delete your existing app or ask the uberadmin to raise your limit. |
+| `403 app limit reached` | Delete your existing app or ask the uberadmin to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this 403 even if the spec has other problems. |
 | `422 ... references a database, but this app did not request one` | Add `resources: { db: true }` (or `storage`). |
+| `422 invalid reference in value` | Use exactly one `${{ db.x }}` / `${{ storage.x }}` from the list in section 5, as the whole value. |
 | `422 missing values for secrets` | Provide `--secret NAME=value` / the `secrets` body. |
 | `422 invalid env key` | Keys are uppercase letters, digits and underscores, not starting with a digit. |
 | 502/503 from your hostname | App not ready yet, wrong `port`, or not listening on all interfaces (bind `0.0.0.0`). |
@@ -380,13 +387,13 @@ env:
   S3_SECRET_KEY: ${{ storage.secret_key }}
 ```
 
-abacusaas (a real third-party app; check its own docs for the port it listens on and set `port` to match):
+abacusaas (a real third-party app; listens on 8080 and serves `/abacus`, the root path is a 404):
 
 ```yaml
 apiVersion: picopaas/v1
 name: abacusaas
 image: ghcr.io/seaburr/abacusaas:latest
-port: 8080          # assumption: confirm against the image
+port: 8080
 ```
 
 Remember the default limit is one app per account, so delete one test app before deploying the next.
