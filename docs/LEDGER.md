@@ -339,3 +339,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] START: commit terraform local-exec workflow change, push, dispatch plan-only (apply=false)
 - 2026-10-19 [scm-security] DONE: pushed e1fbe9e; CI green; terraform plan-only run 39271775789 success (1 import, 4 add, 1 change, 0 destroy); apply NOT run
 - 2026-10-19 [scm-security] START: commit MySQL 8.4 / AMD node infra change, push, dispatch plan-only
+- 2026-10-19 [scm-security] DONE: pushed e4a53c4; CI FAILED: 'terraform fmt -check' flags infra/database.tf (BLOCKED, infra owner: run terraform fmt); terraform plan-only run 39273533943 success: 3 add, 0 change, 0 destroy; apply NOT run
