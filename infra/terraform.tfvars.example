@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and fill in, OR set as TF_VAR_* env vars (preferred for secrets-adjacent
+# values). terraform.tfvars itself is gitignored — never commit it.
+
+region     = "atl1"
+node_size  = "s-2vcpu-4gb"
+node_count = 1
+
+# Chas is leaning managed as of 2026-10-18 (see docs/requests/0001-core-infra.md). Flip these to
+# match whichever variant he approves — the Terraform code is identical across all four
+# combinations, only these two flags (plus mysql_size) change.
+use_managed_mysql = true
+use_load_balancer = true
+
+# WARNING: ATL1 managed MySQL is Premium Intel only — this "basic" slug may not be orderable
+# there. Check the DO control panel / `doctl databases options sizes` before applying.
+mysql_size = "db-s-1vcpu-1gb"
+
+domain = "seaburr.io"
+
+# Leave empty until the ingress-nginx LoadBalancer Service exists and you've read its IP with
+# `kubectl get svc -n ingress-nginx`. See the TODO in variables.tf.
+wildcard_lb_ip = ""

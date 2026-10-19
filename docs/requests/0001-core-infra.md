@@ -1,9 +1,25 @@
-# Request 0001: Core infrastructure (status: AWAITING CHAS)
+# Request 0001: Core infrastructure (status: AWAITING CHAS: leaning managed)
+
+## 2026-10-18 update from Chas
+- He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
+- Region: **ATL1 preferred**, with NYC3 as the fallback. ATL1 has DOKS, Spaces, LB, volumes, and DOCR, but **managed MySQL in ATL1 is
+  Premium Intel only**, which costs more than the $15.15 basic 1 GiB plan. Price TBD. Check the control panel when ordering.
+- DNS: wildcards OK. Every existing seaburr.io record may be removed **except the Bluesky TXT record**.
+- Tokens arrive 2026-10-19.
+
+### Managed option in ATL1 (estimate)
+| | Monthly |
+|---|---|
+| Node s-2vcpu-4gb $24 + LB $12 + Spaces $5 + managed MySQL (Premium Intel, ~$20?) | **~$61, over the $40 budget by ~$21** |
+| Per deployed app | same as lean: ~$0 for the first ~8–10 apps, then ~$2/app |
+Middle ground: managed MySQL with no LB (~$49), or an LB with in-cluster MySQL (~$42). Chas decides.
+The code is identical in every variant. Only Terraform flags differ (`use_managed_mysql`, `use_load_balancer`).
+
 
 Nothing gets provisioned until Chas approves. Terraform for this lives in `infra/` once written.
 
 ## 1. What is being deployed
-- DOKS cluster (non-HA control plane) with 1 × `s-2vcpu-4gb` node, region `nyc3`
+- DOKS cluster (non-HA control plane) with 1 × `s-2vcpu-4gb` node, region `atl1` (fallback `nyc3`)
 - Spaces subscription: one private bucket for Terraform state + MySQL backups, plus one bucket per app on demand
 - 10 GiB block volume for in-cluster MySQL
 - DNS: wildcard `*.seaburr.io` A record (plus `picopaas.seaburr.io` for the platform UI)

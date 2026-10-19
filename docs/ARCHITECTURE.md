@@ -119,5 +119,5 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 
 ## 3. Open questions for Chas
 1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
-2. Is anything else already using the `*.seaburr.io` wildcard? (Explicit records keep working either way.)
-3. Region preference? The default is `nyc3` (Spaces + DOKS both available).
+2. ~~Wildcard~~ → OK. Every record except the Bluesky TXT is disposable.
+3. ~~Region~~ → ATL1 (Chas, 2026-10-18). Managed MySQL in ATL1 is Premium Intel only.
