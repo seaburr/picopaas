@@ -67,7 +67,7 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
      kubectl apply -f deploy/dns-sync/dns-sync.yaml   # creates ns + RBAC + CronJob
      # create do-dns-token in picopaas-dns-sync (see Secrets); the CronJob fails until it exists
      ```
-     It only upserts/deletes type-A records named `*` and `picopaas`. TXT records (Bluesky) are never touched.
+     It only upserts/deletes type-A records named `*` and `picopaas`. TXT records are never touched.
 
 ## MySQL restore (in-cluster variant)
 

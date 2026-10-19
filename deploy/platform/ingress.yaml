@@ -1,5 +1,5 @@
 # TLS not set explicitly: ingress-nginx's default-ssl-certificate (the wildcard cert) covers
-# picopaas.seaburr.io already, so no per-host tls/secretName block is needed here.
+# picopaas.raisehellpraisedale.xyz already, so no per-host tls/secretName block is needed here.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: picopaas.seaburr.io
+    - host: picopaas.raisehellpraisedale.xyz
       http:
         paths:
           - path: /

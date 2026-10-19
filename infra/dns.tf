@@ -1,8 +1,8 @@
-# The seaburr.io domain already exists in the DO control panel and is managed by hand / by Chas.
+# The raisehellpraisedale.xyz domain already exists in the DO control panel and is managed by hand / by Chas.
 # This is a DATA SOURCE ONLY — Terraform must never create or destroy the domain itself, and must
-# NEVER touch TXT records (the Bluesky verification TXT record must survive; see request 0001 and
+# NEVER touch TXT records (general rule; see request 0003 and
 # ARCHITECTURE.md §3). Only the wildcard A record below is managed here, and only conditionally.
-data "digitalocean_domain" "seaburr" {
+data "digitalocean_domain" "domain" {
   name = var.domain
 }
 
@@ -15,7 +15,7 @@ data "digitalocean_domain" "seaburr" {
 resource "digitalocean_record" "wildcard_lb" {
   count = var.use_load_balancer && var.wildcard_lb_ip != "" ? 1 : 0
 
-  domain = data.digitalocean_domain.seaburr.name
+  domain = data.digitalocean_domain.domain.name
   type   = "A"
   name   = "*"
   value  = var.wildcard_lb_ip

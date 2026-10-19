@@ -62,7 +62,7 @@ variable "use_load_balancer" {
 variable "domain" {
   description = "Existing DO-managed domain. Looked up via data source only — never created/destroyed here."
   type        = string
-  default     = "seaburr.io"
+  default     = "raisehellpraisedale.xyz"
 }
 
 variable "wildcard_lb_ip" {

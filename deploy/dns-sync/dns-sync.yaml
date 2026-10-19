@@ -1,6 +1,6 @@
 # dns-sync (ONLY for the no-LB variant, use_load_balancer = false).
-# Every 2 min: read Ready nodes' ExternalIPs, upsert A records `*` and `picopaas` in seaburr.io.
-# Only touches type=A records with exactly those two names; TXT (Bluesky) and everything else are never read-for-write.
+# Every 2 min: read Ready nodes' ExternalIPs, upsert A records `*` and `picopaas` in raisehellpraisedale.xyz.
+# Only touches type=A records with exactly those two names; TXT and everything else are never read-for-write.
 # Secret (by hand): do-dns-token (key DO_API_TOKEN) in ns picopaas-dns-sync.
 apiVersion: v1
 kind: Namespace
@@ -47,7 +47,7 @@ data:
   sync.py: |
     import json, os, ssl, sys, urllib.request
 
-    DOMAIN = os.environ.get("DOMAIN", "seaburr.io")
+    DOMAIN = os.environ.get("DOMAIN", "raisehellpraisedale.xyz")
     NAMES = ["*", "picopaas"]
     TTL = 60
     DO = "https://api.digitalocean.com/v2"
@@ -146,7 +146,7 @@ spec:
               command: ["python", "-I", "/script/sync.py"]
               env:
                 - name: DOMAIN
-                  value: seaburr.io
+                  value: raisehellpraisedale.xyz
                 - name: DO_API_TOKEN
                   valueFrom:
                     secretKeyRef:

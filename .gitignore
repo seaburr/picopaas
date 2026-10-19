@@ -38,3 +38,4 @@ static/
 
 # --- Claude local ---
 .claude/settings.local.json
+.claude/worktrees/

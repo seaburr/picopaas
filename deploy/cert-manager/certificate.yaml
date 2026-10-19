@@ -1,4 +1,4 @@
-# Wildcard cert for *.seaburr.io (+ the apex), used as ingress-nginx's default TLS cert
+# Wildcard cert for *.raisehellpraisedale.xyz (+ the apex), used as ingress-nginx's default TLS cert
 # (see deploy/ingress-nginx/values.yaml default-ssl-certificate arg). One cert, no per-app
 # issuance, so no Let's Encrypt rate-limit risk as apps are created/deleted.
 #
@@ -7,13 +7,13 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-seaburr-io
+  name: wildcard-raisehellpraisedale-xyz
   namespace: ingress-nginx
 spec:
-  secretName: wildcard-seaburr-io-tls
+  secretName: wildcard-raisehellpraisedale-xyz-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - "seaburr.io"
-    - "*.seaburr.io"
+    - "raisehellpraisedale.xyz"
+    - "*.raisehellpraisedale.xyz"

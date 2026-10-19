@@ -15,7 +15,7 @@ use_load_balancer = true
 # there. Check the DO control panel / `doctl databases options sizes` before applying.
 mysql_size = "db-s-1vcpu-1gb"
 
-domain = "seaburr.io"
+domain = "raisehellpraisedale.xyz"
 
 # Leave empty until the ingress-nginx LoadBalancer Service exists and you've read its IP with
 # `kubectl get svc -n ingress-nginx`. See the TODO in variables.tf.
