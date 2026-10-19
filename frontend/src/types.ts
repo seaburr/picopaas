@@ -49,6 +49,24 @@ export interface App {
   health_check_enabled: boolean
   health_check_path: string
   env: EnvVar[]
+  retry_at?: string | null
+  resources?: AppResources
+}
+
+export interface AppResources {
+  cpu_request_m: number
+  cpu_limit_m: number
+  mem_request_mi: number
+  mem_limit_mi: number
+  overridden: boolean
+  exceeds_platform_caps: boolean
+}
+
+export interface ResourcesPatch {
+  cpu_request_m?: number | null
+  cpu_limit_m?: number | null
+  mem_request_mi?: number | null
+  mem_limit_mi?: number | null
 }
 
 export interface AppCreatePayload {
@@ -130,6 +148,7 @@ export interface AdminApp {
   owner_email: string
   image: string
   created_at: string
+  resources?: AppResources
 }
 
 export interface AuditEntry {

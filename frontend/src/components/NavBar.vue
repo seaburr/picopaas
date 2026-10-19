@@ -35,7 +35,8 @@ async function onLogout() {
       <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin/health" class="text-sm text-zinc-400 hover:text-white">Health</RouterLink>
     </div>
     <div class="flex items-center gap-3 text-sm text-zinc-400">
-      <span v-if="auth.user">{{ auth.user.email }}</span>
+      <a href="/privacy" class="hover:text-white">Privacy</a>
+      <span v-if="auth.user" class="hidden sm:inline">{{ auth.user.email }}</span>
       <button type="button" class="rounded border border-pico-border px-2 py-1 hover:bg-pico-card" @click="onLogout">
         Log out
       </button>

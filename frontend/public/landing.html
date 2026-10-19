@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PicoPaaS: tiny hosting for throwaway projects</title>
+<meta name="description" content="Tiny Heroku-like hosting: one container, optional MySQL and S3 bucket, HTTPS on a subdomain.">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d0d14;color:#e4e4e7;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}a{color:#7aa0d4}.w{max-width:960px;margin:0 auto;padding:0 20px}header.t{border-bottom:1px solid #2c2c3c;background:#16161f}header.t .w{display:flex;justify-content:space-between;align-items:center;height:56px}.logo{font-weight:700;color:#fff;text-decoration:none}.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:#233775;color:#fff;text-decoration:none;font-weight:600;border:1px solid #4a78c2}.btn:hover{background:#4a78c2}.btn.s{background:transparent;border-color:#2c2c3c;color:#d4d4d8}.btn.s:hover{background:#1c1c28}footer{border-top:1px solid #2c2c3c;margin-top:64px;padding:24px 0;color:#71717a;font-size:14px}h1,h2,h3{color:#fff;line-height:1.25}
+.hero{padding:80px 0 48px;text-align:center}.hero h1{font-size:clamp(32px,6vw,52px);margin:0 0 16px}.hero p{max-width:620px;margin:0 auto 28px;color:#a1a1aa;font-size:18px}.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+h2{font-size:24px;margin:56px 0 20px}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.card{background:#16161f;border:1px solid #2c2c3c;border-radius:8px;padding:20px}.card h3{margin:0 0 8px;font-size:17px}.card p{margin:0;color:#a1a1aa;font-size:15px}.n{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:#233775;color:#fff;font-weight:700;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;background:#16161f;border:1px solid #2c2c3c;border-radius:8px}td{padding:10px 16px;border-top:1px solid #2c2c3c}tr:first-child td{border-top:0}td:last-child{text-align:right;color:#fff;font-weight:600}
+.note{background:#1c1c28;border:1px solid #2c2c3c;border-radius:8px;padding:20px;margin-top:32px;color:#a1a1aa}
+</style>
+</head>
+<body>
+<header class="t"><div class="w"><a class="logo" href="/">PicoPaaS</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/login" style="padding:6px 14px">Log in</a></div></header>
+<main class="w">
+<section class="hero">
+<h1>Tiny hosting for throwaway projects</h1>
+<p>A small Heroku-like platform. Push one container image, get HTTPS on your own subdomain, with an optional MySQL database and S3-compatible bucket.</p>
+<div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/login">Log in</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/register">Request access</a></div>
+</section>
+<section>
+<h2>What it is</h2>
+<div class="grid">
+<div class="card"><h3>One container</h3><p>Bring a Docker image and a port. Set env vars and secrets (encrypted at rest) in the dashboard or API.</p></div>
+<div class="card"><h3>Optional MySQL + bucket</h3><p>Tick a box and get a private database and an object-storage bucket, wired in as env vars.</p></div>
+<div class="card"><h3>HTTPS included</h3><p>Every app gets its own subdomain with an automatic Let's Encrypt certificate.</p></div>
+</div>
+</section>
+<section>
+<h2>How it works</h2>
+<div class="grid">
+<div class="card"><span class="n">1</span><h3>Request access</h3><p>Sign up and wait for approval.</p></div>
+<div class="card"><span class="n">2</span><h3>Create an app</h3><p>Point at your image, set the port and env vars, pick a database or bucket if you need one.</p></div>
+<div class="card"><span class="n">3</span><h3>Open your URL</h3><p>The platform deploys it and serves it over HTTPS. Update the config to redeploy.</p></div>
+</div>
+</section>
+<section>
+<h2>Limits</h2>
+<table>
+<tr><td>CPU per app</td><td>250m</td></tr>
+<tr><td>Memory per app</td><td>512 MB</td></tr>
+<tr><td>Image size</td><td>512 MB</td></tr>
+<tr><td>MySQL database</td><td>100 MB</td></tr>
+<tr><td>Storage bucket</td><td>250 MB</td></tr>
+</table>
+<div class="note"><strong style="color:#fff">Invite / approval only.</strong> Accounts are approved by hand. This is a hobby platform for throwaway projects, not for anything you depend on.</div>
+</section>
+<section class="hero" style="padding-bottom:0"><div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/login">Log in</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/register">Request access</a></div></section>
+</main>
+<footer><div class="w">PicoPaaS &middot; <a href="/privacy">Privacy &amp; Acceptable Use</a></div></footer>
+</body>
+</html>

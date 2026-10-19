@@ -1,4 +1,4 @@
-import type { AdminApp, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
+import type { AdminApp, AppResources, ResourcesPatch, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
 import { apiFetch } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -28,3 +28,6 @@ export const deleteAdminApp = (id: number) => apiFetch<void>(`/admin/apps/${id}`
 export const listAudit = (limit = 100) => apiFetch<AuditEntry[]>(`/admin/audit?limit=${limit}`)
 
 export const getHealth = () => apiFetch<ClusterHealth>('/admin/health')
+
+export const patchAppResources = (id: number, body: ResourcesPatch) =>
+  apiFetch<AppResources>(`/admin/apps/${id}/resources`, { method: 'PATCH', body: JSON.stringify(body) })

@@ -48,6 +48,11 @@ onMounted(async () => {
   }
 })
 
+function retryText(iso: string) {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
 function askDelete(app: App) {
   pendingDelete.value = app
 }
@@ -101,6 +106,11 @@ async function confirmDelete() {
               <StatusBadge :status="app.status" />
             </div>
             <p v-if="app.status === 'suspended'" class="text-xs text-amber-400">Suspended by an administrator</p>
+            <template v-else-if="app.status === 'error'">
+              <p v-if="app.retry_at" class="text-xs text-amber-400">will retry at {{ retryText(app.retry_at) }}</p>
+              <p v-else class="text-xs text-amber-400">needs your change to recover</p>
+              <p v-if="app.status_detail" class="break-words text-xs text-zinc-400">{{ app.status_detail }}</p>
+            </template>
             <p v-else-if="app.status_detail" class="truncate text-xs text-zinc-400">{{ app.status_detail }}</p>
             <a
               :href="`https://${app.hostname}`"
@@ -109,6 +119,10 @@ async function confirmDelete() {
               class="block truncate text-sm text-accent-light hover:underline"
             >
               {{ app.hostname }}
+              <svg class="ml-1 inline h-3 w-3 align-baseline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path d="M9 2h5v5M14 2 7.5 8.5M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4" />
+              </svg>
+              <span class="sr-only">(opens in new tab)</span>
             </a>
             <p class="truncate text-xs text-zinc-500">{{ app.image }}</p>
             <p class="truncate text-xs text-zinc-500">
