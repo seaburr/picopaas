@@ -2,7 +2,7 @@ name: bootstrap
 
 # One-shot, re-runnable cluster bring-up for the managed-MySQL + LB variant (deploy/README.md steps 2-8).
 # Run by hand after the terraform workflow has created the cluster. Idempotent: helm upgrade --install,
-# kubectl apply, DNS upserts, and existing secrets (SECRET_KEY, FERNET_KEY, platform DB password) are
+# kubectl apply, DNS upserts, and existing secrets (platform DB password) are
 # read back and never rotated. Never touches TXT or any DNS record other than A `*` and `picopaas`.
 on:
   workflow_dispatch:
@@ -222,15 +222,20 @@ jobs:
 
       - name: Platform secrets (picopaas-env, picopaas-db-ca)
         if: steps.gate.outputs.run == 'true'
+        env:
+          PICOPAAS_SECRET_KEY: ${{ secrets.PICOPAAS_SECRET_KEY }}
+          PICOPAAS_FERNET_KEY: ${{ secrets.PICOPAAS_FERNET_KEY }}
         run: |
           set -euo pipefail
           ns=picopaas-system
           existing=$(kubectl -n $ns get secret picopaas-env -o json 2>/dev/null || true)
           get() { echo "$existing" | jq -r --arg k "$1" '.data[$k] // empty | @base64d'; }
 
-          # Never rotate: reuse whatever is already in picopaas-env, generate only when absent.
-          SECRET_KEY=$(get SECRET_KEY);   [ -n "$SECRET_KEY" ] || SECRET_KEY=$(openssl rand -hex 32)
-          FERNET_KEY=$(get FERNET_KEY);   [ -n "$FERNET_KEY" ] || FERNET_KEY=$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+          # SECRET_KEY / FERNET_KEY come from GitHub secrets so they survive losing the cluster: FERNET_KEY decrypts
+          # every secret stored in MySQL. (2026-10-19: a cluster replacement regenerated it and orphaned the data.)
+          SECRET_KEY="$PICOPAAS_SECRET_KEY"; FERNET_KEY="$PICOPAAS_FERNET_KEY"
+          [ -n "$SECRET_KEY" ] && [ -n "$FERNET_KEY" ] || {
+            echo "::error::set repo secrets PICOPAAS_SECRET_KEY and PICOPAAS_FERNET_KEY (keep a copy outside GitHub)"; exit 1; }
           PLATFORM_DB_PASSWORD=$(get PLATFORM_DB_PASSWORD); [ -n "$PLATFORM_DB_PASSWORD" ] || PLATFORM_DB_PASSWORD=$(openssl rand -hex 24)
           for v in "$SECRET_KEY" "$FERNET_KEY" "$PLATFORM_DB_PASSWORD"; do echo "::add-mask::$v"; done
 

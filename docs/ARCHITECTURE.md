@@ -199,3 +199,9 @@ later without two loops fighting each other.
 2. ~~Wildcard~~ → OK. Domain is now the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
 3. ~~Region~~ → NYC3 for compute/MySQL (ATL1 had no DOKS capacity, 2026-10-19); Spaces stays in ATL1. Smallest SKUs for launch (Chas, 2026-10-19): s-1vcpu-2gb node, basic 1 GiB MySQL; scale later.
 4. Autoscaler `max_nodes`, the compute spending ceiling. Proposed: 2 (worst case +$24/mo over static).
+
+## Key management (2026-10-19)
+`FERNET_KEY` encrypts every secret stored in MySQL (env-var secrets, app DB passwords, storage keys, DB server admin
+passwords). `SECRET_KEY` signs sessions. Both live in GitHub repo secrets `PICOPAAS_FERNET_KEY` / `PICOPAAS_SECRET_KEY`
+(with Chas's offline copy); `bootstrap.yml` writes them into `picopaas-env`. They must never be generated per cluster: a
+cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is TODO.

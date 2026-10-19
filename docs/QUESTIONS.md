@@ -11,7 +11,12 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- (none right now)
+- [ ] **Own the platform encryption keys.** FERNET_KEY decrypts every secret the platform stores in MySQL; losing it
+      loses that data (it happened in the 2026-10-19 cluster rebuild, harmless then). Claude put generated keys in
+      repo secrets `PICOPAAS_SECRET_KEY` / `PICOPAAS_FERNET_KEY`, but GitHub secrets are write-only, so nobody has a
+      copy. While nothing valuable is encrypted yet: generate your own, save them in your password manager, and
+      overwrite both secrets (`python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`
+      for FERNET_KEY; any 48+ random chars for SECRET_KEY). Then tell Claude to re-run bootstrap.
 
 ## Resolved
 - 2026-10-19: DOKS "insufficient capacity" explained: a region's API size list shows what has capacity right now. NYC3 lists

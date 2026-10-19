@@ -75,3 +75,25 @@ def test_bootstrap_backfills_and_missing_file(db_session, monkeypatch, tmp_path)
     monkeypatch.setenv("MYSQL_SSL_CA", str(f))
     scheduler.bootstrap_db_server()
     assert db_session.query(models.DbServer).one().ca_cert == PEM
+
+
+def test_bootstrap_repairs_undecryptable_admin_password(db_session, monkeypatch, tmp_path):
+    from app import crypto
+
+    _env(monkeypatch, db_session, tmp_path / "nope.crt")
+    scheduler.bootstrap_db_server()
+    row = db_session.query(models.DbServer).one()
+    row.admin_password_encrypted = "gAAAAA-encrypted-with-a-lost-key"  # simulates a FERNET_KEY change
+    db_session.commit()
+    scheduler.bootstrap_db_server()
+    assert crypto.decrypt(db_session.query(models.DbServer).one().admin_password_encrypted) == "pw"
+
+
+def test_bootstrap_syncs_rotated_admin_password(db_session, monkeypatch, tmp_path):
+    from app import crypto
+
+    _env(monkeypatch, db_session, tmp_path / "nope.crt")
+    scheduler.bootstrap_db_server()
+    monkeypatch.setenv("BOOTSTRAP_DB_PASSWORD", "rotated")
+    scheduler.bootstrap_db_server()
+    assert crypto.decrypt(db_session.query(models.DbServer).one().admin_password_encrypted) == "rotated"

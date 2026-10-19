@@ -146,7 +146,9 @@ def _read_ca() -> str | None:
 
 
 def bootstrap_db_server() -> None:
-    """Insert DbServer 'primary' from BOOTSTRAP_DB_* env if none exists."""
+    """Insert DbServer 'primary' from BOOTSTRAP_DB_* env if none exists; otherwise keep its connection details
+    and admin credentials in sync with the env (bootstrap.yml reads them from DO each run). That also repairs a
+    row whose password can no longer be decrypted after a FERNET_KEY change."""
     host = os.environ.get("BOOTSTRAP_DB_HOST")
     user = os.environ.get("BOOTSTRAP_DB_USER")
     password = os.environ.get("BOOTSTRAP_DB_PASSWORD")
@@ -159,10 +161,26 @@ def bootstrap_db_server() -> None:
             primary = session.execute(
                 select(models.DbServer).where(models.DbServer.name == "primary")
             ).scalar_one_or_none()
-            if primary is not None and primary.ca_cert is None and ca_cert:
+            if primary is None:
+                return
+            changed = []
+            if primary.ca_cert is None and ca_cert:
                 primary.ca_cert = ca_cert
+                changed.append("ca_cert")
+            port = int(os.environ.get("BOOTSTRAP_DB_PORT", "3306"))
+            if (primary.host, primary.port, primary.admin_user) != (host, port, user):
+                primary.host, primary.port, primary.admin_user = host, port, user
+                changed.append("connection")
+            try:
+                current = crypto.decrypt(primary.admin_password_encrypted)
+            except ValueError:
+                current = None
+            if current != password:
+                primary.admin_password_encrypted = crypto.encrypt(password)
+                changed.append("admin password")
+            if changed:
                 session.commit()
-                log.info("backfilled ca_cert on DbServer 'primary'")
+                log.info("updated DbServer 'primary': %s", ", ".join(changed))
             return
         session.add(
             models.DbServer(
