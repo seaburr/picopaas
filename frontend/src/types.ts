@@ -41,6 +41,7 @@ export interface App {
   want_db: boolean
   want_storage: boolean
   status: string
+  status_detail: string | null
   created_at: string
   env: EnvVar[]
 }
@@ -77,3 +78,35 @@ export const STORAGE_REFS = [
   'storage.access_key',
   'storage.secret_key',
 ]
+
+export interface AdminUser {
+  id: number
+  email: string
+  role: string
+  app_limit: number
+  app_count: number
+  created_at: string
+}
+
+export interface DbServer {
+  id: number
+  name: string
+  host: string
+  port: number
+  status: string
+  max_databases: number
+  used: number
+  pct: number
+  warn: boolean
+}
+
+export interface DbServerCreate {
+  name: string
+  host: string
+  port: number
+  admin_user: string
+  admin_password: string
+  max_databases: number
+}
+
+export type AppWithCreated = App & { created: boolean }

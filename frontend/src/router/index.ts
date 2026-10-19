@@ -19,6 +19,11 @@ const router = createRouter({
       props: true,
     },
     { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true } },
+    {
+      path: '/admin',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
   ],
 })
 
@@ -26,6 +31,7 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.loaded) await auth.load()
   if (to.meta.requiresAuth && !auth.user) return '/login'
+  if (to.meta.requiresAdmin && auth.user?.role !== 'uberadmin') return '/'
   if ((to.path === '/login' || to.path === '/register') && auth.user) return '/'
 })
 

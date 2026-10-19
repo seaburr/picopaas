@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -10,6 +10,31 @@ import type { App } from '../types'
 const store = useAppsStore()
 const loading = ref(true)
 const error = ref('')
+
+let timer: ReturnType<typeof setInterval> | null = null
+function inFlight() {
+  return store.apps.some((a) => a.status === 'pending' || a.status === 'deploying')
+}
+function syncPolling() {
+  if (inFlight() && !timer) {
+    timer = setInterval(async () => {
+      try {
+        await store.load()
+      } catch {
+        // keep last known state; next tick retries
+      }
+      syncPolling()
+    }, 5000)
+  } else if (!inFlight() && timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+watch(() => store.apps, syncPolling, { deep: true })
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+  timer = null
+})
 
 const pendingDelete = ref<App | null>(null)
 
@@ -75,6 +100,7 @@ async function confirmDelete() {
               <span class="font-medium text-white">{{ app.name }}</span>
               <StatusBadge :status="app.status" />
             </div>
+            <p v-if="app.status_detail" class="truncate text-xs text-zinc-400">{{ app.status_detail }}</p>
             <a
               :href="`https://${app.hostname}`"
               target="_blank"

@@ -3,6 +3,7 @@ defineProps<{ status: string }>()
 
 const colorFor: Record<string, string> = {
   pending: 'bg-status-pending/15 text-status-pending border-status-pending/30',
+  deploying: 'bg-status-pending/15 text-status-pending border-status-pending/30',
   running: 'bg-status-running/15 text-status-running border-status-running/30',
   error: 'bg-status-error/15 text-status-error border-status-error/30',
   stopped: 'bg-status-stopped/15 text-status-stopped border-status-stopped/30',

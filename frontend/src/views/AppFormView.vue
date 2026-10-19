@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import SpecEditor from '../components/SpecEditor.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import NavBar from '../components/NavBar.vue'
+import { rotateCredentials } from '../api/apps'
 import { ApiError } from '../api/client'
 import { useAppsStore } from '../stores/apps'
 import type { EnvVar } from '../types'
@@ -22,6 +25,24 @@ const form = reactive({
   want_storage: false,
 })
 const env = ref<EnvVar[]>([])
+
+const tab = ref<'form' | 'yaml'>('form')
+const rotating = ref<'db' | 'storage' | null>(null)
+const rotateMsg = ref('')
+
+async function confirmRotate() {
+  const target = rotating.value
+  rotating.value = null
+  if (!target || appId.value === null) return
+  error.value = ''
+  rotateMsg.value = ''
+  try {
+    await rotateCredentials(appId.value, target)
+    rotateMsg.value = target === 'db' ? 'DB password rotated; app restarting.' : 'Storage keys rotated; app restarting.'
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Failed to rotate credentials'
+  }
+}
 
 const loading = ref(isEdit.value)
 const saving = ref(false)
@@ -93,7 +114,21 @@ async function onSubmit() {
     <main class="mx-auto max-w-2xl px-4 py-6">
       <h1 class="mb-4 text-lg font-semibold text-white">{{ isEdit ? 'Edit app' : 'New app' }}</h1>
 
-      <div v-if="loading" class="text-sm text-zinc-500">Loading…</div>
+      <div v-if="!isEdit" class="mb-3 flex gap-1 text-sm">
+        <button
+          v-for="t in (['form', 'yaml'] as const)"
+          :key="t"
+          type="button"
+          :class="['rounded px-3 py-1', tab === t ? 'bg-pico-card text-white' : 'text-zinc-400 hover:text-white']"
+          @click="tab = t"
+        >
+          {{ t === 'form' ? 'Form' : 'YAML' }}
+        </button>
+      </div>
+
+      <SpecEditor v-if="!isEdit && tab === 'yaml'" />
+
+      <div v-else-if="loading" class="text-sm text-zinc-500">Loading…</div>
 
       <form v-else class="space-y-5 rounded-lg border border-pico-border bg-pico-panel p-5" @submit.prevent="onSubmit">
         <div>
@@ -165,6 +200,26 @@ async function onSubmit() {
           <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" />
         </div>
 
+        <div v-if="isEdit && (form.want_db || form.want_storage)" class="flex flex-wrap items-center gap-2">
+          <button
+            v-if="form.want_db"
+            type="button"
+            class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
+            @click="rotating = 'db'"
+          >
+            Rotate DB password
+          </button>
+          <button
+            v-if="form.want_storage"
+            type="button"
+            class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
+            @click="rotating = 'storage'"
+          >
+            Rotate storage keys
+          </button>
+          <span v-if="rotateMsg" class="text-xs text-zinc-400">{{ rotateMsg }}</span>
+        </div>
+
         <div v-if="formError" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {{ formError }}
         </div>
@@ -183,5 +238,15 @@ async function onSubmit() {
         </div>
       </form>
     </main>
+
+    <ConfirmDialog
+      :open="rotating !== null"
+      :title="rotating === 'db' ? 'Rotate DB password' : 'Rotate storage keys'"
+      message="New credentials are generated and the old ones stop working. The app will restart to pick them up."
+      confirm-label="Rotate"
+      danger
+      @confirm="confirmRotate"
+      @cancel="rotating = null"
+    />
   </div>
 </template>

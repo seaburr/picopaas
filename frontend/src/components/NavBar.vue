@@ -16,6 +16,7 @@ async function onLogout() {
     <div class="flex items-center gap-4">
       <RouterLink to="/" class="text-sm font-semibold text-white">PicoPaaS</RouterLink>
       <RouterLink to="/keys" class="text-sm text-zinc-400 hover:text-white">API keys</RouterLink>
+      <RouterLink v-if="auth.user?.role === 'uberadmin'" to="/admin" class="text-sm text-zinc-400 hover:text-white">Admin</RouterLink>
     </div>
     <div class="flex items-center gap-3 text-sm text-zinc-400">
       <span v-if="auth.user">{{ auth.user.email }}</span>
