@@ -2,9 +2,12 @@
 #   helm repo add jetstack https://charts.jetstack.io
 #   helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace -f values.yaml
 #
-# installCRDs=true is the simplest path for a single-cluster, no-GitOps-CRD-management setup like
-# this one. (The alternative — `kubectl apply` of the CRD yaml separately — buys nothing here.)
-installCRDs: true
+# crds.enabled installs the CRDs with the chart (simplest for a single cluster with no GitOps CRD
+# management); crds.keep stops `helm uninstall` from deleting them (and every Certificate with them).
+# `installCRDs` is deprecated since chart v1.15.
+crds:
+  enabled: true
+  keep: true
 
 resources:
   requests:

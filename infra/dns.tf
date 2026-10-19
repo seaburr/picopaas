@@ -6,6 +6,10 @@ data "digitalocean_domain" "domain" {
   name = var.domain
 }
 
+# NOTE: .github/workflows/bootstrap.yml owns the `*` and `picopaas` A records (it upserts them to the
+# ingress-nginx LB IP after the LB exists). Leave var.wildcard_lb_ip EMPTY so this resource stays
+# disabled; setting it would make Terraform and bootstrap.yml fight over the `*` record.
+#
 # Wildcard A record, only when a load balancer is in play AND its IP is known.
 #
 # TODO (see variables.wildcard_lb_ip): the LB is created implicitly by ingress-nginx's

@@ -1,0 +1,271 @@
+name: bootstrap
+
+# One-shot, re-runnable cluster bring-up for the managed-MySQL + LB variant (deploy/README.md steps 2-8).
+# Run by hand after the terraform workflow has created the cluster. Idempotent: helm upgrade --install,
+# kubectl apply, DNS upserts, and existing secrets (SECRET_KEY, FERNET_KEY, platform DB password) are
+# read back and never rotated. Never touches TXT or any DNS record other than A `*` and `picopaas`.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA (short or full) whose image to deploy; default = current ref"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy # shares a lock with deploy.yml so the two never race
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Pinned chart versions (looked up 2026-10-19 with `helm search repo`). Bump deliberately.
+      INGRESS_NGINX_CHART_VERSION: "4.15.1"
+      CERT_MANAGER_CHART_VERSION: "v1.21.2"
+      CLUSTER_NAME: picopaas-atl1
+      VPC_NAME: picopaas-atl1
+      DB_CLUSTER_NAME: picopaas-mysql-atl1
+      DOMAIN: raisehellpraisedale.xyz
+      PLATFORM_HOST: picopaas.raisehellpraisedale.xyz
+      SPACES_REGION: atl1
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+      SPACES_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      SPACES_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Skip if no DigitalOcean token or cluster yet
+        id: gate
+        run: |
+          if [ -z "$DIGITALOCEAN_TOKEN" ]; then
+            echo "::notice::DIGITALOCEAN_TOKEN is not set; skipping bootstrap."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif ! curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/kubernetes/clusters" \
+              | jq -e --arg n "$CLUSTER_NAME" '.kubernetes_clusters[] | select(.name == $n)' >/dev/null; then
+            echo "::notice::cluster $CLUSTER_NAME doesn't exist yet; skipping bootstrap (run the terraform workflow first)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$SPACES_ACCESS_KEY_ID" ] || [ -z "$SPACES_SECRET_ACCESS_KEY" ]; then
+            echo "::notice::SPACES_ACCESS_KEY_ID/SPACES_SECRET_ACCESS_KEY not set; skipping bootstrap."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Work out image tag
+        if: steps.gate.outputs.run == 'true'
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          CUR_SHA: ${{ github.sha }}
+        run: |
+          full="${INPUT_SHA:-$CUR_SHA}"
+          if ! echo "$full" | grep -Eq '^[0-9a-f]{7,40}$'; then
+            echo "::error::sha must be 7-40 hex chars"; exit 1
+          fi
+          echo "IMAGE=ghcr.io/seaburr/picopaas:$(echo "$full" | cut -c1-7)" >> "$GITHUB_ENV"
+
+      - uses: digitalocean/action-doctl@v2.5.1
+        if: steps.gate.outputs.run == 'true'
+        with:
+          token: ${{ secrets.DIGITALOCEAN_TOKEN }}
+
+      - uses: azure/setup-kubectl@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: azure/setup-helm@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Save kubeconfig and wait for nodes
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          doctl kubernetes cluster kubeconfig save "$CLUSTER_NAME"
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+
+      # ---- step 3: ingress-nginx (creates the DO load balancer) ----
+      - name: Install ingress-nginx
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            -n ingress-nginx --create-namespace \
+            --version "$INGRESS_NGINX_CHART_VERSION" \
+            -f deploy/ingress-nginx/values.yaml \
+            --wait --timeout 10m
+
+      # ---- step 4: cert-manager (CRDs come from deploy/cert-manager/values.yaml: crds.enabled) ----
+      - name: Install cert-manager
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            -n cert-manager --create-namespace \
+            --version "$CERT_MANAGER_CHART_VERSION" \
+            -f deploy/cert-manager/values.yaml \
+            --wait --timeout 10m
+
+      - name: Wait for the load balancer IP
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          ip=""
+          for i in $(seq 1 60); do
+            ip=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            [ -n "$ip" ] && break
+            echo "waiting for LB IP ($i/60)"; sleep 10
+          done
+          if [ -z "$ip" ]; then echo "::error::no LB IP after 10 minutes"; exit 1; fi
+          echo "LB_IP=$ip" >> "$GITHUB_ENV"
+          echo "LB IP: $ip"
+
+      # ---- DNS: only A records `*` and `picopaas`. TXT and everything else are never listed for write. ----
+      - name: Upsert DNS A records
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          records=$(doctl compute domain records list "$DOMAIN" -o json)
+          for name in '*' picopaas; do
+            id=$(echo "$records" | jq -r --arg n "$name" '[.[] | select(.type == "A" and .name == $n)][0].id // empty')
+            cur=$(echo "$records" | jq -r --arg n "$name" '[.[] | select(.type == "A" and .name == $n)][0].data // empty')
+            if [ -z "$id" ]; then
+              echo "creating A $name -> $LB_IP"
+              doctl compute domain records create "$DOMAIN" --record-type A --record-name "$name" \
+                --record-data "$LB_IP" --record-ttl 300 >/dev/null
+            elif [ "$cur" != "$LB_IP" ]; then
+              echo "updating A $name: $cur -> $LB_IP"
+              doctl compute domain records update "$DOMAIN" --record-id "$id" --record-type A \
+                --record-name "$name" --record-data "$LB_IP" --record-ttl 300 >/dev/null
+            else
+              echo "A $name already -> $LB_IP"
+            fi
+          done
+
+      # ---- secrets ----
+      - name: cert-manager DNS token secret
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          kubectl -n cert-manager create secret generic digitalocean-dns \
+            --from-literal=access-token="$DIGITALOCEAN_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Platform namespace and RBAC
+        if: steps.gate.outputs.run == 'true'
+        run: kubectl apply -f deploy/platform/namespace.yaml -f deploy/platform/rbac.yaml
+
+      - name: Look up managed MySQL, VPC and CA
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          db_id=$(doctl databases list -o json | jq -r --arg n "$DB_CLUSTER_NAME" '.[] | select(.name == $n) | .id')
+          [ -n "$db_id" ] || { echo "::error::managed MySQL $DB_CLUSTER_NAME not found"; exit 1; }
+          conn=$(doctl databases connection "$db_id" --private -o json)
+          admin_host=$(echo "$conn" | jq -r '.[0].host // .host')
+          admin_port=$(echo "$conn" | jq -r '.[0].port // .port')
+          admin_user=$(echo "$conn" | jq -r '.[0].user // .user')
+          admin_pw=$(echo "$conn" | jq -r '.[0].password // .password')
+          echo "::add-mask::$admin_pw"
+          vpc_cidr=$(doctl vpcs list -o json | jq -r --arg n "$VPC_NAME" '.[] | select(.name == $n) | .ip_range')
+          [ -n "$vpc_cidr" ] || { echo "::error::VPC $VPC_NAME not found"; exit 1; }
+          # CA bundle for TLS to managed MySQL (public data, but kept in a Secret for mounting).
+          curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/databases/$db_id/ca" \
+            | jq -r '.ca.certificate' | base64 -d > "$RUNNER_TEMP/db-ca.crt"
+          grep -q 'BEGIN CERTIFICATE' "$RUNNER_TEMP/db-ca.crt" || { echo "::error::could not fetch DB CA"; exit 1; }
+          {
+            echo "ADMIN_HOST=$admin_host"
+            echo "ADMIN_PORT=$admin_port"
+            echo "ADMIN_USER=$admin_user"
+            echo "ADMIN_PW=$admin_pw"
+            echo "VPC_CIDR=$vpc_cidr"
+          } >> "$GITHUB_ENV"
+          echo "db host (private): $admin_host:$admin_port, vpc cidr: $vpc_cidr"
+
+      - name: Platform secrets (picopaas-env, picopaas-db-ca)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          ns=picopaas-system
+          existing=$(kubectl -n $ns get secret picopaas-env -o json 2>/dev/null || true)
+          get() { echo "$existing" | jq -r --arg k "$1" '.data[$k] // empty | @base64d'; }
+
+          # Never rotate: reuse whatever is already in picopaas-env, generate only when absent.
+          SECRET_KEY=$(get SECRET_KEY);   [ -n "$SECRET_KEY" ] || SECRET_KEY=$(openssl rand -hex 32)
+          FERNET_KEY=$(get FERNET_KEY);   [ -n "$FERNET_KEY" ] || FERNET_KEY=$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+          PLATFORM_DB_PASSWORD=$(get PLATFORM_DB_PASSWORD); [ -n "$PLATFORM_DB_PASSWORD" ] || PLATFORM_DB_PASSWORD=$(openssl rand -hex 24)
+          for v in "$SECRET_KEY" "$FERNET_KEY" "$PLATFORM_DB_PASSWORD"; do echo "::add-mask::$v"; done
+
+          # Idempotently create database `picopaas` + user `picopaas` on the managed cluster. The runner is
+          # not in the DB firewall (only the k8s cluster is), so run the SQL from a throwaway in-cluster pod.
+          # The admin password goes in as a pod env var and the pod is removed afterwards.
+          kubectl -n default delete pod bootstrap-mysql --ignore-not-found >/dev/null
+          cat <<SQL | kubectl -n default run bootstrap-mysql -i --rm --restart=Never --quiet \
+              --image=mysql:8.4 --env="MYSQL_PWD=$ADMIN_PW" -- \
+              mysql -h "$ADMIN_HOST" -P "$ADMIN_PORT" -u "$ADMIN_USER" --ssl-mode=REQUIRED
+          CREATE DATABASE IF NOT EXISTS picopaas;
+          CREATE USER IF NOT EXISTS 'picopaas'@'%' IDENTIFIED BY '$PLATFORM_DB_PASSWORD';
+          ALTER USER 'picopaas'@'%' IDENTIFIED BY '$PLATFORM_DB_PASSWORD';
+          GRANT ALL PRIVILEGES ON picopaas.* TO 'picopaas'@'%';
+          SQL
+
+          DATABASE_URL="mysql+pymysql://picopaas:${PLATFORM_DB_PASSWORD}@${ADMIN_HOST}:${ADMIN_PORT}/picopaas?ssl_ca=/etc/picopaas/db-ca/ca.crt"
+          echo "::add-mask::$DATABASE_URL"
+
+          kubectl -n $ns create secret generic picopaas-db-ca \
+            --from-file=ca.crt="$RUNNER_TEMP/db-ca.crt" --dry-run=client -o yaml | kubectl apply -f -
+
+          # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
+          kubectl -n $ns create secret generic picopaas-env \
+            --from-literal=ENVIRONMENT=production \
+            --from-literal=SECRET_KEY="$SECRET_KEY" \
+            --from-literal=FERNET_KEY="$FERNET_KEY" \
+            --from-literal=PLATFORM_DB_PASSWORD="$PLATFORM_DB_PASSWORD" \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=DIGITALOCEAN_TOKEN="$DIGITALOCEAN_TOKEN" \
+            --from-literal=DO_API_TOKEN="$DIGITALOCEAN_TOKEN" \
+            --from-literal=SPACES_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            --from-literal=SPACES_REGION="$SPACES_REGION" \
+            --from-literal=SPACES_ENDPOINT="https://$SPACES_REGION.digitaloceanspaces.com" \
+            --from-literal=APP_DOMAIN="$DOMAIN" \
+            --from-literal=RECONCILER_ENABLED=1 \
+            --from-literal=MYSQL_EGRESS_MODE=cidr \
+            --from-literal=MYSQL_SSL_CA=/etc/picopaas/db-ca/ca.crt \
+            --from-literal=MYSQL_EGRESS_CIDR="$VPC_CIDR" \
+            --from-literal=BOOTSTRAP_DB_HOST="$ADMIN_HOST" \
+            --from-literal=BOOTSTRAP_DB_PORT="$ADMIN_PORT" \
+            --from-literal=BOOTSTRAP_DB_USER="$ADMIN_USER" \
+            --from-literal=BOOTSTRAP_DB_PASSWORD="$ADMIN_PW" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # ---- step 5: issuers, certificate, platform workload ----
+      - name: Apply issuers and wildcard certificate
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          kubectl apply -f deploy/cert-manager/clusterissuer.yaml
+          kubectl apply -f deploy/cert-manager/certificate.yaml
+
+      - name: Deploy platform
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          sed "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" deploy/platform/deployment.yaml | kubectl apply -f -
+          kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
+          kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s
+
+      - name: Health check (waits for the certificate, up to ~10 min)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          url="https://$PLATFORM_HOST/healthz"
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 10 "$url" >/dev/null 2>&1; then
+              echo "healthz OK with a valid certificate"; exit 0
+            fi
+            echo "not healthy yet ($i/40)"; sleep 15
+          done
+          echo "::warning::strict TLS check failed after ~10 min; certificate probably not issued yet (kubectl describe certificate -n ingress-nginx)"
+          kubectl -n ingress-nginx get certificate || true
+          if curl -fsSk --max-time 10 --resolve "$PLATFORM_HOST:443:$LB_IP" "$url" >/dev/null; then
+            echo "::warning::app is up via $LB_IP but the certificate is not ready (insecure check passed). Re-run later."
+          else
+            echo "::error::healthz failed even with -k"; exit 1
+          fi

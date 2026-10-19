@@ -6,6 +6,16 @@ install`ed against real infra; per `infra-ops` rules that requires an APPROVED `
 entry and this chunk didn't create one (no new paid resource — LB cost is already covered by
 `use_load_balancer` in `infra/variables.tf` / request 0001).
 
+## Automated bring-up (managed MySQL + LB variant)
+
+`.github/workflows/bootstrap.yml` (workflow_dispatch, run by hand after the `terraform` workflow) automates steps 2-8
+below for the managed-MySQL + LB variant: ingress-nginx and cert-manager (pinned chart versions in the workflow `env`),
+DNS A records `*` and `picopaas` -> LB IP (it owns them; leave Terraform `wildcard_lb_ip` empty), the
+`digitalocean-dns` / `picopaas-env` / `picopaas-db-ca` secrets, the platform `picopaas` database + user on the managed
+cluster, issuers/certificate, platform workload at the current short-sha image, and a `/healthz` check. It is safe to
+re-run: existing SECRET_KEY, FERNET_KEY and the platform DB password are read back, never rotated. The manual steps
+below remain the reference (and the path for the in-cluster / no-LB variants).
+
 ## Bring-up runbook (in order)
 
 Steps marked **[0001]** wait on Chas's request-0001 checklist (approval/variant, DO token, Spaces key,
@@ -131,5 +141,6 @@ at the cost of more moving parts in the reconciler).
 ## Not done / notes
 
 - Nothing under `deploy/` has been applied; `kubeconform` (CI job) validates the manifests offline.
-- Chart version pins are "pin at install time" placeholders.
+- Chart versions are pinned in `bootstrap.yml` env (ingress-nginx 4.15.1, cert-manager v1.21.2); the manual steps above still say `<PIN_AT_INSTALL_TIME>`.
+- Managed MySQL needs TLS: the platform DATABASE_URL uses `?ssl_ca=/etc/picopaas/db-ca/ca.crt` (secret `picopaas-db-ca`, mounted by the Deployment). `MySQLAdminClient` does not yet pass `ssl=` to pymysql (app gap, see ledger).
 - The mysql StatefulSet relies on the official image running as uid 999 with `fsGroup: 999`; verify on first boot.
