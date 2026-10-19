@@ -5,9 +5,9 @@ variable "region" {
 }
 
 variable "node_size" {
-  description = "Droplet size slug for the DOKS worker node pool. Intel (~$28): ATL1 had no s-2vcpu-4gb or -amd capacity (2026-10-19); same price as the approved AMD."
+  description = "Droplet size slug for the DOKS worker node pool. s-2vcpu-2gb ($18): ATL1 had no capacity for any s-2vcpu-4gb variant (Chas chose smaller nodes, 2026-10-19). ~1 GB usable per node."
   type        = string
-  default     = "s-2vcpu-4gb-intel"
+  default     = "s-2vcpu-2gb"
 }
 
 variable "node_count" {
