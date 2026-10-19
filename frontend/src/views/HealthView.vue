@@ -33,7 +33,6 @@ onBeforeUnmount(() => window.clearInterval(timer))
 
 const pct = (used: number | null, limit: number) => (used === null || !limit ? null : (used / limit) * 100)
 const w = (v: number | null, max: number) => Math.min(100, max ? ((v ?? 0) / max) * 100 : 0) + '%'
-const fmtPct = (v: number | null) => (v === null ? 'n/a' : Math.round(v) + '%')
 const hot = (v: number | null) => v !== null && v > 80
 function age(s: number) {
   if (s >= 86400) return Math.floor(s / 86400) + 'd'
@@ -41,6 +40,14 @@ function age(s: number) {
   return Math.floor(s / 60) + 'm'
 }
 const num = (v: number | null, unit: string) => (v === null ? 'n/a' : `${v}${unit}`)
+const NA = 'metrics unavailable'
+const fmtUse = (used: number | null, lim: number, unit: string) =>
+  `${used}${unit} / ${lim}${unit} (${Math.round(((used ?? 0) / (lim || 1)) * 100)}%)`
+function pressure(n: { cpu_requested_m: number; cpu_allocatable_m: number; mem_requested_mi: number; mem_allocatable_mi: number }) {
+  const c = n.cpu_allocatable_m ? (n.cpu_requested_m / n.cpu_allocatable_m) * 100 : 0
+  const m = n.mem_allocatable_mi ? (n.mem_requested_mi / n.mem_allocatable_mi) * 100 : 0
+  return { c: Math.round(c), m: Math.round(m), tight: c >= 85 || m >= 85 }
+}
 
 type SortKey = 'cpu' | 'mem'
 const sortKey = ref<SortKey>('cpu')
@@ -74,7 +81,7 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6">
+    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="text-lg font-semibold text-white">Cluster health</h1>
         <div class="flex items-center gap-3 text-xs text-zinc-500" aria-live="polite">
@@ -105,13 +112,13 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
           <div :class="card">
             <div class="text-xs text-zinc-500">Nodes</div>
             <div class="text-xl font-semibold text-white">
-              {{ data.cluster.node_count }}<span class="text-sm text-zinc-500"> / {{ data.cluster.max_nodes ?? '?' }}</span>
+              {{ data.cluster.node_count }}<span v-if="data.cluster.max_nodes !== null" class="text-sm text-zinc-500"> / {{ data.cluster.max_nodes }}</span>
             </div>
             <div class="text-xs text-zinc-500">
               <template v-if="data.cluster.max_nodes !== null">
                 {{ Math.max(0, data.cluster.max_nodes - data.cluster.node_count) }} autoscaler headroom
               </template>
-              <template v-else>max unknown</template>
+              <template v-else>autoscaler max not reported</template>
             </div>
           </div>
           <div :class="card">
@@ -168,6 +175,12 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                   />
                 </div>
               </template>
+              <div
+                v-if="pressure(n).tight"
+                class="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-400"
+              >
+                Requested {{ pressure(n).c }}% CPU, {{ pressure(n).m }}% memory: next app may trigger a new node
+              </div>
               <div class="flex justify-between text-xs text-zinc-500">
                 <span>Pods {{ n.pods }}/{{ n.pods_capacity }}</span>
                 <span>Age {{ age(n.age_s) }}</span>
@@ -201,12 +214,12 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                   <td class="p-2" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
                   <td class="p-2" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
                   <td class="whitespace-nowrap p-2" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
-                    {{ fmtPct(pct(a.cpu_used_m, a.cpu_limit_m)) }}
-                    <span class="text-xs text-zinc-500">{{ num(a.cpu_used_m, 'm') }}/{{ a.cpu_limit_m }}m</span>
+                    <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, a.cpu_limit_m, 'm') }}</template>
+                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-500">limit {{ a.cpu_limit_m }}m</span></template>
                   </td>
                   <td class="whitespace-nowrap p-2" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
-                    {{ fmtPct(pct(a.mem_used_mi, a.mem_limit_mi)) }}
-                    <span class="text-xs text-zinc-500">{{ num(a.mem_used_mi, 'Mi') }}/{{ a.mem_limit_mi }}Mi</span>
+                    <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, a.mem_limit_mi, 'Mi') }}</template>
+                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-500">limit {{ a.mem_limit_mi }}Mi</span></template>
                   </td>
                 </tr>
                 <tr v-if="sortedApps.length === 0"><td colspan="7" class="p-3 text-zinc-500">No apps.</td></tr>
@@ -228,8 +241,8 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                   <td class="p-2 font-mono text-xs">{{ p.namespace }}</td>
                   <td class="p-2" :class="p.ready ? 'text-status-running' : 'font-semibold text-status-error'">{{ p.ready ? 'Ready' : 'Not ready' }}</td>
                   <td class="p-2" :class="p.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ p.restarts }}</td>
-                  <td class="p-2">{{ num(p.cpu_used_m, 'm') }}</td>
-                  <td class="p-2">{{ num(p.mem_used_mi, 'Mi') }}</td>
+                  <td class="p-2"><span v-if="p.cpu_used_m === null" :title="NA">—</span><template v-else>{{ p.cpu_used_m }}m</template></td>
+                  <td class="p-2"><span v-if="p.mem_used_mi === null" :title="NA">—</span><template v-else>{{ p.mem_used_mi }}Mi</template></td>
                 </tr>
                 <tr v-if="data.platform.length === 0"><td colspan="6" class="p-3 text-zinc-500">None reported.</td></tr>
               </tbody>

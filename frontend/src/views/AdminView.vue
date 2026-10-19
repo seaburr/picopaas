@@ -146,7 +146,7 @@ const input =
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6">
+    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <h1 class="text-lg font-semibold text-white">Admin</h1>
 
       <div v-if="anyWarn" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
@@ -158,7 +158,7 @@ const input =
 
       <section v-if="pendingUsers.length">
         <h2 class="mb-2 text-sm font-semibold text-amber-400">Pending approval ({{ pendingUsers.length }})</h2>
-        <table class="w-full rounded-md border border-amber-500/30 bg-pico-panel text-left text-sm text-zinc-300">
+<div class="overflow-x-auto"><table class="w-full rounded-md border border-amber-500/30 bg-pico-panel text-left text-sm text-zinc-300">
           <tbody>
             <tr v-for="u in pendingUsers" :key="u.id" class="border-t border-pico-border first:border-t-0">
               <td class="p-2">{{ u.email }}</td>
@@ -170,12 +170,12 @@ const input =
               </td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section>
         <h2 class="mb-2 text-sm font-semibold text-zinc-300">Users</h2>
-        <table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300">
+<div class="overflow-x-auto"><table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300">
           <thead class="text-xs text-zinc-500">
             <tr><th class="p-2">Email</th><th class="p-2">Role</th><th class="p-2">Apps</th><th class="p-2">Status</th><th class="p-2">App limit</th><th class="p-2"></th></tr>
           </thead>
@@ -207,12 +207,12 @@ const input =
               </td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section>
         <h2 class="mb-2 text-sm font-semibold text-zinc-300">All apps</h2>
-        <table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300">
+<div class="overflow-x-auto"><table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300">
           <thead class="text-xs text-zinc-500">
             <tr><th class="p-2">App</th><th class="p-2">Owner</th><th class="p-2">Status</th><th class="p-2"></th></tr>
           </thead>
@@ -232,14 +232,15 @@ const input =
             </tr>
             <tr v-if="allApps.length === 0"><td colspan="4" class="p-3 text-zinc-500">No apps.</td></tr>
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section>
         <h2 class="mb-2 text-sm font-semibold text-zinc-300">DB servers</h2>
+        <div class="overflow-x-auto">
         <table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300">
           <thead class="text-xs text-zinc-500">
-            <tr><th class="p-2">Name</th><th class="p-2">Host</th><th class="p-2">Capacity</th><th class="p-2">Status</th></tr>
+            <tr><th class="p-2">Name</th><th class="p-2">Host</th><th class="p-2">Capacity</th><th class="p-2 pr-4">Status</th></tr>
           </thead>
           <tbody>
             <tr v-for="s in servers" :key="s.id" class="border-t border-pico-border">
@@ -248,10 +249,10 @@ const input =
               <td class="p-2">
                 <DbCapacityBar :server="s" />
               </td>
-              <td class="p-2">
+              <td class="p-2 pr-4">
                 <select
                   :value="s.status"
-                  :class="input"
+                  :class="[input, 'w-28']"
                   @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
                 >
                   <option>active</option>
@@ -263,19 +264,20 @@ const input =
             <tr v-if="servers.length === 0"><td colspan="4" class="p-3 text-zinc-500">No DB servers.</td></tr>
           </tbody>
         </table>
+        </div>
 
-        <form class="mt-3 grid grid-cols-2 gap-2 rounded-md border border-pico-border bg-pico-panel p-3 sm:grid-cols-3" @submit.prevent="addServer">
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+        <form class="mt-6 grid grid-cols-1 items-start gap-x-4 gap-y-5 rounded-md border border-pico-border bg-pico-panel p-4 sm:grid-cols-2 lg:grid-cols-3" @submit.prevent="addServer">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Name</span>
             <input v-model="form.name" required placeholder="primary" :class="input" />
-            <span>Label shown in the admin UI.</span>
+            <span class="leading-4 sm:min-h-8">Label shown in the admin UI.</span>
           </label>
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Host</span>
             <input v-model="form.host" required placeholder="private-….db.ondigitalocean.com" :class="input" />
-            <span>Hostname the platform connects to. For DO managed MySQL use the private host.</span>
+            <span class="leading-4 sm:min-h-8">Hostname the platform connects to. For DO managed MySQL use the private host.</span>
           </label>
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Port</span>
             <input
               v-model.number="form.port"
@@ -286,14 +288,14 @@ const input =
               placeholder="25060"
               :class="input"
             />
-            <span>MySQL port: 25060 for DO managed, 3306 in-cluster.</span>
+            <span class="leading-4 sm:min-h-8">MySQL port: 25060 for DO managed, 3306 in-cluster.</span>
           </label>
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Admin user</span>
             <input v-model="form.admin_user" required placeholder="doadmin" autocomplete="off" :class="input" />
-            <span>Account used to create each app's database and user. Never root.</span>
+            <span class="leading-4 sm:min-h-8">Account used to create each app's database and user. Never root.</span>
           </label>
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Admin password</span>
             <input
               v-model="form.admin_password"
@@ -302,9 +304,9 @@ const input =
               autocomplete="new-password"
               :class="input"
             />
-            <span>Stored encrypted; never shown again.</span>
+            <span class="leading-4 sm:min-h-8">Stored encrypted; never shown again.</span>
           </label>
-          <label class="flex flex-col gap-1 text-xs text-zinc-400">
+          <label class="flex flex-col gap-1.5 text-xs text-zinc-400">
             <span class="font-medium text-zinc-200">Max databases</span>
             <input
               v-model.number="form.max_databases"
@@ -315,7 +317,7 @@ const input =
               placeholder="25"
               :class="input"
             />
-            <span>App databases placed here before it counts as full (~25 for a 1 GiB server).</span>
+            <span class="leading-4 sm:min-h-8">App databases placed here before it counts as full (~25 for a 1 GiB server).</span>
           </label>
           <div class="col-span-full flex justify-end">
             <button
@@ -334,7 +336,7 @@ const input =
           <h2 class="text-sm font-semibold text-zinc-300">Audit log</h2>
           <input v-model="auditFilter" placeholder="filter by action or actor" :class="[input, 'w-60']" />
         </div>
-        <table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-xs text-zinc-300">
+<div class="overflow-x-auto"><table class="w-full rounded-md border border-pico-border bg-pico-panel text-left text-xs text-zinc-300">
           <thead class="text-zinc-500">
             <tr><th class="p-2">At</th><th class="p-2">Actor</th><th class="p-2">Action</th><th class="p-2">Target</th><th class="p-2">Detail</th></tr>
           </thead>
@@ -348,7 +350,7 @@ const input =
             </tr>
             <tr v-if="filteredAudit.length === 0"><td colspan="5" class="p-3 text-zinc-500">No entries.</td></tr>
           </tbody>
-        </table>
+        </table></div>
       </section>
     </main>
 

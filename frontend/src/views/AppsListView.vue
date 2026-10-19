@@ -68,7 +68,7 @@ async function confirmDelete() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main class="mx-auto max-w-4xl px-4 py-6">
+    <main class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
       <div class="mb-4 flex items-center justify-between">
         <h1 class="text-lg font-semibold text-white">Apps</h1>
         <RouterLink
