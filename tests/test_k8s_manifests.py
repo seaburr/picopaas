@@ -24,10 +24,10 @@ def test_namespace_name_and_labels():
 def test_resource_quota_caps():
     rq = k8s.resource_quota_manifest(APP_ID)
     hard = rq["spec"]["hard"]
-    assert hard["limits.cpu"] == "500m"
-    assert hard["limits.memory"] == "1024Mi"
-    assert hard["requests.cpu"] == "500m"
-    assert hard["requests.memory"] == "1024Mi"
+    assert hard["limits.cpu"] == "200m"
+    assert hard["limits.memory"] == "768Mi"
+    assert hard["requests.cpu"] == "200m"
+    assert hard["requests.memory"] == "768Mi"
     assert hard["pods"] == "2"
     assert hard["services"] == "1"
     assert hard["services.loadbalancers"] == "0"
@@ -38,7 +38,7 @@ def test_resource_quota_caps():
 def test_limit_range_defaults():
     lr = k8s.limit_range_manifest(APP_ID)
     limits = lr["spec"]["limits"][0]
-    assert limits["default"] == {"cpu": "250m", "memory": "512Mi"}
+    assert limits["default"] == {"cpu": "100m", "memory": "384Mi"}
     assert limits["defaultRequest"] == {"cpu": "64m", "memory": "128Mi"}
 
 

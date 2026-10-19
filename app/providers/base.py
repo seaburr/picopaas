@@ -84,7 +84,7 @@ class MySQLAdmin(ABC):
 
     @abstractmethod
     def db_size_bytes(self, app_id: int) -> int:
-        """Sum of the app database's table sizes, for the 100MB quota check."""
+        """Sum of the app database's table sizes, for the DB quota check."""
         raise NotImplementedError
 
     @abstractmethod
@@ -123,7 +123,7 @@ class ObjectStore(ABC):
 
     @abstractmethod
     def bucket_size_bytes(self, app_id: int) -> int:
-        """Sum of object sizes in the app's bucket, for the 250MB quota check."""
+        """Sum of object sizes in the app's bucket, for the bucket quota check."""
         raise NotImplementedError
 
     @abstractmethod

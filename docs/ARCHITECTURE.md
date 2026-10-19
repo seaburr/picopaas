@@ -3,6 +3,10 @@
 Status: **proposed, needs Chas's sign-off on the hosting option** (see `docs/requests/0001-core-infra.md`).
 Pricing checked against digitalocean.com on 2026-10-18.
 
+> **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
+> (was 512), CPU limit 100m (was 250m), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
+> old numbers and is pending his update. Single source of truth: `app/config.py` (env-overridable). Older figures below were updated in place.
+
 ## 1. Hosting cost: what fits under $40/mo
 
 | Item | Managed option | Lean option (recommended) |
@@ -16,10 +20,10 @@ Pricing checked against digitalocean.com on 2026-10-18.
 | **Total (static)** | **~$56: over budget** | **~$30** |
 
 **Per-app marginal cost (lean):** about $0 until the node is full. Apps request 64m CPU / 128Mi
-and are capped at 250m / 512Mi, so one 4 GB node holds about 8–10 idle-ish throwaway apps
+and are capped at 100m / 384Mi, so one 4 GB node holds about 8–10 idle-ish throwaway apps
 next to the platform. After that, each extra s-2vcpu-4gb node costs $24 and holds about 12 more apps,
 which works out to roughly **$2/app/month**. Spaces and DB add nothing per app inside the caps
-(250 MB × 100 apps still fits in the 250 GiB included).
+(100 MB × 100 apps still fits in the 250 GiB included).
 
 The lean option leaves about $10/mo of headroom, enough for a second node or managed MySQL later.
 
@@ -62,7 +66,7 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
   separate operator. Desired state lives in the platform DB, and the loop converges k8s, MySQL, and Spaces toward it.
 
 ### Tenancy and isolation
-- **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=250m, limits.memory=512Mi, pods=2
+- **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=200m, limits.memory=768Mi (2x the 100m/384Mi per-pod limits), pods=2
   to allow rolling updates). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
   `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from the Traefik namespace, egress
   to the internet and to MySQL on 3306, and no traffic to other app namespaces (DOKS uses Cilium, which
@@ -73,14 +77,14 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
   `USER` line example.
 - **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `max_user_connections=10`,
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
-  `information_schema.TABLES` and, above 100 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the
+  `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the
   user can clean up) and flags the app in the UI.
 - **Storage:** one Spaces bucket per app with a per-bucket read/write key. Spaces has no quotas, so the
-  reconciler sums object sizes, and above 250 MB it swaps the key to read-only and flags the app.
+  reconciler sums object sizes, and above 100 MB it swaps the key to read-only and flags the app.
   ⚠ Spike needed: per-bucket keys were UI-only at GA (Jan 2025). Confirm the DO API (`/v2/spaces/keys`) supports them now.
   Fallback: a shared bucket with a platform-side presigned-URL proxy.
 - **Image size:** before deploying, the API reads the registry manifest and rejects the image if the summed
-  compressed layer size exceeds 512 MB. v1 supports public images only; private pull creds come later.
+  compressed layer size exceeds 256 MB. v1 supports public images only; private pull creds come later.
 
 ### Public exposure (Chas, 2026-10-18)
 Goal: the **DB server and Spaces** shouldn't be reachable from the public internet. The Kubernetes API
@@ -158,8 +162,8 @@ server that has room.
 
 | Resource | Unit we add | Capacity per unit | Ceiling signal |
 |---|---|---|---|
-| Compute | +1 node (s-2vcpu-4gb, $24) | ~12 apps (requests 64m/128Mi, limits 250m/512Mi) | Pending pods / node allocatable |
-| MySQL | +1 DB server (managed 1 GiB, ~$15–20) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~100 × 100 MB | allocated DBs ≥ 80% of `max_databases` |
+| Compute | +1 node (s-2vcpu-4gb, $24) | ~12 apps (requests 64m/128Mi, limits 100m/384Mi) | Pending pods / node allocatable |
+| MySQL | +1 DB server (managed 1 GiB, ~$15–20) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
 | Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
 
 ### Compute
@@ -176,7 +180,7 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
   servers simply get different hosts.
 - **Placement** (`app/db_placement.py`): a new DB goes on the `active` server with the most free slots. If
   there's no room, the deploy fails with a clear "no database capacity" error and the uberadmin is alerted.
-- **Tracking:** the reconciler's quota poll (it already measures per-DB size for the 100 MB cap) also
+- **Tracking:** the reconciler's quota poll (it already measures per-DB size for the 50 MB cap) also
   rolls up per-server counts and bytes. When a server reaches 80%, the admin dashboard shows a banner and
   the platform logs a "capacity request" containing the text of a new `docs/requests/` entry
   (what / why / cost) to send to Chas.

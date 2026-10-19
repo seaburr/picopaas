@@ -48,7 +48,7 @@ def _check_non_root(user: str) -> None:
 
 
 def _check_image_cap(registry: Registry, image: str) -> None:
-    """Enforce the 512MB image cap (ARCHITECTURE.md §2 "Image size").
+    """Enforce the image size cap (ARCHITECTURE.md §2 "Image size").
 
     Any registry failure (not found, private, unparsable manifest) is
     reported the same way — a precise reason wouldn't be actionable for the
@@ -65,7 +65,7 @@ def _check_image_cap(registry: Registry, image: str) -> None:
             status_code=422,
             detail=(
                 f"image is {size} bytes, over the {MAX_IMAGE_SIZE_BYTES} byte "
-                "(512MB) platform cap"
+                f"({MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB) platform cap"
             ),
         )
 

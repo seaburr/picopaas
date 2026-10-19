@@ -21,13 +21,13 @@ A suspended account gets `403 account suspended`, and its apps are scaled to zer
 | Rule | Value |
 |---|---|
 | User | The image must declare a **numeric, non-zero `USER`** (for example `USER 10001`). `root`, `0`, empty, or a name like `appuser` is rejected with 422, because pods run with `runAsNonRoot` and the platform can only verify a numeric UID. |
-| Image size | Summed compressed layers at most **512 MB** (checked against the registry manifest on create and update). |
+| Image size | Summed compressed layers at most **256 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422 image not found or not public`. |
-| CPU / memory | Each app gets a limit of **250m CPU / 512Mi** (request 64m / 128Mi). One replica. |
+| CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. The uberadmin can raise it. Over the limit gives `403 app limit reached (N); contact the uberadmin to raise it`. The uberadmin is exempt. |
-| Database | Optional, 100 MB. |
-| Storage | Optional, 250 MB bucket. |
+| Database | Optional, 50 MB. |
+| Storage | Optional, 100 MB bucket. |
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
 
@@ -136,7 +136,7 @@ secrets:
 |---|---|---|---|---|
 | `apiVersion` | string | yes | | Exactly `picopaas/v1`. |
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
-| `image` | string | yes | | 1 to 512 chars. Public, non-root numeric `USER`, at most 512 MB. |
+| `image` | string | yes | | 1 to 512 chars. Public, non-root numeric `USER`, at most 256 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a MySQL database. Cannot be removed from an existing app via spec (422). |
 | `resources.storage` | boolean | no | `false` | Provisions a Spaces bucket. Same removal rule. |
@@ -289,9 +289,9 @@ Sizes are polled every 5 minutes, so a limit is enforced with some delay.
 
 | Resource | Limit | At the limit |
 |---|---|---|
-| Database | 100 MB | Writes that add data are blocked (INSERT/UPDATE/CREATE revoked); SELECT and DELETE keep working so you can clean up. Access is restored automatically once usage drops back under 100 MB. |
-| Bucket | 250 MB | The key is swapped for a read-only one and the app restarts with it. Delete objects to get back under 250 MB and the read-write key is restored. |
-| Image | 512 MB | Deploy is rejected. |
+| Database | 50 MB | Writes that add data are blocked (INSERT/UPDATE/CREATE revoked); SELECT and DELETE keep working so you can clean up. Access is restored automatically once usage drops back under 50 MB. |
+| Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it. Delete objects to get back under 100 MB and the read-write key is restored. |
+| Image | 256 MB | Deploy is rejected. |
 
 ## 11. Networking and egress
 
@@ -323,7 +323,7 @@ Deleting an app removes its namespace, database and bucket.
 | `403 account pending approval` | Wait for the uberadmin to approve. |
 | `422 image runs as root` / `must be a numeric UID` | Add `USER 10001` (numeric) to your Dockerfile. |
 | `422 image not found or not public` | Wrong tag, or private image. Make the package public. |
-| `422 ... over the 536870912 byte (512MB) platform cap` | Shrink the image. |
+| `422 ... over the 268435456 byte (256MB) platform cap` | Shrink the image. |
 | `403 app limit reached` | Delete your existing app or ask the uberadmin to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this 403 even if the spec has other problems. |
 | `422 ... references a database, but this app did not request one` | Add `resources: { db: true }` (or `storage`). |
 | `422 invalid reference in value` | Use exactly one `${{ db.x }}` / `${{ storage.x }}` from the list in section 5, as the whole value. |
@@ -333,7 +333,7 @@ Deleting an app removes its namespace, database and bucket.
 | Stuck in `deploying` | Readiness not passing: check the health path, port, and that the app starts within a few seconds. |
 | `error` with `status_detail` | Read it. Note: apps in `error` are not retried automatically (open issue #8); change something (for example re-apply the spec with a small env change) or ask the uberadmin. The detail text can be terse (issue #9). |
 | TLS error from MySQL | Use the CA from `${{ db.ca_cert }}` and the strict-flag note above. |
-| DB writes fail with a read-only/permission error | You hit the 100 MB cap; delete rows. |
+| DB writes fail with a read-only/permission error | You hit the 50 MB cap; delete rows. |
 | SMTP connection times out | SMTP is blocked by design. |
 | `stored secrets unreadable` | The platform key changed; re-enter your secrets or rotate credentials. |
 

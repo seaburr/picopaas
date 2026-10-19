@@ -61,7 +61,7 @@ def test_shape(make_client, kube):
     a = d["apps"][0]
     assert a["owner_email"] == "admin@example.com" and a["namespace"] == f"app-{aid}"
     assert (a["pods_ready"], a["pods_total"], a["restarts"]) == (1, 1, 2)
-    assert (a["cpu_limit_m"], a["mem_limit_mi"]) == (250, 512)
+    assert (a["cpu_limit_m"], a["mem_limit_mi"]) == (100, 384)
     assert [p["name"] for p in d["platform"]] == ["api-0", "t-0"]
     assert d["platform"][1]["ready"] is False and d["platform"][1]["cpu_used_m"] is None
     assert isinstance(d["db_servers"], list) and "generated_at" in d

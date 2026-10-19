@@ -1,4 +1,4 @@
-"""Quota polling (ARCHITECTURE.md: DB 100MB, bucket 250MB).
+"""Quota polling (ARCHITECTURE.md: caps live in app/config.py).
 
 `poll_quotas` refreshes sizes and flips resources read-only when they cross
 their cap (and back when they drop under it). A failure on one resource is
@@ -13,12 +13,11 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app import crypto, models
+from app.config import DB_QUOTA_BYTES, STORAGE_QUOTA_BYTES  # noqa: F401
 from app.providers.base import MySQLAdmin, ObjectStore
 
 log = logging.getLogger(__name__)
 
-DB_QUOTA_BYTES = 100 * 1024 * 1024
-STORAGE_QUOTA_BYTES = 250 * 1024 * 1024
 CAPACITY_WARN_PCT = 80
 
 

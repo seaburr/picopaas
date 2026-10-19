@@ -106,7 +106,7 @@ db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, st
 `want_db`, `storage.*` needs `want_storage`.
 
 Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 `image not
-found or not public`), the USER must be numeric and non-root (422), and the summed compressed layers at most 512 MB
+found or not public`), the USER must be numeric and non-root (422), and the summed compressed layers at most 256 MB
 (422).
 
 ### `POST /apps/spec`

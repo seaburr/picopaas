@@ -15,28 +15,32 @@ import hashlib
 import json
 from typing import Any
 
-from app.config import APP_DOMAIN, INGRESS_CLASS, INGRESS_NAMESPACE
+from app.config import (
+    APP_DOMAIN,
+    DEFAULT_CPU_LIMIT_M,
+    DEFAULT_CPU_REQUEST_M,
+    DEFAULT_MEM_LIMIT_MI,
+    DEFAULT_MEM_REQUEST_MI,
+    INGRESS_CLASS,
+    INGRESS_NAMESPACE,
+)
 
 RUN_AS_NON_ROOT = True
 
 # ResourceQuota / LimitRange values (ARCHITECTURE.md §2 "Compute").
-# The quota admits 2 pods' worth (2x the per-pod 250m/512Mi caps, which the LimitRange / container limits keep).
+# The quota admits 2 pods' worth (2x the per-pod caps (app/config.py), which the LimitRange / container limits keep).
 # Replicas are pinned to 1 by the platform and tenants can't create pods, so the extra headroom is only ever
 # used by the surge pod during a rolling update (maxSurge 1); without it the surge pod is rejected with
 # "exceeded quota: app-quota" and the rollout never completes.
-QUOTA_LIMITS_CPU = "500m"
-QUOTA_LIMITS_MEMORY = "1024Mi"
-QUOTA_REQUESTS_CPU = "500m"
-QUOTA_REQUESTS_MEMORY = "1024Mi"
-POD_LIMIT_CPU = "250m"  # per-pod caps (what the health page shows)
-POD_LIMIT_MEMORY = "512Mi"
+POD_LIMIT_CPU = f"{DEFAULT_CPU_LIMIT_M}m"  # per-pod caps (what the health page shows)
+POD_LIMIT_MEMORY = f"{DEFAULT_MEM_LIMIT_MI}Mi"
 QUOTA_PODS = "2"
 QUOTA_SERVICES = "1"
 
-LIMIT_RANGE_DEFAULT_CPU = "250m"
-LIMIT_RANGE_DEFAULT_MEMORY = "512Mi"
-LIMIT_RANGE_DEFAULT_REQUEST_CPU = "64m"
-LIMIT_RANGE_DEFAULT_REQUEST_MEMORY = "128Mi"
+LIMIT_RANGE_DEFAULT_CPU = POD_LIMIT_CPU
+LIMIT_RANGE_DEFAULT_MEMORY = POD_LIMIT_MEMORY
+LIMIT_RANGE_DEFAULT_REQUEST_CPU = f"{DEFAULT_CPU_REQUEST_M}m"
+LIMIT_RANGE_DEFAULT_REQUEST_MEMORY = f"{DEFAULT_MEM_REQUEST_MI}Mi"
 
 DNS_NAMESPACE = "kube-system"
 DNS_PORT = 53

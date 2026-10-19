@@ -68,7 +68,16 @@ LEGACY_HOSTS = tuple(
 
 # Hard cap on (summed, compressed-layer) image size, enforced at app create/update
 # via app/providers/registry.py (ARCHITECTURE.md §2 "Image size").
-MAX_IMAGE_SIZE_BYTES = 512 * 1024 * 1024
+MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1024))
+
+# --- Platform caps: SINGLE SOURCE OF TRUTH (Chas lowered them 2026-10-19; bootstrap.md pending his update) ---
+# Used by k8s_manifests (container limits, LimitRange, quota = 2x), quota.py, resources.py, health.py.
+DB_QUOTA_BYTES = int(os.environ.get("DB_QUOTA_BYTES", 50 * 1024 * 1024))
+STORAGE_QUOTA_BYTES = int(os.environ.get("STORAGE_QUOTA_BYTES", 100 * 1024 * 1024))
+DEFAULT_CPU_REQUEST_M = 64
+DEFAULT_CPU_LIMIT_M = int(os.environ.get("DEFAULT_CPU_LIMIT_M", 100))
+DEFAULT_MEM_REQUEST_MI = 128
+DEFAULT_MEM_LIMIT_MI = int(os.environ.get("DEFAULT_MEM_LIMIT_MI", 384))
 
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.

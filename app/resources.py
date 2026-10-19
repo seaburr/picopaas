@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_CPU_REQUEST_M = 64
-DEFAULT_CPU_LIMIT_M = 250
-DEFAULT_MEM_REQUEST_MI = 128
-DEFAULT_MEM_LIMIT_MI = 512
+from app.config import (  # noqa: F401  (single source of truth for the caps)
+    DEFAULT_CPU_LIMIT_M,
+    DEFAULT_CPU_REQUEST_M,
+    DEFAULT_MEM_LIMIT_MI,
+    DEFAULT_MEM_REQUEST_MI,
+)
 
 CPU_MIN_M, CPU_MAX_M = 10, 1000
 MEM_MIN_MI, MEM_MAX_MI = 32, 2048

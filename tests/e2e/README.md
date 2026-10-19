@@ -19,7 +19,7 @@ python -m pytest tests/e2e tests/pentest -v
 | `E2E_IMAGE_TAG` | latest | tag of `ghcr.io/seaburr/picopaas-testapp-{hello,probe,toolbox}` |
 | `E2E_SLOW` | unset | `1` enables the quota-fill tests (up to ~15 min each; quota poll is 5 min) |
 | `E2E_APP_PORT` | 8080 | port the test apps listen on |
-| `E2E_BIG_IMAGE` | unset | public non-root image over 512MB, enables the size-cap test |
+| `E2E_BIG_IMAGE` | unset | public non-root image over 256MB, enables the size-cap test |
 
 Side effects: apps are named `e2e-<random>` and removed (admin delete) even on failure. The customer's
 `app_limit` is raised to at least 6 for the run and restored. A second user `e2e-<random>@picopaas-e2e.dev`

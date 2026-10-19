@@ -107,7 +107,7 @@ def test_06_unknown_image_rejected(user):
 
 
 @pytest.mark.skipif(not os.environ.get("E2E_BIG_IMAGE"),
-                    reason="set E2E_BIG_IMAGE to a public non-root image >512MB to test the size cap")
+                    reason="set E2E_BIG_IMAGE to a public non-root image >256MB to test the size cap")
 def test_06_oversize_image_rejected(user):
     r = user.req("POST", "/apps", json={"name": rand_name(), "image": os.environ["E2E_BIG_IMAGE"],
                                         "port": 8080})
@@ -182,20 +182,20 @@ def test_08_idor(user, admin, second_user, hello):
 # 9 (slow) ---------------------------------------------------------------------------------------
 @pytest.mark.skipif(not SLOW, reason="set E2E_SLOW=1 (quota poll runs every 5 min)")
 def test_09_db_quota_makes_writes_fail(probe):
-    get_json(app_url(probe, "/db/fill?mb=110"))  # may itself report an error once over the cap
+    get_json(app_url(probe, "/db/fill?mb=60"))  # may itself report an error once over the cap
 
     def writes_fail():
         r = get_json(app_url(probe, "/db/fill?mb=1"), ok_only=False)
         return r is not None and r["ok"] is False
-    poll(writes_fail, 900, 20, desc="DB writes to be revoked after exceeding 100MB")
+    poll(writes_fail, 900, 20, desc="DB writes to be revoked after exceeding 50MB")
     assert get_json(app_url(probe, "/s3"))["ok"] is True, "storage unaffected by DB quota"
 
 
 @pytest.mark.skipif(not SLOW, reason="set E2E_SLOW=1 (quota poll runs every 5 min)")
 def test_09_storage_quota_makes_writes_fail(probe):
-    get_json(app_url(probe, "/s3/fill?mb=260"))
+    get_json(app_url(probe, "/s3/fill?mb=110"))
 
     def writes_fail():
         r = get_json(app_url(probe, "/s3/fill?mb=1"), ok_only=False)
         return r is not None and r["ok"] is False
-    poll(writes_fail, 900, 20, desc="S3 writes to be revoked after exceeding 250MB")
+    poll(writes_fail, 900, 20, desc="S3 writes to be revoked after exceeding 100MB")
