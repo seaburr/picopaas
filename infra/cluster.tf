@@ -14,6 +14,9 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
   # platform and we say so in the UI. Do not set ha = true (adds $40/mo).
   ha = false
 
+  # Delete the cluster's load balancers/volumes with it (otherwise an orphaned LB keeps billing $12/mo).
+  destroy_all_associated_resources = true
+
   auto_upgrade  = true
   surge_upgrade = true
 
