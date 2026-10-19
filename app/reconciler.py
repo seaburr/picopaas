@@ -13,6 +13,8 @@ add an APScheduler job calling `reconcile_all` with the real providers once
 """
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any, Callable
 
 from sqlalchemy import and_, or_, select
@@ -21,6 +23,8 @@ from sqlalchemy.orm import Session
 from app import crypto, env_refs, k8s_manifests, models
 from app.db_placement import NoDbCapacity, choose_server
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
+
+log = logging.getLogger(__name__)
 
 MySQLAdminFactory = Callable[[models.DbServer], MySQLAdmin]
 
@@ -70,6 +74,19 @@ def _storage_refs(app: models.App) -> dict[str, str]:
 
 
 SUSPENDED_APPLIED = "scaled to zero"
+
+
+def _kube_error_summary(exc: Exception) -> str:
+    """`ApiException` -> "422 Unprocessable Entity: <k8s Status message>" (truncated); else the exception type."""
+    status = getattr(exc, "status", None)
+    if status is None:
+        return type(exc).__name__
+    message = ""
+    try:
+        message = json.loads(getattr(exc, "body", "") or "{}").get("message", "")
+    except (ValueError, AttributeError):
+        pass
+    return f"{status} {getattr(exc, 'reason', '')}: {message}"[:500]
 
 
 def _fail(session: Session, app: models.App, detail: str) -> None:
@@ -187,7 +204,9 @@ def reconcile_app(
     try:
         kube.apply(flat)
         status = kube.get_status(namespace)
-    except Exception:
+    except Exception as exc:
+        # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.
+        log.warning("app %s: kube apply failed: %s", app.id, _kube_error_summary(exc))
         _fail(session, app, "deployment failed")
         return
 

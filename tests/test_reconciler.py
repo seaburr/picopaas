@@ -276,3 +276,13 @@ def test_reconcile_all_sweeps_pending_and_deleted_apps(session):
 
     assert pending_app.status == "running"
     assert to_delete_app.status == "deleted"
+
+
+def test_kube_error_summary_uses_k8s_status_message():
+    from types import SimpleNamespace
+
+    from app.reconciler import _kube_error_summary
+
+    exc = SimpleNamespace(status=422, reason="Unprocessable Entity", body='{"message": "spec.replicas: Invalid value"}')
+    assert _kube_error_summary(exc) == "422 Unprocessable Entity: spec.replicas: Invalid value"
+    assert _kube_error_summary(RuntimeError("boom with password=hunter2")) == "RuntimeError"

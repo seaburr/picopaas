@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from types import SimpleNamespace
 from typing import Any
 
@@ -22,14 +23,22 @@ log = logging.getLogger(__name__)
 
 LOCK_NAME = "picopaas-reconciler"
 _lock_conn: Any = None
+# The reconcile and quota jobs run on separate APScheduler threads; one MySQL connection must not be used
+# concurrently (it corrupts the TLS stream: "bad record mac").
+_lock_guard = threading.Lock()
 
 
 def try_acquire_leader() -> bool:
     """True if this process is (or just became) the leader. MySQL named locks are
     per-connection, so we keep one connection open for the process lifetime."""
-    global _lock_conn
     if engine.dialect.name != "mysql":
         return True
+    with _lock_guard:
+        return _try_acquire_leader_locked()
+
+
+def _try_acquire_leader_locked() -> bool:
+    global _lock_conn
     try:
         if _lock_conn is None:
             _lock_conn = engine.connect()
