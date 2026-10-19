@@ -1,0 +1,77 @@
+# Platform Deployment: FastAPI + Vue (built-in) + in-process reconciler (ARCHITECTURE.md §2).
+# Secret `picopaas-env` is NOT in this repo — create by hand before applying (see deploy/README.md):
+#   kubectl create secret generic picopaas-env -n picopaas-system \
+#     --from-literal=SECRET_KEY='<placeholder>' \
+#     --from-literal=FERNET_KEY='<placeholder>' \
+#     --from-literal=DATABASE_URL='<placeholder>' \
+#     --from-literal=DO_API_TOKEN='<placeholder>' \
+#     --from-literal=DO_SPACES_KEY='<placeholder>' \
+#     --from-literal=DO_SPACES_SECRET='<placeholder>'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: picopaas
+  namespace: picopaas-system
+  labels:
+    app: picopaas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: picopaas
+  template:
+    metadata:
+      labels:
+        app: picopaas
+    spec:
+      serviceAccountName: picopaas
+      automountServiceAccountToken: true # the reconciler needs the k8s API; app pods disable this (ARCHITECTURE.md)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: picopaas
+          image: ghcr.io/seaburr/picopaas:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - secretRef:
+                name: picopaas-env
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 250m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

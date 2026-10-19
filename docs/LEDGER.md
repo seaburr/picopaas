@@ -14,15 +14,37 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   models + migration, `app/db_placement.py::choose_server`, real `app/providers/mysql.py::MySQLAdminClient`
   (constructed per `DbServer`). See Log entry below for detail. `max_databases` default is 25 (manager's
   call: 1 GiB managed MySQL's 75-connection cap ÷ 5 per app user, with headroom for oversubscription).
-- NEXT (backend-dev): real `kube.py` (add the `kubernetes` dependency), `spaces.py`, plus the
-  reconciler loop (APScheduler) that moves apps out of 'pending' — the reconciler's DB provisioning step
-  should call `db_placement.choose_server()` then `MySQLAdminClient(server).create_db_user(app.id)` and
-  store the result in a new `AppDatabase` row; nothing calls the new mysql.py yet. Then quota polling
-  (DB 100MB via `db_size_bytes`/`set_read_only`, bucket 250MB).
+- DONE (backend-dev, 2026-10-18): `app/reconciler.py` — `reconcile_app`/`delete_app`/`reconcile_all`,
+  dependency-injected (kube/mysql_admin_factory/object_store/settings), fakes-only tests (7 cases:
+  happy path db+storage w/ resolved `DATABASE_URL` in the rendered Secret, least-loaded placement,
+  no-capacity→error, idempotent second reconcile, provider failure→error w/o leaking creds into
+  `status_detail`, deletion cleanup, `reconcile_all` sweep). Added `App.status_detail` (nullable str)
+  and a minimal `AppStorage` model (mirrors `AppDatabase`: secret_key Fernet-encrypted, rest plain) +
+  migration `c3a9f5d2b1e4` (upgrade/downgrade round-trip verified against a throwaway sqlite file).
+  See Log entry for detail.
+- NEXT (backend-dev): wire `reconcile_all` into an actual APScheduler interval job with the *real*
+  providers — still TODO'd in `app/reconciler.py`. Needs real `kube.py` (add the `kubernetes`
+  dependency) and `spaces.py` first (both are still NotImplementedError stubs); `MySQLAdminClient`
+  is already real. Then quota polling (DB 100MB via `db_size_bytes`/`set_read_only`, bucket 250MB).
+  `mysql_cidr` is passed into `reconcile_app` via `settings` but nothing populates a real one yet
+  (defaults to a dummy `/32`) — needs to come from the `DbServer`'s actual network once kube.py exists.
 - NEXT (backend-dev): spike the DO API for per-bucket Spaces keys (ARCHITECTURE.md §2 ⚠). Needs the DO token.
 - DONE (frontend-dev, 2026-10-18): API-key management UI at `/keys` (NavBar link).
-- NEXT (infra-ops): `deploy/` manifests (ingress-nginx, cert-manager + wildcard cert via DO DNS-01, platform
-  Deployment, MySQL StatefulSet for the lean variant), `dns-sync` CronJob for the no-LB variant.
+- DONE (infra-ops, 2026-10-18): `deploy/ingress-nginx/values.yaml` (LB mode default, DO annotations,
+  named "picopaas"; commented hostPort/DaemonSet alt), `deploy/cert-manager/` (values.yaml installCRDs,
+  clusterissuer.yaml letsencrypt-prod+staging DNS-01 via `digitalocean-dns`/`access-token` secret —
+  not in repo, command documented, certificate.yaml wildcard `*.seaburr.io`+apex →
+  `wildcard-seaburr-io-tls` in ns `ingress-nginx`), `deploy/platform/` (namespace.yaml PSA restricted,
+  rbac.yaml SA+ClusterRole+ClusterRoleBinding, deployment.yaml/service.yaml/ingress.yaml). All YAML
+  validated with `ruby -ryaml` (kubeconform not installed, not installed it — budget). Not applied.
+  `deploy/README.md` has install order + by-hand secrets + a flagged RBAC exposure (see next line).
+- NEXT (infra-ops): `dns-sync` CronJob (no-LB variant, still a TODO) and in-cluster MySQL StatefulSet
+  manifests (only needed if `use_managed_mysql=false`) — out of scope for the chunk above, budget ran out.
+- FLAG (infra-ops → scm-security): `deploy/platform/rbac.yaml`'s ClusterRole grants `secrets`
+  get/list/watch/create/update/patch/delete at cluster scope (needed because the reconciler manages
+  arbitrary per-app namespaces that don't exist yet), so a compromised platform pod can read every
+  Secret in every app namespace cluster-wide, not just ones it created. Detail + rationale in
+  `deploy/README.md` "Known RBAC exposure" — please fold into `docs/PENTEST.md`.
 - DONE (infra-ops, 2026-10-18): Dockerfile (multi-stage, non-root `USER 10001:10001`), `.dockerignore`,
   `entrypoint.sh`, `.github/workflows/image.yml` (GHCR build/push). Local `docker build` not verified —
   Docker daemon not running on this machine; CI's `image.yml` will be the first real build. The platform
@@ -37,6 +59,12 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   on DO at this budget). NEXT (backend-dev): credential-rotation action for DB/storage.
 
 ## Log
+- 2026-10-18 [infra-ops] DONE: see Now/Next above — `deploy/ingress-nginx/`, `deploy/cert-manager/`,
+  `deploy/platform/`, `deploy/README.md`. Not committed (not applied, per rules).
+- 2026-10-18 [infra-ops] START: write `deploy/` manifests (ingress-nginx values, cert-manager +
+  wildcard cert via DO DNS-01, platform namespace/RBAC/Deployment/Service/Ingress) per the
+  "NEXT (infra-ops): `deploy/` manifests" bullet. Hard 10-min budget; validating with ruby YAML
+  parse (no kubeconform installed, not installing it). Nothing applied.
 - 2026-10-18 [manager] DONE: bootstrap. Researched DO pricing, picked the lean architecture (~$30/mo),
   wrote CLAUDE.md, ARCHITECTURE.md, request 0001, agent definitions, .gitignore, CI secret scan.
 - 2026-10-18 [infra-ops] START: write (not apply) Terraform for request 0001 in `infra/`, plus a
@@ -218,3 +246,38 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-18 [manager] DONE: wrote docs/PENTEST.md and request 0002 (credential binding) per Chas.
 - 2026-10-18 [manager] DONE: recorded 0002 decision (A + private infra); added a DOKS control-plane firewall var to Terraform.
 - 2026-10-18 [manager] DONE: corrected per Chas: k8s API may stay public (firewall var kept, off by default); only DB/Spaces should be private.
+- 2026-10-18 [backend-dev] START: `app/reconciler.py` (reconcile_app/delete_app/reconcile_all,
+  dependency-injected providers) per Now/Next. Hard 10-minute budget this chunk.
+- 2026-10-18 [backend-dev] DONE: `app/reconciler.py` — `reconcile_app(session, app, *, kube,
+  mysql_admin_factory, object_store, settings)`: provisions an `AppDatabase` via
+  `db_placement.choose_server` + `mysql_admin_factory(server).create_db_user` (NoDbCapacity ->
+  status='error'/status_detail='no database capacity') and an `AppStorage` via
+  `object_store.create_bucket_and_key`, both skipped if already provisioned (idempotent); builds
+  `db.*`/`storage.*` refs (decrypting stored secrets via `app/crypto`), decrypts env vars, resolves
+  `${{ }}` refs via `app/env_refs.resolve`, renders manifests via `app/k8s_manifests`, and
+  `kube.apply()`s them — status goes 'deploying' then whatever `kube.get_status()` returns (e.g.
+  'running'). Any provider exception anywhere in the flow sets status='error' with a fixed,
+  hand-written `status_detail` string (never `str(exc)`) so a provider's exception text — which could
+  echo a password/connection string — can never leak into status_detail; verified in
+  `test_provider_failure_sets_error_without_leaking_secrets`. `delete_app(...)`: best-effort
+  `kube.delete_namespace` + mysql `drop` + storage `delete` + row cleanup for soft-deleted apps,
+  independent try/excepts so one failure doesn't block the others. `reconcile_all(...)`: sweeps
+  pending/deploying apps through `reconcile_app` and deleted-but-not-status='deleted' apps through
+  `delete_app`. Model changes: `App.status_detail` (nullable String(255)) and a new minimal
+  `AppStorage` model (one-to-one with App, mirrors `AppDatabase`'s pattern — `secret_key_encrypted`
+  Fernet via `app/crypto`, bucket/endpoint/region/access_key plain, size_bytes/over_quota for later
+  quota polling) + relationship on `App`. Migration `c3a9f5d2b1e4` (adds `apps.status_detail`,
+  creates `app_storage`) — upgrade/downgrade/upgrade round-trip verified against a throwaway sqlite
+  file. `tests/test_reconciler.py` (7 cases, fakes only, plain SQLite session — no HTTP layer):
+  happy path db+storage (asserts the rendered k8s Secret's `DATABASE_URL` is the real resolved
+  `mysql://...` URL, no `${{ }}` leftover), placement onto the least-loaded `DbServer`, no capacity ->
+  error, idempotency (second `reconcile_app` call creates no second `AppDatabase`/`AppStorage` row
+  and calls the fake provider's create exactly once), provider failure -> error status with a
+  secret-free detail, deletion cleanup (namespace/db/storage all gone), `reconcile_all` sweep over a
+  mix of a pending and a deleted app. `.venv/bin/python -m pytest tests/ -q` -> **93 passed, 1
+  skipped** (the skip is the pre-existing `test_mysql_admin.py` module, no `MYSQL_ADMIN_URL` here).
+  Not committed (scm-security's job). Out of scope for this chunk, per the hard time budget: no
+  APScheduler wiring (left as a TODO in the module docstring, per the chunk spec), no real
+  `kube.py`/`spaces.py` (still stubs), no quota polling, `mysql_cidr` for the rendered NetworkPolicy
+  is threaded through `settings` but nothing populates a real value yet (placeholder `/32` default) —
+  all flagged in Now/Next above for the next backend-dev chunk.

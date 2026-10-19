@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: picopaas
+  namespace: picopaas-system
+spec:
+  selector:
+    app: picopaas
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

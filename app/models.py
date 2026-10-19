@@ -59,8 +59,12 @@ class App(Base):
     port: Mapped[int] = mapped_column(nullable=False)
     want_db: Mapped[bool] = mapped_column(default=False, nullable=False)
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
-    # No k8s calls happen yet; every app is created (and stays) 'pending'.
+    # Set by app/reconciler.py: 'pending' -> 'deploying' -> 'running', or 'error'
+    # (see status_detail); 'deleted' once delete_app has torn everything down.
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    # Short, secret-free human-readable reason for status='error'. Never holds
+    # raw provider exception text (could echo creds) — see app/reconciler.py.
+    status_detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
@@ -69,6 +73,9 @@ class App(Base):
         back_populates="app", cascade="all, delete-orphan"
     )
     database: Mapped[Optional["AppDatabase"]] = relationship(
+        back_populates="app", cascade="all, delete-orphan"
+    )
+    storage: Mapped[Optional["AppStorage"]] = relationship(
         back_populates="app", cascade="all, delete-orphan"
     )
 
@@ -134,3 +141,26 @@ class AppDatabase(Base):
 
     app: Mapped["App"] = relationship(back_populates="database")
     server: Mapped["DbServer"] = relationship(back_populates="databases")
+
+
+class AppStorage(Base):
+    """The one Spaces bucket + access key provisioned for an app that opted
+    into `want_storage` (ARCHITECTURE.md §2 "Storage"). One-to-one with App.
+    Kept consistent with AppDatabase: the secret (secret_key) is Fernet-
+    encrypted at rest via app/crypto, everything else is plain."""
+
+    __tablename__ = "app_storage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), unique=True, nullable=False)
+    bucket: Mapped[str] = mapped_column(String(255), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(255), nullable=False)
+    region: Mapped[str] = mapped_column(String(64), nullable=False)
+    access_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Fernet token (ciphertext) — the scoped key's secret, via app/crypto.
+    secret_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(default=0, nullable=False)
+    over_quota: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+    app: Mapped["App"] = relationship(back_populates="storage")

@@ -1,0 +1,19 @@
+# Wildcard cert for *.seaburr.io (+ the apex), used as ingress-nginx's default TLS cert
+# (see deploy/ingress-nginx/values.yaml default-ssl-certificate arg). One cert, no per-app
+# issuance, so no Let's Encrypt rate-limit risk as apps are created/deleted.
+#
+# Switch issuerRef.name to letsencrypt-staging first to confirm DNS-01 works before burning
+# prod rate limits, then re-apply with letsencrypt-prod.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-seaburr-io
+  namespace: ingress-nginx
+spec:
+  secretName: wildcard-seaburr-io-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "seaburr.io"
+    - "*.seaburr.io"

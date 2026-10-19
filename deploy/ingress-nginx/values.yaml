@@ -1,0 +1,72 @@
+# Helm values for the ingress-nginx chart (https://github.com/kubernetes/ingress-nginx).
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f values.yaml
+#
+# Default mode here is the MANAGED LOAD BALANCER variant (ARCHITECTURE.md "Managed option" column,
+# use_load_balancer = true in infra/variables.tf). DO allocates the LB implicitly when this Service
+# is applied — Terraform does NOT create it (see infra/variables.tf wildcard_lb_ip comment). After
+# applying this chart, read the LB IP with `kubectl get svc -n ingress-nginx` and feed it back into
+# Terraform's wildcard_lb_ip to wire up the *.seaburr.io A record.
+#
+# Cost note: a DO Load Balancer is $12/mo, on top of the ~$30/mo lean budget in ARCHITECTURE.md.
+# If use_load_balancer = false was chosen instead (lean/no-LB variant), use the commented
+# hostPort/DaemonSet block further down INSTEAD of the `controller.service` block below, and pair
+# it with the (not yet written) dns-sync CronJob per ARCHITECTURE.md.
+
+controller:
+  # Always serve the wildcard cert by default, regardless of LB mode, so every host that doesn't
+  # request its own cert still gets TLS.
+  extraArgs:
+    default-ssl-certificate: "ingress-nginx/wildcard-seaburr-io-tls"
+
+  # --- LB mode (default): Service type LoadBalancer, DO provisions a small Load Balancer ---
+  service:
+    enabled: true
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/do-loadbalancer-name: "picopaas"
+      service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+      service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
+      service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "false"
+    externalTrafficPolicy: Local
+
+  kind: Deployment
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+  # --- Alternative: hostPort / DaemonSet mode (no LB, use_load_balancer = false) ---
+  # Uncomment this block and comment out the `service:`, `kind`, and `replicaCount` keys above.
+  # Requires the no-LB firewall opening 80/443 to the node pool by tag (infra/firewall.tf) and the
+  # dns-sync CronJob (TODO, not yet written) to keep *.seaburr.io pointed at the current node IP.
+  #
+  # kind: DaemonSet
+  # hostPort:
+  #   enabled: true
+  #   ports:
+  #     http: 80
+  #     https: 443
+  # service:
+  #   enabled: false
+  # daemonset:
+  #   useHostPort: true
+  # tolerations: []
+  # resources:
+  #   requests:
+  #     cpu: 100m
+  #     memory: 128Mi
+  #   limits:
+  #     cpu: 250m
+  #     memory: 256Mi
+
+  admissionWebhooks:
+    enabled: true
+
+defaultBackend:
+  enabled: false

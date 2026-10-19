@@ -1,0 +1,33 @@
+# Helm values for the cert-manager chart (https://github.com/cert-manager/cert-manager).
+#   helm repo add jetstack https://charts.jetstack.io
+#   helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace -f values.yaml
+#
+# installCRDs=true is the simplest path for a single-cluster, no-GitOps-CRD-management setup like
+# this one. (The alternative — `kubectl apply` of the CRD yaml separately — buys nothing here.)
+installCRDs: true
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
