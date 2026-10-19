@@ -132,6 +132,7 @@ def deploy_spec(
         if changed or new_env != old_env:
             app.status = "pending"  # reconciler re-applies and the env-checksum rolls the pod
             app.status_detail = None
+            app.reset_retry()
 
     try:
         db.commit()

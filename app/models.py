@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import false as sa_false
+from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -82,8 +83,19 @@ class App(Base):
     rendered_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # True only when the suspension came from suspending the owner (user unsuspend revives just these).
     suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    # Reconciler retry/backoff for status='error' (see app/reconciler.py). Reset by success or any config change.
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    # False when only a user change can fix the error (invalid env refs, unreadable secrets): never auto-retried.
+    error_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+    def reset_retry(self) -> None:
+        """Forget error/backoff state (success, or a config change that re-queues the app)."""
+        self.error_count = 0
+        self.last_attempt_at = None
+        self.error_retryable = True
 
     owner: Mapped["User"] = relationship(back_populates="apps")
     env_vars: Mapped[List["AppEnvVar"]] = relationship(

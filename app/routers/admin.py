@@ -178,6 +178,7 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.Us
             a.status = "pending"
             a.suspended_by_user = False
             a.status_detail = None
+            a.reset_retry()
     db.commit()
     audit.record(db, admin, "user.unsuspend", "user", user.id)
     return _user_out(db, user)
@@ -235,6 +236,7 @@ def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User
     a.status = "pending"
     a.suspended_by_user = False
     a.status_detail = None
+    a.reset_retry()
     db.commit()
     audit.record(db, admin, "app.unsuspend", "app", a.id)
     return _app_admin_out(a)

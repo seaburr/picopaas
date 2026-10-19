@@ -21,7 +21,8 @@ import ipaddress
 import re
 import socket
 import time
-from typing import Any, Callable
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Optional
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -147,7 +148,38 @@ def _provider_error_summary(exc: Exception) -> str:
     return text.strip()[:300]
 
 
-def _fail(session: Session, app: models.App, detail: str) -> None:
+BACKOFF = [timedelta(minutes=1), timedelta(minutes=5), timedelta(minutes=15), timedelta(minutes=60)]
+
+
+def _utcnow() -> datetime:
+    """Naive UTC (SQLite/MySQL DATETIME columns are naive)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _naive(dt: datetime) -> datetime:
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def backoff_for(error_count: int) -> timedelta:
+    return BACKOFF[min(max(error_count, 1), len(BACKOFF)) - 1]
+
+
+def retry_at(app: models.App) -> Optional[datetime]:
+    """When an errored app will next be retried; None if it isn't errored or needs a user change."""
+    if app.status != "error" or not app.error_retryable or app.last_attempt_at is None or app.deleted_at is not None:
+        return None
+    return _naive(app.last_attempt_at) + backoff_for(app.error_count)
+
+
+def _record_failure(app: models.App, retryable: bool, now: Optional[datetime]) -> None:
+    app.error_count = (app.error_count or 0) + 1
+    app.last_attempt_at = _naive(now) if now else _utcnow()
+    app.error_retryable = retryable
+
+
+def _fail(
+    session: Session, app: models.App, detail: str, *, retryable: bool = True, now: Optional[datetime] = None
+) -> None:
     """Mark an app 'error' with a short, secret-free detail and commit.
 
     `detail` must always be a fixed, hand-written string — never
@@ -161,6 +193,7 @@ def _fail(session: Session, app: models.App, detail: str) -> None:
         return
     app.status = "error"
     app.status_detail = detail
+    _record_failure(app, retryable, now)
     session.commit()
 
 
@@ -174,6 +207,7 @@ def reconcile_app(
     settings: Any,
     sweep: bool = False,
     force: bool = False,
+    now: Optional[datetime] = None,
 ) -> None:
     """Provision DB/storage (if requested and not already done), render and
     apply this app's k8s manifests, and update `app.status`/`status_detail`.
@@ -196,13 +230,13 @@ def reconcile_app(
         try:
             server = choose_server(session)
         except NoDbCapacity:
-            _fail(session, app, "no database capacity")
+            _fail(session, app, "no database capacity", now=now)
             return
         try:
             creds = mysql_admin_factory(server).create_db_user(app.id)
         except Exception as exc:
             log.warning("app %s: db provisioning failed: %s", app.id, _provider_error_summary(exc))
-            _fail(session, app, "database provisioning failed")
+            _fail(session, app, "database provisioning failed", now=now)
             return
         db_row = models.AppDatabase(
             app_id=app.id,
@@ -221,7 +255,7 @@ def reconcile_app(
             creds = object_store.create_bucket_and_key(app.id)
         except Exception as exc:
             log.warning("app %s: storage provisioning failed: %s", app.id, _provider_error_summary(exc))
-            _fail(session, app, "storage provisioning failed")
+            _fail(session, app, "storage provisioning failed", now=now)
             return
         storage_row = models.AppStorage(
             app_id=app.id,
@@ -245,14 +279,14 @@ def reconcile_app(
         env_vars = {e.key: crypto.decrypt(e.value_encrypted) for e in app.env_vars}
     except ValueError:
         log.warning("app %s: stored secrets unreadable (platform key changed)", app.id)
-        _fail(session, app, UNREADABLE_DETAIL)
+        _fail(session, app, UNREADABLE_DETAIL, retryable=False, now=now)
         return
     try:
         resolved_env = env_refs.resolve(env_vars, refs)
     except env_refs.EnvValidationError:
         if sweep:
             return
-        _fail(session, app, "environment configuration invalid")
+        _fail(session, app, "environment configuration invalid", retryable=False, now=now)
         return
 
     # 4. Render + apply manifests.
@@ -294,7 +328,7 @@ def reconcile_app(
         log.warning("app %s: kube apply failed: %s", app.id, _kube_error_summary(exc))
         if sweep:
             return
-        _fail(session, app, "deployment failed")
+        _fail(session, app, "deployment failed", now=now)
         return
 
     app.rendered_hash = new_hash
@@ -304,9 +338,11 @@ def reconcile_app(
     elif status.startswith("error:"):
         app.status = "error"
         app.status_detail = status[len("error:"):].strip()[:255] or None
+        _record_failure(app, True, now)
     else:
         app.status = status
         app.status_detail = None
+        app.reset_retry()
     session.commit()
 
 
@@ -389,6 +425,7 @@ def reconcile_all(
     mysql_admin_factory: MySQLAdminFactory,
     object_store: ObjectStore,
     settings: Any,
+    now: Optional[datetime] = None,
 ) -> None:
     """One sweep: provision/apply every pending or still-deploying app, and
     clean up every soft-deleted app that isn't fully torn down yet.
@@ -415,7 +452,17 @@ def reconcile_all(
         .scalars()
         .all()
     )
-    for app in pending_or_deploying:
+    # Errored apps whose backoff has elapsed are retried; non-retryable ones wait for a user change.
+    current = _naive(now) if now else _utcnow()
+    errored = session.execute(
+        select(models.App).where(
+            models.App.deleted_at.is_(None),
+            models.App.status == "error",
+            models.App.error_retryable.is_(True),
+        )
+    ).scalars().all()
+    due = [a for a in errored if a.last_attempt_at is None or current >= retry_at(a)]  # None: pre-migration row
+    for app in [*pending_or_deploying, *due]:
         reconcile_app(
             session,
             app,
@@ -423,6 +470,7 @@ def reconcile_all(
             mysql_admin_factory=mysql_admin_factory,
             object_store=object_store,
             settings=settings,
+            now=now,
         )
 
     # Drift sweep: running apps whose rendered manifests changed (platform upgrade) get re-applied.

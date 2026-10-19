@@ -429,3 +429,83 @@ def test_delete_treats_not_found_as_success(session):
     mysql.drop, store.delete = gone_db, gone_bucket
     delete_app(session, app, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store)
     assert app.status == "deleted"
+
+
+# --- retry with backoff (issue #8) ---
+from datetime import datetime, timedelta  # noqa: E402
+
+from app.reconciler import retry_at  # noqa: E402
+
+T0 = datetime(2026, 1, 1, 12, 0, 0)
+
+
+class _FlakyKube(FakeKubeProvider):
+    fail = True
+
+    def apply(self, manifests):
+        if self.fail:
+            raise RuntimeError("boom")
+        return super().apply(manifests)
+
+
+def _rsweep(session, kube, now, admin=None):
+    reconcile_all(
+        session, kube=kube, mysql_admin_factory=lambda s: admin or FakeMySQLAdmin(),
+        object_store=FakeObjectStore(), settings={}, now=now,
+    )
+
+
+def test_backoff_schedule_with_injected_clock(session):
+    app = _make_app(session)
+    kube = _FlakyKube()
+    now = T0
+    _rsweep(session, kube, now)  # pending -> error (count 1)
+    assert (app.status, app.error_count) == ("error", 1)
+    for count, wait in [(1, 1), (2, 5), (3, 15), (4, 60), (5, 60), (6, 60)]:
+        assert app.error_count == count
+        assert retry_at(app) == now + timedelta(minutes=wait)
+        _rsweep(session, kube, now + timedelta(minutes=wait) - timedelta(seconds=1))
+        assert app.error_count == count  # not due yet
+        now = now + timedelta(minutes=wait)
+        _rsweep(session, kube, now)
+        assert app.error_count == count + 1
+
+
+def test_success_resets_error_state(session):
+    app = _make_app(session)
+    kube = _FlakyKube()
+    _rsweep(session, kube, T0)
+    kube.fail = False
+    _rsweep(session, kube, T0 + timedelta(minutes=1))
+    assert app.status != "error"
+    assert (app.error_count, app.last_attempt_at, retry_at(app)) == (0, None, None)
+
+
+def test_non_retryable_errors_never_retried(session):
+    app = _make_app(session, env=[("X", "${{ db.url }}", False)])  # db ref without want_db
+    kube = _FlakyKube()
+    kube.fail = False
+    _rsweep(session, kube, T0)
+    assert app.status == "error" and app.error_retryable is False and retry_at(app) is None
+    assert app.error_count == 1
+    _rsweep(session, kube, T0 + timedelta(days=30))
+    assert app.error_count == 1 and app.status == "error"
+
+
+def test_no_db_capacity_is_retryable(session):
+    app = _make_app(session, want_db=True)  # no DbServer
+    kube = _FlakyKube()
+    kube.fail = False
+    _rsweep(session, kube, T0)
+    assert app.status_detail == "no database capacity" and app.error_retryable is True
+    _make_server(session)
+    _rsweep(session, kube, T0 + timedelta(minutes=1))
+    assert app.status != "error" and app.error_count == 0
+
+
+def test_config_change_resets_error_state(session):
+    app = _make_app(session)
+    _rsweep(session, _FlakyKube(), T0)
+    assert app.error_count == 1
+    app.reset_retry()
+    assert (app.error_count, app.last_attempt_at, app.error_retryable) == (0, None, True)

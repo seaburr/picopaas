@@ -415,3 +415,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [infra-ops] DONE: deploy/traefik/values.yaml annotation; bootstrap.yml lb A record + IP via doctl (svc status has hostname now). externalTrafficPolicy/proxy-protocol unchanged. Uncommitted.
 - START (backend): env ref validation (pentest #16) + pentest harness toolbox arg fixes
 - DONE (backend): validate_env_value rejects any value containing `${{` unless exactly one allowed, available ref (422 lists allowed refs; create/PATCH/spec); tests in tests/test_env_refs.py; pentest port_scan now passes int list, mysql_login no longer sends empty ca_pem. Uncommitted.
+- 2026-10-19 [backend-dev] START: issue #8 reconciler retry with backoff for errored apps
+- 2026-10-19 [backend-dev] DONE: issue #8. App.error_count/last_attempt_at/error_retryable (migration b7e2d9a4c1f3, single head); reconcile_all retries retryable errors at 1m/5m/15m/60m (cap); env-invalid and unreadable-secrets are non-retryable; success/config change reset; AppOut.retry_at. Tests in tests/test_reconciler.py. Uncommitted; frontend "will retry at" display is a follow-up.

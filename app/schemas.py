@@ -126,5 +126,6 @@ class AppOut(BaseModel):
     health_check_path: str = DEFAULT_HEALTH_PATH
     status: str
     status_detail: Optional[str] = None
+    retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)
     created_at: datetime
     env: List[EnvVarOut] = Field(default_factory=list)

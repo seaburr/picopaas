@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, schemas
+from app import audit, crypto, models, reconciler, schemas
 from app.config import MAX_IMAGE_SIZE_BYTES
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
@@ -93,6 +93,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         health_check_path=app.health_check_path,
         status=app.status,
         status_detail=app.status_detail,
+        retry_at=reconciler.retry_at(app),
         created_at=app.created_at,
         env=[_env_var_out(e) for e in app.env_vars],
     )
@@ -264,6 +265,7 @@ def update_app(
         # (the env-checksum annotation changes with env). Suspended apps can't reach here.
         app.status = "pending"
         app.status_detail = None
+        app.reset_retry()
     db.commit()
     db.refresh(app)
     audit.record(db, current_user, "app.update", "app", app.id)
@@ -369,6 +371,7 @@ def rotate_credentials(
             log.warning("could not revoke old storage key for app %s", app.id)
     # The reconciler re-renders the Secret from the stored creds and rolls the pod.
     app.status = "pending"
+    app.reset_retry()
     db.commit()
     db.refresh(app)
     audit.record(db, user, "app.rotate", "app", app.id, f"target={body.target}")
