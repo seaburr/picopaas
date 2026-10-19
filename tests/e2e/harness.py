@@ -24,7 +24,7 @@ ENABLED = bool(USER_TOKEN and ADMIN_TOKEN)
 SKIP_REASON = "set E2E_USER_TOKEN and E2E_ADMIN_TOKEN (and PICOPAAS_URL) to run live tests"
 skip_unless_live = pytest.mark.skipif(not ENABLED, reason=SKIP_REASON)
 
-IMG = {n: f"ghcr.io/seaburr/picopaas-testapp-{n}:{IMAGE_TAG}" for n in ("hello", "probe", "toolbox")}
+IMG = {n: f"ghcr.io/seaburr/picopaas-testapp-{n}:{IMAGE_TAG}" for n in ("hello", "probe", "toolbox", "webpage")}
 DEPLOY_TIMEOUT = 300
 
 PROBE_ENV = [

@@ -8,6 +8,7 @@ provisioning, quotas, network isolation). Each is non-root (`USER 10001:10001`),
 - `ghcr.io/seaburr/picopaas-testapp-hello:latest`
 - `ghcr.io/seaburr/picopaas-testapp-probe:latest`
 - `ghcr.io/seaburr/picopaas-testapp-toolbox:latest`
+- `ghcr.io/seaburr/picopaas-testapp-webpage:latest`
 
 (also tagged with the short commit SHA).
 
@@ -89,3 +90,25 @@ env:
 
 Never give toolbox real tenant credentials in a shared/long-lived env var; pass them per-request in
 `POST /run` args instead, and rotate `TOOLBOX_TOKEN` after a pentest run.
+
+## webpage
+
+Stdlib-only server that serves a real page (HTML + CSS + JS, no CDNs) to prove rendering works
+through the platform. Strict `Content-Security-Policy: default-src 'self'`.
+
+- `GET /` - page with `#css-check` (CSS colours it `rgb(12, 34, 56)`), `#js-check` ("JS pending" -> "JS OK"),
+  and `#info` (hostname from `/api/info`); JS sets `data-ok="1"` on `<body>` when done.
+- `/style.css`, `/app.js`, `/favicon.svg` - assets with `Cache-Control`.
+- `GET /api/info` -> `{"hostname", "version": <$APP_VERSION>, "time"}`; `GET /healthz` -> `ok`.
+
+```yaml
+# app.yaml
+name: webpage
+image: ghcr.io/seaburr/picopaas-testapp-webpage:latest
+port: 8080
+healthCheck: {enabled: true, path: /healthz}
+env:
+  APP_VERSION: "1.0.0"
+```
+
+Live test: `tests/e2e/test_webpage.py` (browser part needs `pip install playwright && python -m playwright install chromium`).
