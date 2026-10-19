@@ -98,9 +98,6 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
     <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="text-lg font-semibold text-white">Cluster health</h1>
-        <RouterLink to="/apps/new" class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent">
-          Deploy an app
-        </RouterLink>
         <div class="flex items-center gap-3 text-xs text-zinc-500" aria-live="polite">
           <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
           <button
