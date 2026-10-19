@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import config, models
-from app.k8s_manifests import QUOTA_LIMITS_CPU, QUOTA_LIMITS_MEMORY, namespace_name
+from app.k8s_manifests import POD_LIMIT_CPU, POD_LIMIT_MEMORY, namespace_name
 from app.providers.base import KubeProvider
 
 CACHE_TTL_S = 15
@@ -22,11 +22,11 @@ def reset_cache() -> None:
 
 
 def _limit_cpu_m() -> int:
-    return int(QUOTA_LIMITS_CPU[:-1]) if QUOTA_LIMITS_CPU.endswith("m") else int(float(QUOTA_LIMITS_CPU) * 1000)
+    return int(POD_LIMIT_CPU[:-1]) if POD_LIMIT_CPU.endswith("m") else int(float(POD_LIMIT_CPU) * 1000)
 
 
 def _limit_mem_mi() -> int:
-    return int(QUOTA_LIMITS_MEMORY[:-2])  # "512Mi"
+    return int(POD_LIMIT_MEMORY[:-2])  # "512Mi"
 
 
 def _sum(vals: list) -> Any:

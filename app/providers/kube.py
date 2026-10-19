@@ -110,7 +110,16 @@ class KubeClientProvider(KubeProvider):
         items = _as_dict(deployments).get("items", [])
         if not items:
             return "deploying"
-        ready = (items[0].get("status") or {}).get("readyReplicas") or 0
+        dep = items[0]
+        st = dep.get("status") or {}
+        ready = st.get("readyReplicas") or 0
+        want = (dep.get("spec") or {}).get("replicas", 1)
+        # A rollout in flight (or stuck, e.g. surge pod rejected by quota) is "deploying", never "running":
+        # the ready old pod would otherwise mask the new spec not being live.
+        if (st.get("observedGeneration") or 0) < (dep.get("metadata") or {}).get("generation", 0):
+            return "deploying"
+        if (st.get("updatedReplicas") or 0) < want:
+            return "deploying"
         return "running" if ready >= 1 else "deploying"
 
     def cluster_snapshot(self) -> dict[str, Any]:

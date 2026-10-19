@@ -24,10 +24,10 @@ def test_namespace_name_and_labels():
 def test_resource_quota_caps():
     rq = k8s.resource_quota_manifest(APP_ID)
     hard = rq["spec"]["hard"]
-    assert hard["limits.cpu"] == "250m"
-    assert hard["limits.memory"] == "512Mi"
-    assert hard["requests.cpu"] == "250m"
-    assert hard["requests.memory"] == "512Mi"
+    assert hard["limits.cpu"] == "500m"
+    assert hard["limits.memory"] == "1024Mi"
+    assert hard["requests.cpu"] == "500m"
+    assert hard["requests.memory"] == "1024Mi"
     assert hard["pods"] == "2"
     assert hard["services"] == "1"
     assert hard["services.loadbalancers"] == "0"
@@ -208,3 +208,9 @@ def test_env_change_rolls_pod_via_checksum_annotation():
     assert ann(a) != ann(b)
     # The checksum must not reveal the values themselves.
     assert "old" not in ann(a) and "new" not in ann(b)
+
+
+def test_deployment_rolling_update_strategy():
+    dep = k8s.deployment_manifest(APP_ID, IMAGE, PORT)
+    assert dep["spec"]["strategy"] == {
+        "type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}}

@@ -42,8 +42,20 @@ def test_delete_namespace_ignores_404():
 
 
 def test_status_running():
-    k = KubeClientProvider(_dyn(deployments=[{"status": {"readyReplicas": 1}}]))
+    k = KubeClientProvider(_dyn(deployments=[{"metadata": {"generation": 2}, "spec": {"replicas": 1},
+                                              "status": {"readyReplicas": 1, "updatedReplicas": 1,
+                                                         "observedGeneration": 2}}]))
     assert k.get_status("n") == "running"
+
+
+def test_status_rollout_in_progress_is_deploying():
+    # old pod still ready, new pod not created (e.g. quota-rejected): must not report running
+    stuck = {"metadata": {"generation": 3}, "spec": {"replicas": 1},
+             "status": {"readyReplicas": 1, "updatedReplicas": 0, "observedGeneration": 3}}
+    assert KubeClientProvider(_dyn(deployments=[stuck])).get_status("n") == "deploying"
+    stale = {"metadata": {"generation": 4}, "spec": {"replicas": 1},
+             "status": {"readyReplicas": 1, "updatedReplicas": 1, "observedGeneration": 3}}
+    assert KubeClientProvider(_dyn(deployments=[stale])).get_status("n") == "deploying"
 
 
 def test_status_deploying():
