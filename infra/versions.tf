@@ -2,7 +2,7 @@
 # Applied via the manual "terraform" GitHub workflow (plan + apply in Terraform Cloud). See infra/README.md.
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.7"
 
   required_providers {
     digitalocean = {

@@ -10,7 +10,7 @@ resource "digitalocean_database_cluster" "mysql" {
   region     = var.region
   node_count = 1 # single node, no HA — matches the rest of the lean/managed trade-off
 
-  private_network_uuid = digitalocean_vpc.picopaas.id
+  private_network_uuid = digitalocean_vpc.main.id
 
   tags = ["picopaas"]
 }

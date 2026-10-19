@@ -6,7 +6,7 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
   name     = "picopaas-${var.region}"
   region   = var.region
   version  = data.digitalocean_kubernetes_versions.latest.latest_version
-  vpc_uuid = digitalocean_vpc.picopaas.id
+  vpc_uuid = digitalocean_vpc.main.id
 
   # Non-HA control plane (default/free tier) per ARCHITECTURE.md — this is a hobby/throwaway
   # platform and we say so in the UI. Do not set ha = true (adds $40/mo).
