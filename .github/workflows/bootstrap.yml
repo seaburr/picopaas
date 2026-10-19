@@ -161,10 +161,10 @@ jobs:
           db_id=$(doctl databases list -o json | jq -r --arg n "$DB_CLUSTER_NAME" '.[] | select(.name == $n) | .id')
           [ -n "$db_id" ] || { echo "::error::managed MySQL $DB_CLUSTER_NAME not found"; exit 1; }
           conn=$(doctl databases connection "$db_id" --private -o json)
-          admin_host=$(echo "$conn" | jq -r '.[0].host // .host')
-          admin_port=$(echo "$conn" | jq -r '.[0].port // .port')
-          admin_user=$(echo "$conn" | jq -r '.[0].user // .user')
-          admin_pw=$(echo "$conn" | jq -r '.[0].password // .password')
+          admin_host=$(echo "$conn" | jq -r 'if type == "array" then .[0] else . end | .host')
+          admin_port=$(echo "$conn" | jq -r 'if type == "array" then .[0] else . end | .port')
+          admin_user=$(echo "$conn" | jq -r 'if type == "array" then .[0] else . end | .user')
+          admin_pw=$(echo "$conn" | jq -r 'if type == "array" then .[0] else . end | .password')
           echo "::add-mask::$admin_pw"
           vpc_cidr=$(doctl vpcs list -o json | jq -r --arg n "$VPC_NAME" '.[] | select(.name == $n) | .ip_range')
           [ -n "$vpc_cidr" ] || { echo "::error::VPC $VPC_NAME not found"; exit 1; }
