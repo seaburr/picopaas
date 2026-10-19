@@ -144,7 +144,9 @@ def _internet_egress_ports() -> list[dict[str, Any]]:
     return ports
 
 
-def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list[dict[str, Any]]:
+def network_policies(
+    app_id: int, app_port: int, mysql_cidr: str | None, mysql_port: int | None = None
+) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
     Kubernetes NetworkPolicy semantics are additive per matched pod: the
@@ -262,7 +264,7 @@ def network_policies(app_id: int, app_port: int, mysql_cidr: str | None) -> list
             "egress": [
                 {
                     "to": [mysql_peer],
-                    "ports": [{"protocol": "TCP", "port": MYSQL_PORT}],
+                    "ports": [{"protocol": "TCP", "port": mysql_port or MYSQL_PORT}],
                 }
             ],
         },
@@ -432,13 +434,14 @@ def render_app_manifests(
     replicas: int = 1,
     health_check_enabled: bool = False,
     health_check_path: str = "/healthz",
+    mysql_port: int | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app. Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id),
         "limit_range": limit_range_manifest(app_id),
-        "network_policies": network_policies(app_id, port, mysql_cidr),
+        "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,
