@@ -313,3 +313,53 @@ def test_sweep_reapplies_stale_running_app_once_and_skips_unchanged(session):
     assert len(kube.applied[ns]) == 2 * n and app.status == "running"
     _sweep(session, kube, mysql, store)
     assert len(kube.applied[ns]) == 2 * n
+
+
+def test_sweep_reapplies_running_app_with_missing_namespace(session):
+    kube, mysql, store = FakeKubeProvider(), FakeMySQLAdmin(), FakeObjectStore()
+    gone = _make_app(session)
+    kept = _make_app(session)
+    _sweep(session, kube, mysql, store)
+    assert gone.status == "running" and kept.status == "running"
+    ns_gone, ns_kept = f"app-{gone.id}", f"app-{kept.id}"
+    n_gone, n_kept = len(kube.applied[ns_gone]), len(kube.applied[ns_kept])
+
+    kube.applied.pop(ns_gone)  # cluster rebuilt: namespace gone, hash unchanged
+    kube.list_ns_calls = 0
+    _sweep(session, kube, mysql, store)
+    assert kube.list_ns_calls == 1  # one list call per sweep, not per app
+    assert len(kube.applied[ns_gone]) == n_gone
+    assert len(kube.applied[ns_kept]) == n_kept  # present + matching hash: untouched
+    assert gone.status == "running"
+
+
+def test_provisioning_failure_is_logged_without_secrets(session, caplog):
+    import logging
+
+    class Boom(FakeMySQLAdmin):
+        def create_db_user(self, app_id):
+            raise RuntimeError("connect mysql://doadmin:hunter2@db:25/x password=hunter2 failed")
+
+    _make_server(session)
+    app = _make_app(session, want_db=True)
+    kube, store = FakeKubeProvider(), FakeObjectStore()
+    with caplog.at_level(logging.WARNING, logger="app.reconciler"):
+        reconcile_all(session, kube=kube, mysql_admin_factory=lambda s: Boom(), object_store=store, settings={})
+    assert "db provisioning failed" in caplog.text
+    assert "hunter2" not in caplog.text
+    assert app.status == "error" and app.status_detail == "database provisioning failed"
+
+
+def test_provider_error_summary_pymysql_and_botocore():
+    from app.reconciler import _provider_error_summary
+
+    class OperationalError(Exception):
+        pass
+
+    assert _provider_error_summary(OperationalError(1045, "Access denied for user 'doadmin'")) == \
+        "OperationalError 1045: Access denied for user 'doadmin'"
+
+    class ClientError(Exception):
+        response = {"Error": {"Code": "AccessDenied", "Message": "x"}}
+
+    assert _provider_error_summary(ClientError("nope")) == "ClientError AccessDenied"

@@ -98,6 +98,11 @@ class KubeClientProvider(KubeProvider):
         except NotFoundError:
             pass
 
+    def list_app_namespaces(self) -> set[str]:
+        resource = self.dyn.resources.get(api_version="v1", kind="Namespace")
+        res = _as_dict(resource.get(label_selector="picopaas.io/app-id"))
+        return {i["metadata"]["name"] for i in res.get("items", [])}
+
     def get_status(self, namespace: str) -> str:
         """'running' | 'deploying' | 'error: <reason>' (the reconciler stores it as-is)."""
         pods = self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)

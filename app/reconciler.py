@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 from typing import Any, Callable
 
 from sqlalchemy import and_, or_, select
@@ -94,6 +95,27 @@ def _kube_error_summary(exc: Exception) -> str:
     return f"{status} {getattr(exc, 'reason', '')}: {message}"[:500]
 
 
+_SECRET_RES = (
+    re.compile(r"(?i)(password|passwd|pwd|secret|token)\s*[=:]\s*\S+"),
+    re.compile(r"://[^/\s@]*@"),
+)
+
+
+def _provider_error_summary(exc: Exception) -> str:
+    """Operator-log summary: class name + pymysql code/message or botocore error Code; scrubbed, <=300 chars."""
+    name = type(exc).__name__
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict) and isinstance(response.get("Error"), dict):
+        text = f"{name} {response['Error'].get('Code', '')}"
+    elif len(exc.args) >= 2 and isinstance(exc.args[0], int):
+        text = f"{name} {exc.args[0]}: {exc.args[1]}"
+    else:
+        text = f"{name}: {exc}" if str(exc) else name
+    text = _SECRET_RES[0].sub(r"\1=***", text)
+    text = _SECRET_RES[1].sub("://***@", text)
+    return text.strip()[:300]
+
+
 def _fail(session: Session, app: models.App, detail: str) -> None:
     """Mark an app 'error' with a short, secret-free detail and commit.
 
@@ -120,6 +142,7 @@ def reconcile_app(
     object_store: ObjectStore,
     settings: Any,
     sweep: bool = False,
+    force: bool = False,
 ) -> None:
     """Provision DB/storage (if requested and not already done), render and
     apply this app's k8s manifests, and update `app.status`/`status_detail`.
@@ -132,6 +155,7 @@ def reconcile_app(
     `sweep=True` is the drift check for already-running apps: a matching
     `rendered_hash` is a no-op, a stale one re-applies without flipping the
     app to 'deploying', and failures are logged and retried next tick.
+    `force=True` (sweep only) re-applies even when the hash matches (namespace missing after a cluster rebuild).
     """
     if app.deleted_at is not None:
         return
@@ -145,7 +169,8 @@ def reconcile_app(
             return
         try:
             creds = mysql_admin_factory(server).create_db_user(app.id)
-        except Exception:
+        except Exception as exc:
+            log.warning("app %s: db provisioning failed: %s", app.id, _provider_error_summary(exc))
             _fail(session, app, "database provisioning failed")
             return
         db_row = models.AppDatabase(
@@ -163,7 +188,8 @@ def reconcile_app(
     if app.want_storage and app.storage is None:
         try:
             creds = object_store.create_bucket_and_key(app.id)
-        except Exception:
+        except Exception as exc:
+            log.warning("app %s: storage provisioning failed: %s", app.id, _provider_error_summary(exc))
             _fail(session, app, "storage provisioning failed")
             return
         storage_row = models.AppStorage(
@@ -213,7 +239,7 @@ def reconcile_app(
     new_hash = hmac.new(
         config.SECRET_KEY.encode(), json.dumps(flat, sort_keys=True, default=str).encode(), hashlib.sha256
     ).hexdigest()  # keyed: unguessable offline
-    if sweep and app.rendered_hash == new_hash:
+    if sweep and not force and app.rendered_hash == new_hash:
         return
 
     if not suspended and not sweep:
@@ -333,6 +359,12 @@ def reconcile_all(
     running = session.execute(
         select(models.App).where(models.App.deleted_at.is_(None), models.App.status == "running")
     ).scalars().all()
+    existing_ns: Optional[set[str]] = None
+    if running:
+        try:
+            existing_ns = kube.list_app_namespaces()  # one call per tick
+        except Exception as exc:
+            log.warning("list_app_namespaces failed: %s", _kube_error_summary(exc))
     for app in running:
         reconcile_app(
             session,
@@ -342,6 +374,8 @@ def reconcile_all(
             object_store=object_store,
             settings=settings,
             sweep=True,
+            # DR: namespace gone (cluster rebuilt) -> re-apply even though the hash still matches.
+            force=existing_ns is not None and k8s_manifests.namespace_name(app.id) not in existing_ns,
         )
 
     not_cleaned_up = (

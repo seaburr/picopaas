@@ -23,6 +23,7 @@ class FakeKubeProvider(KubeProvider):
         self.statuses: dict[str, str] = {}
         self.snapshot: dict[str, Any] = {"nodes": [], "pods": [], "metrics_available": True, "errors": []}
         self.snapshot_calls = 0
+        self.list_ns_calls = 0
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -50,6 +51,10 @@ class FakeKubeProvider(KubeProvider):
         self.deleted.add(namespace)
         self.applied.pop(namespace, None)
         self.statuses[namespace] = "deleted"
+
+    def list_app_namespaces(self) -> set[str]:
+        self.list_ns_calls += 1
+        return {ns for ns in self.applied if ns.startswith("app-")}
 
     def get_status(self, namespace: str) -> str:
         return self.statuses.get(namespace, "unknown")

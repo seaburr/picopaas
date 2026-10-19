@@ -27,6 +27,11 @@ class KubeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def list_app_namespaces(self) -> set[str]:
+        """Names of existing app namespaces (label picopaas.io/app-id), in one API call."""
+        raise NotImplementedError
+
+    @abstractmethod
     def get_status(self, namespace: str) -> str:
         """Return a coarse status string (e.g. 'running', 'pending', 'unknown')."""
         raise NotImplementedError
