@@ -137,7 +137,7 @@ def test_migration_round_trip(tmp_path):
     cols = lambda: {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
     alembic("upgrade", "head")
     assert {"health_check_enabled", "health_check_path"} <= cols()
-    alembic("downgrade", "-1")
+    alembic("downgrade", "f6c3d9e2a4b8")  # past health_check and rendered_hash
     assert not ({"health_check_enabled", "health_check_path"} & cols())
     alembic("upgrade", "head")
     assert {"health_check_enabled", "health_check_path"} <= cols()

@@ -77,6 +77,9 @@ class App(Base):
     # Short, secret-free human-readable reason for status='error'. Never holds
     # raw provider exception text (could echo creds) — see app/reconciler.py.
     status_detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # sha256 of the last-applied flattened manifests (hash only; never the manifests). Lets the reconciler
+    # re-apply running apps when the platform's rendering changes.
+    rendered_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # True only when the suspension came from suspending the owner (user unsuspend revives just these).
     suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

@@ -286,3 +286,30 @@ def test_kube_error_summary_uses_k8s_status_message():
     exc = SimpleNamespace(status=422, reason="Unprocessable Entity", body='{"message": "spec.replicas: Invalid value"}')
     assert _kube_error_summary(exc) == "422 Unprocessable Entity: spec.replicas: Invalid value"
     assert _kube_error_summary(RuntimeError("boom with password=hunter2")) == "RuntimeError"
+
+
+def _sweep(session, kube, mysql, store):
+    reconcile_all(session, kube=kube, mysql_admin_factory=lambda s: mysql, object_store=store, settings={})
+
+
+def test_sweep_reapplies_stale_running_app_once_and_skips_unchanged(session):
+    kube, mysql, store = FakeKubeProvider(), FakeMySQLAdmin(), FakeObjectStore()
+    app = _make_app(session, env=[("TOKEN", "s3cret-value-xyz", True)])
+    _sweep(session, kube, mysql, store)  # pending -> running, hash stored
+    assert app.status == "running" and app.rendered_hash
+    ns = f"app-{app.id}"
+    assert "s3cret-value-xyz" not in app.rendered_hash
+    import hashlib, json
+    plain = hashlib.sha256(json.dumps(kube.applied[ns], sort_keys=True, default=str).encode()).hexdigest()
+    assert app.rendered_hash != plain
+
+    n = len(kube.applied[ns])
+    _sweep(session, kube, mysql, store)  # unchanged: no apply
+    assert len(kube.applied[ns]) == n
+
+    app.rendered_hash = "stale"
+    session.commit()
+    _sweep(session, kube, mysql, store)
+    assert len(kube.applied[ns]) == 2 * n and app.status == "running"
+    _sweep(session, kube, mysql, store)
+    assert len(kube.applied[ns]) == 2 * n

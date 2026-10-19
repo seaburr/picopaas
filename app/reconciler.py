@@ -13,6 +13,8 @@ add an APScheduler job calling `reconcile_all` with the real providers once
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 from typing import Any, Callable
@@ -20,7 +22,7 @@ from typing import Any, Callable
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app import crypto, env_refs, k8s_manifests, models
+from app import config, crypto, env_refs, k8s_manifests, models
 from app.db_placement import NoDbCapacity, choose_server
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
@@ -117,6 +119,7 @@ def reconcile_app(
     mysql_admin_factory: MySQLAdminFactory,
     object_store: ObjectStore,
     settings: Any,
+    sweep: bool = False,
 ) -> None:
     """Provision DB/storage (if requested and not already done), render and
     apply this app's k8s manifests, and update `app.status`/`status_detail`.
@@ -125,6 +128,10 @@ def reconcile_app(
     re-provisioned (the existing creds are reused to build the refs), so
     calling this repeatedly (e.g. from a polling reconcile_all loop) is safe.
     Soft-deleted apps are a no-op here — see `delete_app`.
+
+    `sweep=True` is the drift check for already-running apps: a matching
+    `rendered_hash` is a no-op, a stale one re-applies without flipping the
+    app to 'deploying', and failures are logged and retried next tick.
     """
     if app.deleted_at is not None:
         return
@@ -182,6 +189,8 @@ def reconcile_app(
     try:
         resolved_env = env_refs.resolve(env_vars, refs)
     except env_refs.EnvValidationError:
+        if sweep:
+            return
         _fail(session, app, "environment configuration invalid")
         return
 
@@ -200,8 +209,14 @@ def reconcile_app(
     )
     suspended = app.status == "suspended"
     flat = k8s_manifests.flatten_manifests(manifests)
+    # Only the digest is stored (the manifests include the resolved Secret).
+    new_hash = hmac.new(
+        config.SECRET_KEY.encode(), json.dumps(flat, sort_keys=True, default=str).encode(), hashlib.sha256
+    ).hexdigest()  # keyed: unguessable offline
+    if sweep and app.rendered_hash == new_hash:
+        return
 
-    if not suspended:
+    if not suspended and not sweep:
         app.status = "deploying"
         app.status_detail = None
         session.commit()
@@ -213,9 +228,12 @@ def reconcile_app(
     except Exception as exc:
         # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.
         log.warning("app %s: kube apply failed: %s", app.id, _kube_error_summary(exc))
+        if sweep:
+            return
         _fail(session, app, "deployment failed")
         return
 
+    app.rendered_hash = new_hash
     if suspended:
         # Scaled to zero; DB/storage kept. Marker stops the sweep from re-applying every tick.
         app.status_detail = SUSPENDED_APPLIED
@@ -309,6 +327,21 @@ def reconcile_all(
             mysql_admin_factory=mysql_admin_factory,
             object_store=object_store,
             settings=settings,
+        )
+
+    # Drift sweep: running apps whose rendered manifests changed (platform upgrade) get re-applied.
+    running = session.execute(
+        select(models.App).where(models.App.deleted_at.is_(None), models.App.status == "running")
+    ).scalars().all()
+    for app in running:
+        reconcile_app(
+            session,
+            app,
+            kube=kube,
+            mysql_admin_factory=mysql_admin_factory,
+            object_store=object_store,
+            settings=settings,
+            sweep=True,
         )
 
     not_cleaned_up = (

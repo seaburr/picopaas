@@ -392,3 +392,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend-dev] DONE: testapps/webpage (+Dockerfile, CSP), workflow matrix, harness IMG, tests/e2e/test_webpage.py, README. Local curl verified; 237 passed, 58 skipped. Uncommitted.
 - 2026-10-19 [backend-dev] START: rollout quota headroom + stuck-rollout status + https storage.endpoint
 - 2026-10-19 [backend-dev] DONE: app-quota sized 2 pods, Deployment RollingUpdate surge 1/unavail 0, kube.get_status reports deploying while updatedReplicas<replicas or observedGeneration<generation; storage.endpoint now https:// (spaces.py, fake, reconciler._storage_refs normalises old rows), docs + tests. Uncommitted.
+- 2026-10-19 [backend-dev] START: reconciler drift sweep (rendered_hash) for running apps
+- 2026-10-19 [backend-dev] DONE: apps.rendered_hash (migration a1b2c3d4e5f6); reconcile_all re-applies running apps whose rendered manifest hash changed (no deploying flip; failures retried next tick). Uncommitted.
