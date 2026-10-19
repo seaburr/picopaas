@@ -36,19 +36,10 @@ data:
     -- isolation. Protection = NetworkPolicy + a >=32 char random password (README: generate with
     -- openssl rand -hex 24 or longer). Tenants cannot log in without the password.
     CREATE USER IF NOT EXISTS 'picopaas_admin'@'%' IDENTIFIED BY '${MYSQL_ADMIN_PASSWORD}';
-    -- CREATE USER (global): CREATE USER / ALTER USER / DROP USER for app_<id> users. Cannot be scoped.
-    GRANT CREATE USER ON *.* TO 'picopaas_admin'@'%';
-    -- RELOAD (global): FLUSH PRIVILEGES, which MySQLAdminClient runs after each change. (Redundant after
-    -- GRANT/CREATE USER in MySQL 8; drop this line if the client stops calling FLUSH.)
-    GRANT RELOAD ON *.* TO 'picopaas_admin'@'%';
-    -- Per-app databases only (pattern 'app\_%', underscore escaped): CREATE/DROP DATABASE, plus ALL so that
-    -- the client can run GRANT ALL ON app_<id>.* to the tenant user and REVOKE/GRANT the write privileges
-    -- for read-only quota enforcement. MySQL only lets you grant privileges you hold, with GRANT OPTION,
-    -- so ALL ... WITH GRANT OPTION on this pattern is the tightest set that works. It also lets the
-    -- information_schema.TABLES size query see those schemas. It has NO access to mysql.*, other schemas,
-    -- or global admin privileges.
-    -- One backslash: bash leaves \_ alone in this heredoc, so MySQL receives app\_% (escaped underscore).
-    GRANT ALL ON \`app\_%\`.* TO 'picopaas_admin'@'%' WITH GRANT OPTION;
+    -- picopaas_admin holds NO direct privileges. MySQL cannot delegate a wildcard-schema grant: with
+    -- GRANT ALL ON `app\_%`.* ... WITH GRANT OPTION, `GRANT ... ON app_N.*` still fails with 1044 (the
+    -- grantor check does not consult wildcard db grants; verified on 8.4). So all account/schema work
+    -- goes through root-owned SQL SECURITY DEFINER procedures in picopaas_ops (see block below).
 
     -- Backup: read-only, exactly what mysqldump --all-databases --single-transaction --routines --events --triggers needs.
     CREATE USER IF NOT EXISTS 'picopaas_backup'@'%' IDENTIFIED BY '${MYSQL_BACKUP_PASSWORD}';
@@ -57,6 +48,92 @@ data:
     GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES, EVENT, PROCESS ON *.* TO 'picopaas_backup'@'%';
     FLUSH PRIVILEGES;
     SQL
+
+    # Quoted heredoc: no shell expansion, so the SQL below is passed through verbatim.
+    # picopaas_ops: the ONLY thing picopaas_admin can do. Every procedure derives app_<id> from an
+    # integer argument (no string identifiers cross the boundary), so it can never touch root,
+    # picopaas_backup, mysql.* or the platform schema. _exec is internal and NOT granted.
+    mysql -uroot -p"$MYSQL_ROOT_PASSWORD" <<'OPS'
+    CREATE DATABASE IF NOT EXISTS picopaas_ops;
+    DELIMITER $$
+    DROP PROCEDURE IF EXISTS picopaas_ops._exec$$
+    CREATE PROCEDURE picopaas_ops._exec(IN p_sql TEXT) SQL SECURITY DEFINER
+    BEGIN
+      SET @pp_sql = p_sql;
+      PREPARE pp_stmt FROM @pp_sql;
+      EXECUTE pp_stmt;
+      DEALLOCATE PREPARE pp_stmt;
+    END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.provision_app$$
+    CREATE PROCEDURE picopaas_ops.provision_app(IN p_id BIGINT UNSIGNED, IN p_password VARCHAR(255)) SQL SECURITY DEFINER
+    BEGIN
+      DECLARE v VARCHAR(32);
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      IF p_password IS NULL OR CHAR_LENGTH(p_password) < 16 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'password too short';
+      END IF;
+      SET v = CONCAT('app_', p_id);
+      CALL picopaas_ops._exec(CONCAT('CREATE DATABASE IF NOT EXISTS `', v, '`'));
+      CALL picopaas_ops._exec(CONCAT('DROP USER IF EXISTS ''', v, '''@''%'''));
+      CALL picopaas_ops._exec(CONCAT('CREATE USER ''', v, '''@''%'' IDENTIFIED BY ', QUOTE(p_password), ' WITH MAX_USER_CONNECTIONS 5'));
+      CALL picopaas_ops._exec(CONCAT('GRANT ALL ON `', v, '`.* TO ''', v, '''@''%'''));
+    END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.drop_app$$
+    CREATE PROCEDURE picopaas_ops.drop_app(IN p_id BIGINT UNSIGNED) SQL SECURITY DEFINER
+    BEGIN
+      DECLARE v VARCHAR(32);
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      SET v = CONCAT('app_', p_id);
+      CALL picopaas_ops._exec(CONCAT('DROP DATABASE IF EXISTS `', v, '`'));
+      CALL picopaas_ops._exec(CONCAT('DROP USER IF EXISTS ''', v, '''@''%'''));
+    END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.set_app_password$$
+    CREATE PROCEDURE picopaas_ops.set_app_password(IN p_id BIGINT UNSIGNED, IN p_password VARCHAR(255)) SQL SECURITY DEFINER
+    BEGIN
+      DECLARE v VARCHAR(32);
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      IF p_password IS NULL OR CHAR_LENGTH(p_password) < 16 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'password too short';
+      END IF;
+      SET v = CONCAT('app_', p_id);
+      CALL picopaas_ops._exec(CONCAT('ALTER USER ''', v, '''@''%'' IDENTIFIED BY ', QUOTE(p_password)));
+    END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.set_app_read_only$$
+    CREATE PROCEDURE picopaas_ops.set_app_read_only(IN p_id BIGINT UNSIGNED, IN p_read_only TINYINT) SQL SECURITY DEFINER
+    BEGIN
+      DECLARE v VARCHAR(32);
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      SET v = CONCAT('app_', p_id);
+      IF p_read_only THEN
+        CALL picopaas_ops._exec(CONCAT('REVOKE INSERT, UPDATE, CREATE, ALTER ON `', v, '`.* FROM ''', v, '''@''%'''));
+      ELSE
+        CALL picopaas_ops._exec(CONCAT('GRANT INSERT, UPDATE, CREATE, ALTER ON `', v, '`.* TO ''', v, '''@''%'''));
+      END IF;
+    END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.app_size$$
+    CREATE PROCEDURE picopaas_ops.app_size(IN p_id BIGINT UNSIGNED) SQL SECURITY DEFINER
+    BEGIN
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      SELECT COALESCE(SUM(data_length + index_length), 0) AS size_bytes
+        FROM information_schema.TABLES WHERE table_schema = CONCAT('app_', p_id);
+    END$$
+    DELIMITER ;
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.provision_app TO 'picopaas_admin'@'%';
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.drop_app TO 'picopaas_admin'@'%';
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.set_app_password TO 'picopaas_admin'@'%';
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.set_app_read_only TO 'picopaas_admin'@'%';
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.app_size TO 'picopaas_admin'@'%';
+    OPS
 ---
 apiVersion: v1
 kind: Service

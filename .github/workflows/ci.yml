@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "fix/**"]
   pull_request:
 
 permissions:
@@ -100,13 +100,31 @@ jobs:
           test -s /tmp/10-users.sh
           bash /tmp/10-users.sh
           mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW GRANTS FOR 'picopaas_admin'@'%';"
-          # The admin must be able to create app_* schemas and nothing else.
-          mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "CREATE DATABASE app_ci_probe; DROP DATABASE app_ci_probe;"
-          ! mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "CREATE DATABASE notapp_probe;" 2>/dev/null
-          ! mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" -e "SELECT * FROM mysql.user LIMIT 1;" 2>/dev/null
+          A="mysql -upicopaas_admin -p$MYSQL_ADMIN_PASSWORD"
+          # The admin holds only EXECUTE on picopaas_ops: it can provision app_* via procedures...
+          $A -e "CALL picopaas_ops.provision_app(99001, 'ci-probe-password-0123456789'); CALL picopaas_ops.drop_app(99001);"
+          # ...and nothing else.
+          ! $A -e "CREATE DATABASE app_ci_probe;" 2>/dev/null
+          ! $A -e "CREATE DATABASE notapp_probe;" 2>/dev/null
+          ! $A -e "SELECT * FROM mysql.user LIMIT 1;" 2>/dev/null
+          ! $A -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
+          ! $A -e "ALTER USER 'root'@'%' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
+          ! $A -e "ALTER USER 'picopaas_backup'@'%' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
+          ! $A -e "DROP USER 'picopaas_backup'@'%';" 2>/dev/null
+          ! $A -e "DROP DATABASE picopaas_ops;" 2>/dev/null
+          ! $A -e "CALL picopaas_ops._exec('SELECT 1');" 2>/dev/null
+          # Procedures reject anything that is not a plain positive integer id.
+          ! $A -e "CALL picopaas_ops.provision_app(0, 'ci-probe-password-0123456789');" 2>/dev/null
+          ! $A -e "CALL picopaas_ops.drop_app(-1);" 2>/dev/null
+          ! $A -e "CALL picopaas_ops.drop_app('1; DROP USER root');" 2>/dev/null
+          # Root and backup still work (admin changes above did not take effect).
+          mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1" >/dev/null
+          mysql -upicopaas_backup -p"$MYSQL_BACKUP_PASSWORD" -e "SELECT 1" >/dev/null
       - name: MySQL tests as picopaas_admin
         env:
           MYSQL_ADMIN_URL: mysql://picopaas_admin:ci-admin-password-0123456789abcdef@127.0.0.1:3306
+          MYSQL_TEST_ROOT_URL: mysql://root:test@127.0.0.1:3306
+          MYSQL_ADMIN_USE_PROCEDURES: "1"
         run: python -m pytest tests/ -m mysql -q
 
   frontend:

@@ -50,7 +50,9 @@ def _server() -> _FakeDbServer:
 
 
 def _admin_connect():
-    p = _parsed()
+    """Privileged connection for test housekeeping/assertions. MYSQL_TEST_ROOT_URL is used when the
+    client under test runs as the narrowed picopaas_admin (which cannot DROP directly)."""
+    p = urlparse(os.environ.get("MYSQL_TEST_ROOT_URL") or MYSQL_ADMIN_URL)
     return pymysql.connect(
         host=p.hostname, port=p.port or 3306, user=p.username, password=p.password or "", autocommit=True
     )
