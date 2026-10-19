@@ -214,12 +214,17 @@ def update_app(
     app = _get_owned_app_or_404(db, app_id, current_user.id)
     _forbid_if_suspended(app)
 
+    workload_changed = False  # anything that changes the rendered Deployment/Secret
     if payload.name is not None:
         app.name = payload.name
     if payload.image is not None:
         _check_image_cap(registry, payload.image)
+        if payload.image != app.image:
+            workload_changed = True
         app.image = payload.image
     if payload.port is not None:
+        if payload.port != app.port:
+            workload_changed = True
         app.port = payload.port
     health_changed = False
     if payload.health_check_enabled is not None and payload.health_check_enabled != app.health_check_enabled:
@@ -229,12 +234,13 @@ def update_app(
         app.health_check_path = payload.health_check_path
         health_changed = True
     if health_changed:
-        app.status = "pending"  # reconciler re-renders the Deployment probes and rolls the pod
+        workload_changed = True
     if payload.env is not None:
         _validate_env(payload.env, want_db=app.want_db, want_storage=app.want_storage)
         # Clients only ever see MASKED_VALUE for secrets, so sending it back means "unchanged":
         # keep the stored ciphertext instead of overwriting the secret with the mask.
         existing_secrets = {v.key: v.value_encrypted for v in app.env_vars if v.is_secret}
+        old_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         app.env_vars.clear()
         db.flush()  # delete old rows before inserting, or the (app_id, key) unique constraint trips
         for item in payload.env:
@@ -245,7 +251,15 @@ def update_app(
             app.env_vars.append(
                 models.AppEnvVar(key=item.key, value_encrypted=value_encrypted, is_secret=item.is_secret)
             )
+        new_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        if new_env != old_env:
+            workload_changed = True
 
+    if workload_changed:
+        # The reconciler only sweeps pending/deploying apps: re-render so the pod rolls
+        # (the env-checksum annotation changes with env). Suspended apps can't reach here.
+        app.status = "pending"
+        app.status_detail = None
     db.commit()
     db.refresh(app)
     audit.record(db, current_user, "app.update", "app", app.id)

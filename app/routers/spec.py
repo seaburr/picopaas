@@ -105,14 +105,18 @@ def deploy_spec(
         )
         db.add(app)
     else:
+        old_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        changed = (
+            (app.image, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
+            != (spec.image, spec.port, spec.resources.db, spec.resources.storage,
+                spec.healthCheck.enabled, spec.healthCheck.path)
+        )
         app.image = spec.image
         app.port = spec.port
         app.want_db = spec.resources.db
         app.want_storage = spec.resources.storage
-        if (app.health_check_enabled, app.health_check_path) != (spec.healthCheck.enabled, spec.healthCheck.path):
-            app.health_check_enabled = spec.healthCheck.enabled
-            app.health_check_path = spec.healthCheck.path
-            app.status = "pending"
+        app.health_check_enabled = spec.healthCheck.enabled
+        app.health_check_path = spec.healthCheck.path
         app.env_vars.clear()
         db.flush()
 
@@ -122,6 +126,12 @@ def deploy_spec(
         else:
             enc = crypto.encrypt(item.value)
         app.env_vars.append(models.AppEnvVar(key=item.key, value_encrypted=enc, is_secret=item.is_secret))
+
+    if not created:
+        new_env = {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
+        if changed or new_env != old_env:
+            app.status = "pending"  # reconciler re-applies and the env-checksum rolls the pod
+            app.status_detail = None
 
     try:
         db.commit()
