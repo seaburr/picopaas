@@ -26,11 +26,15 @@ jobs:
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
     steps:
-      - name: Skip if no DigitalOcean token yet
+      - name: Skip if no DigitalOcean token or cluster yet
         id: gate
         run: |
           if [ -z "$DIGITALOCEAN_TOKEN" ]; then
             echo "::notice::DIGITALOCEAN_TOKEN is not set; skipping deploy (infra not provisioned yet)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif ! curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/kubernetes/clusters" \
+              | jq -e '.kubernetes_clusters[] | select(.name == "picopaas-atl1")' >/dev/null; then
+            echo "::notice::cluster picopaas-atl1 doesn't exist yet; skipping deploy (run the terraform workflow first)."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
