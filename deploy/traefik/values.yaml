@@ -74,7 +74,9 @@ service:
     # Hairpin fix: makes the CCM publish status.hostname instead of status.ip, so kube-proxy does not
     # add the LB IP to node iptables and short-circuit in-cluster clients (pods reaching
     # https://<app>.raisehellpraisedale.xyz). bootstrap.yml upserts the A record `lb` -> LB IP.
-    service.beta.kubernetes.io/do-loadbalancer-hostname: "lb.raisehellpraisedale.xyz"
+    # REVERTED 2026-10-19: applying this annotation coincided with the LB timing out (~50 min outage). Hairpin fix
+    # needs offline investigation before re-adding (see LEDGER).
+    # service.beta.kubernetes.io/do-loadbalancer-hostname: "lb.raisehellpraisedale.xyz"
   spec:
     externalTrafficPolicy: Local
 
