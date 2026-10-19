@@ -35,6 +35,7 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> No
 def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) -> None:
     size = store.bucket_size_bytes(row.app_id)
     over = size > STORAGE_QUOTA_BYTES
+    new_creds = None
     if over != row.over_quota:
         new_creds = store.set_read_only(row.app_id, over)
         row.over_quota = over
@@ -46,7 +47,22 @@ def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) 
             if row.app is not None and row.app.status != "error":
                 row.app.status = "pending"
     row.size_bytes = size
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        if new_creds:  # stored (old) key keeps working; drop the unpersisted new one
+            try:
+                store.delete_key(row.app_id, new_creds["access_key"])
+            except Exception:
+                log.warning("could not discard unpersisted key for app %s", row.app_id)
+        raise
+    # Only after the new creds are committed: revoke old keys. Also run every poll so a
+    # revoke that failed earlier (leaving a stale read-write key) is retried.
+    try:
+        store.revoke_other_keys(row.app_id, row.access_key)
+    except Exception:
+        log.warning("could not revoke old storage key for app %s", row.app_id)
 
 
 def poll_quotas(

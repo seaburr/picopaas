@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import List, Literal
 
@@ -12,9 +13,18 @@ from app.db import get_db
 from app.dependencies import get_current_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
-from app.providers.base import MySQLAdmin, MySQLAdminError, ObjectStore, ObjectStoreError, Registry, RegistryError
+from app.providers.base import (
+    MySQLAdmin,
+    MySQLAdminError,
+    ObjectStore,
+    ObjectStoreError,
+    Registry,
+    RegistryError,
+    generate_password,
+)
 from app.schemas import MASKED_VALUE
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps", tags=["apps"])
 
 DOMAIN_SUFFIX = "seaburr.io"
@@ -263,22 +273,57 @@ def rotate_credentials(
     object_store: ObjectStore = Depends(get_object_store),
 ):
     app = _get_owned_app_or_404(db, app_id, user.id)
-    try:
-        if body.target == "db":
-            row = app.database
-            if row is None:
-                raise HTTPException(status_code=409, detail="database not provisioned yet")
-            creds = mysql_admin_factory(row.server).rotate_password(app.id)
-            row.password_encrypted = crypto.encrypt(creds["password"])
-        else:
-            row = app.storage
-            if row is None:
-                raise HTTPException(status_code=409, detail="storage not provisioned yet")
+    if body.target == "db":
+        row = app.database
+        if row is None:
+            raise HTTPException(status_code=409, detail="database not provisioned yet")
+        # Persist-first (issue #2): commit the new password BEFORE ALTER USER, so a failed
+        # commit leaves MySQL untouched and the stored password valid. If ALTER then fails,
+        # restore the old stored password. If even that restore fails, the stored password
+        # is wrong, but the next rotation repairs it (ALTER USER doesn't need the old one).
+        old_encrypted = row.password_encrypted
+        new_password = generate_password()
+        row.password_encrypted = crypto.encrypt(new_password)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=502, detail="credential rotation failed")
+        try:
+            mysql_admin_factory(row.server).set_password(app.id, new_password)
+        except MySQLAdminError:
+            try:
+                row.password_encrypted = old_encrypted
+                db.commit()
+            except Exception:
+                db.rollback()
+            raise HTTPException(status_code=502, detail="credential rotation failed")
+    else:
+        row = app.storage
+        if row is None:
+            raise HTTPException(status_code=409, detail="storage not provisioned yet")
+        # Create new key -> commit -> only then revoke the old key (issue #2). If the commit
+        # fails, discard the NEW key (best effort); the old key is still stored and working.
+        try:
             creds = object_store.rotate_key(app.id)
-            row.access_key = creds["access_key"]
-            row.secret_key_encrypted = crypto.encrypt(creds["secret_key"])
-    except (MySQLAdminError, ObjectStoreError):
-        raise HTTPException(status_code=502, detail="credential rotation failed")
+        except ObjectStoreError:
+            raise HTTPException(status_code=502, detail="credential rotation failed")
+        row.access_key = creds["access_key"]
+        row.secret_key_encrypted = crypto.encrypt(creds["secret_key"])
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            try:
+                object_store.delete_key(app.id, creds["access_key"])
+            except ObjectStoreError:
+                log.warning("could not discard unpersisted key for app %s", app.id)
+            raise HTTPException(status_code=502, detail="credential rotation failed")
+        try:
+            object_store.revoke_other_keys(app.id, creds["access_key"])
+        except ObjectStoreError:
+            # New creds are stored and work; the quota poll retries the revoke.
+            log.warning("could not revoke old storage key for app %s", app.id)
     # The reconciler re-renders the Secret from the stored creds and rolls the pod.
     app.status = "pending"
     db.commit()

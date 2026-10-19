@@ -207,3 +207,15 @@ def test_rotate_password_invalidates_old_and_keeps_grants(admin):
             cur.execute("INSERT INTO t VALUES (1)")
     finally:
         conn.close()
+
+
+def test_set_password_with_known_password_replaces_old(admin):
+    from app.providers.base import generate_password
+
+    old = admin.create_db_user(90002)
+    pw = generate_password()
+    new = admin.set_password(90002, pw)
+    assert new["password"] == pw
+    with pytest.raises(pymysql.err.OperationalError):
+        _connect_as(old)
+    _connect_as(new, database=new["name"]).close()

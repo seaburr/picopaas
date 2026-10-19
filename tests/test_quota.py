@@ -76,3 +76,45 @@ def test_capacity_summary(db_session):
     _setup(db_session, n_apps=4, max_databases=5)
     (row,) = capacity_summary(db_session)
     assert row == {"name": "primary", "status": "active", "used": 4, "max_databases": 5, "pct": 80.0, "warn": True}
+
+
+def _over_storage(db_session):
+    _, (app,) = _setup(db_session)
+    admin, store = FakeMySQLAdmin(), FakeObjectStore()
+    orig = store.create_bucket_and_key(app.id)
+    app.storage.access_key = orig["access_key"]
+    app.storage.secret_key_encrypted = crypto.encrypt(orig["secret_key"])
+    db_session.commit()
+    store.sizes[app.id] = STORAGE_QUOTA_BYTES + 1
+    return app, admin, store, orig["access_key"]
+
+
+def test_storage_swap_create_failure_keeps_old_key(db_session):
+    app, admin, store, old = _over_storage(db_session)
+    store.fail.add("create")
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    assert app.storage.access_key == old and store.valid_keys[app.id] == {old}
+    assert not app.storage.over_quota  # retried next poll
+
+
+def test_storage_swap_commit_failure_discards_new_key(db_session, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    app, admin, store, old = _over_storage(db_session)
+    real_commit = Session.commit
+    monkeypatch.setattr(Session, "commit", lambda self: (_ for _ in ()).throw(RuntimeError("db down")))
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    monkeypatch.setattr(Session, "commit", real_commit)
+    db_session.expire_all()
+    assert app.storage.access_key == old and store.valid_keys[app.id] == {old}
+
+
+def test_storage_swap_revoke_failure_is_retried_next_poll(db_session):
+    app, admin, store, old = _over_storage(db_session)
+    store.fail.add("revoke")
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    new = app.storage.access_key
+    assert new != old and new in store.valid_keys[app.id] and old in store.valid_keys[app.id]
+    store.fail.clear()
+    poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
+    assert store.valid_keys[app.id] == {new}

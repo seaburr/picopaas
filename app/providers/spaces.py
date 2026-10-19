@@ -6,10 +6,14 @@ platform-level Spaces key). Per-app keys go through the DO API
 [{bucket, permission}]` with permission `read` / `readwrite`, DELETE removes a
 key. Verified against the DO API reference: PUT/PATCH on a key can ONLY rename
 it, grants are immutable. So "toggle the grant" (`set_read_only`, rotation) is
-implemented as create-new-key-with-new-grant -> delete-old -> rename-new, which
-means the app's access key CHANGES when its read/write state flips;
-`set_read_only` therefore returns the new creds (or None if nothing changed)
-and the caller (app/quota.py) must persist them and re-render the Secret.
+implemented as create-new-key-with-new-grant, which means the app's access key
+CHANGES when its read/write state flips; `set_read_only` / `rotate_key` return
+the new creds (or None if nothing changed). They do NOT delete the old key:
+the caller must persist the new creds (commit) and only then call
+`revoke_other_keys(app_id, new_access_key)`; if persisting fails it calls
+`delete_key` on the new key instead. So the stored key always works (issue #2).
+Keys are named `pp-<app_id>` (first) or `pp-<app_id>-<6 random>` (swapped);
+no rename step (it was cosmetic and a failure point).
 
 The store is stateless: an app's key is the one named `pp-<app_id>`, and its
 bucket is the one named `pp-<app_id>-<6 random>` (names are global in Spaces,
@@ -97,14 +101,13 @@ class SpacesStore(ObjectStore):
                 return keys
             page += 1
 
-    def _find_key(self, app_id: int) -> Optional[dict[str, Any]]:
-        keys = self._list_keys()
-        # "-new" is a leftover from a swap that died before the final rename.
-        for name in (_key_name(app_id), _key_name(app_id) + "-new"):
-            for key in keys:
-                if key.get("name") == name:
-                    return key
-        return None
+    def _find_keys(self, app_id: int) -> list[dict[str, Any]]:
+        """All keys of this app (more than one = a swap whose old-key revoke didn't finish)."""
+        base = _key_name(app_id)
+        return [
+            k for k in self._list_keys()
+            if k.get("name") == base or str(k.get("name", "")).startswith(base + "-")
+        ]
 
     def _create_key(self, name: str, bucket: str, permission: str) -> dict[str, Any]:
         data = self._api(
@@ -171,8 +174,7 @@ class SpacesStore(ObjectStore):
         return self._creds(bucket, key)
 
     def delete(self, app_id: int) -> None:
-        key = self._find_key(app_id)
-        if key is not None:
+        for key in self._find_keys(app_id):
             self._api("DELETE", f"/v2/spaces/keys/{key['access_key']}")
         bucket = self._find_bucket(app_id)
         if bucket is None:
@@ -204,23 +206,31 @@ class SpacesStore(ObjectStore):
         if not grants:
             raise ObjectStoreError("existing key has no bucket grant")
         bucket = grants[0]["bucket"]
-        new = self._create_key(_key_name(app_id) + "-new", bucket, permission)
-        self._api("DELETE", f"/v2/spaces/keys/{old['access_key']}")
-        self._api("PATCH", f"/v2/spaces/keys/{new['access_key']}", json={"name": _key_name(app_id)})
+        suffix = "".join(secrets.choice(_SUFFIX_ALPHABET) for _ in range(6))
+        new = self._create_key(f"{_key_name(app_id)}-{suffix}", bucket, permission)
         return self._creds(bucket, new)
 
     def rotate_key(self, app_id: int) -> dict[str, Any]:
-        old = self._find_key(app_id)
-        if old is None:
+        keys = self._find_keys(app_id)
+        if not keys:
             raise ObjectStoreError(f"no key for app {app_id}")
-        permission = (old.get("grants") or [{}])[0].get("permission", "readwrite")
-        return self._swap_key(app_id, old, permission)
+        permission = (keys[0].get("grants") or [{}])[0].get("permission", "readwrite")
+        return self._swap_key(app_id, keys[0], permission)
 
     def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
-        old = self._find_key(app_id)
-        if old is None:
+        keys = self._find_keys(app_id)
+        if not keys:
             raise ObjectStoreError(f"no key for app {app_id}")
         want = "read" if read_only else "readwrite"
-        if (old.get("grants") or [{}])[0].get("permission") == want:
+        # Several keys = unfinished revoke; swap anyway so the caller's revoke cleans up.
+        if len(keys) == 1 and (keys[0].get("grants") or [{}])[0].get("permission") == want:
             return None
-        return self._swap_key(app_id, old, want)
+        return self._swap_key(app_id, keys[0], want)
+
+    def revoke_other_keys(self, app_id: int, keep_access_key: str) -> None:
+        for key in self._find_keys(app_id):
+            if key["access_key"] != keep_access_key:
+                self._api("DELETE", f"/v2/spaces/keys/{key['access_key']}")
+
+    def delete_key(self, app_id: int, access_key: str) -> None:
+        self._api("DELETE", f"/v2/spaces/keys/{access_key}")

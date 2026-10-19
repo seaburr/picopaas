@@ -32,6 +32,14 @@ class KubeProvider(ABC):
         raise NotImplementedError
 
 
+def generate_password(length: int = 32) -> str:
+    import secrets
+    import string
+
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 class MySQLAdminError(Exception):
     pass
 
@@ -65,9 +73,14 @@ class MySQLAdmin(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def set_password(self, app_id: int, password: str) -> dict[str, Any]:
+        """ALTER the app's db user to `password`; return the full creds. Lets the caller
+        persist the password BEFORE it takes effect (issue #2)."""
+        raise NotImplementedError
+
     def rotate_password(self, app_id: int) -> dict[str, Any]:
         """Set a new random password for the app's db user; return the full new creds."""
-        raise NotImplementedError
+        return self.set_password(app_id, generate_password())
 
 
 class ObjectStoreError(Exception):
@@ -102,7 +115,18 @@ class ObjectStore(ABC):
 
     @abstractmethod
     def rotate_key(self, app_id: int) -> dict[str, Any]:
-        """Create a new key with the same grant, delete the old one; return new creds."""
+        """Create a new key with the same grant and return its creds. The OLD key is NOT
+        deleted: persist the new creds, then call `revoke_other_keys` (issue #2)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def revoke_other_keys(self, app_id: int, keep_access_key: str) -> None:
+        """Delete every key of the app except `keep_access_key` (idempotent)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_key(self, app_id: int, access_key: str) -> None:
+        """Delete one key (used to discard a new key whose creds couldn't be persisted)."""
         raise NotImplementedError
 
 

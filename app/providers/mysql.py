@@ -173,10 +173,9 @@ class MySQLAdminClient(MySQLAdmin):
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"set_read_only({app_id}, {read_only}) failed: {exc}") from exc
 
-    def rotate_password(self, app_id: int) -> dict[str, Any]:
+    def set_password(self, app_id: int, password: str) -> dict[str, Any]:
         db_name = _validate_identifier(_db_name(app_id))
         db_user = _validate_identifier(_db_user(app_id))
-        password = _generate_password()
         try:
             conn = self._connect()
             try:
@@ -186,7 +185,7 @@ class MySQLAdminClient(MySQLAdmin):
             finally:
                 conn.close()
         except pymysql.MySQLError as exc:
-            raise MySQLAdminError(f"rotate_password({app_id}) failed: {exc}") from exc
+            raise MySQLAdminError(f"set_password({app_id}) failed: {exc}") from exc
         creds = {
             "host": self._host,
             "port": self._port,

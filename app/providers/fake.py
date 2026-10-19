@@ -8,7 +8,9 @@ from app.providers.base import (
     ImageInfo,
     KubeProvider,
     MySQLAdmin,
+    MySQLAdminError,
     ObjectStore,
+    ObjectStoreError,
     Registry,
     RegistryError,
 )
@@ -56,6 +58,7 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.creds: dict[int, dict[str, Any]] = {}
         self.sizes: dict[int, int] = {}
         self.read_only: dict[int, bool] = {}
+        self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
 
     def create_db_user(self, app_id: int) -> dict[str, Any]:
         creds = {
@@ -84,11 +87,13 @@ class FakeMySQLAdmin(MySQLAdmin):
     def set_read_only(self, app_id: int, read_only: bool) -> None:
         self.read_only[app_id] = read_only
 
-    def rotate_password(self, app_id: int) -> dict[str, Any]:
+    def set_password(self, app_id: int, password: str) -> dict[str, Any]:
+        if self.fail_set_password:
+            raise MySQLAdminError("injected set_password failure")
         creds = self.creds.get(app_id)
         if creds is None:
             creds = self.create_db_user(app_id)
-        creds = dict(creds, password=secrets.token_urlsafe(24))
+        creds = dict(creds, password=password)
         creds["url"] = (
             f"mysql://{creds['user']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['name']}"
         )
@@ -101,6 +106,8 @@ class FakeObjectStore(ObjectStore):
         self.creds: dict[int, dict[str, Any]] = {}
         self.sizes: dict[int, int] = {}
         self.read_only: dict[int, bool] = {}
+        self.valid_keys: dict[int, set[str]] = {}  # access keys currently accepted by "Spaces"
+        self.fail: set[str] = set()  # inject failures: "create", "revoke", "delete_key"
 
     def create_bucket_and_key(self, app_id: int) -> dict[str, Any]:
         creds = {
@@ -111,11 +118,13 @@ class FakeObjectStore(ObjectStore):
             "secret_key": secrets.token_urlsafe(32),
         }
         self.creds[app_id] = creds
+        self.valid_keys[app_id] = {creds["access_key"]}
         self.sizes[app_id] = 0
         self.read_only[app_id] = False
         return creds
 
     def delete(self, app_id: int) -> None:
+        self.valid_keys.pop(app_id, None)
         self.creds.pop(app_id, None)
         self.sizes.pop(app_id, None)
         self.read_only.pop(app_id, None)
@@ -131,12 +140,26 @@ class FakeObjectStore(ObjectStore):
         return self.rotate_key(app_id)
 
     def rotate_key(self, app_id: int) -> dict[str, Any]:
+        """Creates the new key; the old one stays valid until `revoke_other_keys`."""
+        if "create" in self.fail:
+            raise ObjectStoreError("injected create failure")
         creds = self.creds.get(app_id)
         if creds is None:
             creds = self.create_bucket_and_key(app_id)
         creds = dict(creds, access_key=secrets.token_hex(10), secret_key=secrets.token_urlsafe(32))
+        self.valid_keys.setdefault(app_id, set()).add(creds["access_key"])
         self.creds[app_id] = creds
         return creds
+
+    def revoke_other_keys(self, app_id: int, keep_access_key: str) -> None:
+        if "revoke" in self.fail:
+            raise ObjectStoreError("injected revoke failure")
+        self.valid_keys[app_id] = {keep_access_key} & self.valid_keys.get(app_id, set())
+
+    def delete_key(self, app_id: int, access_key: str) -> None:
+        if "delete_key" in self.fail:
+            raise ObjectStoreError("injected delete_key failure")
+        self.valid_keys.get(app_id, set()).discard(access_key)
 
 
 class FakeRegistry(Registry):

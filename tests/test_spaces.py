@@ -90,22 +90,46 @@ def test_delete_empties_bucket_then_removes_key():
     assert do.keys == {}
 
 
-def test_set_read_only_swaps_key_and_is_idempotent():
-    do = DO([{"name": "pp-1", "access_key": "AKx", "secret_key": "", "grants": [{"bucket": "pp-1-bbbbbb", "permission": "readwrite"}]}])
+def _old(perm="readwrite"):
+    return {"name": "pp-1", "access_key": "AKx", "secret_key": "", "grants": [{"bucket": "pp-1-bbbbbb", "permission": perm}]}
+
+
+def test_set_read_only_creates_new_key_keeps_old_until_revoked():
+    do = DO([_old()])
     store = _store(do, _s3())
     creds = store.set_read_only(1, True)
     assert creds["access_key"] == "AK1" and creds["bucket"] == "pp-1-bbbbbb"
-    (k,) = do.keys.values()
-    assert k["name"] == "pp-1" and k["grants"][0]["permission"] == "read"
+    assert set(do.keys) == {"AKx", "AK1"}  # old key still valid until the caller persisted
+    assert do.keys["AK1"]["grants"][0]["permission"] == "read"
+    assert not any(m == "PATCH" for m, _ in do.calls)
+    store.revoke_other_keys(1, "AK1")
+    assert set(do.keys) == {"AK1"}
     assert store.set_read_only(1, True) is None
     assert store.set_read_only(1, False)["access_key"] == "AK2"
 
 
-def test_rotate_key_keeps_grant():
-    do = DO([{"name": "pp-1", "access_key": "AKx", "secret_key": "", "grants": [{"bucket": "pp-1-bbbbbb", "permission": "read"}]}])
+def test_rotate_key_keeps_grant_and_does_not_delete_old():
+    do = DO([_old("read")])
     creds = _store(do, _s3()).rotate_key(1)
-    (k,) = do.keys.values()
-    assert k["access_key"] == creds["access_key"] and k["grants"][0]["permission"] == "read"
+    assert set(do.keys) == {"AKx", creds["access_key"]}
+    assert do.keys[creds["access_key"]]["grants"][0]["permission"] == "read"
+    assert not any(m == "DELETE" for m, _ in do.calls)
+
+
+def test_leftover_keys_trigger_swap_and_delete_removes_all():
+    do = DO([_old(), dict(_old(), name="pp-1-abcdef", access_key="AKy"), dict(_old(), name="pp-12", access_key="AKz")])
+    store = _store(do, _s3())
+    assert store.set_read_only(1, False) is not None  # two keys -> not a no-op
+    store.revoke_other_keys(1, "AK1")
+    assert set(do.keys) == {"AK1", "AKz"}  # other app's key untouched
+
+
+def test_delete_key_discards_new_key():
+    do = DO([_old()])
+    store = _store(do, _s3())
+    new = store.rotate_key(1)
+    store.delete_key(1, new["access_key"])
+    assert set(do.keys) == {"AKx"}
 
 
 def test_api_error_raises():
