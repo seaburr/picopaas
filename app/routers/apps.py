@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, reconciler, schemas
+from app import audit, crypto, models, reconciler, resources, schemas
 from app.config import MAX_IMAGE_SIZE_BYTES
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
@@ -95,6 +95,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         status_detail=app.status_detail,
         retry_at=reconciler.retry_at(app),
         created_at=app.created_at,
+        resources=resources.describe(app),
         env=[_env_var_out(e) for e in app.env_vars],
     )
 
