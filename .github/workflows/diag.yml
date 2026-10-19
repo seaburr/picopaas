@@ -46,8 +46,9 @@ jobs:
                 echo "::add-mask::$v"
                 d=$(echo "$v" | base64 -d 2>/dev/null) || continue
                 # Mask the whole value and each line of it (multi-line PEMs).
-                [ ${#d} -ge 4 ] && echo "::add-mask::$d"
-                echo "$d" | while IFS= read -r line; do [ ${#line} -ge 8 ] && echo "::add-mask::$line"; done
+                [ ${#d} -ge 4 ] && echo "::add-mask::$d" || true
+                echo "$d" | while IFS= read -r line; do [ ${#line} -ge 8 ] && echo "::add-mask::$line"; done || true
+                true
               done
       - name: Nodes
         run: kubectl get nodes -o wide && kubectl top nodes 2>/dev/null || true
