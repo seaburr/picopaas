@@ -208,3 +208,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
   later: nothing calls `db_placement`/`MySQLAdminClient` yet — that's the reconciler's job (see Now/Next);
   no admin UI/endpoint to register a `DbServer` row yet either (today there'd be zero active servers, so
   `choose_server` would raise `NoDbCapacity` — fine until the reconciler and a seed/admin path exist).
+- 2026-10-18 [manager] DONE: scaling design (ARCHITECTURE.md §3), autoscaler max_nodes var (default 2, needs Chas OK),
+  reviewed + committed DB placement/MySQL admin (6 real-MySQL CI tests pass) and the API keys UI. Session end.
+  Next session: reconciler loop wiring placement + MySQLAdmin + k8s manifests (real kube.py), then deploy/ manifests.
