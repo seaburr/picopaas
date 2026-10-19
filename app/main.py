@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -56,6 +56,32 @@ _API_PREFIXES = ("auth", "apps", "admin", "api", "healthz", "static")
 
 if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+# Paths a browser may navigate to that must NOT be swapped for the SPA.
+_NAV_PASSTHROUGH = ("/static/", "/healthz", "/docs", "/redoc", "/openapi.json")
+
+
+def _is_browser_navigation(request: Request) -> bool:
+    """A top-level page load (typing a URL, refresh, link click), as opposed to the SPA's own fetch() calls,
+    API clients, or curl. Browsers send Sec-Fetch-Mode: navigate on navigations and never on fetch()."""
+    mode = request.headers.get("sec-fetch-mode")
+    if mode is not None:
+        return mode == "navigate"
+    return request.headers.get("accept", "").startswith("text/html")
+
+
+@app.middleware("http")
+async def spa_on_navigation(request: Request, call_next):
+    """SPA pages share paths with API routes (/admin, /admin/health, /apps/...). On a browser navigation, serve
+    index.html instead of the API's JSON so refreshes and deep links work; API callers are unaffected."""
+    if (
+        request.method in ("GET", "HEAD")
+        and _INDEX_HTML.is_file()
+        and not request.url.path.startswith(_NAV_PASSTHROUGH)
+        and _is_browser_navigation(request)
+    ):
+        return FileResponse(_INDEX_HTML)
+    return await call_next(request)
 
 
 @app.get("/{full_path:path}")
