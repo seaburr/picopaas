@@ -26,7 +26,10 @@ resource "digitalocean_kubernetes_cluster" "picopaas" {
     name       = "picopaas-pool-default"
     size       = var.node_size
     node_count = var.node_count
-    auto_scale = false
+    # Cluster autoscaler. max_nodes is the compute spending ceiling (ARCHITECTURE.md §3).
+    auto_scale = var.max_nodes > var.node_count
+    min_nodes  = var.max_nodes > var.node_count ? var.node_count : null
+    max_nodes  = var.max_nodes > var.node_count ? var.max_nodes : null
 
     tags = ["picopaas", "picopaas-node"]
   }

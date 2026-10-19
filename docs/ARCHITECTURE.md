@@ -121,7 +121,55 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
   State and runs live in Terraform Cloud (org `seaburr`, workspace `picopaas`), the same as Chas's other projects.
 - Helm/manifests in `deploy/` cover ingress-nginx, cert-manager, MySQL, and the platform itself.
 
-## 3. Open questions for Chas
+## 3. Scaling
+
+Principle: **the platform tracks capacity and tells the uberadmin when more is needed, but never buys
+infrastructure by itself.** Every new paid resource still goes through a `docs/requests/` approval
+(bootstrap budget rule). What the platform does automate is *placement*: putting each new app on a
+server that has room.
+
+### What runs out first
+
+| Resource | Unit we add | Capacity per unit | Ceiling signal |
+|---|---|---|---|
+| Compute | +1 node (s-2vcpu-4gb, $24) | ~12 apps (requests 64m/128Mi, limits 250m/512Mi) | Pending pods / node allocatable |
+| MySQL | +1 DB server (managed 1 GiB, ~$15–20) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~100 × 100 MB | allocated DBs ≥ 80% of `max_databases` |
+| Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
+
+### Compute
+The DOKS node pool gets `auto_scale = true` with `min_nodes = 1` and `max_nodes` set by Chas. That's
+the spending ceiling, built into Terraform. The cluster autoscaler adds a node when app pods can't be
+scheduled and removes it when nodes are idle. This is the only automatic scale-out, and it's bounded by an approved `max_nodes`.
+
+### Database: many servers, one placement table
+- `db_servers` table: each registered MySQL server (host, port, encrypted admin creds, `max_databases`,
+  status `active | draining | full`). The first server comes from Terraform. More are added by the
+  uberadmin in the admin UI after a request is approved, or by Terraform outputs.
+- `app_databases` table: which server each app's DB lives on (`db_server_id`), plus its size and quota flag.
+  The reconciler builds the reference variables (`db.host`, `db.url`, …) from that row, so apps on different
+  servers simply get different hosts.
+- **Placement** (`app/db_placement.py`): a new DB goes on the `active` server with the most free slots. If
+  there's no room, the deploy fails with a clear "no database capacity" error and the uberadmin is alerted.
+- **Tracking:** the reconciler's quota poll (it already measures per-DB size for the 100 MB cap) also
+  rolls up per-server counts and bytes. When a server reaches 80%, the admin dashboard shows a banner and
+  the platform logs a "capacity request" containing the text of a new `docs/requests/` entry
+  (what / why / cost) to send to Chas.
+- **Draining:** setting a server to `draining` stops new placements. Moving existing DBs between servers
+  (dump → restore → swap secret → restart app) is a later admin action, not v1.
+- Every server is the same kind of thing to the platform. In-cluster MySQL (lean option) and managed MySQL
+  can coexist, so mixing them later costs nothing.
+
+### Spaces
+The 100-bucket account limit hits before cost does. Before ~80 storage-enabled apps, either ask DO
+support for a higher limit (free), or switch to one shared bucket with per-app prefixes and access
+through platform-signed URLs. The `ObjectStore` interface hides which one is in use, so apps don't change.
+
+### Platform itself
+One replica is enough at this size. The reconciler uses a DB lock row so a second replica could be added
+later without two loops fighting each other.
+
+## 4. Open questions for Chas
 1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
 2. ~~Wildcard~~ → OK. Every record except the Bluesky TXT is disposable.
 3. ~~Region~~ → ATL1 (Chas, 2026-10-18). Managed MySQL in ATL1 is Premium Intel only.
+4. Autoscaler `max_nodes`, the compute spending ceiling. Proposed: 2 (worst case +$24/mo over static).

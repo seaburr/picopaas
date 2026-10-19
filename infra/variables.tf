@@ -16,6 +16,12 @@ variable "node_count" {
   default     = 1
 }
 
+variable "max_nodes" {
+  description = "Autoscaler ceiling. Each node above node_count can add $24/mo. Equal to node_count disables autoscaling."
+  type        = number
+  default     = 2
+}
+
 variable "use_managed_mysql" {
   description = <<-EOT
     true  = provision a DO managed MySQL cluster (Chas is leaning this way as of 2026-10-18).
