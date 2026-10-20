@@ -33,6 +33,7 @@ pre{margin:20px 0 0;background:var(--card);border:1px solid var(--border);border
 table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}td{padding:10px 16px;border-top:1px solid var(--border)}td:first-child{color:var(--muted)}tr:nth-child(even) td{background:rgba(255,255,255,.015)}tr:first-child td{border-top:0}td:last-child{text-align:right;color:#fff;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}@media(max-width:480px){.hero{padding:44px 0 24px}.hero p{font-size:16px}td{padding:10px 12px}}
 .note{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-top:24px;color:var(--muted)}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 h1,h2,h3,td,.card p{overflow-wrap:anywhere}
+.inc{margin:0;padding-left:20px;color:var(--muted);font-size:15px}.inc li{margin:6px 0;overflow-wrap:anywhere}.inc strong{color:#fff}.inc code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d4d4d8}
 </style>
 </head>
 <body>
@@ -53,6 +54,13 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <div class="card"><h3>Optional database and storage</h3><p>Tick a box to get a private MySQL database and an S3-compatible bucket. Map their connection details to env vars for your app.</p></div>
 <div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain and an automatic Let&rsquo;s Encrypt certificate.</p></div>
 </div>
+<h3 style="margin:28px 0 8px;font-size:16px">Also included</h3>
+<ul class="inc">
+<li><strong>Templates.</strong> Ghost, an nginx static-site starter and a podinfo sample API prefill the new-app form.</li>
+<li><strong>Rollback.</strong> The last few image versions are kept; roll back in one click. A new image that fails to start is automatically reverted to the last working one.</li>
+<li><strong>Resource history.</strong> Recent CPU and memory usage per app, shown as sparklines.</li>
+<li><strong>Logs and restarts.</strong> View and download logs, restart from the dashboard. Images are pinned by digest; floating tags like <code>:latest</code> are re-checked and redeployed when they change.</li>
+</ul>
 </section>
 <section>
 <h2>How it works</h2>

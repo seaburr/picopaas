@@ -14,7 +14,11 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
 - Optional MySQL database and S3-compatible storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.raisehellpraisedale.xyz`) from a wildcard certificate.
-- Logs, restart, and live status in the UI.
+- Logs (with download), restart, and live status in the UI.
+- One-click templates (Ghost, an nginx static site, the podinfo sample API) that prefill the new-app form.
+- Instant rollback: the last few image versions are kept, and one click redeploys an older one.
+- Auto-rollback: a new image that fails to start is reverted to the last working version.
+- Per-app CPU and memory history (sparklines, about 3 hours) on the app page.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
   auto-redeployed when they move.
 - Quotas on CPU, memory, scratch disk, image size, database size and bucket size.

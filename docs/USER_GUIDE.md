@@ -41,8 +41,6 @@ administrator restores the account.
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
 
-The app page also shows a **Resource usage** panel: recent CPU and memory history (one point a minute, about the last 3 hours) against your limits, turning amber when usage nears them. Also available at `GET /apps/{id}/metrics-history`.
-
 Example Dockerfile:
 
 ```dockerfile
@@ -313,6 +311,17 @@ first.
 To pin an exact version, use a digest reference (`ghcr.io/me/app@sha256:...`) or an immutable tag, and untick
 **Redeploy automatically when this tag changes** (`auto_update: false` in the API).
 
+### Versions and rollback
+
+PicoPaaS keeps your last few image versions (digests) per app. The **Recent versions** list on the app page shows them,
+and **Roll back** redeploys an older one (`GET /apps/{id}/image-history`, `POST /apps/{id}/rollback` with the digest).
+A rollback stops auto-update from the tag until a newer image is pushed, so the old version isn't replaced at the next
+check. The app restarts.
+
+Auto-rollback: if a new image fails to start (the rollout never becomes ready), the platform reverts to the last version
+that worked and records why on the app page. It won't retry the rejected digest, so it doesn't loop. Fix the image, push
+a new one, and it deploys normally.
+
 ## 9. Credential rotation
 
 Rotate the database password or the storage keys from the **Credentials** section of the app page, with
@@ -385,6 +394,12 @@ Deleting an app removes its namespace, database and storage bucket.
 The app page shows the last 200 lines of your container's output. Click **Refresh logs**, or tick **Auto-refresh**.
 Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). Logs are only available while a pod exists.
 
+### Resource usage
+
+The app page has a **Resource usage** panel with CPU and memory sparklines: one point a minute, about the last 3 hours,
+drawn against your limits and turning amber near them. The same data is at `GET /apps/{id}/metrics-history`. Use it
+to tell a CPU-bound app (the 100m limit throttles rather than kills) from one nearing the 384 MB memory limit.
+
 ## 13. Troubleshooting
 
 | Symptom | Likely cause and fix |
@@ -414,7 +429,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, a static nginx site and the podinfo sample API. **Deploy** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons and env vars, so you can adjust before creating. See [Recipes](/guide/recipes) for the Ghost walkthrough.
+The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, a static nginx site and the podinfo sample API. **Deploy** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons and env vars, so you can adjust before creating. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
 
 ## 15. Test apps
 
@@ -476,5 +491,3 @@ port: 8080
 ```
 
 The default limit is one app per account, so delete a test app before you deploy the next one.
-
-See [Recipes](RECIPES.md) for a worked example: deploying Ghost.

@@ -586,3 +586,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: committed per-app metrics history; scale-to-zero (item 7) deferred to backlog in ROADMAP. Pushed; see CI/deploy results.
 - 2026-10-20 [scm-security] START: commit UI/UX pass on new features (app detail reorder, templates port wrap, inline prefill notice, apps-list count); push; verify deploy.
 - 2026-10-20 [scm-security] DONE: committed UI/UX pass (frontend views only). Pushed; see CI/deploy results.
+- 2026-10-20 [scm-security] START: commit RollbackRequest extra=forbid fix and landing/README/user-guide updates; push; verify deploy + landing content.
+- 2026-10-20 [scm-security] DONE: committed as two commits (security fix; docs). Tests 503 passed, typecheck+build ok. Pushed; see CI/deploy results.
