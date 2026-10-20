@@ -47,6 +47,11 @@ if [ -n "$S3_BUCKET" ]; then
   export storage__s3__assetHost="https://${S3_BUCKET}.${S3_REGION}.digitaloceanspaces.com"
 fi
 
+# PicoPaaS blocks outbound SMTP, so Ghost's staff sign-in device-verification email can't be delivered and
+# would lock admins out after the first login ("Failed to send email"). Disable it so the admin stays usable.
+# Trade-off: this also removes the optional email-2FA. Configure a real mail provider to re-enable both.
+export security__staffDeviceVerification="false"
+
 export logging__transports='["stdout"]'
 
 exec node current/index.js

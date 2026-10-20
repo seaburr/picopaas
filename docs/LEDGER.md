@@ -557,3 +557,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: 346379b pushed; CI/image/examples/deploy success; /auth/me image_mb=512; healthz ok; ghost image :346379b built with WITH_S3=1.
 - 2026-10-20 [scm-security] START: commit+push Ghost S3 assetHost fix (public Spaces URL).
 - 2026-10-20 [scm-security] DONE: fd8497a pushed; examples workflow success; ghost image :fd8497a (WITH_S3=1). Not deployed.
+- 2026-10-20 [scm-security] START: commit+push Ghost staffDeviceVerification=false (no SMTP lockout).
