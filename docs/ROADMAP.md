@@ -20,12 +20,19 @@ Let a user attach their own domain (e.g. `blog.example.com`) to an app, in addit
   must treat a verified custom domain as "known."
 - No new infra/cost. Watch Let's Encrypt rate limits and cert-issuance failures.
 
-## In progress (2026-10-20 round)
-2. App templates / one-click catalog (deploy Ghost etc. from a ready spec).
-3. Instant rollback to a previous image digest (store last N digests per app).
-4. Deploy health-gate + auto-rollback when a new rollout fails readiness within the deploy timeout.
-7. Scale-to-zero on idle (sleep idle apps to 0 replicas, wake on request) — raises density = free capacity.
-8. Per-app CPU/memory history on the app detail page (metrics-server already present).
+## Shipped (2026-10-20 round)
+2. App templates / one-click catalog (`/templates`: Ghost, nginx static site, podinfo) — DONE.
+3. Instant rollback to a previous image digest (last 5 per app) — DONE.
+4. Deploy health-gate + auto-rollback to the last good digest on a failed image rollout — DONE.
+8. Per-app CPU/memory history on the app detail page — DONE.
+
+## Backlog (free, common on other PaaS)
+- **Scale-to-zero on idle (item 7, deferred 2026-10-20).** Sleeping idle apps to 0 replicas raises density
+  (free capacity), but *transparent* wake-on-request needs an activator in the request path
+  (Knative / KEDA http-add-on) = a new component, and auto-detecting idle needs a traffic signal we don't yet
+  collect (Traefik access logs/metrics). Options when revisited: (a) manual Sleep/Wake (pause/resume) buttons —
+  no infra, buildable anytime; (b) auto-sleep after idle + a platform "wake this app" page that scales to 1 and
+  redirects (needs the traffic signal); (c) a real activator (new infra). Chas deferred the whole item for now.
 
 ## Backlog (free, common on other PaaS)
 - Scheduled jobs (cron) per app — a k8s CronJob running the app image with a command.

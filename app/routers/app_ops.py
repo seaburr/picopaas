@@ -1,13 +1,14 @@
 """Operator actions on one app: container logs and rolling restart."""
 import logging
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import audit, image_check, image_history, k8s_manifests, models, schemas
+from app import audit, config, resources, image_check, image_history, k8s_manifests, models, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_kube, get_registry
 from app.providers.base import KubeProvider, Registry
@@ -54,6 +55,40 @@ def app_logs(
         log.warning("app %s: reading logs failed: %s", app.id, type(exc).__name__)
         return LogsOut(lines=[], pod=None, note="Couldn't read the logs right now. Try again in a moment.")
     return LogsOut(lines=result.lines, pod=result.pod, note=result.note)
+
+
+class MetricPoint(BaseModel):
+    ts: datetime
+    cpu_m: int
+    mem_mi: int
+
+
+class MetricsHistoryOut(BaseModel):
+    points: List[MetricPoint]
+    cpu_limit_m: int
+    mem_limit_mi: int
+
+
+@router.get("/{app_id}/metrics-history", response_model=MetricsHistoryOut)
+def app_metrics_history(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Recent CPU/memory samples, oldest first (at most METRICS_RETENTION_POINTS)."""
+    app = _get_app_or_404(db, app_id, user)
+    rows = (
+        db.query(models.AppMetricSample)
+        .filter(models.AppMetricSample.app_id == app.id)
+        .order_by(models.AppMetricSample.id.desc())
+        .limit(config.METRICS_RETENTION_POINTS)
+        .all()
+    )
+    eff = resources.effective(app)
+    return MetricsHistoryOut(
+        points=[MetricPoint(ts=r.ts, cpu_m=r.cpu_m, mem_mi=r.mem_mi) for r in reversed(rows)],
+        cpu_limit_m=eff["cpu_limit_m"], mem_limit_mi=eff["mem_limit_mi"],
+    )
 
 
 @router.get("/{app_id}/events", response_model=List[schemas.AppEventOut])

@@ -41,6 +41,8 @@ administrator restores the account.
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
 
+The app page also shows a **Resource usage** panel: recent CPU and memory history (one point a minute, about the last 3 hours) against your limits, turning amber when usage nears them. Also available at `GET /apps/{id}/metrics-history`.
+
 Example Dockerfile:
 
 ```dockerfile

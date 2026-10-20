@@ -165,6 +165,23 @@ def image_watch_job() -> None:
         session.close()
 
 
+def metrics_sample_job() -> None:
+    """Leader-only: persist one CPU/memory point per app from the cached health snapshot."""
+    if not try_acquire_leader():
+        return
+    from app import health
+    from app.dependencies import get_kube
+
+    session = SessionLocal()
+    try:
+        health.sample_app_metrics(session, get_kube())
+    except Exception:
+        session.rollback()
+        log.exception("metrics sampling failed")
+    finally:
+        session.close()
+
+
 def _read_ca() -> str | None:
     """PEM text from the file at MYSQL_SSL_CA, or None if unset/unreadable."""
     path = os.environ.get("MYSQL_SSL_CA") or config.MYSQL_SSL_CA
@@ -264,6 +281,8 @@ def start_scheduler() -> BackgroundScheduler:
 
     sched.add_job(_health_refresh, "interval", seconds=health.CACHE_TTL_S, max_instances=1, coalesce=True,
                   id="health")
+    sched.add_job(metrics_sample_job, "interval", seconds=config.METRICS_SAMPLE_SECONDS, max_instances=1,
+                  coalesce=True, id="metrics_sample", next_run_time=now + timedelta(seconds=45))
     health.start_background(get_kube)
     sched.start()
     return sched

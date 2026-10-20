@@ -166,6 +166,17 @@ class AppEvent(Base):
     dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
 
 
+class AppMetricSample(Base):
+    """One CPU/memory reading for an app (leader-sampled from the health snapshot). Newest N per app are kept."""
+    __tablename__ = "app_metric_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True, nullable=False)
+    ts: Mapped[datetime] = mapped_column(nullable=False)
+    cpu_m: Mapped[int] = mapped_column(nullable=False)
+    mem_mi: Mapped[int] = mapped_column(nullable=False)
+
+
 class AppEnvVar(Base):
     __tablename__ = "app_env_vars"
     __table_args__ = (UniqueConstraint("app_id", "key", name="uq_app_env_vars_app_id_key"),)

@@ -193,6 +193,41 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factor
     }
 
 
+def sample_app_metrics(db: Session, kube: KubeProvider) -> int:
+    """Insert one app_metric_samples row per app that has usage in the cached snapshot (the same metrics.k8s.io
+    data the Health page shows; no extra metrics-server call), then prune to METRICS_RETENTION_POINTS per app.
+    Returns rows inserted. Skips suspended apps and apps with no readings."""
+    cached = _get_snapshot(kube)
+    if cached is None or not cached["snap"].get("metrics_available"):
+        return 0
+    by_ns: dict[str, list[dict]] = {}
+    for p in cached["snap"].get("pods", []):
+        by_ns.setdefault(p["namespace"], []).append(p)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    inserted = 0
+    for app_ in db.query(models.App).filter(models.App.deleted_at.is_(None), models.App.status != "suspended").all():
+        ps = by_ns.get(namespace_name(app_.id), [])
+        cpu = _sum([p["cpu_used_m"] for p in ps])
+        mem = _sum([p["mem_used_mi"] for p in ps])
+        if cpu is None or mem is None:
+            continue
+        db.add(models.AppMetricSample(app_id=app_.id, ts=now, cpu_m=int(cpu), mem_mi=int(mem)))
+        inserted += 1
+        db.flush()
+        cutoff = (
+            db.query(models.AppMetricSample.id)
+            .filter(models.AppMetricSample.app_id == app_.id)
+            .order_by(models.AppMetricSample.id.desc())
+            .offset(config.METRICS_RETENTION_POINTS).limit(1).scalar()
+        )
+        if cutoff is not None:
+            db.query(models.AppMetricSample).filter(
+                models.AppMetricSample.app_id == app_.id, models.AppMetricSample.id <= cutoff
+            ).delete(synchronize_session=False)
+    db.commit()
+    return inserted
+
+
 WORKLOAD_STATUSES = ("running", "deploying", "pending", "error", "suspended")
 
 

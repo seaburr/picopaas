@@ -77,6 +77,12 @@ export interface AppEvent {
   message: string
 }
 
+export interface MetricsHistory {
+  points: { ts: string; cpu_m: number; mem_mi: number }[]
+  cpu_limit_m: number
+  mem_limit_mi: number
+}
+
 export interface ImageVersion {
   digest: string
   image_ref: string

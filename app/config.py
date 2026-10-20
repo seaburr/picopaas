@@ -111,6 +111,9 @@ STORAGE_QUOTA_BYTES = int(os.environ.get("STORAGE_QUOTA_BYTES", 100 * 1024 * 102
 # every minute. Storage lists the bucket and swaps keys (heavier), so every 5 minutes.
 DB_QUOTA_POLL_SECONDS = int(os.environ.get("DB_QUOTA_POLL_SECONDS", 60))
 STORAGE_QUOTA_POLL_SECONDS = int(os.environ.get("STORAGE_QUOTA_POLL_SECONDS", 300))
+# Per-app CPU/memory history (app_metric_samples): one row per app per interval, newest N kept per app.
+METRICS_SAMPLE_SECONDS = int(os.environ.get("METRICS_SAMPLE_SECONDS", 60))
+METRICS_RETENTION_POINTS = int(os.environ.get("METRICS_RETENTION_POINTS", 180))
 DEFAULT_CPU_REQUEST_M = 64
 DEFAULT_CPU_LIMIT_M = int(os.environ.get("DEFAULT_CPU_LIMIT_M", 100))
 DEFAULT_MEM_REQUEST_MI = 128

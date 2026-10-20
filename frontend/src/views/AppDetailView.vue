@@ -10,8 +10,9 @@ import HostLink from '../components/HostLink.vue'
 import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
+import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, rotateCredentials, type AppLogs } from '../api/apps'
+import { deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, getMetricsHistory, rotateCredentials, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
 import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
@@ -19,7 +20,7 @@ import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
-import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion } from '../types'
+import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion, type MetricsHistory } from '../types'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -69,6 +70,17 @@ async function loadEvents() {
     events.value = [] // older backend or a transient error: the section just stays empty
   }
 }
+
+// Resource usage history (one sample a minute, ~3h kept)
+const metrics = ref<MetricsHistory | null>(null)
+async function loadMetrics() {
+  try {
+    metrics.value = await getMetricsHistory(Number(props.id))
+  } catch {
+    metrics.value = null // older backend or a transient error: the panel stays hidden
+  }
+}
+let metricsTimer: ReturnType<typeof setInterval> | null = null
 
 // Recent versions (image history) + rollback
 const versions = ref<ImageVersion[]>([])
@@ -165,10 +177,13 @@ onMounted(async () => {
   syncPoll()
   if (app.value && app.value.status !== 'suspended') await loadLogs()
   await loadEvents()
+  loadMetrics()
+  metricsTimer = setInterval(loadMetrics, 60000)
   if (route.hash === '#logs') document.getElementById('logs')?.scrollIntoView()
 })
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll)
+  if (metricsTimer) clearInterval(metricsTimer)
   if (logTimer) clearInterval(logTimer)
 })
 
@@ -361,6 +376,15 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <button v-else type="button" class="btn-secondary ml-auto" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
               </li>
             </ul>
+          </section>
+
+          <section v-if="metrics && !suspended" class="card card-pad" aria-labelledby="h-metrics">
+            <h2 id="h-metrics" class="section-title mb-2">Resource usage</h2>
+            <p v-if="!metrics.points.length" class="meta">Collecting&hellip; the first points show up within a couple of minutes.</p>
+            <div v-else class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <Sparkline label="CPU" unit="m" :values="metrics.points.map((p) => p.cpu_m)" :limit="metrics.cpu_limit_m" />
+              <Sparkline label="Mem" unit="Mi" :values="metrics.points.map((p) => p.mem_mi)" :limit="metrics.mem_limit_mi" />
+            </div>
           </section>
 
           <section v-if="events.length" class="card card-pad" aria-labelledby="h-events">
