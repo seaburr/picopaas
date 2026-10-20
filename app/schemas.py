@@ -231,6 +231,7 @@ class ImageVersionOut(BaseModel):
 
 
 class RollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # keep the "forbid everywhere" invariant (pentest NEW-1)
     digest: str = Field(min_length=1, max_length=80)
 
 
