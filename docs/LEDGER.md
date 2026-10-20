@@ -558,3 +558,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push Ghost S3 assetHost fix (public Spaces URL).
 - 2026-10-20 [scm-security] DONE: fd8497a pushed; examples workflow success; ghost image :fd8497a (WITH_S3=1). Not deployed.
 - 2026-10-20 [scm-security] START: commit+push Ghost staffDeviceVerification=false (no SMTP lockout).
+- 2026-10-20 [scm-security] DONE: c8d075e pushed; examples workflow success; ghost image :c8d075e (WITH_S3=1). Not deployed.
