@@ -22,6 +22,6 @@ python -m pytest tests/e2e tests/pentest -v
 | `E2E_BIG_IMAGE` | unset | public non-root image over 256MB, enables the size-cap test |
 
 Side effects: apps are named `e2e-<random>` and removed (admin delete) even on failure. The customer's
-`app_limit` is raised to at least 6 for the run and restored. A second user `e2e-<random>@picopaas-e2e.dev`
+`app_limit` is raised to 5 (the platform hard max, MAX_APPS_PER_USER) for the run and restored. A second user `e2e-<random>@picopaas-e2e.dev`
 is registered, approved by the admin, and deleted at the end. Run only against a platform you own.
 Pentest details: `tests/pentest/README.md`.

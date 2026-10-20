@@ -13,6 +13,7 @@ import {
 import { ApiError } from '../api/client'
 import { useModal } from '../composables/useModal'
 import { useToastStore } from '../stores/toast'
+import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
 import { Ban, Check, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
@@ -21,6 +22,8 @@ import IconButton from '../components/IconButton.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
+const auth = useAuthStore()
+const maxApps = computed(() => auth.user?.max_apps ?? 5)
 const SERVER_STATUS_HELP: Record<string, string> = {
   active: 'Active: new databases can be placed on this server.',
   draining: 'Draining: no new databases go here; existing ones keep working. Use it before retiring a server.',
@@ -70,7 +73,7 @@ async function load() {
     ;[users.value, servers.value, allApps.value, audit.value] = await Promise.all([
       listUsers(), listDbServers(), listAllApps(), listAudit(100),
     ])
-    for (const u of users.value) limits[u.id] = u.app_limit
+    for (const u of users.value) limits[u.id] = u.app_limit_effective
     error.value = ''
   } catch (e) {
     error.value = msg(e, "Couldn't load admin data. Reload to try again.")
@@ -159,6 +162,10 @@ const saved = reactive<Record<number, boolean>>({})
 async function saveLimit(u: AdminUser) {
   error.value = ''
   try {
+    if (!Number.isInteger(limits[u.id]) || limits[u.id] < 0 || limits[u.id] > maxApps.value) {
+      error.value = `App limit must be a whole number from 0 to ${maxApps.value} (the platform max).`
+      return
+    }
     const updated = await setAppLimit(u.id, limits[u.id])
     users.value = users.value.map((x) => (x.id === u.id ? { ...x, ...updated } : x))
     saved[u.id] = true
@@ -302,7 +309,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:items-center md:justify-between md:gap-3']">
                 <div class="min-w-0">
                   <div class="truncate font-medium text-white" :title="u.email">{{ u.email }}</div>
-                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · app limit {{ u.app_limit }}</div>
+                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · app limit {{ u.app_limit_effective }}</div>
                 </div>
                 <div class="flex shrink-0 gap-1">
                   <IconButton :icon="Check" :label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)" />
@@ -326,12 +333,16 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
                 </div>
                 <div><StatusBadge :status="u.status" /></div>
-                <div class="mono md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}</div>
-                <form class="flex h-7 items-center gap-1" @submit.prevent="saveLimit(u)">
+                <div class="mono md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}<span class="meta"> / {{ u.app_limit_effective }}</span></div>
+                <div v-if="u.role === 'platform_admin'" class="mono text-sm" :title="`Platform admins use the platform max (${maxApps})`">
+                  <span class="meta md:hidden">Limit </span>{{ u.app_limit_effective }}<span class="meta"> (platform max)</span>
+                </div>
+                <form v-else class="flex h-7 items-center gap-1" @submit.prevent="saveLimit(u)">
                   <span class="meta md:hidden">Limit</span>
-                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :aria-label="`App limit for ${u.email}`" class="input mono !min-h-[28px] w-14 !px-2 !py-0.5" />
-                  <button v-if="limits[u.id] !== u.app_limit" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
+                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono !min-h-[28px] w-14 !px-2 !py-0.5" />
+                  <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
+                  <span class="meta" :title="`The platform max is ${maxApps} apps per account`">of {{ maxApps }} max</span>
                 </form>
                 <div class="flex gap-0.5 md:justify-end">
                   <template v-if="u.role !== 'platform_admin'">

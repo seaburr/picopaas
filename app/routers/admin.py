@@ -26,6 +26,7 @@ class AdminUserOut(BaseModel):
     email: str
     role: str
     app_limit: int
+    app_limit_effective: int
     app_count: int
     status: str
     created_at: datetime
@@ -113,6 +114,7 @@ def _user_out(db: Session, user: models.User) -> dict:
         .count()
     )
     return dict(id=user.id, email=user.email, role=user.role, app_limit=user.app_limit,
+                app_limit_effective=resources.effective_app_limit(user),
                 app_count=count, status=user.status, created_at=user.created_at,
                 terms_accepted_at=user.terms_accepted_at)
 
@@ -330,6 +332,9 @@ def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get
 def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db),
                admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
+    from app import config
+    if payload.app_limit > config.MAX_APPS_PER_USER:
+        raise HTTPException(status_code=422, detail=f"app_limit can't exceed the platform max of {config.MAX_APPS_PER_USER}")
     user.app_limit = payload.app_limit
     db.commit()
     audit.record(db, admin, "user.update", "user", user.id, f"app_limit={payload.app_limit}")

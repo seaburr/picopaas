@@ -6,7 +6,7 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, schemas
+from app import audit, crypto, models, resources, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
@@ -93,9 +93,10 @@ def deploy_spec(
             detail="; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors()),
         )
 
-    if created and not current_user.is_platform_admin:
-        if _active_app_count(db, current_user.id) >= current_user.app_limit:
-            raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
+    if created:
+        eff = resources.effective_app_limit(current_user)
+        if _active_app_count(db, current_user.id) >= eff:
+            raise HTTPException(status_code=403, detail=app_limit_message(eff))
 
     run_as_uid, digest = _check_image_cap(registry, spec.image)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)

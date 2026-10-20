@@ -14,6 +14,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - Open: #11 hairpin (CoreDNS rewrite, test off prod), PENTEST #19 (SA cluster-wide Secret read), #10 API under /api.
 - Chas to-dos are in docs/QUESTIONS.md: bootstrap.md caps incl. 250MB scratch disk, E2E secrets, delete PICOPAAS_SECRET_KEY, Porkbun abuse@ forwarding.
 
+- 2026-10-20 [backend-dev] START+DONE: hard per-account app cap MAX_APPS_PER_USER (default 5) for everyone incl. admins; effective_app_limit in app/resources.py; admin PATCH clamp (422); /auth/me max_apps + app_limit_effective; admin list app_limit_effective; AdminView/AppsListView use effective; e2e harness requests 5; tests + docs. Uncommitted.
 - 2026-10-19 [backend-dev] DONE: platform caps lowered (bucket 100MB, DB 50MB, image 256MB, CPU 100m, RAM 384Mi) via single source app/config.py; code, tests, docs, e2e sizes updated. Uncommitted. bootstrap.md pending Chas.
 - 2026-10-19 INCIDENT: ~50 min outage 19:50–20:45 UTC. Applying the DO LB hostname annotation (hairpin fix, #11) stopped the LB passing
   traffic; it happened during a usage-limit pause, so nobody noticed. Reverted (577f793). Rule: never test LB changes on the prod Service.
@@ -549,3 +550,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: Ghost CMS live on PicoPaaS (app ghost-demo), content persists in MySQL across restart; S3-image variant over cap, follow-up. README at examples/ghost/README.md committed.
 - 2026-10-20 [scm-security] START: commit+push platform PriorityClass (preemptionPolicy Never); verify deploy, 1 node, pods Running, healthz.
 - 2026-10-20 [scm-security] DONE: cbbace4 pushed; CI/image/deploy green; PriorityClass picopaas-platform created, rollout complete; diag shows 1 node (no scale-up), 2 picopaas pods Running, healthz ok.
+- 2026-10-20 [scm-security] START: commit+push hard app cap + Health UI fix.

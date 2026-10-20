@@ -144,9 +144,9 @@ def create_app(
     current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
-    if not current_user.is_platform_admin:
-        if _active_app_count(db, current_user.id) >= current_user.app_limit:
-            raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
+    eff = resources.effective_app_limit(current_user)
+    if _active_app_count(db, current_user.id) >= eff:
+        raise HTTPException(status_code=403, detail=app_limit_message(eff))
 
     run_as_uid, digest = _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)

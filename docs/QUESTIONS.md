@@ -7,6 +7,8 @@ background on each item if you want it.
 
 ## Open questions
 
+- **FYI: a hard cap of 5 active apps per account (admins included) now exists** (`MAX_APPS_PER_USER`, app/config.py). You may want to mention it in bootstrap.md.
+
 - **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
   secret holds an **account-wide** DO API token and a **full-access** Spaces key, so a code-execution bug in the API reaches
   the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a

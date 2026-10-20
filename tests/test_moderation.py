@@ -228,7 +228,7 @@ def _cert_pem():
 
 def test_admin_user_patch_and_dbserver_audited(make_client):
     admin, user, uid = _setup(make_client)
-    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 7}).status_code == 200
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 5}).status_code == 200
     body = {"name": "second", "host": "h", "admin_user": "root", "admin_password": "adm-pw-xyz",
             "max_databases": 5, "ca_cert": _cert_pem()}
     r = admin.post("/admin/db-servers", json=body)

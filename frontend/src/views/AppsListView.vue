@@ -24,7 +24,7 @@ const loading = ref(true)
 const error = ref('')
 const restarting = ref<number | null>(null)
 
-const limit = computed(() => auth.user?.app_limit ?? 0)
+const limit = computed(() => auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
 const atLimit = computed(() => limit.value > 0 && store.apps.length >= limit.value)
 
 // Poll while anything is queued or deploying.

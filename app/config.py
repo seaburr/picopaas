@@ -94,6 +94,10 @@ NAMED_USER_RUN_AS_UID = 10001
 IMAGE_WATCH_MINUTES = int(os.environ.get("IMAGE_WATCH_MINUTES", 10))
 MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1024))
 
+# Hard ceiling on active apps per account, INCLUDING platform admins (Chas, 2026-10-20). A user's app_limit can be
+# lower, never higher (see resources.effective_app_limit).
+MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))
+
 # --- Platform caps: SINGLE SOURCE OF TRUTH (Chas lowered them 2026-10-19; bootstrap.md pending his update) ---
 # Used by k8s_manifests (container limits, LimitRange, quota = 2x), quota.py, resources.py, health.py.
 DB_QUOTA_BYTES = int(os.environ.get("DB_QUOTA_BYTES", 50 * 1024 * 1024))

@@ -33,12 +33,57 @@ def test_app_limit_enforced_for_regular_user(make_client):
     assert second.status_code == 403
 
 
-def test_platform_admin_has_unlimited_apps(client):
-    register_and_login(client, "admin@example.com")  # first user => platform_admin
+def test_platform_admin_bounded_by_hard_max(client, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "MAX_APPS_PER_USER", 3)
+    register_and_login(client, "admin@example.com")  # first user => platform_admin (app_limit stays 1)
 
     for i in range(3):
         resp = _create_app(client, name=f"admin-app-{i}")
         assert resp.status_code == 201, resp.text
+    blocked = _create_app(client, name="admin-app-x")
+    assert blocked.status_code == 403
+    assert "limit of 3 apps" in blocked.json()["detail"]
+
+
+def test_effective_limit_is_min_of_app_limit_and_hard_max(make_client, db_session):
+    from app import models
+    register_and_login(make_client(), "admin-seed@example.com")
+    for limit, cap in ((3, 3), (10, 5)):
+        client = make_client()
+        email = f"u{limit}@example.com"
+        register_and_login(client, email)
+        db_session.query(models.User).filter_by(email=email).one().app_limit = limit
+        db_session.commit()
+        codes = [_create_app(client, name=f"a{i}").status_code for i in range(cap + 1)]
+        assert codes == [201] * cap + [403], (limit, codes)
+
+
+def test_patch_app_limit_clamped_to_hard_max(make_client):
+    from app import config
+    from tests.conftest import register_and_login as rl
+    admin = make_client()
+    rl(admin, "admin-seed@example.com")
+    user = make_client()
+    uid = rl(user, "target@example.com").json()["id"]
+    over = admin.patch(f"/admin/users/{uid}", json={"app_limit": config.MAX_APPS_PER_USER + 1})
+    assert over.status_code == 422
+    ok = admin.patch(f"/admin/users/{uid}", json={"app_limit": config.MAX_APPS_PER_USER})
+    assert ok.status_code == 200
+    assert ok.json()["app_limit_effective"] == config.MAX_APPS_PER_USER
+
+
+def test_me_exposes_max_and_effective_limit(make_client):
+    from app import config
+    admin = make_client()
+    body = register_and_login(admin, "admin-seed@example.com").json()
+    me = admin.get("/auth/me").json()
+    assert me["max_apps"] == config.MAX_APPS_PER_USER
+    assert me["app_limit_effective"] == config.MAX_APPS_PER_USER  # admin: hard max, not stale app_limit=1
+    user = make_client()
+    register_and_login(user, "plain@example.com")
+    me = user.get("/auth/me").json()
+    assert me["app_limit"] == 1 and me["app_limit_effective"] == 1
 
 
 def test_cross_user_isolation_returns_404(make_client):

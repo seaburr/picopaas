@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import audit, models, schemas
-from app import ratelimit, resources
+from app import config, ratelimit, resources
 from app.config import (
     DB_QUOTA_BYTES,
     DEFAULT_APP_LIMIT,
@@ -152,6 +152,8 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
     out = schemas.UserOut.model_validate(current_user).model_dump()
     return schemas.MeOut(
         **out,
+        max_apps=config.MAX_APPS_PER_USER,
+        app_limit_effective=resources.effective_app_limit(current_user),
         features=schemas.Features(
             databases=_db_placement_available(db),
             storage=_spaces_configured(),

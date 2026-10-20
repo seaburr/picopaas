@@ -10,6 +10,14 @@ from app.config import (  # noqa: F401  (single source of truth for the caps)
     DEFAULT_MEM_REQUEST_MI,
 )
 
+def effective_app_limit(user: Any) -> int:
+    """Active-app ceiling for a user: platform admins get the hard max; others min(app_limit, hard max)."""
+    from app import config  # late lookup so tests can monkeypatch MAX_APPS_PER_USER
+    if getattr(user, "is_platform_admin", False):
+        return config.MAX_APPS_PER_USER
+    return min(user.app_limit, config.MAX_APPS_PER_USER)
+
+
 CPU_MIN_M, CPU_MAX_M = 10, 1000
 MEM_MIN_MI, MEM_MAX_MI = 32, 2048
 

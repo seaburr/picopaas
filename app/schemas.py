@@ -126,6 +126,8 @@ class Limits(BaseModel):
 
 
 class MeOut(UserOut):
+    max_apps: int
+    app_limit_effective: int
     features: Features
     limits: Limits
 

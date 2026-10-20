@@ -6,6 +6,8 @@ export interface User {
   email: string
   role: string
   app_limit: number
+  max_apps?: number // GET /auth/me: hard per-account ceiling (applies to admins too)
+  app_limit_effective?: number // GET /auth/me: the limit actually enforced
   status: UserStatus
   created_at: string
   must_change_password?: boolean // true after an admin password reset
@@ -162,6 +164,7 @@ export interface AdminUser {
   email: string
   role: string
   app_limit: number
+  app_limit_effective: number
   app_count: number
   status: UserStatus
   created_at: string
