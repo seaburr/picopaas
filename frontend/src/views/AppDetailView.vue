@@ -7,7 +7,7 @@ import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import { PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -74,6 +74,38 @@ const logs = ref<AppLogs | null>(null)
 const logsError = ref('')
 const logsBusy = ref(false)
 const autoRefresh = ref(false)
+const dlBusy = ref(false)
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
+
+async function downloadLogs() {
+  const a = app.value
+  if (!a || dlBusy.value) return
+  dlBusy.value = true
+  try {
+    const r = await getAppLogs(a.id, 1000)
+    const lines = r.lines.map((l) => l.replace(ANSI_RE, ''))
+    if (!lines.length && !r.note) {
+      toast.error('No logs to download yet.')
+      return
+    }
+    const head = `# ${a.name} | ${a.hostname} | pod ${r.pod || 'none'} | ${new Date().toISOString()}`
+    const body = [head, ...(r.note ? [`# ${r.note}`] : []), ...lines].join('\n') + '\n'
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }))
+    const el = document.createElement('a')
+    el.href = url
+    el.download = `${a.name.replace(/[^A-Za-z0-9._-]+/g, '-')}-${a.id}-logs.txt`
+    document.body.appendChild(el)
+    el.click()
+    el.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) {
+    toast.error(`Couldn't download logs: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    dlBusy.value = false
+  }
+}
+
 const logBox = ref<HTMLElement | null>(null)
 let logTimer: ReturnType<typeof setInterval> | null = null
 
@@ -325,6 +357,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                   <input v-model="autoRefresh" type="checkbox" class="check" /> Auto-refresh
                 </label>
                 <IconButton :icon="RefreshCw" :label="logsBusy ? 'Loading logs…' : 'Refresh logs'" :disabled="logsBusy" @click="loadLogs" />
+                <IconButton :icon="Download" label="Download logs" :disabled="dlBusy" @click="downloadLogs" />
               </div>
             </div>
             <p v-if="logsError" class="text-sm text-zinc-400">{{ logsError }}</p>

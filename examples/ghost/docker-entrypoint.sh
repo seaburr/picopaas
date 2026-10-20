@@ -24,6 +24,10 @@ export database__connection__port="${DB_PORT:-3306}"
 export database__connection__user="$DB_USER"
 export database__connection__password="$DB_PASSWORD"
 export database__connection__database="$DB_NAME"
+# PicoPaaS caps each app's MySQL user to a small number of concurrent connections (shared DB server). Keep
+# Ghost's knex pool under that cap, or requests fail with "exceeded the max_user_connections resource".
+export database__pool__min="1"
+export database__pool__max="6"
 # TLS to DO managed MySQL. mysql2 accepts the CA as a PEM string. Node uses OpenSSL (not Python's
 # VERIFY_X509_STRICT), so DO's CA verifies normally.
 if [ -n "$DB_CA_CERT" ]; then
