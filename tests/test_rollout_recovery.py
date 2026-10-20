@@ -41,12 +41,12 @@ def test_quota_manifest_sizes():
     steady = k8s_manifests.resource_quota_manifest(1)["spec"]["hard"]
     assert steady["limits.cpu"] == f"{2 * config.DEFAULT_CPU_LIMIT_M}m"
     live = {"cpu_limit_m": 250, "mem_limit_mi": 512}
-    wide = k8s_manifests.resource_quota_manifest(1, live_limits=live)["spec"]["hard"]
+    wide = k8s_manifests.resource_quota_manifest(1, used_limits=live)["spec"]["hard"]
     assert wide["limits.cpu"] == f"{config.DEFAULT_CPU_LIMIT_M + 250}m"
     assert wide["limits.memory"] == f"{config.DEFAULT_MEM_LIMIT_MI + 512}Mi"
     assert wide["requests.cpu"] == wide["limits.cpu"]
-    # live lower than new never shrinks below 2x new
-    low = k8s_manifests.resource_quota_manifest(1, live_limits={"cpu_limit_m": 10, "mem_limit_mi": 10})["spec"]["hard"]
+    # used lower than new never shrinks below 2x new
+    low = k8s_manifests.resource_quota_manifest(1, used_limits={"cpu_limit_m": 10, "mem_limit_mi": 10})["spec"]["hard"]
     assert low == steady
 
 
@@ -54,7 +54,7 @@ def test_lowered_caps_widen_quota_then_shrink_without_flapping(session):
     app = _make_app(session)
     kube = FakeKubeProvider()
     ns = k8s_manifests.namespace_name(app.id)
-    kube.live_limits_override[ns] = {"cpu_limit_m": 250, "mem_limit_mi": 512}  # old pod, pre-lowering
+    kube.used_limits[ns] = {"cpu_limit_m": 250, "mem_limit_mi": 512}  # old pod, pre-lowering
     _rec(session, kube, app=app)
     hard = _quota(kube, ns)
     assert hard["limits.cpu"] == f"{config.DEFAULT_CPU_LIMIT_M + 250}m"  # old 250m + new 100m fits
@@ -69,8 +69,7 @@ def test_lowered_caps_widen_quota_then_shrink_without_flapping(session):
     assert len(kube.applied[ns]) == applied and app.rendered_hash == wide_hash
 
     # rollout finished: live == new -> next sweep shrinks the quota to 2x, then stays put
-    del kube.live_limits_override[ns]
-    kube.applied[ns] = [m for m in kube.applied[ns] if m["kind"] == "Deployment"][-1:]  # live deployment = new limits
+    kube.used_limits[ns] = {"cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI}  # old pod gone
     _rec(session, kube)
     assert _quota(kube, ns)["limits.cpu"] == f"{2 * config.DEFAULT_CPU_LIMIT_M}m"
     assert app.rendered_hash != wide_hash
@@ -102,10 +101,38 @@ def test_oom_detected():
     assert KubeClientProvider(tk._dyn(pods=[pod])).get_status("n") == "error: oom"
 
 
-def test_live_limits_read_from_deployment():
-    dep = {"spec": {"template": {"spec": {"containers": [{"resources": {"limits": {"cpu": "250m", "memory": "512Mi"}}}]}}}}
-    assert KubeClientProvider(tk._dyn(deployments=[dep])).get_live_limits("n") == {"cpu_limit_m": 250, "mem_limit_mi": 512}
-    assert KubeClientProvider(tk._dyn()).get_live_limits("n") is None
+def _pod(cpu, mem, phase="Running"):
+    return {"status": {"phase": phase},
+            "spec": {"containers": [{"resources": {"limits": {"cpu": cpu, "memory": mem}}}]}}
+
+
+def test_used_limits_sum_existing_pods():
+    prov = KubeClientProvider(tk._dyn(pods=[_pod("250m", "512Mi"), _pod("100m", "384Mi"), _pod("900m", "1Gi", "Succeeded")]))
+    assert prov.get_used_limits("n") == {"cpu_limit_m": 350, "mem_limit_mi": 896}
+    assert KubeClientProvider(tk._dyn()).get_used_limits("n") is None
+
+
+def test_regression_template_already_new_old_pod_bigger_quota_fits_old_plus_new(session):
+    """Prod app 48: Deployment template already holds the NEW limits, the old pod still runs 250m/512Mi."""
+    app = _make_app(session)
+    kube = FakeKubeProvider()
+    ns = k8s_manifests.namespace_name(app.id)
+    kube.used_limits[ns] = {"cpu_limit_m": 250, "mem_limit_mi": 512}  # only the pod matters, not the template
+    kube.forced_status[ns] = "error: quota"
+    _rec(session, kube, now=T0, app=app)
+    hard = _quota(kube, ns)
+    assert hard["limits.cpu"] == f"{250 + config.DEFAULT_CPU_LIMIT_M}m"
+    assert hard["limits.memory"] == f"{512 + config.DEFAULT_MEM_LIMIT_MI}Mi"
+    # stuck in error/quota: the retry sweep picks it up automatically and it recovers
+    assert app.status == "error" and app.status_reason == "quota" and app.error_retryable is True
+    kube.forced_status.pop(ns)
+    kube.used_limits[ns] = {"cpu_limit_m": 250, "mem_limit_mi": 512}
+    _rec(session, kube, now=T0 + timedelta(hours=1))
+    assert app.status == "running" and app.status_reason is None
+    # old pod gone: quota shrinks back to 2x new on the next sweep
+    kube.used_limits[ns] = {"cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI}
+    _rec(session, kube, now=T0 + timedelta(hours=2))
+    assert _quota(kube, ns)["limits.cpu"] == f"{2 * config.DEFAULT_CPU_LIMIT_M}m"
 
 
 @pytest.mark.parametrize("code,reason,needle", [

@@ -49,9 +49,9 @@ class KubeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_live_limits(self, namespace: str) -> Optional[dict[str, int]]:
-        """Container limits of the Deployment currently in the cluster ({"cpu_limit_m", "mem_limit_mi"}),
-        or None when there is no Deployment yet. Used to size the ResourceQuota for an in-flight rollout."""
+    def get_used_limits(self, namespace: str) -> Optional[dict[str, int]]:
+        """Summed container limits ({"cpu_limit_m", "mem_limit_mi"}) of the existing (non-terminal) pods in the
+        namespace, i.e. what already consumes the ResourceQuota; None when there are none. Sizes the quota for a rollout."""
         raise NotImplementedError
 
     @abstractmethod

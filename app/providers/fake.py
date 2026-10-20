@@ -30,7 +30,7 @@ class FakeKubeProvider(KubeProvider):
         self.hints: dict[str, str] = {}  # ns -> pending_hint
         self.logs: dict[str, PodLogs] = {}  # ns -> canned logs
         self.log_calls: list[tuple[str, int]] = []
-        self.live_limits_override: dict[str, Optional[dict[str, int]]] = {}
+        self.used_limits: dict[str, Optional[dict[str, int]]] = {}
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -72,15 +72,9 @@ class FakeKubeProvider(KubeProvider):
     def get_status(self, namespace: str) -> str:
         return self.statuses.get(namespace, "unknown")
 
-    def get_live_limits(self, namespace: str) -> Optional[dict[str, int]]:
-        """Limits of the most recently applied Deployment (like the cluster would report), unless overridden."""
-        if namespace in self.live_limits_override:
-            return self.live_limits_override[namespace]
-        for m in reversed(self.applied.get(namespace, [])):
-            if m.get("kind") == "Deployment":
-                lim = m["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]
-                return {"cpu_limit_m": int(lim["cpu"].rstrip("m")), "mem_limit_mi": int(lim["memory"].rstrip("Mi"))}
-        return None
+    def get_used_limits(self, namespace: str) -> Optional[dict[str, int]]:
+        """Limits consumed by existing pods. Tests set `used_limits[ns]` to simulate pods; otherwise none."""
+        return self.used_limits.get(namespace)
 
     def pending_hint(self, namespace: str) -> str:
         return self.hints.get(namespace, "none")

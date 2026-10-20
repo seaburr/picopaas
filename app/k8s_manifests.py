@@ -100,15 +100,15 @@ def _res(resources: dict[str, int] | None) -> dict[str, int]:
 
 
 def resource_quota_manifest(
-    app_id: int, resources: dict[str, int] | None = None, live_limits: dict[str, int] | None = None
+    app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None
 ) -> dict[str, Any]:
-    """Quota = new limit + max(new limit, live limit): the surge pod of a rollout runs the NEW limits while the old
-    pod still holds the LIVE (pod-template) limits, so lowering the caps must not strand the rollout. `live_limits`
-    ({"cpu_limit_m", "mem_limit_mi"}, from the cluster) is None when there is no Deployment yet; steady state = 2x."""
+    """Quota = max(2 x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
+    runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
+    ({"cpu_limit_m", "mem_limit_mi"}, summed over the pods in the cluster) is None when there are no pods."""
     e = _res(resources)
-    live = live_limits or {}
-    cpu_total = e["cpu_limit_m"] + max(e["cpu_limit_m"], live.get("cpu_limit_m") or 0)
-    mem_total = e["mem_limit_mi"] + max(e["mem_limit_mi"], live.get("mem_limit_mi") or 0)
+    used = used_limits or {}
+    cpu_total = max(2 * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
+    mem_total = max(2 * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
@@ -502,12 +502,12 @@ def render_app_manifests(
     include_ingress: bool = True,
     run_as_uid: int | None = None,
     restart_nonce: str | None = None,
-    live_limits: dict[str, int] | None = None,
+    used_limits: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
-        "resource_quota": resource_quota_manifest(app_id, resources, live_limits),
+        "resource_quota": resource_quota_manifest(app_id, resources, used_limits),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
         "secret": secret_manifest(app_id, env),

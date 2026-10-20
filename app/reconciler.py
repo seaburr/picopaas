@@ -380,18 +380,19 @@ def reconcile_app(
     if sweep and not force and app.rendered_hash == new_hash:
         return
 
-    # The old pod still holds its LIVE limits while the surge pod needs the NEW ones: size the quota for both.
+    # Existing pods consume the quota with their own (possibly bigger) limits while the surge pod needs the NEW ones.
     eff = render_kwargs["resources"]
     try:
-        live = kube.get_live_limits(namespace)
+        used = kube.get_used_limits(namespace)
     except Exception as exc:
-        log.warning("app %s: reading live limits failed: %s", app.id, _kube_error_summary(exc))
-        live = None
-    if live and (
-        (live.get("cpu_limit_m") or 0) > eff["cpu_limit_m"] or (live.get("mem_limit_mi") or 0) > eff["mem_limit_mi"]
+        log.warning("app %s: reading used limits failed: %s", app.id, _kube_error_summary(exc))
+        used = None
+    if used and (
+        (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > 2 * eff["cpu_limit_m"]
+        or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > 2 * eff["mem_limit_mi"]
     ):
         flat = k8s_manifests.flatten_manifests(
-            k8s_manifests.render_app_manifests(**render_kwargs, live_limits=live)
+            k8s_manifests.render_app_manifests(**render_kwargs, used_limits=used)
         )
         new_hash = _hash(flat)
         if sweep and not force and app.rendered_hash == new_hash:

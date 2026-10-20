@@ -162,21 +162,24 @@ class KubeClientProvider(KubeProvider):
             return "deploying"
         return "running" if ready >= 1 else "deploying"
 
-    def get_live_limits(self, namespace: str) -> dict[str, int] | None:
-        deployments = self.dyn.resources.get(api_version="apps/v1", kind="Deployment").get(namespace=namespace)
-        items = _as_dict(deployments).get("items", [])
-        if not items:
-            return None
-        containers = (((items[0].get("spec") or {}).get("template") or {}).get("spec") or {}).get("containers") or []
-        if not containers:
-            return None
-        lim = (containers[0].get("resources") or {}).get("limits") or {}
-        out: dict[str, int] = {}
-        if lim.get("cpu"):
-            out["cpu_limit_m"] = parse_cpu_m(lim["cpu"])
-        if lim.get("memory"):
-            out["mem_limit_mi"] = parse_mem_mi(lim["memory"])
-        return out or None
+    def get_used_limits(self, namespace: str) -> dict[str, int] | None:
+        """Sum of container limits of the pods that count against the ResourceQuota (non-terminal pods): exactly
+        what the quota admission compares against. None when there are none."""
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        cpu = mem = 0
+        found = False
+        for pod in pods:
+            if (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
+                continue
+            for c in (pod.get("spec") or {}).get("containers") or []:
+                lim = (c.get("resources") or {}).get("limits") or {}
+                if lim.get("cpu"):
+                    cpu += parse_cpu_m(lim["cpu"])
+                    found = True
+                if lim.get("memory"):
+                    mem += parse_mem_mi(lim["memory"])
+                    found = True
+        return {"cpu_limit_m": cpu, "mem_limit_mi": mem} if found else None
 
     def pending_hint(self, namespace: str) -> str:
         pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
