@@ -573,3 +573,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push DB host cpu/mem/disk metrics; watch ci/image/deploy, diagnose live host_metrics.
 - 2026-10-20 [scm-security] DONE: host metrics pushed (94762f4); ci/image/deploy green; live host_metrics=null, error='metrics endpoint unreachable (ConnectError)'.
 - 2026-10-20 [scm-security] START: commit+push host-metrics scrape off by default (#12); watch ci/image/deploy.
+- 2026-10-20 [scm-security] DONE: fc37efb pushed; ci/image/deploy green; healthz ok; db_servers connections+data_size ok, host_metrics=null.
