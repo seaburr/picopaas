@@ -1,4 +1,3 @@
-import math
 import logging
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
@@ -8,8 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, reconciler, resources, schemas
-from app.config import MAX_IMAGE_SIZE_BYTES, NAMED_USER_RUN_AS_UID
+from app import audit, crypto, image_check, models, reconciler, resources, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
@@ -38,22 +36,8 @@ def app_limit_message(limit: int) -> str:
     return f"You've reached your limit of {limit} app{'' if limit == 1 else 's'}. Delete one, or ask an admin to raise your limit."
 
 
-def _check_non_root(user: str) -> Optional[int]:
-    """Root images aren't supported (ARCHITECTURE.md "No root images"). Returns the UID to force
-    (NAMED_USER_RUN_AS_UID) when USER is a name kubelet can't verify, else None (numeric uid)."""
-    uid = user.split(":", 1)[0].strip()
-    if uid in ("", "0", "root"):
-        raise HTTPException(
-            status_code=422,
-            detail="Image runs as root, which isn't allowed. Add USER 10001 to your Dockerfile, rebuild, and push again.",
-        )
-    if not uid.isdigit():
-        return NAMED_USER_RUN_AS_UID
-    return None
-
-
-def _check_image_cap(registry: Registry, image: str) -> Optional[int]:
-    """Enforce the image size cap (ARCHITECTURE.md §2 "Image size").
+def _check_image_cap(registry: Registry, image: str) -> tuple[Optional[int], Optional[str]]:
+    """Enforce the image checks (size cap, non-root; ARCHITECTURE.md §2). Returns (run_as_uid, digest to pin).
 
     Any registry failure (not found, private, unparsable manifest) is
     reported the same way — a precise reason wouldn't be actionable for the
@@ -63,17 +47,11 @@ def _check_image_cap(registry: Registry, image: str) -> Optional[int]:
         info = registry.inspect(image)
     except RegistryError:
         raise HTTPException(status_code=422, detail="Couldn't find that image, or it's private. Check the name and tag, and make the image public in your registry.")
-    run_as_uid = _check_non_root(info.user)
-    size = info.size_bytes
-    if size > MAX_IMAGE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Image is {math.ceil(size / 1024 / 1024)} MB; the limit is {MAX_IMAGE_SIZE_BYTES // 1024 // 1024} MB. "
-                "Slim it down (for example a -slim or alpine base, or a multi-stage build)."
-            ),
-        )
-    return run_as_uid
+    try:
+        run_as_uid = image_check.evaluate(info)
+    except image_check.ImageRejected as rej:
+        raise HTTPException(status_code=422, detail=rej.message)
+    return run_as_uid, (image_check.digest_of_ref(image) or info.digest or None)
 
 
 def _env_var_out(env_var: models.AppEnvVar) -> schemas.EnvVarOut:
@@ -92,6 +70,10 @@ def _app_out(app: models.App) -> schemas.AppOut:
         name=app.name,
         hostname=f"{app.hostname}.{DOMAIN_SUFFIX}",
         image=app.image,
+        image_digest=app.image_digest,
+        auto_update=app.auto_update,
+        image_checked_at=app.image_checked_at,
+        image_update_error=app.image_update_error,
         port=app.port,
         want_db=app.want_db,
         want_storage=app.want_storage,
@@ -154,7 +136,7 @@ def create_app(
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
             raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 
-    run_as_uid = _check_image_cap(registry, payload.image)
+    run_as_uid, digest = _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)
 
     hostname = generate_unique_hostname(db)
@@ -163,6 +145,9 @@ def create_app(
         name=payload.name,
         hostname=hostname,
         image=payload.image,
+        image_digest=digest,
+        auto_update=payload.auto_update,
+        image_checked_at=datetime.now(timezone.utc).replace(tzinfo=None) if digest else None,
         run_as_uid=run_as_uid,
         port=payload.port,
         want_db=payload.want_db,
@@ -229,11 +214,17 @@ def update_app(
     if payload.name is not None:
         app.name = payload.name
     if payload.image is not None:
-        run_as_uid = _check_image_cap(registry, payload.image)
-        if payload.image != app.image or run_as_uid != app.run_as_uid:
+        run_as_uid, digest = _check_image_cap(registry, payload.image)
+        if payload.image != app.image or run_as_uid != app.run_as_uid or digest != app.image_digest:
             workload_changed = True
         app.image = payload.image
         app.run_as_uid = run_as_uid
+        app.image_digest = digest
+        app.image_update_error = None
+        if digest:
+            app.image_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    if payload.auto_update is not None:
+        app.auto_update = payload.auto_update
     if payload.port is not None:
         if payload.port != app.port:
             workload_changed = True

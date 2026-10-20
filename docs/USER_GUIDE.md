@@ -275,6 +275,17 @@ With `healthCheck.enabled: true`, an HTTP GET to `path` on your port; a 2xx or 3
 Changing the health check redeploys the app. Make sure the path really returns 2xx/3xx, or the pod never becomes
 ready.
 
+### Floating tags (`:latest`)
+
+PicoPaaS looks up the exact image behind your tag when you save and runs that specific version (its digest, shown on the app page). Re-pushing
+`:latest` therefore does not change a running app by surprise. Every 10 minutes the platform re-checks the tag; a new
+image that is under the size limit and runs as non-root is rolled out automatically. A new image that fails those checks is
+ignored (your previous version keeps running) and the app page shows why. You can also use the "Check for new image" button, or Restart,
+which pulls the latest too.
+
+To pin an exact version, use a digest reference (`ghcr.io/me/app@sha256:...`) or an immutable tag, and untick "Redeploy
+automatically when this tag changes" (`auto_update: false` in the API).
+
 ## 9. Credential rotation
 
 Rotate DB password or storage keys from the app edit page, with `picopaas rotate NAME --db|--storage`, or

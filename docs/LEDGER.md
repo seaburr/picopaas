@@ -472,3 +472,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] DONE: pushed 66e4d40 (UI polish); ci/image/deploy green
 - 2026-10-19 [scm-security] DONE: select chevron spacing; DB server status options labelled + explained (drain)
 - 2026-10-19 [scm-security] DONE: DB server status select fits its column; Health verdict names not-ready platform pods
+- 2026-10-19 [backend-dev] START: digest pinning + floating-tag watcher (image_digest, auto_update, check-image, restart re-resolve)
+- 2026-10-19 [backend-dev] DONE: registry.resolve_digest + ImageInfo.digest; app/image_check.py (shared checks, refresh, watch_all); scheduler image_watch job (IMAGE_WATCH_MINUTES=10); Deployment runs repo@digest (tag in annotation); POST /apps/{id}/check-image; restart re-resolves; AppOut/AppCreate/AppUpdate fields; UI (digest, check button, warn alert, auto-update checkbox); docs; migration b4c7d1e8f2a6; tests/test_image_watch.py. Uncommitted.
+- 2026-10-19 [scm-security] START: commit/push digest pinning + image watcher

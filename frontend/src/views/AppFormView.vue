@@ -33,7 +33,9 @@ const form = reactive({
   want_storage: false,
   health_check_enabled: false,
   health_check_path: '/healthz',
+  auto_update: true,
 })
+const isDigestRef = computed(() => form.image.includes('@'))
 const env = ref<EnvVar[]>([])
 const originalImage = ref('')
 
@@ -72,6 +74,7 @@ onMounted(async () => {
       form.want_storage = app.want_storage
       form.health_check_enabled = app.health_check_enabled ?? false
       form.health_check_path = app.health_check_path || '/healthz'
+      form.auto_update = app.auto_update ?? true
       env.value = app.env
       document.title = `Edit ${app.name} · PicoPaaS`
     } catch (e) {
@@ -138,6 +141,7 @@ async function onSubmit() {
         port,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
+        auto_update: form.auto_update,
         env: envOut,
       })
       toast.success(`Saved. Redeploying ${app.name}…`)
@@ -151,6 +155,7 @@ async function onSubmit() {
         want_storage: form.want_storage,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
+        auto_update: form.auto_update,
         env: envOut,
       })
       toast.success(`${app.name} created. Deploying, usually about a minute.`)
@@ -261,6 +266,10 @@ async function onSubmit() {
             />
             <p v-if="imageError" class="field-error" role="alert">{{ imageError }}</p>
             <p id="f-image-help" class="help">A public image, e.g. <code class="mono">ghcr.io/me/app:1.2</code>. Pin a tag rather than <code class="mono">latest</code>.</p>
+            <label v-if="!isDigestRef" class="mt-2 flex items-start gap-2 text-sm text-zinc-200">
+              <input v-model="form.auto_update" type="checkbox" class="check mt-0.5" />
+              <span>Redeploy automatically when this tag changes <span class="text-zinc-400">(checked every 10 minutes; new images must pass the size and non-root checks)</span></span>
+            </label>
             <details class="mt-2 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm">
               <summary class="cursor-pointer text-zinc-200">Image requirements</summary>
               <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-300">

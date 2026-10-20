@@ -90,6 +90,8 @@ LEGACY_HOSTS = tuple(
 # the pod is forced to run as this UID/GID instead (app.run_as_uid; see routers/apps.py).
 NAMED_USER_RUN_AS_UID = 10001
 
+# How often the leader re-resolves floating image tags (app/image_check.py::watch_all).
+IMAGE_WATCH_MINUTES = int(os.environ.get("IMAGE_WATCH_MINUTES", 10))
 MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1024))
 
 # --- Platform caps: SINGLE SOURCE OF TRUTH (Chas lowered them 2026-10-19; bootstrap.md pending his update) ---

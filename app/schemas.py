@@ -142,6 +142,7 @@ class AppCreate(BaseModel):
     env: List[EnvVarIn] = Field(default_factory=list)
     health_check_enabled: bool = False
     health_check_path: str = Field(default=DEFAULT_HEALTH_PATH, max_length=255)
+    auto_update: bool = True
 
     @field_validator("health_check_path")
     @classmethod
@@ -157,6 +158,7 @@ class AppUpdate(BaseModel):
     env: Optional[List[EnvVarIn]] = None
     health_check_enabled: Optional[bool] = None
     health_check_path: Optional[str] = Field(default=None, max_length=255)
+    auto_update: Optional[bool] = None
 
     @field_validator("health_check_path")
     @classmethod
@@ -179,6 +181,10 @@ class AppOut(BaseModel):
     name: str
     hostname: str
     image: str
+    image_digest: Optional[str] = None
+    auto_update: bool = True
+    image_checked_at: Optional[datetime] = None
+    image_update_error: Optional[str] = None
     port: int
     want_db: bool
     want_storage: bool

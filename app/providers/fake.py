@@ -208,7 +208,12 @@ class FakeRegistry(Registry):
         missing: Optional[set[str]] = None,
         users: Optional[dict[str, str]] = None,
         default_user: str = "10001",
+        digests: Optional[dict[str, str]] = None,
     ) -> None:
+        self.digests = dict(digests or {})
+        self.resolve_calls = 0
+        self.inspect_calls = 0
+        self.failing: set[str] = set()  # refs whose lookups raise RegistryError (registry outage)
         self.users = dict(users or {})
         self.default_user = default_user
         self.sizes = dict(sizes or {})
@@ -224,5 +229,23 @@ class FakeRegistry(Registry):
             return self.default_size_bytes
         raise RegistryError(f"no fake size configured for {image_ref!r}")
 
+    def _digest(self, image_ref: str) -> str:
+        import hashlib
+
+        if image_ref in self.failing:
+            raise RegistryError("injected registry failure")
+        if image_ref in self.digests:
+            return self.digests[image_ref]
+        return "sha256:" + hashlib.sha256(image_ref.encode()).hexdigest()
+
+    def resolve_digest(self, image_ref: str) -> str:
+        self.resolve_calls += 1
+        if image_ref in self.missing:
+            raise RegistryError(f"image not found or not public: {image_ref!r}")
+        return self._digest(image_ref)
+
     def inspect(self, image_ref: str) -> ImageInfo:
-        return ImageInfo(self.image_size_bytes(image_ref), self.users.get(image_ref, self.default_user))
+        self.inspect_calls += 1
+        return ImageInfo(
+            self.image_size_bytes(image_ref), self.users.get(image_ref, self.default_user), self._digest(image_ref)
+        )

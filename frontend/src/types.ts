@@ -63,6 +63,10 @@ export interface App {
   name: string
   hostname: string
   image: string
+  image_digest?: string | null
+  auto_update?: boolean
+  image_checked_at?: string | null
+  image_update_error?: string | null
   port: number
   want_db: boolean
   want_storage: boolean
@@ -102,6 +106,7 @@ export interface AppCreatePayload {
   want_storage: boolean
   health_check_enabled?: boolean
   health_check_path?: string
+  auto_update?: boolean
   env: EnvVar[]
 }
 
@@ -113,6 +118,7 @@ export interface AppUpdatePayload {
   port?: number
   health_check_enabled?: boolean
   health_check_path?: string
+  auto_update?: boolean
   env?: EnvVar[]
 }
 

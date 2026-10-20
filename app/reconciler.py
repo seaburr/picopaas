@@ -27,7 +27,7 @@ from typing import Any, Callable, Optional
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app import config, crypto, env_refs, k8s_manifests, models, resources
+from app import config, crypto, env_refs, image_check, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
@@ -350,7 +350,8 @@ def reconcile_app(
     render_kwargs = dict(
         app_id=app.id,
         hostname=app.hostname,
-        image=app.image,
+        image=image_check.pinned_image(app),
+        image_ref=app.image,
         port=app.port,
         env=resolved_env,
         mysql_cidr=_mysql_cidr(settings),

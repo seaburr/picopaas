@@ -132,6 +132,24 @@ def quota_job() -> None:
         session.close()
 
 
+def image_watch_job() -> None:
+    """Re-resolve floating tags; roll out new images that pass the size/non-root checks."""
+    if not try_acquire_leader():
+        return
+    from app import image_check
+    from app.dependencies import get_registry
+
+    session = SessionLocal()
+    try:
+        counts = image_check.watch_all(session, get_registry())
+        if counts.get("updated") or counts.get("rejected"):
+            log.info("image watch: %s", counts)
+    except Exception:
+        log.exception("image watch failed")
+    finally:
+        session.close()
+
+
 def _read_ca() -> str | None:
     """PEM text from the file at MYSQL_SSL_CA, or None if unset/unreadable."""
     path = os.environ.get("MYSQL_SSL_CA") or config.MYSQL_SSL_CA
@@ -213,6 +231,8 @@ def start_scheduler() -> BackgroundScheduler:
     sched = BackgroundScheduler()
     sched.add_job(reconcile_job, "interval", seconds=15, max_instances=1, coalesce=True, id="reconcile")
     sched.add_job(quota_job, "interval", minutes=5, max_instances=1, coalesce=True, id="quota")
+    sched.add_job(image_watch_job, "interval", minutes=config.IMAGE_WATCH_MINUTES, max_instances=1, coalesce=True,
+                  id="image_watch")
     # Health snapshot refresh runs on EVERY replica (each has its own in-memory cache), not just the leader.
     from app import health
     from app.dependencies import get_kube

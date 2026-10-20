@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import audit, k8s_manifests, models, schemas
+from app import audit, image_check, k8s_manifests, models, schemas
 from app.db import get_db
-from app.dependencies import get_active_user, get_kube
-from app.providers.base import KubeProvider
+from app.dependencies import get_active_user, get_kube, get_registry
+from app.providers.base import KubeProvider, Registry
 from app.routers.apps import _app_out
 
 log = logging.getLogger(__name__)
@@ -61,10 +61,19 @@ def restart_app(
     app_id: int,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user),
+    registry: Registry = Depends(get_registry),
 ):
     app = _get_app_or_404(db, app_id, user)
     if app.status == "suspended":
         raise HTTPException(status_code=409, detail="This app is suspended, so it can't be restarted.")
+    # Restart = "pull latest": re-resolve the tag first. A new digest that fails the checks (or a registry
+    # hiccup) restarts the previous one; the reason is recorded in image_update_error.
+    try:
+        image_check.refresh_app_image(db, app, registry, actor=user)
+    except Exception:  # noqa: BLE001
+        log.exception("app %s: image refresh on restart failed", app.id)
+        db.rollback()
+        app = _get_app_or_404(db, app_id, user)
     # A new nonce changes the pod template (and so the rendered hash): the pod rolls and the drift sweep agrees.
     app.restart_nonce = uuid.uuid4().hex[:16]
     app.status = "pending"
@@ -74,4 +83,22 @@ def restart_app(
     db.commit()
     db.refresh(app)
     audit.record(db, user, "app.restart", "app", app.id)
+    return _app_out(app)
+
+
+@router.post("/{app_id}/check-image", response_model=schemas.AppOut)
+def check_image(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+    registry: Registry = Depends(get_registry),
+):
+    """Re-resolve the app's image tag now; a new image that passes the checks is rolled out."""
+    app = _get_app_or_404(db, app_id, user)
+    if app.status == "suspended":
+        raise HTTPException(status_code=409, detail="This app is suspended, so its image can't be updated.")
+    outcome = image_check.refresh_app_image(db, app, registry, actor=user)
+    if outcome == "error":
+        raise HTTPException(status_code=502, detail="Couldn't reach the registry to check the image. Try again in a moment.")
+    db.refresh(app)
     return _app_out(app)

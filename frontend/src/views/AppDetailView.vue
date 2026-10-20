@@ -5,7 +5,7 @@ import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
-import { RefreshCw, RotateCw } from 'lucide-vue-next'
+import { PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -119,6 +119,25 @@ async function restart() {
   }
 }
 
+// Check for a new image (re-resolves the tag; redeploys if it changed)
+const checking = ref(false)
+const isDigestRef = computed(() => !!app.value && app.value.image.includes('@'))
+async function checkImage() {
+  if (!app.value) return
+  checking.value = true
+  try {
+    const before = app.value.image_digest
+    app.value = (await store.checkImage(app.value.id)) ?? app.value
+    toast.success(app.value.image_digest !== before ? 'New image found. Redeploying.' : 'Already on the latest image.')
+    syncPoll()
+  } catch (e) {
+    toast.error(`Couldn't check the image: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    checking.value = false
+  }
+}
+const shortDigest = (d?: string | null) => (d ?? '').replace(/^sha256:/, '').slice(0, 12)
+
 // Credentials
 const rotating = ref<'db' | 'storage' | null>(null)
 const rotateBusy = ref(false)
@@ -212,6 +231,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <HostLink :hostname="app.hostname" class="mt-1" />
           </div>
           <div class="flex items-center gap-2">
+            <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
             <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
             <RouterLink v-if="!suspended" :to="`/apps/${app.id}/edit`" class="btn-primary">Edit</RouterLink>
             <button v-else type="button" class="btn-primary" disabled title="Suspended. Contact the administrator to restore.">Edit</button>
@@ -226,6 +246,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <span class="text-zinc-400">Created <span :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</span>.</span>
             </p>
             <AppStatusNote :app="app" :restarting="restarting" @restart="restart" />
+            <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2">{{ app.image_update_error }}</p>
           </section>
 
           <section id="logs" class="card card-pad scroll-mt-4" aria-labelledby="h-logs">
@@ -258,7 +279,15 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <section class="card card-pad" aria-labelledby="h-conf">
             <h2 id="h-conf" class="section-title mb-3">Configuration</h2>
             <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-              <div class="min-w-0"><dt class="meta">Image</dt><dd class="mono truncate text-zinc-200" :title="app.image">{{ app.image }}</dd></div>
+              <div class="min-w-0">
+                <dt class="meta">Image</dt>
+                <dd class="mono truncate text-zinc-200" :title="app.image">{{ app.image }}</dd>
+                <dd v-if="app.image_digest && !isDigestRef" class="meta">
+                  <span class="mono" :title="app.image_digest">{{ shortDigest(app.image_digest) }}</span>
+                  <template v-if="app.image_checked_at"> · checked <span :title="fullTime(app.image_checked_at)">{{ relTime(app.image_checked_at, now) }}</span></template>
+                  <template v-if="app.auto_update === false"> · auto-update off</template>
+                </dd>
+              </div>
               <div><dt class="meta">Container port</dt><dd class="mono text-zinc-200">{{ app.port }}</dd></div>
               <div>
                 <dt class="meta">Resources</dt>

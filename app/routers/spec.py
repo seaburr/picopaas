@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -96,7 +97,7 @@ def deploy_spec(
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
             raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 
-    run_as_uid = _check_image_cap(registry, spec.image)
+    run_as_uid, digest = _check_image_cap(registry, spec.image)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
 
     if created:
@@ -105,6 +106,8 @@ def deploy_spec(
             name=spec.name,
             hostname=generate_unique_hostname(db),
             image=spec.image,
+            image_digest=digest,
+            image_checked_at=datetime.now(timezone.utc).replace(tzinfo=None) if digest else None,
             run_as_uid=run_as_uid,
             port=spec.port,
             want_db=spec.resources.db,
@@ -117,11 +120,13 @@ def deploy_spec(
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
-            (app.image, app.run_as_uid, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
-            != (spec.image, run_as_uid, spec.port, spec.resources.db, spec.resources.storage,
+            (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
+            != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.storage,
                 spec.healthCheck.enabled, spec.healthCheck.path)
         )
         app.image = spec.image
+        app.image_digest = digest
+        app.image_update_error = None
         app.run_as_uid = run_as_uid
         app.port = spec.port
         app.want_db = spec.resources.db

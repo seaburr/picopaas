@@ -179,6 +179,7 @@ class ObjectStore(ABC):
 class ImageInfo:
     size_bytes: int
     user: str  # the image config's `User` ("" means the image default, i.e. root)
+    digest: str = ""  # manifest digest (sha256:...) of what was inspected (the amd64 manifest of an index)
 
 
 class RegistryError(Exception):
@@ -200,4 +201,10 @@ class Registry(ABC):
     @abstractmethod
     def inspect(self, image_ref: str) -> ImageInfo:
         """Return size plus the configured `User` (from the image config blob). Same errors as above."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def resolve_digest(self, image_ref: str) -> str:
+        """Cheaply resolve `image_ref` to its manifest digest (amd64 manifest for an index), without
+        fetching the image config. Same errors as above."""
         raise NotImplementedError

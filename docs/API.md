@@ -81,7 +81,7 @@ reset and informational only (the server does not block other calls); the UI sho
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.raisehellpraisedale.xyz), image, port,
-want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, retry_at, created_at, resources, env[]`.
+image_digest, auto_update, image_checked_at, image_update_error, want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, retry_at, created_at, resources, env[]`.
 `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, overridden, exceeds_platform_caps}`.
 Each `env` item: `{key, value, is_secret, undecryptable}`. Secret values are returned as `********`. If a stored
@@ -97,6 +97,8 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | PATCH | `/apps/{app_id}` | `AppUpdate` | `App`. 403 `app suspended`. Changing image, port, env or health check sets status `pending` and redeploys. |
 | DELETE | `/apps/{app_id}` | none | 204. Soft delete; the reconciler tears down namespace, DB and bucket. 403 `app suspended`. |
 | POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 `database|storage not provisioned yet` (also when the app has no DB/bucket); 502 `credential rotation failed`; 403 if suspended. |
+| POST | `/apps/{app_id}/restart` | none | `App`. Owner or admin. Re-resolves the image tag first ("pull latest"); a new image that fails the checks is skipped and the old one restarted (`image_update_error` is set). |
+| POST | `/apps/{app_id}/check-image` | none | `App`. Owner or admin. Re-resolves the tag now and redeploys if it changed and passes the checks. 502 if the registry can't be reached; 409 if suspended. |
 | POST | `/apps/spec` | `{spec, secrets}` | Create-or-update from YAML; see below. |
 
 `AppCreate`:
@@ -111,8 +113,9 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | `env` | list of `EnvVar` | `[]` | no duplicate keys |
 | `health_check_enabled` | bool | `false` | |
 | `health_check_path` | string | `/healthz` | max 255; see the path rules in USER_GUIDE.md |
+| `auto_update` | bool | `true` | redeploy when the image tag changes (ignored for digest refs) |
 
-`AppUpdate`: optional `name, image, port, env, health_check_enabled, health_check_path` (same constraints).
+`AppUpdate`: optional `name, image, port, env, health_check_enabled, health_check_path, auto_update` (same constraints).
 `want_db` and `want_storage` cannot be changed. `env`, when sent, replaces the whole list; send a secret back with
 value `********` to keep it.
 
@@ -124,6 +127,16 @@ db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, st
 Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 `image not
 found or not public`), the USER must be non-root (422; a named user runs as UID 10001), and the summed compressed layers at most 256 MB
 (422).
+
+### Floating tags (`:latest`)
+
+The image is resolved to a manifest digest (the linux/amd64 one for multi-arch images) on create and update, and the
+Deployment runs `repo@sha256:...`; `image_digest` is that digest and the tag you typed stays in `image`. Every
+10 minutes the platform re-resolves tags of apps with `auto_update=true` (not suspended, not digest refs). A changed
+digest is re-checked (size, non-root); if it passes, the app goes `pending` and rolls out (audit `app.image_updated`). If it
+fails, the previous version keeps running and `image_update_error` explains why until a good image is pushed.
+`image_checked_at` is the last successful registry check. To pin, use a digest reference (`repo@sha256:...`) or set
+`auto_update=false` and deploy changes yourself with `check-image`, `restart` or a PATCH.
 
 ### `POST /apps/spec`
 

@@ -351,6 +351,7 @@ def deployment_manifest(
     resources: dict[str, int] | None = None,
     run_as_uid: int | None = None,
     restart_nonce: str | None = None,
+    image_ref: str | None = None,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
@@ -393,7 +394,12 @@ def deployment_manifest(
     return {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
-        "metadata": {"name": name, "namespace": namespace_name(app_id)},
+        "metadata": {
+            "name": name,
+            "namespace": namespace_name(app_id),
+            # The tag the user asked for (the container runs the pinned digest); display only.
+            **({"annotations": {"picopaas.io/image-ref": image_ref}} if image_ref and image_ref != image else {}),
+        },
         "spec": {
             "replicas": replicas,
             # Surge one pod (headroom is in app-quota), never drop below the running pod.
@@ -503,6 +509,7 @@ def render_app_manifests(
     run_as_uid: int | None = None,
     restart_nonce: str | None = None,
     used_limits: dict[str, int] | None = None,
+    image_ref: str | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
@@ -516,7 +523,7 @@ def render_app_manifests(
                                        health_check_enabled=health_check_enabled,
                                        health_check_path=health_check_path, user_env=env,
                                        resources=resources, run_as_uid=run_as_uid,
-                                       restart_nonce=restart_nonce),
+                                       restart_nonce=restart_nonce, image_ref=image_ref),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
     }

@@ -41,4 +41,6 @@ export interface AppLogs {
 // Backend contract (docs/UX plan): GET /apps/{id}/logs?tail=N and POST /apps/{id}/restart. 404 = older backend.
 export const getAppLogs = (id: number, tail = 200) => apiFetch<AppLogs>(`/apps/${id}/logs?tail=${tail}`)
 
+export const checkImage = (id: number) => apiFetch<App>(`/apps/${id}/check-image`, { method: 'POST' })
+
 export const restartApp = (id: number) => apiFetch<App>(`/apps/${id}/restart`, { method: 'POST' })

@@ -13,6 +13,7 @@ entry (falling back to the first entry if none matches) before summing.
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import logging
 import re
@@ -105,9 +106,22 @@ class RegistryClient(Registry):
     def image_size_bytes(self, image_ref: str) -> int:
         return self._sum_layer_sizes(self._wrap(lambda: self._resolve(image_ref)[0]))
 
+    def resolve_digest(self, image_ref: str) -> str:
+        """Cheap: token + one manifest GET (no config blob). For an index, the amd64 entry's digest."""
+
+        def _do() -> str:
+            registry, repository, reference = _parse_image_ref(image_ref)
+            token = self._get_token(registry, repository)
+            manifest, content_type, digest = self._get_manifest(registry, repository, reference, token)
+            if self._is_manifest_list(manifest, content_type):
+                return self._select_amd64_digest(manifest)
+            return digest
+
+        return self._wrap(_do)
+
     def inspect(self, image_ref: str) -> ImageInfo:
         def _do() -> ImageInfo:
-            manifest, registry, repository, token = self._resolve(image_ref)
+            manifest, registry, repository, token, manifest_digest = self._resolve(image_ref)
             size = self._sum_layer_sizes(manifest)
             digest = (manifest.get("config") or {}).get("digest")
             if not digest:
@@ -121,17 +135,19 @@ class RegistryClient(Registry):
                 log.warning("registry blob fetch %s/%s: HTTP %s", registry, repository, resp.status_code)
                 raise RegistryError("image not found or not public")
             user = (resp.json().get("config") or {}).get("User") or ""
-            return ImageInfo(size_bytes=size, user=user)
+            return ImageInfo(size_bytes=size, user=user, digest=manifest_digest)
 
         return self._wrap(_do)
 
-    def _resolve(self, image_ref: str) -> tuple[dict[str, Any], str, str, Optional[str]]:
+    def _resolve(self, image_ref: str) -> tuple[dict[str, Any], str, str, Optional[str], str]:
+        """(manifest, registry, repository, token, digest-of-that-manifest)."""
         registry, repository, reference = _parse_image_ref(image_ref)
         token = self._get_token(registry, repository)
-        manifest, content_type = self._get_manifest(registry, repository, reference, token)
+        manifest, content_type, digest = self._get_manifest(registry, repository, reference, token)
         if self._is_manifest_list(manifest, content_type):
-            manifest, _ = self._get_manifest(registry, repository, self._select_amd64_digest(manifest), token)
-        return manifest, registry, repository, token
+            digest = self._select_amd64_digest(manifest)
+            manifest, _, digest = self._get_manifest(registry, repository, digest, token)
+        return manifest, registry, repository, token, digest
 
     @staticmethod
     def _wrap(fn):
@@ -169,7 +185,7 @@ class RegistryClient(Registry):
 
     def _get_manifest(
         self, registry: str, repository: str, reference: str, token: Optional[str]
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, Any], str, str]:
         headers = {"Accept": _MANIFEST_ACCEPT}
         if token:
             headers["Authorization"] = f"Bearer {token}"
@@ -180,7 +196,10 @@ class RegistryClient(Registry):
             raise RegistryError("image not found or not public")
         if resp.status_code != 200:
             raise RegistryError(f"registry returned HTTP {resp.status_code} for {image_ref_desc(repository, reference)}")
-        return resp.json(), resp.headers.get("content-type", "")
+        digest = resp.headers.get("docker-content-digest") or "sha256:" + hashlib.sha256(resp.content).hexdigest()
+        if reference.startswith("sha256:"):
+            digest = reference  # we asked for exactly this content
+        return resp.json(), resp.headers.get("content-type", ""), digest
 
     @staticmethod
     def _is_manifest_list(manifest: dict[str, Any], content_type: str) -> bool:
