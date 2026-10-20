@@ -24,7 +24,7 @@ Images: GHCR (ghcr.io/seaburr/picopaas, tagged with the short commit SHA)
   user, admin password and CA in sync on later starts.
 - The first registered user is the uberadmin. Signups stay `pending` until you approve them.
 
-Key env on the platform pod (secret `picopaas-env`): `SECRET_KEY`, `FERNET_KEY`, `DATABASE_URL`,
+Key env on the platform pod (secret `picopaas-env`): `FERNET_KEY` (+ optional `FERNET_KEYS_PREVIOUS`), `DATABASE_URL`,
 `DIGITALOCEAN_TOKEN` (`DO_API_TOKEN` is an alias), `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`,
 `BOOTSTRAP_DB_*`. Config knobs: `MYSQL_EGRESS_MODE` (`in-cluster` | `cidr`), `MYSQL_EGRESS_CIDR`,
 `MYSQL_SSL_CA`, `MYSQL_ADMIN_USE_PROCEDURES`, `INGRESS_CLASS` (traefik), `INGRESS_NAMESPACE` (traefik),
@@ -51,22 +51,30 @@ run `tests/e2e` and `tests/pentest` (see their READMEs).
 
 | GitHub secret | Purpose |
 |---|---|
-| `PICOPAAS_SECRET_KEY` | Signs session JWTs (`SECRET_KEY`). Changing it logs everyone out. |
-| `PICOPAAS_FERNET_KEY` | Encrypts every secret stored in MySQL: env-var values, app DB passwords, storage secret keys, DB server admin passwords. |
+| `PICOPAAS_FERNET_KEY` | The only platform key. Encrypts every secret stored in MySQL (env-var values, app DB passwords, storage secret keys, DB server admin passwords). The JWT signing key is derived from it (an HMAC-SHA256 of a fixed label, see `app/config.py`), so rotating it also logs everyone out. An explicit `SECRET_KEY` env is still honoured but not needed. |
 | `DIGITALOCEAN_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY` | Terraform, bootstrap, and the platform's own provisioning of buckets and keys. |
 | `TF_API_TOKEN` | Terraform Cloud state. |
 
 Why the Fernet key matters: lose or change it and all stored ciphertext is unreadable. The 2026-10-19 cluster
-replacement regenerated it per cluster and orphaned the data. Now `bootstrap` takes both keys only from the repo
-secrets and fails if they are missing. GitHub secrets are write-only, so keep your own copy in a password manager
+replacement regenerated it per cluster and orphaned the data. Now `bootstrap` takes the key only from the repo
+secret and fails if it is missing. GitHub secrets are write-only, so keep your own copy in a password manager
 (open to-do in [QUESTIONS.md](QUESTIONS.md)).
 
 Behaviour when the key is wrong: apps with unreadable values go to `error` ("stored secrets unreadable ...")
 without stopping the reconciler; owners re-enter secrets or rotate credentials. `bootstrap_db_server` repairs the
 `primary` DB server admin password automatically. Deleting apps never needs the old ciphertext.
 
-TODO: key rotation (MultiFernet re-encrypt) is not implemented. Generate a Fernet key with
-`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+### Rotating the key
+
+1. Generate a key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; save it in your password manager.
+2. Set it as the repo secret `PICOPAAS_FERNET_KEY`.
+3. Run the `bootstrap` workflow. It reads the current `FERNET_KEY` from the existing `picopaas-env` Secret and, if it
+   differs, stores it (plus earlier previous keys, deduped, max 3) in `FERNET_KEYS_PREVIOUS`. If the existing Secret
+   cannot be read (anything but NotFound) bootstrap fails rather than lose the old key.
+4. On startup the platform decrypts with the new key then the previous keys (`MultiFernet`) and re-encrypts every
+   stored ciphertext to the new key (log line `fernet rotation: rotated=... unchanged=... skipped_undecryptable=...`,
+   counts only). Rows no key can decrypt are skipped and logged.
+5. Once `rotated` is 0 on a later start and nothing is skipped, previous keys are no longer needed.
 
 ## 4. Disaster recovery: replacing the cluster
 
@@ -165,7 +173,7 @@ Other known gaps:
 - The platform's ClusterRole can read Secrets in all namespaces (see `deploy/README.md`, "Known RBAC exposure").
 - A failed MySQL `DROP` or bucket delete during app deletion is logged-and-ignored and the DB/bucket rows are
   removed anyway, so such resources can be orphaned on the provider side.
-- Fernet/secret key rotation is not implemented.
+- Old keys stay in `FERNET_KEYS_PREVIOUS` until bootstrap trims them (max 3); there is no automatic removal.
 - A DB server cannot be created with a CA certificate via the API.
 - PodDisruptionBudget for the platform is deferred until 2+ nodes.
 - Spaces credential theft is out of scope (request 0002).

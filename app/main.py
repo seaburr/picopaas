@@ -24,6 +24,7 @@ async def lifespan(_app: FastAPI):
     if os.environ.get("RECONCILER_ENABLED") == "1":
         from app import scheduler
 
+        scheduler.rotate_encrypted_data()
         scheduler.bootstrap_db_server()
         sched = scheduler.start_scheduler()
     try:

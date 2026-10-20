@@ -5,12 +5,13 @@ no config file: the platform runs in containers where env vars are how
 secrets and per-environment values (DB URL, signing keys) are supplied.
 
 `ENVIRONMENT` defaults to "dev", which is the only environment allowed to run
-without an explicit SECRET_KEY / FERNET_KEY. Anywhere else (staging,
+without an explicit FERNET_KEY (SECRET_KEY is derived from it unless set). Anywhere else (staging,
 production, CI-that-pretends-to-be-prod) those must be set or the app refuses
 to start.
 """
 import base64
 import hashlib
+import hmac
 import os
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
@@ -36,8 +37,25 @@ def _required_outside_dev(env_var: str, dev_default: str) -> str:
     )
 
 
-SECRET_KEY = _required_outside_dev("SECRET_KEY", _DEV_SECRET_KEY)
 FERNET_KEY = _required_outside_dev("FERNET_KEY", _DEV_FERNET_KEY)
+
+
+def derive_secret_key(fernet_key: str) -> str:
+    """JWT/HMAC signing key derived from the one platform key: hmac-sha256(FERNET_KEY, label), hex."""
+    return hmac.new(fernet_key.encode(), b"picopaas-jwt-signing-v1", hashlib.sha256).hexdigest()
+
+
+# FERNET_KEY is the only required secret. SECRET_KEY is derived from it unless set explicitly (back-compat).
+# Rotating FERNET_KEY therefore also rotates JWT signing (everyone is logged out).
+if os.environ.get("SECRET_KEY"):
+    SECRET_KEY = os.environ["SECRET_KEY"]
+elif os.environ.get("FERNET_KEY"):
+    SECRET_KEY = derive_secret_key(FERNET_KEY)
+else:
+    SECRET_KEY = _DEV_SECRET_KEY  # dev only: FERNET_KEY already enforced above
+
+# Comma-separated older Fernet keys, tried for decryption after FERNET_KEY (key rotation; see crypto.rotate_all).
+FERNET_KEYS_PREVIOUS = tuple(k.strip() for k in os.environ.get("FERNET_KEYS_PREVIOUS", "").split(",") if k.strip())
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 7

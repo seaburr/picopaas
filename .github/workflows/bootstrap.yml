@@ -236,21 +236,39 @@ jobs:
       - name: Platform secrets (picopaas-env, picopaas-db-ca)
         if: steps.gate.outputs.run == 'true'
         env:
-          PICOPAAS_SECRET_KEY: ${{ secrets.PICOPAAS_SECRET_KEY }}
           PICOPAAS_FERNET_KEY: ${{ secrets.PICOPAAS_FERNET_KEY }}
         run: |
           set -euo pipefail
           ns=picopaas-system
-          existing=$(kubectl -n $ns get secret picopaas-env -o json 2>/dev/null || true)
+          # Fail closed: only NotFound may be treated as "no existing secret"; any other error aborts so the
+          # old FERNET_KEY (needed to decrypt stored data) is never lost.
+          err=$(mktemp)
+          if existing=$(kubectl -n $ns get secret picopaas-env -o json 2>"$err"); then :
+          elif grep -q 'NotFound' "$err"; then existing=""
+          else echo "::error::could not read existing picopaas-env secret: $(head -c 300 "$err")"; exit 1; fi
           get() { echo "$existing" | jq -r --arg k "$1" '.data[$k] // empty | @base64d'; }
 
-          # SECRET_KEY / FERNET_KEY come from GitHub secrets so they survive losing the cluster: FERNET_KEY decrypts
-          # every secret stored in MySQL. (2026-10-19: a cluster replacement regenerated it and orphaned the data.)
-          SECRET_KEY="$PICOPAAS_SECRET_KEY"; FERNET_KEY="$PICOPAAS_FERNET_KEY"
-          [ -n "$SECRET_KEY" ] && [ -n "$FERNET_KEY" ] || {
-            echo "::error::set repo secrets PICOPAAS_SECRET_KEY and PICOPAAS_FERNET_KEY (keep a copy outside GitHub)"; exit 1; }
+          # FERNET_KEY is the ONLY platform key (SECRET_KEY for JWTs is derived from it in app/config.py). It comes
+          # from a GitHub secret so it survives losing the cluster: it decrypts every secret stored in MySQL.
+          FERNET_KEY="$PICOPAAS_FERNET_KEY"
+          [ -n "$FERNET_KEY" ] || {
+            echo "::error::set repo secret PICOPAAS_FERNET_KEY (keep a copy outside GitHub)"; exit 1; }
+          echo "::add-mask::$FERNET_KEY"
+
+          # Rotation: keep the old key (and earlier previous keys, max 3) so the platform can still decrypt and
+          # re-encrypt existing rows to the new key at startup.
+          OLD_FERNET_KEY=$(get FERNET_KEY); OLD_PREV=$(get FERNET_KEYS_PREVIOUS)
+          for v in "$OLD_FERNET_KEY" ${OLD_PREV//,/ }; do [ -z "$v" ] || echo "::add-mask::$v"; done
+          FERNET_KEYS_PREVIOUS=""; n=0
+          for k in "$OLD_FERNET_KEY" ${OLD_PREV//,/ }; do
+            [ -n "$k" ] && [ "$k" != "$FERNET_KEY" ] || continue
+            case ",$FERNET_KEYS_PREVIOUS," in *",$k,"*) continue;; esac
+            [ "$n" -lt 3 ] || break
+            FERNET_KEYS_PREVIOUS="${FERNET_KEYS_PREVIOUS:+$FERNET_KEYS_PREVIOUS,}$k"; n=$((n+1))
+          done
+          [ -z "$FERNET_KEYS_PREVIOUS" ] || echo "FERNET_KEY changed or previous keys present: keeping $n previous key(s)"
           PLATFORM_DB_PASSWORD=$(get PLATFORM_DB_PASSWORD); [ -n "$PLATFORM_DB_PASSWORD" ] || PLATFORM_DB_PASSWORD=$(openssl rand -hex 24)
-          for v in "$SECRET_KEY" "$FERNET_KEY" "$PLATFORM_DB_PASSWORD"; do echo "::add-mask::$v"; done
+          for v in "$PLATFORM_DB_PASSWORD"; do echo "::add-mask::$v"; done
 
           # Idempotently create database `picopaas` + user `picopaas` on the managed cluster. The runner is
           # not in the DB firewall (only the k8s cluster is), so run the SQL from a throwaway in-cluster pod.
@@ -274,8 +292,8 @@ jobs:
           # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
           kubectl -n $ns create secret generic picopaas-env \
             --from-literal=ENVIRONMENT=production \
-            --from-literal=SECRET_KEY="$SECRET_KEY" \
             --from-literal=FERNET_KEY="$FERNET_KEY" \
+            --from-literal=FERNET_KEYS_PREVIOUS="$FERNET_KEYS_PREVIOUS" \
             --from-literal=PLATFORM_DB_PASSWORD="$PLATFORM_DB_PASSWORD" \
             --from-literal=DATABASE_URL="$DATABASE_URL" \
             --from-literal=DIGITALOCEAN_TOKEN="$DIGITALOCEAN_TOKEN" \

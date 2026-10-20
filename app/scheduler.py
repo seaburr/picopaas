@@ -144,6 +144,18 @@ def _read_ca() -> str | None:
         return None
 
 
+def rotate_encrypted_data() -> None:
+    """Re-encrypt all stored secrets to the current FERNET_KEY (idempotent; counts logged only)."""
+    session = SessionLocal()
+    try:
+        crypto.rotate_all(session)
+    except Exception:  # noqa: BLE001 - never block startup on rotation
+        session.rollback()
+        log.exception("fernet rotation failed")
+    finally:
+        session.close()
+
+
 def bootstrap_db_server() -> None:
     """Insert DbServer 'primary' from BOOTSTRAP_DB_* env if none exists; otherwise keep its connection details
     and admin credentials in sync with the env (bootstrap.yml reads them from DO each run). That also repairs a
