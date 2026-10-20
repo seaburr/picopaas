@@ -371,7 +371,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               </div>
               <div>
                 <dt class="meta">Storage</dt>
-                <dd class="text-zinc-200">{{ app.want_storage ? `Attached (${limits?.bucket_mb ?? 100} MB bucket)` : 'Not enabled' }}</dd>
+                <dd class="text-zinc-200">{{ app.want_storage ? `Attached (${limits?.bucket_mb ?? 100} MB, S3-compatible)` : 'Not enabled' }}</dd>
               </div>
               <div><dt class="meta">Environment variables</dt><dd class="mono text-zinc-200">{{ app.env.length }}<span v-if="secretCount" class="text-zinc-400"> ({{ secretCount }} secret)</span></dd></div>
               <div><dt class="meta">Created</dt><dd class="mono text-zinc-200" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</dd></div>

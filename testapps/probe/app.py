@@ -1,6 +1,7 @@
 """DB + Spaces connectivity probe. Never returns or logs credentials."""
 import json
 import os
+import sys
 import tempfile
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,6 +50,31 @@ def db():
         ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)  # DO's CA fails Python 3.13+ strict mode
         kw["ssl"] = ctx
     return pymysql.connect(**kw)
+
+
+def h_db_tlscheck(_q):
+    """Connect with DB_CA_CERT using the stock default context, then the same context minus VERIFY_X509_STRICT."""
+    import ssl
+    import pymysql
+    ca = E("DB_CA_CERT")
+    if not ca:
+        return 200, {"python": sys.version, "error": "DB_CA_CERT not set"}
+    strict = getattr(ssl, "VERIFY_X509_STRICT", 0)
+
+    def attempt(ctx):
+        try:
+            conn = pymysql.connect(host=E("DB_HOST"), port=int(E("DB_PORT", "3306")), user=E("DB_USER"),
+                                   password=E("DB_PASSWORD"), database=E("DB_NAME"), connect_timeout=8, ssl=ctx)
+            conn.close()
+            return {"ok": True, "error": None}
+        except Exception as e:
+            return {"ok": False, "error": err(e)}
+
+    default_ctx = ssl.create_default_context(cadata=ca)
+    relaxed_ctx = ssl.create_default_context(cadata=ca)
+    relaxed_ctx.verify_flags &= ~strict
+    return 200, {"python": sys.version, "strict_default": bool(default_ctx.verify_flags & strict),
+                 "default_ctx": attempt(default_ctx), "relaxed_ctx": attempt(relaxed_ctx)}
 
 
 def cipher(conn):
@@ -231,7 +257,7 @@ def h_disk_fill(q):
         return 500, {"ok": False, "written_mb": written, "error": err(e)}
 
 
-ROUTES = {"/db": h_db, "/s3": h_s3, "/db/fill": h_db_fill, "/s3/fill": h_s3_fill, "/db/read": h_db_read,
+ROUTES = {"/db": h_db, "/db/tlscheck": h_db_tlscheck, "/s3": h_s3, "/db/fill": h_db_fill, "/s3/fill": h_s3_fill, "/db/read": h_db_read,
           "/db/size": h_db_size, "/db/clear": h_db_clear, "/s3/read": h_s3_read, "/s3/clear": h_s3_clear,
           "/disk/fill": h_disk_fill}
 

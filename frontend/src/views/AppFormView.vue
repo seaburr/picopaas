@@ -51,7 +51,7 @@ const limits = computed(() => auth.user?.limits)
 const dbOff = computed(() => auth.user?.features?.databases === false)
 const storageOff = computed(() => auth.user?.features?.storage === false)
 const dbLabel = computed(() => `MySQL, ${limits.value?.db_mb ?? 50} MB`)
-const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket`)
+const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket, S3-compatible`)
 const imageMb = computed(() => limits.value?.image_mb ?? 256)
 
 const imageError = computed(() => {
