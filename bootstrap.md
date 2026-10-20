@@ -18,7 +18,7 @@ DB size is capped at 50MB.
 S3-compatible storage capped at 100MB
 Compute is capped at 100m (1/10th core)
 RAM is capped at 384MB
-Image size is capped at 256MB
+Image size is capped at 512MB
 Scatch Disk: 250MB
 
 ## Hosting Underpinning

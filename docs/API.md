@@ -134,11 +134,11 @@ value `********` to keep it.
 
 `EnvVar` (input): `{key, value, is_secret=false}`. `key` matches `^[A-Z_][A-Z0-9_]*$`. A `value` that is exactly
 `${{ ref }}` is a reference; allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
-db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key`. `db.*` needs
+db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public `https://<hostname>.<domain>` URL). `db.*` needs
 `want_db`, `storage.*` needs `want_storage`.
 
-Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 "Couldn't find that image, or it's private..."), the USER must be non-root (422; a named user runs as UID 10001), and the summed compressed layers at most 256 MB
-(422 "Image is N MB; the limit is 256 MB...").
+Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 "Couldn't find that image, or it's private..."), the USER must be non-root (422; a named user runs as UID 10001), and the summed compressed layers at most 512 MB
+(422 "Image is N MB; the limit is 512 MB...").
 
 ### Floating tags (`:latest`)
 

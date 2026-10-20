@@ -92,7 +92,7 @@ NAMED_USER_RUN_AS_UID = 10001
 
 # How often the leader re-resolves floating image tags (app/image_check.py::watch_all).
 IMAGE_WATCH_MINUTES = int(os.environ.get("IMAGE_WATCH_MINUTES", 10))
-MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1024))
+MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 512 * 1024 * 1024))
 
 # Hard ceiling on active apps per account, INCLUDING platform admins (Chas, 2026-10-20). A user's app_limit can be
 # lower, never higher (see resources.effective_app_limit).

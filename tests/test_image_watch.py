@@ -170,7 +170,7 @@ def test_watcher_rejects_bad_repush_keeps_old_and_clears_on_good(client, db_sess
     assert row.image_digest == D1 and row.status == "running"
     assert "previous version" in row.image_update_error
     if kind == "size":
-        assert "MB, over the 256 MB limit" in row.image_update_error
+        assert "MB, over the 512 MB limit" in row.image_update_error
     out = client.get(f"/apps/{aid}").json()
     assert out["image_update_error"] and out["image_digest"] == D1
     # Fixed re-push: error clears and it rolls out.

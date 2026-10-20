@@ -7,7 +7,7 @@ platform can host a genuine app, not just toy test images. Live demo: deployed a
 - **Ghost serves**: homepage, `/ghost/` admin, and `/rss/` all return 200.
 - **Persistent**: all content lives in the PicoPaaS **MySQL** database, so it survives restarts/redeploys
   (verified: restarted the app — pod replaced, ephemeral disk wiped — and the site + data were intact).
-- **Fits the caps**: image **168 MiB** (< 256 MB image cap), boots and runs within **384 MB RAM** (0 restarts),
+- **Fits the caps**: image **168 MiB** (< 512 MB image cap), boots and runs within **384 MB RAM** (0 restarts),
   schema uses ~3 MB of the 50 MB DB.
 
 ## Why a custom image (not the stock `ghost` image)
@@ -34,18 +34,18 @@ images and forces a non-root numeric UID (10001). So this image:
    generated hostname, then PATCH env to add `SITE_URL=https://<hostname>` and it boots.
 4. Finish setup at `/ghost/`.
 
-## Known limitation: uploaded images
-The default (lean) image stores uploaded images on the **ephemeral disk**, so they're lost on restart
-(content/posts in MySQL are fine). Build with `--build-arg WITH_S3=1` and set a storage bucket plus
-`S3_*` env to persist uploads in the PicoPaaS bucket via `ghost-storage-adapter-s3`. Caveat: the S3 adapter
-pulls in aws-sdk v2 and pushes the image to ~**297 MiB**, **over the 256 MB cap** — so the S3 variant needs a
-slimmer adapter (aws-sdk v3) or heavier pruning before it can be deployed. Tracked as a follow-up.
+## Uploaded images
+The published image (built by `.github/workflows/examples.yml` with `WITH_S3=1`) includes the
+`ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS bucket when you enable a storage bucket
+and provide the `S3_*` env vars (from `${{ storage.* }}`). The image is ~**297 MiB**, under the 512 MB cap.
+A plain local `docker build` defaults to `WITH_S3=0` (lean, ~168 MiB; uploads on ephemeral disk and lost on restart).
+Use `${{ app.url }}` for Ghost's `url` setting, so no second deploy is needed.
 
 ## Platform findings (what hosting a real CMS surfaced)
-- Image cap is on **compressed** layers; lean Ghost (168 MiB) fits, but add an S3 adapter and it doesn't.
+- Image cap is on **compressed** layers; the S3 variant (~297 MiB) fits the 512 MB cap.
 - Non-root enforcement + forced UID 10001 means stock images with root entrypoints need a wrapper.
 - `os.userInfo()`/`getpass.getuser()` crash for passwdless UIDs on modern bases (Python 3.13, Node) — set a
   passwd entry and `USER`/`HOME`.
-- No `${{ app.url }}` ref → a two-step deploy for apps that need to know their own URL.
+- `${{ app.url }}` ref added, so apps can know their own URL in one deploy.
 - Uppercase-only env keys → apps wanting lowercase/nested config need an in-container translation shim.
 - No persistent filesystem → state must go to MySQL and/or the bucket; the DB-backed CMS model fits well.

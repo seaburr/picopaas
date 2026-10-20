@@ -30,7 +30,7 @@ administrator restores the account.
 | Rule | Value |
 |---|---|
 | User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
-| Image size | Summed compressed layers at most **256 MB** (checked against the registry manifest on create and update). |
+| Image size | Summed compressed layers at most **512 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422` ("Couldn't find that image, or it's private..."). |
 | CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
@@ -158,7 +158,7 @@ secrets:
 |---|---|---|---|---|
 | `apiVersion` | string | yes | | Exactly `picopaas/v1`. |
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
-| `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 256 MB. |
+| `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a MySQL database. Cannot be removed from an existing app via spec (422). |
 | `resources.storage` | boolean | no | `false` | Provisions a storage bucket. Same removal rule. |
@@ -205,6 +205,7 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 | `${{ storage.bucket }}` | Your bucket name |
 | `${{ storage.access_key }}` | Bucket access key |
 | `${{ storage.secret_key }}` | Bucket secret key |
+| `${{ app.url }}` | Your app's own public URL, for example `https://myapp-ab12cd.example.com` (always available, no database or bucket needed) |
 
 You pick your own variable names. The platform does not inject `DATABASE_URL` and friends by itself.
 
@@ -335,7 +336,7 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 |---|---|---|
 | Database | 50 MB | Writes that add data are blocked (INSERT, UPDATE, CREATE and ALTER are revoked) and your open database connections are closed, so your app reconnects read-only. SELECT, DELETE, TRUNCATE and DROP keep working so you can clean up. Writes come back automatically within about a minute of usage dropping under 50 MB. See "Recovering from an over-cap resource" below. |
 | Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it, so reads keep working but writes fail and **your app cannot delete objects itself**. Free space through the platform (see "Recovering from an over-cap resource" below). The read-write key comes back right away once you are under 100 MB. |
-| Image | 256 MB | Deploy is rejected. |
+| Image | 512 MB | Deploy is rejected. |
 | Scratch disk | 250 MB | The pod is evicted and restarted. Kubernetes starts a replacement pod within seconds, so the app usually stays **Running**; a "Restarted" notice appears on the app page (see "Recent events"). Files on the container filesystem or in `/tmp` are lost on restart. |
 
 ### Recovering from an over-cap resource
@@ -388,7 +389,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 | `403` "Your account is suspended..." | Contact the administrator. |
 | `422` "Image runs as root, which isn't allowed..." | Add a non-root `USER` to your Dockerfile, preferably numeric such as `USER 10001`. Rebuild, push and save the app again. |
 | `422` "Couldn't find that image, or it's private..." | The name or tag is wrong, or the image is private. Check the name and make the image public. |
-| `422` "Image is N MB; the limit is 256 MB..." | Slim the image down: use a `-slim` or alpine base, or a multi-stage build. |
+| `422` "Image is N MB; the limit is 512 MB..." | Slim the image down: use a `-slim` or alpine base, or a multi-stage build. |
 | `403` "You've reached your limit of N apps..." | Delete an existing app or ask an administrator to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this `403` even if the spec has other problems. |
 | `422` "... needs a database, but this app doesn't have one" | Add `resources: { db: true }` (or `storage: true`), or remove the reference. |
 | `422` "A value containing '${{' must be exactly one reference..." | Use one `${{ db.x }}` or `${{ storage.x }}` from the table in section 5, as the whole value. |

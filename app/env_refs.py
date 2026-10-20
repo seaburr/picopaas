@@ -14,6 +14,7 @@ ALLOWED_REFS = {
     "db.ca_cert", "db.tls",
     "storage.endpoint", "storage.region", "storage.bucket",
     "storage.access_key", "storage.secret_key",
+    "app.url",
 }
 
 

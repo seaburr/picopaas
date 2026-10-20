@@ -75,3 +75,13 @@ def test_spec_rejects_bad_ref(client):
             "env:\n  X: \"${{ app-33.db.url }}\"\n")
     r = client.post("/apps/spec", json={"spec": spec})
     assert r.status_code == 422
+
+
+def test_app_url_ref_allowed_and_resolves():
+    from app import config, env_refs, models
+    from app.reconciler import _app_url
+    assert "app.url" in env_refs.ALLOWED_REFS
+    env_refs.validate_env_value("${{ app.url }}", False, False)
+    url = _app_url(models.App(hostname="myapp-ab12cd"))
+    assert url == f"https://myapp-ab12cd.{config.APP_DOMAIN}"
+    assert env_refs.resolve({"SITE_URL": "${{ app.url }}"}, {"app.url": url}) == {"SITE_URL": url}

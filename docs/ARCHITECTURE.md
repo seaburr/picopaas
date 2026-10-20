@@ -4,7 +4,7 @@ Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md
 Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
-> (was 512), CPU limit 100m (was 250m), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
+> (was 512; later restored to 512 MB so a persistent-uploads Ghost fits), CPU limit 100m (was 250m), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
 > old numbers and is pending his update. Single source of truth: `app/config.py` (env-overridable). Older figures below were updated in place.
 
 ## 1. Hosting cost
@@ -112,7 +112,7 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
   ⚠ Spike needed: per-bucket keys were UI-only at GA (Jan 2025). Confirm the DO API (`/v2/spaces/keys`) supports them now.
   Fallback: a shared bucket with a platform-side presigned-URL proxy.
 - **Image size:** before deploying, the API reads the registry manifest and rejects the image if the summed
-  compressed layer size exceeds 256 MB. v1 supports public images only; private pull creds come later.
+  compressed layer size exceeds 512 MB. v1 supports public images only; private pull creds come later.
 
 ### Public exposure (Chas, 2026-10-18)
 Goal: the **DB server and Spaces** shouldn't be reachable from the public internet. The Kubernetes API

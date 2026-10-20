@@ -43,6 +43,7 @@ jobs:
           context: examples/${{ matrix.app }}
           platforms: linux/amd64
           push: true
+          build-args: WITH_S3=1
           tags: |
             ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:latest
             ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:${{ steps.vars.outputs.sha_short }}

@@ -107,7 +107,7 @@ def test_06_unknown_image_rejected(user):
 
 
 @pytest.mark.skipif(not os.environ.get("E2E_BIG_IMAGE"),
-                    reason="set E2E_BIG_IMAGE to a public non-root image >256MB to test the size cap")
+                    reason="set E2E_BIG_IMAGE to a public non-root image >512MB to test the size cap")
 def test_06_oversize_image_rejected(user):
     r = user.req("POST", "/apps", json={"name": rand_name(), "image": os.environ["E2E_BIG_IMAGE"],
                                         "port": 8080})

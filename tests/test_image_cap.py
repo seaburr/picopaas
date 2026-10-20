@@ -7,7 +7,7 @@ from app.providers.base import RegistryError
 from app.providers.fake import FakeRegistry
 from tests.conftest import register_and_login
 
-OVER_CAP_BYTES = 257 * 1024 * 1024
+OVER_CAP_BYTES = 513 * 1024 * 1024
 UNDER_CAP_BYTES = 10 * 1024 * 1024
 
 
@@ -34,7 +34,7 @@ def test_oversized_image_rejected_on_create(client):
 
     resp = _create_app(client)
     assert resp.status_code == 422
-    assert "256" in resp.json()["detail"] or "byte" in resp.json()["detail"]
+    assert "512" in resp.json()["detail"] or "byte" in resp.json()["detail"]
 
 
 def test_image_under_cap_is_accepted(client):

@@ -552,3 +552,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: cbbace4 pushed; CI/image/deploy green; PriorityClass picopaas-platform created, rollout complete; diag shows 1 node (no scale-up), 2 picopaas pods Running, healthz ok.
 - 2026-10-20 [scm-security] START: commit+push hard app cap + Health UI fix.
 - 2026-10-20 [scm-security] DONE: c5e6ff9 (app cap) + 1c38e4c (health UI) pushed; CI/image/deploy success; /auth/me max_apps=5 app_limit_effective=5; healthz ok. CLAUDE.md left unstaged.
+- 2026-10-20 [backend] START+DONE: ${{ app.url }} env ref (https://<hostname>.<APP_DOMAIN>, always available); image cap 256->512 MB (config, docs, landing, UI fallback, tests); examples workflow builds Ghost with WITH_S3=1. NOTE: bootstrap.md still says 256MB; not edited (edit permission arrived only via agent message, not from Chas directly).
+- 2026-10-20 [scm-security] START: commit+push image cap 512MB, app.url ref, Ghost S3 example.

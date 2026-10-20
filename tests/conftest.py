@@ -24,7 +24,7 @@ from app.providers.fake import FakeRegistry
 
 DEFAULT_PASSWORD = "correct-horse-battery"
 
-# Comfortably under the 256MB cap, so existing tests that create apps with
+# Comfortably under the 512MB cap, so existing tests that create apps with
 # arbitrary image names don't need to know about the registry dependency.
 DEFAULT_FAKE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 

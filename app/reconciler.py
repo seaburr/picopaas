@@ -68,6 +68,11 @@ def _db_refs(app: models.App) -> dict[str, str]:
     }
 
 
+def _app_url(app: models.App) -> str:
+    """Public URL of the app (every app has a hostname): https://<hostname>.<APP_DOMAIN>."""
+    return f"https://{app.hostname}.{config.APP_DOMAIN}"
+
+
 def _storage_refs(app: models.App) -> dict[str, str]:
     """Build the `storage.*` ref values from an already-provisioned AppStorage."""
     row = app.storage
@@ -386,7 +391,7 @@ def reconcile_app(
         app.storage = storage_row
 
     # 3. Build refs, decrypt env vars, resolve.
-    refs: dict[str, str] = {}
+    refs: dict[str, str] = {"app.url": _app_url(app)}
     try:
         if app.want_db and app.database is not None:
             refs.update(_db_refs(app))
