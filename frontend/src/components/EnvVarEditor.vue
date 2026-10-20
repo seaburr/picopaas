@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Pencil, Trash2 } from 'lucide-vue-next'
+import IconButton from './IconButton.vue'
 import { computed, reactive, watch } from 'vue'
 import { envKeyError, REF_TIPS, refLabel, SUGGESTED_KEYS } from '../composables/envKeys'
 import { DB_REFS, MASKED_VALUE, STORAGE_REFS, type EnvVar } from '../types'
@@ -93,6 +95,7 @@ function insertRef(ref: string) {
   }
 }
 
+const envGrid = 'sm:grid sm:grid-cols-[14rem_minmax(0,1fr)_6rem] sm:items-center sm:gap-2'
 const groups = computed(() => [
   ...(props.wantDb ? [{ title: 'Database', refs: DB_REFS }] : []),
   ...(props.wantStorage ? [{ title: 'Storage', refs: STORAGE_REFS }] : []),
@@ -111,9 +114,10 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       No env vars yet.
     </p>
 
-    <div v-for="(row, i) in rows" :key="idFor(row)" class="rounded-md border border-pico-border bg-pico-card p-2">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
-        <div class="sm:w-56 sm:shrink-0">
+    <div v-if="rows.length" :class="[envGrid, 'table-th hidden px-2']"><span>Key</span><span>Value</span><span class="text-right">Secret</span></div>
+    <div v-for="(row, i) in rows" :key="idFor(row)" class="rounded-md border border-pico-border bg-pico-card p-1.5">
+      <div :class="['flex flex-col gap-1.5', envGrid]">
+        <div>
           <input
             :value="row.key"
             type="text"
@@ -123,16 +127,16 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             spellcheck="false"
             :aria-label="`Name of variable ${i + 1}`"
             :aria-invalid="!!keyMsg(row, i) || undefined"
-            class="input bg-pico-panel py-1.5 font-mono"
+            class="input mono bg-pico-panel"
             @input="onKeyInput(i, $event)"
             @focus="activeIndex = null"
           />
         </div>
 
         <div class="min-w-0 flex-1">
-          <div v-if="row.is_secret && !row.touched" class="flex gap-2">
-            <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input bg-pico-panel/50 py-1.5 font-mono" />
-            <button type="button" class="btn-secondary btn-sm shrink-0" :aria-label="`Change secret ${row.key}`" @click="startChangingSecret(i)">Change</button>
+          <div v-if="row.is_secret && !row.touched" class="flex gap-1">
+            <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input mono bg-pico-panel/50" />
+            <IconButton :icon="Pencil" :label="`Change secret ${row.key}`" @click="startChangingSecret(i)" />
           </div>
           <input
             v-else
@@ -142,17 +146,17 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             autocomplete="off"
             :aria-label="`Value for ${row.key || 'variable ' + (i + 1)}`"
             :aria-invalid="!!valueMsg(i) || undefined"
-            class="input bg-pico-panel py-1.5 font-mono"
+            class="input mono bg-pico-panel"
             @focus="activeIndex = i"
           />
         </div>
 
-        <div class="flex items-center justify-between gap-3 sm:justify-end">
+        <div class="flex items-center justify-between gap-2 sm:justify-end">
           <label class="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-300">
             <input type="checkbox" :checked="row.is_secret" class="check" @change="onToggleSecret(i)" />
             secret
           </label>
-          <button type="button" class="btn-danger btn-sm" :aria-label="`Remove ${row.key || 'variable ' + (i + 1)}`" @click="removeRow(i)">Remove</button>
+          <IconButton :icon="Trash2" :label="`Remove ${row.key || 'variable ' + (i + 1)}`" danger @click="removeRow(i)" />
         </div>
       </div>
       <p v-if="keyMsg(row, i)" class="field-error" role="alert">{{ keyMsg(row, i) }}</p>
@@ -160,7 +164,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       <p v-if="valueMsg(i)" class="field-error" role="alert">{{ valueMsg(i) }}</p>
     </div>
 
-    <button type="button" class="btn-secondary" @click="addRow()">+ Add env var</button>
+    <button type="button" class="btn-secondary btn-sm" @click="addRow()">+ Add env var</button>
 
     <div v-if="groups.length" class="rounded-md border border-pico-border bg-pico-card p-3">
       <p class="mb-2 text-xs text-zinc-300">
@@ -174,7 +178,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             :key="ref"
             type="button"
             :title="REF_TIPS[ref] ?? SUGGESTED_KEYS[ref]"
-            class="rounded border border-pico-border bg-pico-panel px-2 py-1 font-mono text-xs text-accent-light hover:border-accent"
+            class="rounded border border-pico-border bg-pico-panel px-1.5 py-0.5 mono text-accent-light hover:border-accent"
             @mousedown.prevent
             @click="insertRef(ref)"
           >
@@ -183,6 +187,6 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
         </div>
       </div>
     </div>
-    <p v-else class="help">Tick Database or Storage above to get <code class="font-mono">{{ refLabel('…') }}</code> references for their credentials.</p>
+    <p v-else class="help">Tick Database or Storage above to get <code class="mono">{{ refLabel('…') }}</code> references for their credentials.</p>
   </div>
 </template>

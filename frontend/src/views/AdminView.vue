@@ -14,7 +14,9 @@ import { ApiError } from '../api/client'
 import { useModal } from '../composables/useModal'
 import { useToastStore } from '../stores/toast'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
-import { copyText, fullDate, humanDate } from '../utils/format'
+import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
+import { Ban, Check, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -217,19 +219,20 @@ async function saveResources(body: ResourcesPatch) {
   }
 }
 const resSummary = (a: AdminApp) =>
-  a.resources ? `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m CPU, ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi` : ''
+  a.resources ? `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi` : ''
 
-const rowBase = 'flex flex-col gap-2 px-4 py-3 text-sm text-zinc-200 md:items-center md:gap-4'
-const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_7rem_11rem_auto]'
-const appsGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_7rem_10rem_auto]'
-const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_11rem_7rem]'
-const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md:items-start'
+const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
+// One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
+const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_7rem_3.5rem_6rem_6.5rem] md:items-center md:gap-3'
+const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
+const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_9rem_7rem] md:items-center md:gap-3'
+const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
 
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-3 px-4 py-4 sm:px-6">
       <h1 class="page-title">Admin</h1>
 
       <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
@@ -270,7 +273,7 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
           :aria-selected="tab === t.id"
           :aria-controls="`${uid}-panel`"
           :tabindex="tab === t.id ? 0 : -1"
-          class="-mb-px inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm"
+          class="-mb-px inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm"
           :class="tab === t.id ? 'border-accent-light font-medium text-white' : 'border-transparent text-zinc-300 hover:text-white'"
           @click="setTab(t.id)"
         >
@@ -280,7 +283,7 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
         </button>
       </div>
 
-      <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-4">
+      <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-3">
         <div v-if="tab !== 'servers'">
           <label :for="`${uid}-q`" class="sr-only">Search</label>
           <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
@@ -288,70 +291,74 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
 
         <!-- USERS -->
         <template v-if="tab === 'users'">
-          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="space-y-2">
+          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="space-y-1.5">
             <h2 class="section-title text-amber-300">Waiting for approval ({{ pendingUsers.length }})</h2>
             <ul class="card divide-y divide-pico-border border-amber-500/40">
-              <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:justify-between']">
+              <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:items-center md:justify-between md:gap-3']">
                 <div class="min-w-0">
-                  <div class="break-all font-medium text-white">{{ u.email }}</div>
+                  <div class="truncate font-medium text-white" :title="u.email">{{ u.email }}</div>
                   <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · gets {{ u.app_limit }} apps</div>
                 </div>
-                <div class="flex gap-2">
-                  <button type="button" class="btn-primary btn-sm" :disabled="approving === u.id" @click="approve(u)">{{ approving === u.id ? 'Approving…' : 'Approve' }}</button>
-                  <button type="button" class="btn-danger btn-sm" @click="askUser('reject', u)">Reject</button>
+                <div class="flex shrink-0 gap-1">
+                  <IconButton :icon="Check" :label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)" />
+                  <IconButton :icon="X" :label="`Reject ${u.email}`" danger @click="askUser('reject', u)" />
                 </div>
               </li>
             </ul>
           </section>
 
           <div class="card overflow-hidden">
-            <div :class="[usersGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
-              <span>User</span><span>Status</span><span>Apps / limit</span><span class="sr-only">Actions</span>
+            <div :class="[usersGrid, 'table-th row-pad hidden border-b border-pico-border']">
+              <span>User</span><span>Status</span><span class="text-right">Apps</span><span>Limit</span><span class="text-right">Actions</span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="u in otherUsers" :key="u.id" :class="[rowBase, usersGrid]">
                 <div class="min-w-0">
-                  <div class="break-all font-medium text-white">{{ u.email }} <span v-if="u.role === 'uberadmin'" class="badge-info ml-1">Admin</span></div>
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <span class="truncate font-medium text-white" :title="u.email">{{ u.email }}</span>
+                    <span v-if="u.role === 'uberadmin'" class="badge-info shrink-0">Admin</span>
+                  </div>
                   <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
                 </div>
                 <div><StatusBadge :status="u.status" /></div>
-                <form class="flex items-center gap-2" @submit.prevent="saveLimit(u)">
-                  <span class="meta shrink-0">{{ u.app_count }} apps · limit</span>
-                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :aria-label="`App limit for ${u.email}`" class="input w-16 px-2 py-1" />
-                  <button v-if="limits[u.id] !== u.app_limit" type="submit" class="btn-primary btn-sm">Save</button>
-                  <span v-else-if="saved[u.id]" class="text-xs text-emerald-300" role="status">&#10003; Saved</span>
+                <div class="mono md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}</div>
+                <form class="flex h-7 items-center gap-1" @submit.prevent="saveLimit(u)">
+                  <span class="meta md:hidden">Limit</span>
+                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :aria-label="`App limit for ${u.email}`" class="input mono !min-h-[28px] w-14 !px-2 !py-0.5" />
+                  <button v-if="limits[u.id] !== u.app_limit" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
+                  <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
                 </form>
-                <div class="flex flex-wrap gap-1.5 md:justify-end">
+                <div class="flex gap-0.5 md:justify-end">
                   <template v-if="u.role !== 'uberadmin'">
-                    <button v-if="u.status === 'suspended'" type="button" class="btn-secondary btn-sm" @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')">Unsuspend</button>
-                    <button v-if="u.status === 'active'" type="button" class="btn-secondary btn-sm" @click="askUser('suspend', u)">Suspend</button>
-                    <button type="button" class="btn-secondary btn-sm" @click="askUser('reset', u)">Reset password</button>
-                    <button type="button" class="btn-danger btn-sm" @click="askUser('delete', u)">Delete</button>
+                    <IconButton v-if="u.status === 'suspended'" :icon="Play" :label="`Unsuspend ${u.email}`" sm @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')" />
+                    <IconButton v-if="u.status === 'active'" :icon="Ban" :label="`Suspend ${u.email}`" sm @click="askUser('suspend', u)" />
+                    <IconButton :icon="KeyRound" :label="`Reset password for ${u.email}`" sm @click="askUser('reset', u)" />
+                    <IconButton :icon="Trash2" :label="`Delete ${u.email}`" sm danger @click="askUser('delete', u)" />
                   </template>
                 </div>
               </li>
-              <li v-if="loaded && otherUsers.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">{{ q ? 'No users match your search.' : 'No other users yet.' }}</li>
+              <li v-if="loaded && otherUsers.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">{{ q ? 'No users match your search.' : 'No other users yet.' }}</li>
             </ul>
           </div>
         </template>
 
         <!-- APPS -->
         <div v-else-if="tab === 'apps'" class="card overflow-hidden">
-          <div :class="[appsGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
-            <span>App</span><span>Owner</span><span>Status</span><span>Resources</span><span class="sr-only">Actions</span>
+          <div :class="[appsGrid, 'table-th row-pad hidden border-b border-pico-border']">
+            <span>App</span><span>Owner</span><span>Status</span><span>Resources</span><span class="text-right">Actions</span>
           </div>
           <ul class="divide-y divide-pico-border">
             <li v-for="a in filteredApps" :key="a.id" :class="[rowBase, appsGrid]">
               <div class="min-w-0">
-                <div class="font-medium text-white">{{ a.name }}</div>
-                <div class="break-all font-mono text-xs text-zinc-400">{{ a.hostname }}</div>
+                <div class="truncate font-medium text-white" :title="a.name">{{ a.name }}</div>
+                <div class="mono truncate text-zinc-400" :title="a.hostname">{{ a.hostname }}</div>
               </div>
-              <div class="break-all text-zinc-300"><span class="meta md:hidden">Owner: </span>{{ a.owner_email }}</div>
+              <div class="mono truncate text-zinc-300" :title="a.owner_email"><span class="meta lg:hidden">Owner: </span>{{ a.owner_email }}</div>
               <div><StatusBadge :status="a.status" /></div>
-              <div class="text-xs">
+              <div>
                 <template v-if="a.resources">
-                  <div>{{ resSummary(a) }}</div>
-                  <div class="mt-0.5 flex gap-2">
+                  <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>
+                  <div class="mono flex gap-2">
                     <span v-if="a.resources.overridden" class="text-accent-light">overridden</span>
                     <span v-else class="text-zinc-400">default</span>
                     <span v-if="a.resources.exceeds_platform_caps" class="text-amber-300">exceeds caps</span>
@@ -359,14 +366,14 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
                 </template>
                 <span v-else class="text-zinc-400">-</span>
               </div>
-              <div class="flex flex-wrap gap-1.5 md:justify-end">
-                <button type="button" class="btn-secondary btn-sm" @click="resError = ''; resApp = a">Edit resources</button>
-                <button v-if="a.status === 'suspended'" type="button" class="btn-secondary btn-sm" @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')">Unsuspend</button>
-                <button v-else type="button" class="btn-secondary btn-sm" @click="askApp('suspend', a)">Suspend</button>
-                <button type="button" class="btn-danger btn-sm" @click="askApp('delete', a)">Delete</button>
+              <div class="flex gap-0.5 lg:justify-end">
+                <IconButton :icon="SlidersHorizontal" :label="`Edit resources for ${a.name}`" sm @click="resError = ''; resApp = a" />
+                <IconButton v-if="a.status === 'suspended'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
+                <IconButton v-else :icon="Ban" :label="`Suspend ${a.name}`" sm @click="askApp('suspend', a)" />
+                <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askApp('delete', a)" />
               </div>
             </li>
-            <li v-if="loaded && filteredApps.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</li>
+            <li v-if="loaded && filteredApps.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</li>
           </ul>
         </div>
 
@@ -374,45 +381,45 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
         <template v-else-if="tab === 'servers'">
           <div class="flex items-center justify-between gap-2">
             <p class="text-sm text-zinc-300">MySQL servers that app databases are placed on.</p>
-            <button type="button" class="btn-primary btn-sm shrink-0" @click="openAdd">+ Add server</button>
+            <button type="button" class="btn-primary btn-sm shrink-0" @click="openAdd">Add server</button>
           </div>
           <div class="card overflow-hidden">
-            <div :class="[serversGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
+            <div :class="[serversGrid, 'table-th row-pad hidden border-b border-pico-border']">
               <span>Name</span><span>Host</span><span>Capacity</span><span>Status</span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="s in servers" :key="s.id" :class="[rowBase, serversGrid]">
-                <div class="font-medium text-white">{{ s.name }}</div>
-                <div class="break-all font-mono text-xs text-zinc-300">{{ s.host }}:{{ s.port }}</div>
+                <div class="truncate font-medium text-white" :title="s.name">{{ s.name }}</div>
+                <div class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</div>
                 <DbCapacityBar :server="s" />
-                <select :value="s.status" :aria-label="`Status of ${s.name}`" class="input w-28 px-2 py-1" @change="patch(s, { status: ($event.target as HTMLSelectElement).value })">
+                <select :value="s.status" :aria-label="`Status of ${s.name}`" class="input !min-h-[28px] w-28 !px-2 !py-0.5" @change="patch(s, { status: ($event.target as HTMLSelectElement).value })">
                   <option>active</option>
                   <option>draining</option>
                   <option>full</option>
                 </select>
               </li>
-              <li v-if="loaded && servers.length === 0" class="px-4 py-8 text-center">
+              <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
                 <p class="text-sm text-zinc-300">No DB servers yet. Users can't create apps with a database until you add one.</p>
-                <button type="button" class="btn-primary mt-3" @click="openAdd">+ Add server</button>
+                <button type="button" class="btn-primary mt-3" @click="openAdd">Add server</button>
               </li>
             </ul>
           </div>
         </template>
 
         <!-- AUDIT -->
-        <div v-else class="card max-h-[32rem] overflow-auto">
-          <div :class="[auditGrid, 'table-th sticky top-0 hidden border-b border-pico-border bg-pico-panel px-4 py-2 md:gap-4']">
+        <div v-else class="card max-h-[34rem] overflow-auto">
+          <div :class="[auditGrid, 'table-th row-pad sticky top-0 hidden border-b border-pico-border bg-pico-panel']">
             <span>When</span><span>Actor</span><span>Action</span><span>Target</span><span>Detail</span>
           </div>
-          <ul class="divide-y divide-pico-border text-xs">
+          <ul class="divide-y divide-pico-border">
             <li v-for="a in filteredAudit" :key="a.id" :class="[rowBase, auditGrid, 'text-zinc-200']">
-              <span class="whitespace-nowrap text-zinc-300" :title="fullDate(a.at)">{{ humanDate(a.at) }}</span>
-              <span class="break-all">{{ a.actor_email ?? '-' }}</span>
-              <span class="font-mono">{{ a.action }}</span>
-              <span>{{ a.target_type }} {{ a.target_id }}</span>
-              <span class="break-words text-zinc-300">{{ a.detail }}</span>
+              <span class="mono text-zinc-300" :title="stampTitle(a.at)">{{ stamp(a.at) }}</span>
+              <span class="mono truncate" :title="a.actor_email ?? undefined">{{ a.actor_email ?? '-' }}</span>
+              <span class="mono truncate" :title="a.action">{{ a.action }}</span>
+              <span class="mono truncate" :title="`${a.target_type ?? ''} ${a.target_id ?? ''}`">{{ a.target_type }} {{ a.target_id }}</span>
+              <span class="break-words text-xs leading-4 text-zinc-300">{{ a.detail }}</span>
             </li>
-            <li v-if="loaded && filteredAudit.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">No entries.</li>
+            <li v-if="loaded && filteredAudit.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">No entries.</li>
           </ul>
         </div>
       </div>
@@ -426,7 +433,7 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
       @cancel="addModal.onNativeCancel"
       @click="addModal.onBackdrop"
     >
-      <form v-if="addOpen" class="space-y-4 p-5" @submit.prevent="addServer">
+      <form v-if="addOpen" class="space-y-3 p-4" @submit.prevent="addServer">
         <h2 :id="`${uid}-add-title`" class="section-title">Add DB server</h2>
         <div>
           <label :for="`${uid}-n`" class="label">Name</label>
@@ -435,13 +442,13 @@ const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md
         </div>
         <div>
           <label :for="`${uid}-h`" class="label">Host</label>
-          <input :id="`${uid}-h`" v-model="form.host" required placeholder="private-xxxx.db.ondigitalocean.com" class="input font-mono" />
+          <input :id="`${uid}-h`" v-model="form.host" required placeholder="private-xxxx.db.ondigitalocean.com" class="input mono" />
           <p class="help">Hostname the platform connects to. For DO managed MySQL use the private host.</p>
         </div>
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label :for="`${uid}-p`" class="label">Port</label>
-            <input :id="`${uid}-p`" v-model.number="form.port" required type="text" inputmode="numeric" pattern="[0-9]{1,5}" placeholder="25060" class="input" />
+            <input :id="`${uid}-p`" v-model.number="form.port" required type="text" inputmode="numeric" pattern="[0-9]{1,5}" placeholder="25060" class="input mono" />
             <p class="help">25060 for DO managed, 3306 in-cluster.</p>
           </div>
           <div>

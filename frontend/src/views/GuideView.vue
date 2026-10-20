@@ -47,7 +47,7 @@ const rendered = computed(() => {
         const cell = (c: { tokens: never[] }) => this.parser.parseInline(c.tokens)
         const head = token.header.map((c) => `<th>${cell(c as never)}</th>`).join('')
         const rows = token.rows.map((r) => `<tr>${r.map((c) => `<td>${cell(c as never)}</td>`).join('')}</tr>`).join('')
-        return `<div class="tbl"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
+        return `<div class="tbl-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`
       },
       link({ href, tokens }) {
         const [file, hash] = href.split('#')
@@ -175,12 +175,12 @@ function onClick(e: MouseEvent) {
 .doc .code pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: 13px; }
 .doc .copy-btn { position: absolute; top: 6px; right: 6px; font-size: 11px; color: #a1a1aa; background: #1c1c28; border: 1px solid #2c2c3c; border-radius: 4px; padding: 1px 8px; }
 .doc .copy-btn:hover { color: #fff; }
-.doc .tbl { overflow-x: auto; margin: .8rem 0; }
+.doc .tbl-wrap { overflow-x: auto; margin: .8rem 0; }
 .doc table { border-collapse: collapse; font-size: 14px; width: 100%; background: #16161f; border: 1px solid #2c2c3c; }
-.doc th, .doc td { padding: 6px 12px; border: 1px solid #2c2c3c; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: normal; }
+.doc th, .doc td { padding: 5px 10px; border: 1px solid #2c2c3c; text-align: left; vertical-align: middle; overflow-wrap: normal; word-break: normal; }
 .doc th { white-space: nowrap; }
-.doc td code { overflow-wrap: normal; white-space: nowrap; }
-.doc .tbl { overflow-x: auto; }
+.doc td code { overflow-wrap: normal; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.doc .tbl-wrap { overflow-x: auto; }
 .doc th { background: #1c1c28; color: #fff; }
 .doc blockquote { border-left: 3px solid #2c2c3c; padding-left: 1rem; color: #a1a1aa; margin: .8rem 0; }
 </style>

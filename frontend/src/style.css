@@ -43,11 +43,11 @@
  */
 @layer components {
   .btn {
-    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition-colors;
+    @apply inline-flex min-h-[32px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium transition-colors;
     @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
   }
   .btn-sm {
-    @apply min-h-[32px] px-2.5 py-1 text-xs;
+    @apply min-h-[28px] px-2 py-0.5 text-xs;
   }
   .btn-block {
     @apply w-full;
@@ -76,14 +76,14 @@
   }
 
   .input {
-    @apply block w-full rounded-md border border-zinc-500 bg-pico-card px-3 py-2 text-sm text-white placeholder-zinc-500;
+    @apply block min-h-[32px] w-full rounded-md border border-zinc-500 bg-pico-card px-2.5 py-1 text-sm text-white placeholder-zinc-500;
     @apply focus-visible:border-accent-light disabled:cursor-not-allowed disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500;
   }
   .input[aria-invalid='true'] {
     @apply border-danger-light;
   }
   .label {
-    @apply mb-1 block text-sm font-medium text-zinc-200;
+    @apply mb-1 block text-xs font-medium text-zinc-200;
   }
   .help {
     @apply mt-1 text-xs text-zinc-400;
@@ -99,7 +99,7 @@
     @apply rounded-lg border border-pico-border bg-pico-panel;
   }
   .card-pad {
-    @apply p-4 sm:p-5;
+    @apply p-3 sm:p-4;
   }
   .alert-error,
   .alert-warn,
@@ -140,17 +140,17 @@
   }
 
   .nav-link {
-    @apply inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md px-2.5 py-2 text-sm text-zinc-300 hover:bg-pico-card hover:text-white;
+    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-300 hover:bg-pico-card hover:text-white;
   }
   .nav-link.nav-active {
     @apply bg-pico-card font-medium text-white;
   }
 
   .page-title {
-    @apply text-xl font-semibold text-white;
+    @apply text-lg font-semibold text-white;
   }
   .section-title {
-    @apply text-base font-semibold text-white;
+    @apply text-sm font-semibold text-white;
   }
   .meta {
     @apply text-xs text-zinc-400;
@@ -159,6 +159,47 @@
     @apply text-accent-light underline-offset-2 hover:underline;
   }
   .table-th {
-    @apply text-left text-xs font-medium uppercase tracking-wide text-zinc-400;
+    @apply text-left text-[11px] font-medium uppercase tracking-wide text-zinc-400;
+  }
+  /* Technical data (hostnames, images, ports, ids, keys, timestamps, resources). Same look as the audit table. */
+  .mono {
+    @apply font-mono text-xs tabular-nums;
+  }
+
+  /* Icon buttons: square hit area, quiet until hovered. Danger turns red on hover/focus only. */
+  .btn-icon {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-zinc-400 transition-colors hover:bg-pico-card hover:text-white;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400 aria-disabled:cursor-not-allowed aria-disabled:opacity-40;
+  }
+  .btn-icon-sm {
+    @apply h-7 w-7;
+  }
+  .btn-icon-danger {
+    @apply hover:bg-danger/10 hover:text-danger-light focus-visible:text-danger-light;
+  }
+
+  /*
+   * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. th/td share padding; right-align numeric
+   * and action columns with .text-right on BOTH th and td. Technical values: add .truncate + title on the td.
+   */
+  .tbl {
+    @apply w-full table-fixed border-collapse text-sm;
+  }
+  .tbl th {
+    @apply table-th px-3 py-2 align-middle;
+  }
+  .tbl td {
+    @apply px-3 py-1.5 align-middle;
+  }
+  .tbl th.text-right,
+  .tbl td.text-right {
+    text-align: right;
+  }
+  .tbl tbody tr {
+    @apply border-t border-pico-border;
+  }
+  /* Grid-row lists (stacked below md): header and rows use the same fixed template via the *-cols classes. */
+  .row-pad {
+    @apply px-3 py-2;
   }
 }

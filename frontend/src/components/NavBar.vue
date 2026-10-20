@@ -75,17 +75,17 @@ function skip(e: Event) {
           <span class="xl:hidden">Account</span><span class="hidden truncate xl:inline">{{ auth.user.email }}</span>
         </RouterLink>
         <a href="/privacy" class="nav-link hidden lg:inline-flex">Privacy</a>
-        <button v-if="auth.user" type="button" class="btn-secondary btn-sm min-h-[36px]" @click="onLogout">Log out</button>
+        <button v-if="auth.user" type="button" class="btn-secondary btn-sm" @click="onLogout">Log out</button>
         <template v-else>
-          <RouterLink to="/login" class="btn-secondary btn-sm min-h-[36px]">Log in</RouterLink>
-          <RouterLink to="/register" class="btn-primary btn-sm min-h-[36px]">Request access</RouterLink>
+          <RouterLink to="/login" class="btn-secondary btn-sm">Log in</RouterLink>
+          <RouterLink to="/register" class="btn-primary btn-sm">Request access</RouterLink>
         </template>
       </div>
 
       <button
         ref="menuBtn"
         type="button"
-        class="btn-secondary btn-sm min-h-[40px] sm:hidden"
+        class="btn-secondary btn-sm sm:hidden"
         :aria-expanded="menuOpen"
         aria-controls="mobile-menu"
         @click="menuOpen = !menuOpen"

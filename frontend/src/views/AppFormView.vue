@@ -179,7 +179,7 @@ async function onSubmit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-4">
       <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
@@ -190,7 +190,7 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
-      <div class="mb-4">
+      <div class="mb-3">
         <div class="flex flex-wrap items-center gap-2">
           <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Edit app') : 'New app' }}</h1>
           <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
@@ -206,7 +206,7 @@ async function onSubmit() {
           type="button"
           role="tab"
           :aria-selected="tab === t"
-          :class="['-mb-px border-b-2 px-3 py-2 text-sm', tab === t ? 'border-accent-light text-white' : 'border-transparent text-zinc-400 hover:text-white']"
+          :class="['-mb-px border-b-2 px-3 py-1.5 text-sm', tab === t ? 'border-accent-light text-white' : 'border-transparent text-zinc-400 hover:text-white']"
           @click="tab = t"
         >
           {{ t === 'form' ? 'Form' : 'YAML (advanced)' }}
@@ -222,9 +222,9 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link ml-1">Back to apps</RouterLink>
       </div>
 
-      <form v-else class="card card-pad space-y-5" novalidate @submit.prevent="onSubmit">
+      <form v-else class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
-        <fieldset :disabled="suspended" class="space-y-5">
+        <fieldset :disabled="suspended" class="space-y-4">
           <div>
             <label for="f-name" class="label">Name</label>
             <input
@@ -256,17 +256,17 @@ async function onSubmit() {
               autocapitalize="off"
               aria-describedby="f-image-help"
               :aria-invalid="!!imageError || undefined"
-              class="input font-mono"
+              class="input mono"
               @input="onField('image')"
             />
             <p v-if="imageError" class="field-error" role="alert">{{ imageError }}</p>
-            <p id="f-image-help" class="help">A public image, e.g. <code class="font-mono">ghcr.io/me/app:1.2</code>. Pin a tag rather than <code class="font-mono">latest</code>.</p>
+            <p id="f-image-help" class="help">A public image, e.g. <code class="mono">ghcr.io/me/app:1.2</code>. Pin a tag rather than <code class="mono">latest</code>.</p>
             <details class="mt-2 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm">
               <summary class="cursor-pointer text-zinc-200">Image requirements</summary>
               <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-300">
                 <li>Public: anonymous pulls must work (Docker Hub, GHCR, etc.).</li>
-                <li>Must not run as root. Set a non-root <code class="font-mono">USER</code> in the Dockerfile.</li>
-                <li>A named USER (e.g. <code class="font-mono">USER app</code>) runs as UID 10001, so files it owns may not be writable. A numeric <code class="font-mono">USER 10001</code> avoids that.</li>
+                <li>Must not run as root. Set a non-root <code class="mono">USER</code> in the Dockerfile.</li>
+                <li>A named USER (e.g. <code class="mono">USER app</code>) runs as UID 10001, so files it owns may not be writable. A numeric <code class="mono">USER 10001</code> avoids that.</li>
                 <li>Up to {{ imageMb }} MB compressed.</li>
               </ul>
             </details>
@@ -283,7 +283,7 @@ async function onSubmit() {
               max="65535"
               aria-describedby="f-port-help"
               :aria-invalid="!!fieldErrors.port || undefined"
-              class="input !w-32"
+              class="input mono !w-32"
               @input="onField('port')"
             />
             <p v-if="fieldErrors.port" class="field-error" role="alert">{{ fieldErrors.port }}</p>
@@ -340,7 +340,7 @@ async function onSubmit() {
                   :disabled="!form.health_check_enabled"
                   aria-describedby="hc-path-help"
                   :aria-invalid="!!pathError || undefined"
-                  class="input !w-64 font-mono"
+                  class="input mono !w-64"
                 />
                 <p v-if="pathError" class="field-error" role="alert">{{ pathError }}</p>
                 <p id="hc-path-help" class="help">Must start with /. Default /healthz.</p>
@@ -354,7 +354,7 @@ async function onSubmit() {
         </div>
 
         <p class="meta sm:hidden">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
-        <div class="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:-mb-5 sm:px-5">
+        <div class="sticky bottom-0 -mx-3 -mb-3 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-3 py-2 backdrop-blur sm:-mx-4 sm:-mb-4 sm:px-4">
           <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
           <div class="flex w-full gap-2 sm:w-auto">
             <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>

@@ -43,7 +43,7 @@ function submit() {
     @cancel="m.onNativeCancel"
     @click="m.onBackdrop"
   >
-    <form class="p-5" @submit.prevent="submit">
+    <form class="p-4" @submit.prevent="submit">
       <h2 :id="titleId" class="section-title">{{ title }}</h2>
       <p :id="msgId" class="mt-2 text-sm text-zinc-300">{{ message }}</p>
       <slot />

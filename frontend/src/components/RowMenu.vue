@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { MoreHorizontal } from 'lucide-vue-next'
 
 defineProps<{ label: string }>()
 const open = ref(false)
@@ -30,15 +31,14 @@ onBeforeUnmount(() => {
   <div ref="root" class="relative">
     <button
       type="button"
-      class="btn-ghost h-10 w-10 !min-h-0 !p-0"
+      class="btn-icon"
       aria-haspopup="menu"
       :aria-expanded="open"
       :aria-label="label"
+      :title="label"
       @click="open = !open"
     >
-      <svg class="h-5 w-5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-        <circle cx="3" cy="8" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="13" cy="8" r="1.4" />
-      </svg>
+      <MoreHorizontal :size="16" aria-hidden="true" />
     </button>
     <div
       v-if="open"

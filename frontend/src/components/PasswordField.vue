@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, useId } from 'vue'
+import { Eye, EyeOff } from 'lucide-vue-next'
 
 // Labelled password input with a show/hide toggle and an optional persistent helper line.
 withDefaults(
@@ -32,17 +33,19 @@ const shown = ref(false)
         :autocomplete="autocomplete"
         :aria-invalid="invalid ? 'true' : undefined"
         :aria-describedby="help ? `${id}-help` : undefined"
-        class="input pr-16"
+        class="input pr-9"
         @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
       <button
         type="button"
-        class="absolute inset-y-0 right-0 rounded-r-md px-3 text-xs font-medium text-zinc-300 hover:text-white"
+        class="btn-icon btn-icon-sm absolute right-0.5 top-0.5"
         :aria-pressed="shown"
         :aria-label="shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`"
+        :title="shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`"
         @click="shown = !shown"
       >
-        {{ shown ? 'Hide' : 'Show' }}
+        <EyeOff v-if="shown" :size="16" aria-hidden="true" />
+        <Eye v-else :size="16" aria-hidden="true" />
       </button>
     </div>
     <p v-if="help" :id="`${id}-help`" class="help">{{ help }}</p>

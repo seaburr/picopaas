@@ -3,12 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import NavBar from '../components/NavBar.vue'
-import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { useApiKeysStore } from '../stores/apiKeys'
 import { useToastStore } from '../stores/toast'
 import type { ApiKey } from '../types'
-import { copyText, fullDate, humanDate } from '../utils/format'
+import { Ban, Copy } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
+import { copyText, stamp, stampTitle } from '../utils/format'
 
 const store = useApiKeysStore()
 const toast = useToastStore()
@@ -107,36 +108,39 @@ async function confirmRevoke() {
     pendingRevoke.value = null
   }
 }
+
+// Header and rows share one fixed template (md+); stacked below md.
+const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
 </script>
 
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-4 sm:px-6">
       <h1 class="page-title">API keys</h1>
       <p class="mt-1 max-w-2xl text-sm text-zinc-300">
         API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for
         you (<RouterLink to="/guide/api" class="link">API reference</RouterLink>). Set
-        <code class="font-mono text-xs">PICOPAAS_TOKEN</code> to a key and run
-        <code class="font-mono text-xs">picopaas apply -f app.yaml</code>. A key has the same access as your account.
+        <code class="mono">PICOPAAS_TOKEN</code> to a key and run
+        <code class="mono">picopaas apply -f app.yaml</code>. A key has the same access as your account.
       </p>
 
-      <form class="mt-5 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
+      <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
         <div class="sm:w-72">
           <label :for="nameId" class="label">Name <span class="font-normal text-zinc-400">(optional)</span></label>
           <input :id="nameId" v-model="newName" maxlength="60" placeholder="e.g. github-actions" class="input" autocomplete="off" />
         </div>
-        <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create API key' }}</button>
+        <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create key' }}</button>
       </form>
 
-      <section v-if="justCreatedKey" class="alert-info mt-5 p-4" aria-label="New API key">
+      <section v-if="justCreatedKey" class="alert-info mt-3 p-3" aria-label="New API key">
         <p class="text-sm font-medium text-white">Copy your new key now. For security we can't show it again.</p>
         <div class="mt-2 flex items-stretch gap-2">
-          <code class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-card px-3 py-2 text-sm text-accent-light">{{ justCreatedKey }}</code>
-          <button type="button" class="btn-primary shrink-0" @click="copy(justCreatedKey, true)">{{ copied ? 'Copied' : 'Copy' }}</button>
+          <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-card px-3 py-1.5 text-accent-light">{{ justCreatedKey }}</code>
+          <IconButton :icon="Copy" :label="copied ? 'Copied' : 'Copy key'" @click="copy(justCreatedKey, true)" />
         </div>
-        <div class="mt-4" role="tablist" aria-label="Usage snippets">
+        <div class="mt-3" role="tablist" aria-label="Usage snippets">
           <button
             v-for="t in tabs"
             :key="t.id"
@@ -149,53 +153,54 @@ async function confirmRevoke() {
           >{{ t.label }}</button>
         </div>
         <div class="relative" role="tabpanel">
-          <pre class="whitespace-pre-wrap break-all rounded-b bg-pico-card px-3 py-3 pr-16 text-xs text-zinc-200"><code>{{ snippets }}</code></pre>
-          <button type="button" class="btn-secondary btn-sm absolute right-2 top-2" @click="copy(snippets)">Copy</button>
+          <pre class="mono whitespace-pre-wrap break-all rounded-b bg-pico-card px-3 py-2 pr-12 text-zinc-200"><code>{{ snippets }}</code></pre>
+          <IconButton :icon="Copy" label="Copy snippet" sm class="absolute right-2 top-2" @click="copy(snippets)" />
         </div>
         <button type="button" class="link mt-3 text-xs" @click="dismissCreated">I've saved it, dismiss</button>
       </section>
 
       <div v-if="error" class="alert-error mt-5" role="alert">{{ error }}</div>
 
-      <div v-if="loading" class="mt-6 text-sm text-zinc-400">Loading…</div>
+      <div v-if="loading" class="mt-4 text-sm text-zinc-400">Loading…</div>
 
-      <div v-else-if="store.keys.length === 0" class="card mt-6 p-8 text-center">
+      <div v-else-if="store.keys.length === 0" class="card mt-4 p-6 text-center">
         <h2 class="section-title">No API keys yet</h2>
         <p class="mx-auto mt-1 max-w-sm text-sm text-zinc-300">Create one to deploy from the CLI or CI. Keys are shown once, so copy it when it appears.</p>
       </div>
 
       <template v-else>
-        <h2 class="section-title mt-8">Active keys <span class="meta font-normal">({{ active.length }})</span></h2>
+        <h2 class="section-title mt-5">Active keys <span class="meta font-normal">({{ active.length }})</span></h2>
         <p v-if="active.length === 0" class="mt-2 text-sm text-zinc-400">No active keys.</p>
-        <ul v-else class="mt-2 space-y-2">
-          <li v-for="key in active" :key="key.id" class="card flex flex-wrap items-center justify-between gap-3 p-4">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <span v-if="key.name" class="font-medium text-white">{{ key.name }}</span>
-                <code class="font-mono text-sm" :class="key.name ? 'text-zinc-300' : 'text-white'">{{ key.prefix }}…</code>
-                <StatusBadge status="active" />
-              </div>
-              <p class="meta mt-1">
-                <span :title="fullDate(key.created_at)">Created {{ humanDate(key.created_at) }}</span>
-                <template v-if="key.last_used_at"> · <span :title="fullDate(key.last_used_at)">Last used {{ humanDate(key.last_used_at) }}</span></template>
-              </p>
-            </div>
-            <button type="button" class="btn-danger btn-sm" @click="pendingRevoke = key">Revoke</button>
-          </li>
-        </ul>
-
-        <template v-if="revoked.length">
-          <button type="button" class="link mt-6 text-sm" :aria-expanded="showRevoked" @click="showRevoked = !showRevoked">
-            {{ showRevoked ? 'Hide' : 'Show' }} {{ revoked.length }} revoked {{ revoked.length === 1 ? 'key' : 'keys' }}
-          </button>
-          <ul v-if="showRevoked" class="mt-2 space-y-2">
-            <li v-for="key in revoked" :key="key.id" class="card flex flex-wrap items-center gap-2 p-3 text-zinc-300">
-              <span v-if="key.name">{{ key.name }}</span>
-              <code class="font-mono text-sm">{{ key.prefix }}…</code>
-              <StatusBadge status="revoked" />
-              <span class="meta" :title="fullDate(key.revoked_at!)">Revoked {{ humanDate(key.revoked_at!) }}</span>
+        <div v-else class="card mt-2 overflow-hidden">
+          <div :class="[keyGrid, 'table-th row-pad hidden border-b border-pico-border md:grid']">
+            <span>Name</span><span>Key</span><span>Created</span><span>Last used</span><span class="sr-only">Actions</span>
+          </div>
+          <ul class="divide-y divide-pico-border">
+            <li v-for="key in active" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
+              <span class="truncate font-medium text-white" :title="key.name || undefined"><span v-if="key.name">{{ key.name }}</span><span v-else class="text-zinc-400">(unnamed)</span></span>
+              <code class="mono truncate text-zinc-200" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
+              <span class="mono text-zinc-300" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
+              <span class="mono text-zinc-300" :title="key.last_used_at ? stampTitle(key.last_used_at) : undefined"><span class="meta md:hidden">Last used </span>{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</span>
+              <span class="flex justify-end"><IconButton :icon="Ban" label="Revoke key" danger @click="pendingRevoke = key" /></span>
             </li>
           </ul>
+        </div>
+
+        <template v-if="revoked.length">
+          <button type="button" class="link mt-4 text-sm" :aria-expanded="showRevoked" @click="showRevoked = !showRevoked">
+            {{ showRevoked ? 'Hide' : 'Show' }} {{ revoked.length }} revoked {{ revoked.length === 1 ? 'key' : 'keys' }}
+          </button>
+          <div v-if="showRevoked" class="card mt-2 overflow-hidden text-zinc-400">
+            <ul class="divide-y divide-pico-border">
+              <li v-for="key in revoked" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
+                <span class="truncate" :title="key.name || undefined">{{ key.name || '(unnamed)' }}</span>
+                <code class="mono truncate" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
+                <span class="mono" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
+                <span class="mono" :title="stampTitle(key.revoked_at!)">Revoked {{ stamp(key.revoked_at!) }}</span>
+                <span />
+              </li>
+            </ul>
+          </div>
         </template>
       </template>
     </main>

@@ -39,25 +39,25 @@ async function onSubmit() {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-2xl space-y-6 px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-2xl space-y-3 px-4 py-4 sm:px-6">
       <h1 class="page-title">Account</h1>
 
       <section class="card card-pad" aria-label="Profile">
         <dl class="grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
           <dt class="text-zinc-400">Email</dt>
-          <dd class="break-all text-white">{{ auth.user?.email }}</dd>
+          <dd class="truncate text-white" :title="auth.user?.email">{{ auth.user?.email }}</dd>
           <dt class="text-zinc-400">Role</dt>
           <dd class="text-white">{{ auth.user?.role === 'uberadmin' ? 'Administrator' : 'User' }}</dd>
           <dt class="text-zinc-400">App limit</dt>
-          <dd class="text-white">{{ auth.user?.app_limit }}</dd>
+          <dd class="mono text-white">{{ auth.user?.app_limit }}</dd>
           <dt class="text-zinc-400">Joined</dt>
-          <dd class="text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
+          <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
         </dl>
       </section>
 
       <section class="card card-pad" aria-labelledby="pw-title">
         <h2 id="pw-title" class="section-title">Change password</h2>
-        <form class="mt-4 max-w-sm space-y-4" @submit.prevent="onSubmit">
+        <form class="mt-3 max-w-sm space-y-3" @submit.prevent="onSubmit">
           <PasswordField v-model="form.current" label="Current password" autocomplete="current-password" />
           <PasswordField v-model="form.next" label="New password" autocomplete="new-password" :minlength="8" help="At least 8 characters." />
           <div>

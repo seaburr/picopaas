@@ -60,7 +60,7 @@ function reset() {
     @cancel="m.onNativeCancel"
     @click="m.onBackdrop"
   >
-    <form v-if="app" class="p-5" @submit.prevent="save">
+    <form v-if="app" class="p-4" @submit.prevent="save">
       <h2 :id="`${uid}-title`" class="section-title">Resources: {{ app.name }}</h2>
       <p class="help">Leave a field empty to use the default (shown as placeholder).</p>
       <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">

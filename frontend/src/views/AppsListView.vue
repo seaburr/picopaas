@@ -5,7 +5,8 @@ import AppStatusNote from '../components/AppStatusNote.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
-import RowMenu from '../components/RowMenu.vue'
+import IconButton from '../components/IconButton.vue'
+import { Pencil, RotateCw, ScrollText, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { SAMPLE_APP } from '../composables/appUi'
@@ -112,16 +113,16 @@ function meta(app: App) {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-baseline gap-3">
           <h1 class="page-title">Apps</h1>
           <span v-if="!loading && limit" class="meta" :title="`You can have up to ${limit} apps`">{{ store.apps.length }} / {{ limit }}</span>
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
-          <button v-if="atLimit" type="button" class="btn-primary" disabled>+ New app</button>
-          <RouterLink v-else to="/apps/new" class="btn-primary">+ New app</RouterLink>
+          <button v-if="atLimit" type="button" class="btn-primary" disabled>New app</button>
+          <RouterLink v-else to="/apps/new" class="btn-primary">New app</RouterLink>
         </div>
       </div>
 
@@ -155,37 +156,30 @@ function meta(app: App) {
 
       <ul v-else-if="store.apps.length" class="space-y-2">
         <li v-for="app in store.apps" :key="app.id" class="card card-pad">
-          <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <RouterLink :to="`/apps/${app.id}`" class="break-all font-medium text-white hover:underline">{{ app.name }}</RouterLink>
+              <div class="flex min-w-0 items-center gap-2">
+                <RouterLink :to="`/apps/${app.id}`" class="truncate font-medium text-white hover:underline" :title="app.name">{{ app.name }}</RouterLink>
                 <StatusBadge :status="app.status" />
               </div>
-              <div class="mt-1"><HostLink :hostname="app.hostname" /></div>
-              <p class="meta mt-1 break-all">
+              <div class="mt-0.5"><HostLink :hostname="app.hostname" /></div>
+              <p class="meta mono truncate" :title="meta(app).join(' · ')">
                 <template v-for="(b, i) in meta(app)" :key="i"><span v-if="i" aria-hidden="true"> · </span>{{ b }}</template>
               </p>
             </div>
-            <div class="flex shrink-0 items-center gap-1">
-              <span
-                v-if="app.status === 'suspended'"
-                class="btn-secondary btn-sm hidden sm:inline-flex"
-                aria-disabled="true"
-                title="Suspended. Contact the administrator to restore."
-              >Edit</span>
-              <RouterLink v-else :to="`/apps/${app.id}/edit`" class="btn-secondary btn-sm hidden sm:inline-flex">Edit</RouterLink>
-              <RouterLink :to="`/apps/${app.id}`" class="btn-secondary btn-sm hidden sm:inline-flex">Manage</RouterLink>
-              <RowMenu :label="`Actions for ${app.name}`">
-                <RouterLink role="menuitem" :to="`/apps/${app.id}`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card sm:hidden">Manage</RouterLink>
-                <a role="menuitem" :href="`https://${app.hostname}`" target="_blank" rel="noopener noreferrer" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card">Open app</a>
-                <RouterLink role="menuitem" :to="`/apps/${app.id}#logs`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card">View logs</RouterLink>
-                <RouterLink v-if="app.status !== 'suspended'" role="menuitem" :to="`/apps/${app.id}/edit`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card sm:hidden">Edit</RouterLink>
-                <button v-if="app.status !== 'suspended'" type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-pico-card" @click="restart(app)">Restart</button>
-                <button type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-sm text-danger-light hover:bg-danger/10" @click="pendingDelete = app">Delete…</button>
-              </RowMenu>
+            <div class="flex shrink-0 items-center">
+              <IconButton :icon="ScrollText" label="View logs" :to="`/apps/${app.id}#logs`" />
+              <IconButton :icon="RotateCw" :label="app.status === 'suspended' ? 'Restart (unavailable while suspended)' : 'Restart'" :disabled="app.status === 'suspended' || restarting === app.id" @click="restart(app)" />
+              <IconButton
+                :icon="Pencil"
+                :label="app.status === 'suspended' ? 'Edit (suspended: contact the administrator)' : 'Edit'"
+                :to="`/apps/${app.id}/edit`"
+                :disabled="app.status === 'suspended'"
+              />
+              <IconButton :icon="Trash2" label="Delete" danger @click="pendingDelete = app" />
             </div>
           </div>
-          <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-3 border-t border-pico-border pt-3">
+          <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-2 border-t border-pico-border pt-2">
             <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="restart(app)" />
           </div>
         </li>

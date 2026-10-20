@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Check, RefreshCw } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
@@ -123,20 +125,17 @@ function jump(id: string) {
 }
 
 const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
-const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300'
 </script>
 
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-4 px-4 py-4 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="page-title">Cluster health</h1>
         <div class="flex items-center gap-3 text-xs text-zinc-400" aria-live="polite">
           <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
-          <button type="button" class="btn-secondary btn-sm" :disabled="loading" @click="load">
-            {{ loading ? 'Refreshing…' : 'Refresh' }}
-          </button>
+          <IconButton :icon="RefreshCw" :label="loading ? 'Refreshing…' : 'Refresh'" :disabled="loading" @click="load" />
         </div>
       </div>
 
@@ -169,16 +168,16 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
         <section v-if="data.users || data.workloads" class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Users and workloads">
           <div v-if="data.users" :class="card">
             <div class="text-xs text-zinc-400">Users</div>
-            <div class="text-xl font-semibold text-white">{{ data.users.total }}</div>
+            <div class="text-lg font-semibold text-white">{{ data.users.total }}</div>
             <div class="text-xs text-zinc-400">{{ data.users.active }} active · {{ data.users.suspended }} suspended</div>
           </div>
           <div v-if="data.users" :class="[card, data.users.pending > 0 ? 'border-amber-500/40' : '']">
             <div class="text-xs text-zinc-400">Pending approval</div>
-            <div :class="['text-xl font-semibold', data.users.pending > 0 ? 'text-amber-400' : 'text-white']">{{ data.users.pending }}</div>
+            <div :class="['text-lg font-semibold', data.users.pending > 0 ? 'text-amber-400' : 'text-white']">{{ data.users.pending }}</div>
           </div>
           <div v-if="data.workloads" :class="[card, 'col-span-2']">
             <div class="text-xs text-zinc-400">Workloads</div>
-            <div class="text-xl font-semibold text-white">{{ data.workloads.apps_total }} <span class="text-sm font-normal text-zinc-400">apps</span></div>
+            <div class="text-lg font-semibold text-white">{{ data.workloads.apps_total }} <span class="text-sm font-normal text-zinc-400">apps</span></div>
             <div class="flex flex-wrap gap-x-3 text-xs text-zinc-400">
               <span
                 v-for="st in statuses"
@@ -196,17 +195,11 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
             <RouterLink to="/admin" class="link text-xs">Manage users</RouterLink>
           </div>
           <ul class="divide-y divide-pico-border rounded-md border border-pico-border bg-pico-panel text-sm text-zinc-300">
-            <li v-for="u in data.pending_users" :key="u.id" class="flex items-center justify-between gap-2 p-2">
+            <li v-for="u in data.pending_users" :key="u.id" class="flex items-center justify-between gap-2 px-3 py-1">
               <span class="min-w-0 truncate">{{ u.email }}</span>
               <span class="flex shrink-0 items-center gap-3">
-                <span class="text-xs text-zinc-400">waiting {{ waiting(u.created_at) }}</span>
-                <button
-                  class="btn-primary btn-sm"
-                  :disabled="approving === u.id"
-                  @click="approve(u.id)"
-                >
-                  Approve
-                </button>
+                <span class="mono text-zinc-400">waiting {{ waiting(u.created_at) }}</span>
+                <IconButton :icon="Check" :label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" sm :disabled="approving === u.id" @click="approve(u.id)" />
               </span>
             </li>
           </ul>
@@ -216,7 +209,7 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
         <section id="sec-summary" class="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Summary">
           <div :class="card">
             <div class="text-xs text-zinc-400">Nodes</div>
-            <div class="text-xl font-semibold text-white">
+            <div class="text-lg font-semibold text-white">
               {{ data.cluster.node_count }}<span v-if="data.cluster.max_nodes !== null" class="text-sm text-zinc-400"> / {{ data.cluster.max_nodes }}</span>
             </div>
             <div class="text-xs text-zinc-400">
@@ -228,11 +221,11 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
           </div>
           <div :class="card">
             <div class="text-xs text-zinc-400">Pods</div>
-            <div class="text-xl font-semibold text-white">{{ data.cluster.pods_total }}</div>
+            <div class="text-lg font-semibold text-white">{{ data.cluster.pods_total }}</div>
           </div>
           <div :class="card">
             <div class="text-xs text-zinc-400">Metrics</div>
-            <div :class="['text-xl font-semibold', data.metrics_available ? 'text-status-running' : 'text-amber-400']">
+            <div :class="['text-lg font-semibold', data.metrics_available ? 'text-status-running' : 'text-amber-400']">
               {{ data.metrics_available ? 'Available' : 'Unavailable' }}
             </div>
             <div v-if="!data.metrics_available" class="text-xs text-zinc-400">usage shown as n/a</div>
@@ -240,11 +233,11 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
         </section>
 
         <section id="sec-nodes" class="scroll-mt-4">
-          <h2 class="mb-2 text-sm font-semibold text-zinc-300">Nodes</h2>
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Nodes</h2>
           <div class="grid gap-3 sm:grid-cols-2">
             <div v-for="n in data.nodes" :key="n.name" :class="card">
               <div class="mb-2 flex items-center justify-between gap-2">
-                <span class="truncate font-mono text-xs text-white" :title="n.name">{{ n.name }}</span>
+                <span class="mono truncate text-white" :title="n.name">{{ n.name }}</span>
                 <span
                   :class="[
                     'rounded-full border px-2 py-0.5 text-xs',
@@ -260,7 +253,7 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
               ]" :key="r.label">
                 <div class="mb-1 flex justify-between text-xs text-zinc-400">
                   <span>{{ r.label }}</span>
-                  <span>used {{ num(r.used, r.unit) }} · req {{ r.req }}{{ r.unit }} · alloc {{ r.cap }}{{ r.unit }}</span>
+                  <span class="mono">used {{ num(r.used, r.unit) }} · req {{ r.req }}{{ r.unit }} · alloc {{ r.cap }}{{ r.unit }}</span>
                 </div>
                 <div
                   class="relative mb-2 h-3 overflow-hidden rounded bg-pico-card"
@@ -293,79 +286,86 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
         </section>
 
         <section id="sec-apps" class="scroll-mt-4">
-          <h2 class="mb-2 text-sm font-semibold text-zinc-300">Apps</h2>
-          <div class="overflow-x-auto">
-            <table :class="table">
-              <thead class="text-xs text-zinc-400">
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Apps</h2>
+          <div class="card overflow-x-auto">
+            <table class="tbl min-w-[56rem]">
+              <colgroup><col /><col class="w-52" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-36" /><col class="w-40" /></colgroup>
+              <thead>
                 <tr>
-                  <th class="p-2">App</th><th class="p-2">Owner</th><th class="p-2">Status</th><th class="p-2">Pods</th><th class="p-2">Restarts</th>
-                  <th class="p-2" :aria-sort="ariaSort('cpu')">
-                    <button class="hover:text-white" @click="sortBy('cpu')">CPU {{ sortKey === 'cpu' ? (sortDesc ? '▼' : '▲') : '' }}</button>
+                  <th scope="col">App</th><th scope="col">Owner</th><th scope="col">Status</th>
+                  <th scope="col" class="text-right">Pods</th><th scope="col" class="text-right">Restarts</th>
+                  <th scope="col" class="text-right" :aria-sort="ariaSort('cpu')">
+                    <button class="uppercase tracking-wide hover:text-white" @click="sortBy('cpu')">CPU {{ sortKey === 'cpu' ? (sortDesc ? '▼' : '▲') : '' }}</button>
                   </th>
-                  <th class="p-2" :aria-sort="ariaSort('mem')">
-                    <button class="hover:text-white" @click="sortBy('mem')">Memory {{ sortKey === 'mem' ? (sortDesc ? '▼' : '▲') : '' }}</button>
+                  <th scope="col" class="text-right" :aria-sort="ariaSort('mem')">
+                    <button class="uppercase tracking-wide hover:text-white" @click="sortBy('mem')">Memory {{ sortKey === 'mem' ? (sortDesc ? '▼' : '▲') : '' }}</button>
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                <tr v-for="a in sortedApps" :key="a.id" class="border-t border-pico-border">
-                  <td class="p-2">{{ a.name }}<div class="font-mono text-xs text-zinc-400">{{ a.namespace }}</div></td>
-                  <td class="p-2">{{ a.owner_email }}</td>
-                  <td class="p-2"><StatusBadge :status="a.status" /></td>
-                  <td class="p-2" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
-                  <td class="p-2" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
-                  <td class="whitespace-nowrap p-2" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
+              <tbody class="text-zinc-300">
+                <tr v-for="a in sortedApps" :key="a.id">
+                  <td class="truncate" :title="`${a.name} (${a.namespace})`"><span class="text-white">{{ a.name }}</span><div class="mono truncate text-zinc-400">{{ a.namespace }}</div></td>
+                  <td class="truncate" :title="a.owner_email">{{ a.owner_email }}</td>
+                  <td><StatusBadge :status="a.status" /></td>
+                  <td class="mono text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
+                  <td class="mono text-right" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
+                  <td class="mono truncate text-right" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, a.cpu_limit_m, 'm') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-400">limit {{ a.cpu_limit_m }}m</span></template>
+                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.cpu_limit_m }}m</span></template>
                   </td>
-                  <td class="whitespace-nowrap p-2" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
+                  <td class="mono truncate text-right" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, a.mem_limit_mi, 'Mi') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-400">limit {{ a.mem_limit_mi }}Mi</span></template>
+                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.mem_limit_mi }}Mi</span></template>
                   </td>
                 </tr>
-                <tr v-if="sortedApps.length === 0"><td colspan="7" class="p-3 text-zinc-400">No apps.</td></tr>
+                <tr v-if="sortedApps.length === 0"><td colspan="7" class="text-zinc-400">No apps.</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
         <section id="sec-platform" class="scroll-mt-4">
-          <h2 class="mb-2 text-sm font-semibold text-zinc-300">Platform components</h2>
-          <div class="overflow-x-auto">
-            <table :class="table">
-              <thead class="text-xs text-zinc-400">
-                <tr><th class="p-2">Name</th><th class="p-2">Namespace</th><th class="p-2">Ready</th><th class="p-2">Restarts</th><th class="p-2">CPU</th><th class="p-2">Memory</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="p in data.platform" :key="p.namespace + p.name" class="border-t border-pico-border">
-                  <td class="p-2">{{ p.name }}</td>
-                  <td class="p-2 font-mono text-xs">{{ p.namespace }}</td>
-                  <td class="p-2" :class="p.ready ? 'text-status-running' : 'font-semibold text-status-error'">{{ p.ready ? 'Ready' : 'Not ready' }}</td>
-                  <td class="p-2" :class="p.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ p.restarts }}</td>
-                  <td class="p-2"><span v-if="p.cpu_used_m === null" :title="NA">—</span><template v-else>{{ p.cpu_used_m }}m</template></td>
-                  <td class="p-2"><span v-if="p.mem_used_mi === null" :title="NA">—</span><template v-else>{{ p.mem_used_mi }}Mi</template></td>
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Platform components</h2>
+          <div class="card overflow-x-auto">
+            <table class="tbl min-w-[36rem]">
+              <colgroup><col /><col class="w-40" /><col class="w-24" /><col class="w-20" /><col class="w-24" /><col class="w-24" /></colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th><th scope="col">Namespace</th><th scope="col">Ready</th>
+                  <th scope="col" class="text-right">Restarts</th><th scope="col" class="text-right">CPU</th><th scope="col" class="text-right">Memory</th>
                 </tr>
-                <tr v-if="data.platform.length === 0"><td colspan="6" class="p-3 text-zinc-400">None reported.</td></tr>
+              </thead>
+              <tbody class="text-zinc-300">
+                <tr v-for="p in data.platform" :key="p.namespace + p.name">
+                  <td class="truncate" :title="p.name">{{ p.name }}</td>
+                  <td class="mono truncate" :title="p.namespace">{{ p.namespace }}</td>
+                  <td :class="p.ready ? 'text-status-running' : 'font-semibold text-status-error'">{{ p.ready ? 'Ready' : 'Not ready' }}</td>
+                  <td class="mono text-right" :class="p.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ p.restarts }}</td>
+                  <td class="mono text-right"><span v-if="p.cpu_used_m === null" :title="NA">—</span><template v-else>{{ p.cpu_used_m }}m</template></td>
+                  <td class="mono text-right"><span v-if="p.mem_used_mi === null" :title="NA">—</span><template v-else>{{ p.mem_used_mi }}Mi</template></td>
+                </tr>
+                <tr v-if="data.platform.length === 0"><td colspan="6" class="text-zinc-400">None reported.</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
         <section id="sec-db" class="scroll-mt-4">
-          <h2 class="mb-2 text-sm font-semibold text-zinc-300">DB servers</h2>
-          <div class="overflow-x-auto">
-            <table :class="table">
-              <thead class="text-xs text-zinc-400">
-                <tr><th class="p-2">Name</th><th class="p-2">Host</th><th class="p-2">Capacity</th><th class="p-2">Status</th></tr>
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">DB servers</h2>
+          <div class="card overflow-x-auto">
+            <table class="tbl min-w-[36rem]">
+              <colgroup><col class="w-32" /><col /><col class="w-48" /><col class="w-24" /></colgroup>
+              <thead>
+                <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Capacity</th><th scope="col">Status</th></tr>
               </thead>
-              <tbody>
-                <tr v-for="s in data.db_servers" :key="s.id" class="border-t border-pico-border">
-                  <td class="p-2">{{ s.name }}</td>
-                  <td class="p-2 font-mono text-xs">{{ s.host }}:{{ s.port }}</td>
-                  <td class="p-2"><DbCapacityBar :server="s" /></td>
-                  <td class="p-2">{{ s.status }}</td>
+              <tbody class="text-zinc-300">
+                <tr v-for="s in data.db_servers" :key="s.id">
+                  <td class="truncate" :title="s.name">{{ s.name }}</td>
+                  <td class="mono truncate" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</td>
+                  <td><DbCapacityBar :server="s" /></td>
+                  <td>{{ s.status }}</td>
                 </tr>
-                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="p-3 text-zinc-400">No DB servers.</td></tr>
+                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="text-zinc-400">No DB servers.</td></tr>
               </tbody>
             </table>
           </div>

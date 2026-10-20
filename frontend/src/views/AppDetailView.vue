@@ -5,6 +5,8 @@ import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
+import { RefreshCw, RotateCw } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
@@ -179,7 +181,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-4xl px-4 py-4 sm:px-6">
       <div v-if="notFound" class="card card-pad text-center">
         <p class="section-title">App not found</p>
         <p class="help">It may have been deleted.</p>
@@ -201,7 +203,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>{{ app.name }}
         </nav>
 
-        <header class="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <header class="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <h1 class="page-title break-all">{{ app.name }}</h1>
@@ -209,16 +211,14 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </div>
             <HostLink :hostname="app.hostname" class="mt-1" />
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button type="button" class="btn-secondary" :disabled="suspended || restarting" :title="suspended ? 'Suspended. Contact the administrator to restore.' : undefined" @click="restart">
-              {{ restarting ? 'Restarting…' : 'Restart' }}
-            </button>
+          <div class="flex items-center gap-2">
+            <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
             <RouterLink v-if="!suspended" :to="`/apps/${app.id}/edit`" class="btn-primary">Edit</RouterLink>
             <button v-else type="button" class="btn-primary" disabled title="Suspended. Contact the administrator to restore.">Edit</button>
           </div>
         </header>
 
-        <div class="space-y-4">
+        <div class="space-y-3">
           <section class="card card-pad" aria-labelledby="h-status">
             <h2 id="h-status" class="section-title mb-2">Status</h2>
             <p v-if="app.status === 'running'" class="text-sm text-zinc-200">
@@ -235,18 +235,18 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <label class="flex items-center gap-1.5 text-xs text-zinc-300">
                   <input v-model="autoRefresh" type="checkbox" class="check" /> Auto-refresh
                 </label>
-                <button type="button" class="btn-secondary btn-sm" :disabled="logsBusy" @click="loadLogs">{{ logsBusy ? 'Loading…' : 'Refresh' }}</button>
+                <IconButton :icon="RefreshCw" :label="logsBusy ? 'Loading logs…' : 'Refresh logs'" :disabled="logsBusy" @click="loadLogs" />
               </div>
             </div>
             <p v-if="logsError" class="text-sm text-zinc-400">{{ logsError }}</p>
             <template v-else-if="logs">
-              <p v-if="logs.pod" class="meta mb-1 break-all">Pod {{ logs.pod }}</p>
+              <p v-if="logs.pod" class="meta mono mb-1 truncate" :title="logs.pod">Pod {{ logs.pod }}</p>
               <pre
                 v-if="logs.lines.length"
                 ref="logBox"
                 tabindex="0"
                 aria-label="Application logs"
-                class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md border border-pico-border bg-black/40 p-3 font-mono text-xs leading-relaxed text-zinc-200"
+                class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md border border-pico-border bg-black/40 p-3 mono leading-relaxed text-zinc-200"
               >{{ logs.lines.join('\n') }}</pre>
               <p v-else class="rounded-md border border-dashed border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
                 {{ logs.note || 'No log output yet. Logs appear once your app is running.' }}
@@ -257,17 +257,17 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
 
           <section class="card card-pad" aria-labelledby="h-conf">
             <h2 id="h-conf" class="section-title mb-3">Configuration</h2>
-            <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-              <div class="min-w-0"><dt class="meta">Image</dt><dd class="break-all font-mono text-xs text-zinc-200">{{ app.image }}</dd></div>
-              <div><dt class="meta">Container port</dt><dd class="text-zinc-200">{{ app.port }}</dd></div>
+            <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+              <div class="min-w-0"><dt class="meta">Image</dt><dd class="mono truncate text-zinc-200" :title="app.image">{{ app.image }}</dd></div>
+              <div><dt class="meta">Container port</dt><dd class="mono text-zinc-200">{{ app.port }}</dd></div>
               <div>
                 <dt class="meta">Resources</dt>
-                <dd class="text-zinc-200">
-                  {{ res.cpu }}m CPU · {{ res.mem }} MB RAM
+                <dd class="mono text-zinc-200">
+                  {{ res.cpu }}m CPU · {{ res.mem }}Mi RAM
                   <span v-if="res.custom" class="badge-info ml-1">custom</span>
                 </dd>
               </div>
-              <div><dt class="meta">Health check</dt><dd class="text-zinc-200">{{ app.health_check_enabled ? app.health_check_path : 'Off' }}</dd></div>
+              <div><dt class="meta">Health check</dt><dd class="text-zinc-200"><span v-if="app.health_check_enabled" class="mono">{{ app.health_check_path }}</span><template v-else>Off</template></dd></div>
               <div>
                 <dt class="meta">Database</dt>
                 <dd class="text-zinc-200">{{ app.want_db ? `Attached (MySQL, ${limits?.db_mb ?? 50} MB)` : 'Not enabled' }}</dd>
@@ -276,8 +276,8 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <dt class="meta">Storage</dt>
                 <dd class="text-zinc-200">{{ app.want_storage ? `Attached (${limits?.bucket_mb ?? 100} MB bucket)` : 'Not enabled' }}</dd>
               </div>
-              <div><dt class="meta">Environment variables</dt><dd class="text-zinc-200">{{ app.env.length }}<span v-if="secretCount" class="text-zinc-400"> ({{ secretCount }} secret)</span></dd></div>
-              <div><dt class="meta">Created</dt><dd class="text-zinc-200" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</dd></div>
+              <div><dt class="meta">Environment variables</dt><dd class="mono text-zinc-200">{{ app.env.length }}<span v-if="secretCount" class="text-zinc-400"> ({{ secretCount }} secret)</span></dd></div>
+              <div><dt class="meta">Created</dt><dd class="mono text-zinc-200" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</dd></div>
             </dl>
 
             <details v-if="hasAddons" class="mt-4 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm">
@@ -285,22 +285,22 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <div class="mt-2 space-y-3 text-xs text-zinc-300">
                 <p>
                   Credentials are injected through env var references and are never shown here. Add a variable whose value is a reference,
-                  e.g. <code class="font-mono">DATABASE_URL = {{ refLabel('db.url') }}</code>.
+                  e.g. <code class="mono">DATABASE_URL = {{ refLabel('db.url') }}</code>.
                 </p>
                 <div v-if="usedRefs.length">
                   <p class="mb-1 font-medium text-zinc-200">Used by this app</p>
-                  <ul class="space-y-0.5 font-mono">
+                  <ul class="mono space-y-0.5">
                     <li v-for="u in usedRefs" :key="u.key + u.ref" class="break-all">{{ u.key }} <span class="text-zinc-400">=</span> {{ refLabel(u.ref) }}</li>
                   </ul>
                 </div>
                 <p v-else class="text-amber-300">No env var references them yet, so your app can't see the credentials. <RouterLink :to="`/apps/${app.id}/edit`" class="link">Add one</RouterLink>.</p>
                 <div v-if="app.want_db">
                   <p class="mb-1 font-medium text-zinc-200">Database references</p>
-                  <p class="break-all font-mono">{{ DB_REFS.map(refLabel).join('  ') }}</p>
+                  <p class="mono break-all">{{ DB_REFS.map(refLabel).join('  ') }}</p>
                 </div>
                 <div v-if="app.want_storage">
                   <p class="mb-1 font-medium text-zinc-200">Storage references</p>
-                  <p class="break-all font-mono">{{ STORAGE_REFS.map(refLabel).join('  ') }}</p>
+                  <p class="mono break-all">{{ STORAGE_REFS.map(refLabel).join('  ') }}</p>
                 </div>
               </div>
             </details>

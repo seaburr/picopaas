@@ -464,3 +464,8 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] DONE: pushed ff6136f (quota sizing from existing pods); ci/image/deploy green
 - 2026-10-19 [scm-security] DONE: SPA catch-all 404 route (unknown paths rendered a blank shell)
 - 2026-10-19 [scm-security] DONE: reload once onto the target route when a lazy chunk from a previous build is gone (post-deploy dead links)
+- 2026-10-19 [frontend-dev] START: UI density/icon-button/table/mono polish pass (frontend/)
+- 2026-10-19 [scm-security] START: commit probe read/size/clear endpoints
+- 2026-10-19 [scm-security] DONE: pushed 7c95ed4 (probe read/size/clear endpoints); testapps+ci green
+- 2026-10-19 [frontend-dev] DONE: UI polish: 32px buttons/inputs, IconButton (lucide-vue-next 1.0.0), fixed-width grids/tables (admin, keys, health), .mono shared class, tighter spacing. Uncommitted. Shots: scratchpad/uxreview/polish/{before,after}
+- 2026-10-19 [scm-security] START: commit UI polish pass
