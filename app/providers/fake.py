@@ -93,6 +93,8 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.creds: dict[int, dict[str, Any]] = {}
         self.sizes: dict[int, int] = {}
         self.read_only: dict[int, bool] = {}
+        self.calls: list[tuple[int, bool]] = []  # set_read_only calls, in order
+        self.kill_result: dict[str, Any] = {"listed": 1, "killed": 1, "failed": 0, "list_error": False}
         self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
 
     def create_db_user(self, app_id: int) -> dict[str, Any]:
@@ -119,8 +121,12 @@ class FakeMySQLAdmin(MySQLAdmin):
     def db_size_bytes(self, app_id: int) -> int:
         return self.sizes.get(app_id, 0)
 
-    def set_read_only(self, app_id: int, read_only: bool) -> None:
+    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
         self.read_only[app_id] = read_only
+        self.calls.append((app_id, read_only))
+        if not read_only:
+            return None
+        return dict(self.kill_result)
 
     def set_password(self, app_id: int, password: str) -> dict[str, Any]:
         if self.fail_set_password:
@@ -141,6 +147,7 @@ class FakeObjectStore(ObjectStore):
         self.creds: dict[int, dict[str, Any]] = {}
         self.sizes: dict[int, int] = {}
         self.read_only: dict[int, bool] = {}
+        self.objects: dict[int, dict[str, int]] = {}  # key -> size, via put_object
         self.valid_keys: dict[int, set[str]] = {}  # access keys currently accepted by "Spaces"
         self.fail: set[str] = set()  # inject failures: "create", "revoke", "delete_key"
 
@@ -166,6 +173,32 @@ class FakeObjectStore(ObjectStore):
 
     def bucket_size_bytes(self, app_id: int) -> int:
         return self.sizes.get(app_id, 0)
+
+    def put_object(self, app_id: int, key: str, size: int) -> None:
+        """Test helper: add an object and keep `sizes` (what the quota poll reads) in step."""
+        self.objects.setdefault(app_id, {})[key] = size
+        self.sizes[app_id] = sum(self.objects[app_id].values())
+
+    def usage(self, app_id: int) -> dict[str, Any]:
+        from app.providers.spaces import summarize_objects
+
+        objs = [{"Key": k, "Size": v} for k, v in self.objects.get(app_id, {}).items()]
+        out = summarize_objects(objs)
+        if not objs:  # sizes set directly by a test, no listing
+            out["size_bytes"] = self.sizes.get(app_id, 0)
+        return out
+
+    def delete_objects(self, app_id: int, prefix: Optional[str] = None, max_objects: int = 5000) -> dict[str, Any]:
+        objs = self.objects.setdefault(app_id, {})
+        if not objs and self.sizes.get(app_id, 0) and not prefix:  # sizes set directly: "all" empties it
+            self.sizes[app_id] = 0
+            return {"deleted": 0, "truncated": False}
+        keys = [k for k in sorted(objs) if not prefix or k.startswith(prefix)]
+        doomed = keys[:max_objects]
+        for k in doomed:
+            del objs[k]
+        self.sizes[app_id] = sum(objs.values())
+        return {"deleted": len(doomed), "truncated": len(keys) > len(doomed)}
 
     def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
         """Like the real store: no-op (None) if unchanged, else swaps the key and returns new creds."""

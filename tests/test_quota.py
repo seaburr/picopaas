@@ -116,6 +116,8 @@ def test_storage_swap_revoke_failure_is_retried_next_poll(db_session):
     new = app.storage.access_key
     assert new != old and new in store.valid_keys[app.id] and old in store.valid_keys[app.id]
     store.fail.clear()
+    app.status = "running"  # rollout finished: now the stale key may go
+    db_session.commit()
     poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
     assert store.valid_keys[app.id] == {new}
 
@@ -179,6 +181,15 @@ def test_restore_does_not_kill():
     cur = _Cur()
     _client(cur).set_read_only(5, False)
     assert cur.sql[0].startswith("GRANT") and len(cur.sql) == 1
+
+
+def test_kill_result_counts():
+    cur = _Cur()
+    res = _client(cur).set_read_only(5, True)
+    assert res == {"listed": 2, "killed": 2, "failed": 0, "list_error": False}
+    assert _client(_Cur()).set_read_only(5, False) is None
+    assert _client(_Cur(fail_kill=True)).set_read_only(5, True)["failed"] == 2
+    assert _client(_Cur(fail_list=True)).set_read_only(5, True)["list_error"] is True
 
 
 def test_kill_errors_tolerated(caplog):

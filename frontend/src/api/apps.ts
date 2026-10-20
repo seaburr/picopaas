@@ -44,3 +44,14 @@ export const getAppLogs = (id: number, tail = 200) => apiFetch<AppLogs>(`/apps/$
 export const checkImage = (id: number) => apiFetch<App>(`/apps/${id}/check-image`, { method: 'POST' })
 
 export const restartApp = (id: number) => apiFetch<App>(`/apps/${id}/restart`, { method: 'POST' })
+
+export interface StorageDeleteResult {
+  deleted: number
+  size_bytes: number
+  truncated: boolean
+  over_quota: boolean
+}
+
+// Deletes with the platform's credentials (an over-cap app only holds a read-only key).
+export const deleteStorageObjects = (id: number, body: { prefix: string } | { all: true }) =>
+  apiFetch<StorageDeleteResult>(`/apps/${id}/storage/delete`, { method: 'POST', body: JSON.stringify(body) })

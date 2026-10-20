@@ -179,23 +179,96 @@ def test_08_idor(user, admin, second_user, hello):
         admin.delete_app(other_app["id"])
 
 
-# 9 (slow) ---------------------------------------------------------------------------------------
-@pytest.mark.skipif(not SLOW, reason="set E2E_SLOW=1 (quota poll runs every 5 min)")
-def test_09_db_quota_makes_writes_fail(probe):
-    get_json(app_url(probe, "/db/fill?mb=60"))  # may itself report an error once over the cap
+# 9 (slow) quota enforcement --------------------------------------------------------------------
+# The platform polls DB size every 60s and storage every 5 min (plus a pod rollout after a key swap), so the
+# timeouts below are generous. Each quota test gets its own probe app so a failed test can't poison the next.
+SLOW_ONLY = pytest.mark.skipif(not SLOW, reason="set E2E_SLOW=1 (quota polls: DB 60s, storage 5 min)")
+DB_POLL_TIMEOUT = 420    # 60s poll + slack for a slow/failed first attempt and the next tick
+STORAGE_POLL_TIMEOUT = 1200   # 5 min poll + key swap + rollout, twice over for slack
 
-    def writes_fail():
-        r = get_json(app_url(probe, "/db/fill?mb=1"), ok_only=False)
+
+@pytest.fixture()
+def quota_probe(user, admin):
+    app = user.create_app(rand_name("e2e-q"), IMG["probe"], APP_PORT, db=True, storage=True, env=PROBE_ENV)
+    try:
+        user.wait_status(app["id"])
+        poll(lambda: get_json(app_url(app, "/db")), 120, desc="probe /db")
+        yield app
+    finally:
+        admin.delete_app(app["id"])
+
+
+def _writes_fail(app, kind):
+    def check():
+        r = get_json(app_url(app, f"/{kind}/fill?mb=1"), ok_only=False)
         return r is not None and r["ok"] is False
-    poll(writes_fail, 900, 20, desc="DB writes to be revoked after exceeding 50MB")
-    assert get_json(app_url(probe, "/s3"))["ok"] is True, "storage unaffected by DB quota"
+    return check
 
 
-@pytest.mark.skipif(not SLOW, reason="set E2E_SLOW=1 (quota poll runs every 5 min)")
-def test_09_storage_quota_makes_writes_fail(probe):
-    get_json(app_url(probe, "/s3/fill?mb=110"))
+def _writes_work(app, kind):
+    def check():
+        r = get_json(app_url(app, f"/{kind}/fill?mb=1"), ok_only=False)
+        return r is not None and r["ok"] is True
+    return check
 
-    def writes_fail():
-        r = get_json(app_url(probe, "/s3/fill?mb=1"), ok_only=False)
-        return r is not None and r["ok"] is False
-    poll(writes_fail, 900, 20, desc="S3 writes to be revoked after exceeding 100MB")
+
+@SLOW_ONLY
+def test_09_db_quota_revokes_writes_keeps_reads_and_recovers(user, quota_probe):
+    app = quota_probe
+    get_json(app_url(app, "/db/fill?mb=60"), ok_only=False)  # may itself fail once the cap is enforced mid-way
+    poll(_writes_fail(app, "db"), DB_POLL_TIMEOUT, 10, desc="DB writes to be revoked after exceeding the cap")
+    assert get_json(app_url(app, "/s3"))["ok"] is True, "storage unaffected by DB quota"
+    # Reads still work, and the platform reports the state.
+    assert poll(lambda: get_json(app_url(app, "/db/read")), 60, desc="DB reads while over cap")["ok"] is True
+    q = user.get_app(app["id"])["quota"]["db"]
+    assert q["over_quota"] is True and q["size_bytes"] > q["limit_bytes"]
+    assert user.ok("GET", f"/apps/{app['id']}/database/usage")["over_quota"] is True
+    # Cleaning up is allowed while over: DELETE succeeds, but InnoDB keeps the pages, so reclaim with TRUNCATE.
+    assert get_json(app_url(app, "/db/clear?mode=delete"), ok_only=False)["ok"] is True
+    assert get_json(app_url(app, "/db/clear?mode=truncate"), ok_only=False)["ok"] is True
+    poll(_writes_work(app, "db"), DB_POLL_TIMEOUT, 10, desc="DB writes to be restored after freeing space")
+    assert user.get_app(app["id"])["quota"]["db"]["over_quota"] is False
+
+
+@SLOW_ONLY
+def test_09_db_quota_drop_table_also_recovers(quota_probe):
+    app = quota_probe
+    get_json(app_url(app, "/db/fill?mb=60"), ok_only=False)
+    poll(_writes_fail(app, "db"), DB_POLL_TIMEOUT, 10, desc="DB writes to be revoked")
+    assert get_json(app_url(app, "/db/clear?mode=drop"), ok_only=False)["ok"] is True
+    poll(_writes_work(app, "db"), DB_POLL_TIMEOUT, 10, desc="DB writes to be restored after DROP TABLE")
+
+
+@SLOW_ONLY
+def test_09_db_quota_long_single_connection_fill_is_cut_off(quota_probe):
+    """One connection writing 300MB used to finish untouched (prod overshoot: 291MB under a 50MB cap). The
+    platform must end the session, so the request fails/ends early and the DB stays far under 300MB."""
+    app = quota_probe
+    r = http_get(app_url(app, "/db/fill?mb=300"), timeout=900)
+    ended_early = r is None or r.status_code != 200 or r.json().get("ok") is False
+    size = poll(lambda: get_json(app_url(app, "/db/size")), 120, desc="/db/size")["mb"]
+    assert ended_early, f"a 300MB single-connection fill completed (db is {size} MB)"
+    assert size < 150, f"db grew to {size} MB under a 50 MB cap: open sessions were not stopped"
+
+
+@SLOW_ONLY
+def test_09_storage_quota_reads_survive_and_delete_endpoint_recovers(user, quota_probe):
+    app = quota_probe
+    get_json(app_url(app, "/s3/fill?mb=110"), ok_only=False)
+    poll(_writes_fail(app, "s3"), STORAGE_POLL_TIMEOUT, 15, desc="S3 writes to be revoked after exceeding the cap")
+    # Reads must keep working on the read-only key (the old key is only revoked after the rollout).
+    assert poll(lambda: get_json(app_url(app, "/s3/read")), 120, desc="S3 reads while over cap")["objects"] > 0
+    u = user.ok("GET", f"/apps/{app['id']}/storage/usage")
+    assert u["over_quota"] is True and u["objects"] > 0 and u["limit_bytes"] == 100 * 1024 * 1024
+    assert user.get_app(app["id"])["quota"]["storage"]["over_quota"] is True
+    # The app can't delete with a read-only key; the platform does it.
+    cleared = get_json(app_url(app, "/s3/clear"), ok_only=False)
+    assert cleared is not None and cleared["ok"] is False, "a read-only key must not be able to delete"
+    res = user.ok("POST", f"/apps/{app['id']}/storage/delete", json={"prefix": "probe-fill/"})
+    assert res["deleted"] > 0
+    while res["truncated"]:
+        res = user.ok("POST", f"/apps/{app['id']}/storage/delete", json={"all": True})
+    assert res["over_quota"] is False
+    user.wait_rollout(app["id"])  # the restored read-write key rolls out immediately, not at the next poll
+    poll(_writes_work(app, "s3"), 600, 15, desc="S3 writes to be restored after the platform delete")
+    assert user.get_app(app["id"])["quota"]["storage"]["over_quota"] is False

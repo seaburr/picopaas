@@ -96,6 +96,7 @@ class Limits(BaseModel):
     image_mb: int
     db_mb: int
     bucket_mb: int
+    ephemeral_mi: int
     override: LimitOverride
 
 
@@ -175,6 +176,18 @@ class ResourcesOut(BaseModel):
     exceeds_platform_caps: bool = False
 
 
+class UsageOut(BaseModel):
+    size_bytes: int
+    limit_bytes: int
+    over_quota: bool
+
+
+class AppQuotaOut(BaseModel):
+    """Last polled usage (stored rows, no live calls). null = the app has no such resource yet."""
+    db: Optional[UsageOut] = None
+    storage: Optional[UsageOut] = None
+
+
 class AppOut(BaseModel):
     id: int
     owner_id: int
@@ -196,4 +209,5 @@ class AppOut(BaseModel):
     retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)
     created_at: datetime
     resources: Optional[ResourcesOut] = None
+    quota: AppQuotaOut = Field(default_factory=AppQuotaOut)
     env: List[EnvVarOut] = Field(default_factory=list)

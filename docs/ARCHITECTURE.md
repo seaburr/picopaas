@@ -67,7 +67,8 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 
 ### Tenancy and isolation
 - **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=200m, limits.memory=768Mi (2x the 100m/384Mi per-pod limits), pods=2
-  to allow rolling updates). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
+  to allow rolling updates; also `ephemeral-storage` requests/limits.ephemeral-storage at 2x the per-pod **250 MB scratch-disk** cap
+  (`EPHEMERAL_LIMIT_MI`, request 64Mi; a pod over it is evicted -> `status_reason=disk`, retryable)). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
   `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from the Traefik namespace, egress
   to the internet and to MySQL on 3306, and no traffic to other app namespaces (DOKS uses Cilium, which
   enforces NetworkPolicy).
@@ -80,9 +81,14 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 - **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `max_user_connections=10`,
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
   `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the
-  user can clean up) and flags the app in the UI.
+  user can clean up) and flags the app in the UI. DB is polled every 60s (`DB_QUOTA_POLL_SECONDS`) and
+  re-enforced on every poll while over, because REVOKE does not touch open sessions: the provider also KILLs the
+  user's sessions (in-cluster MySQL: `picopaas_ops.kill_app_sessions`), and if that can't be confirmed the app's pod
+  is rolled once, which closes its connections.
 - **Storage:** one Spaces bucket per app with a per-bucket read/write key. Spaces has no quotas, so the
-  reconciler sums object sizes, and above 100 MB it swaps the key to read-only and flags the app.
+  reconciler sums object sizes (every 5 min), and above 100 MB it swaps the key to read-only and flags the app.
+  The old key is revoked only after the app has rolled to the new one. An over-cap app can't delete with a read-only
+  key, so `POST /apps/{id}/storage/delete` deletes with the platform's credentials and restores the key at once.
   ⚠ Spike needed: per-bucket keys were UI-only at GA (Jan 2025). Confirm the DO API (`/v2/spaces/keys`) supports them now.
   Fallback: a shared bucket with a platform-side presigned-URL proxy.
 - **Image size:** before deploying, the API reads the registry manifest and rejects the image if the summed

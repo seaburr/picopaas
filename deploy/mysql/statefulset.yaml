@@ -118,6 +118,33 @@ data:
         CALL picopaas_ops._exec(CONCAT('GRANT INSERT, UPDATE, CREATE, ALTER ON `', v, '`.* TO ''', v, '''@''%'''));
       END IF;
     END$$
+    DROP PROCEDURE IF EXISTS picopaas_ops.kill_app_sessions$$
+    CREATE PROCEDURE picopaas_ops.kill_app_sessions(IN p_id BIGINT UNSIGNED) SQL SECURITY DEFINER
+    BEGIN
+      -- REVOKE does not affect sessions that already issued USE; end them so the read-only state is real.
+      DECLARE v VARCHAR(32);
+      DECLARE done INT DEFAULT 0;
+      DECLARE cid BIGINT UNSIGNED;
+      DECLARE n INT DEFAULT 0;
+      DECLARE cur CURSOR FOR SELECT ID FROM information_schema.PROCESSLIST WHERE USER = v;
+      DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+      IF p_id IS NULL OR p_id < 1 OR p_id > 4294967295 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'invalid app id';
+      END IF;
+      SET v = CONCAT('app_', p_id);
+      OPEN cur;
+      kill_loop: LOOP
+        FETCH cur INTO cid;
+        IF done = 1 THEN LEAVE kill_loop; END IF;
+        BEGIN
+          DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN END; -- thread already gone
+          CALL picopaas_ops._exec(CONCAT('KILL ', cid));
+        END;
+        SET n = n + 1;
+      END LOOP;
+      CLOSE cur;
+      SELECT n AS killed;
+    END$$
     DROP PROCEDURE IF EXISTS picopaas_ops.app_size$$
     CREATE PROCEDURE picopaas_ops.app_size(IN p_id BIGINT UNSIGNED) SQL SECURITY DEFINER
     BEGIN
@@ -134,6 +161,7 @@ data:
     GRANT EXECUTE ON PROCEDURE picopaas_ops.set_app_password TO 'picopaas_admin'@'%';
     GRANT EXECUTE ON PROCEDURE picopaas_ops.set_app_read_only TO 'picopaas_admin'@'%';
     GRANT EXECUTE ON PROCEDURE picopaas_ops.app_size TO 'picopaas_admin'@'%';
+    GRANT EXECUTE ON PROCEDURE picopaas_ops.kill_app_sessions TO 'picopaas_admin'@'%';
     OPS
 ---
 apiVersion: v1

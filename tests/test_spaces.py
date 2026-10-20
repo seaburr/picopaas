@@ -137,3 +137,43 @@ def test_api_error_raises():
     store = _store(lambda r: httpx.Response(401), _s3())
     with pytest.raises(ObjectStoreError):
         store.rotate_key(1)
+
+
+def test_delete_objects_prefix_paginates_and_caps():
+    s3 = _s3()
+    with Stubber(s3) as st:
+        st.add_response("list_buckets", {"Buckets": [{"Name": "pp-1-bbbbbb"}]})
+        st.add_response("list_objects_v2", {"IsTruncated": True, "NextContinuationToken": "t",
+                                            "Contents": [{"Key": "p/a", "Size": 1}, {"Key": "p/b", "Size": 1}]},
+                        {"Bucket": "pp-1-bbbbbb", "MaxKeys": 1000, "Prefix": "p/"})
+        st.add_response("delete_objects", {}, {"Bucket": "pp-1-bbbbbb", "Delete": {
+            "Objects": [{"Key": "p/a"}, {"Key": "p/b"}], "Quiet": True}})
+        st.add_response("list_objects_v2", {"IsTruncated": True, "NextContinuationToken": "u",
+                                            "Contents": [{"Key": "p/c", "Size": 1}, {"Key": "p/d", "Size": 1}]},
+                        {"Bucket": "pp-1-bbbbbb", "MaxKeys": 1000, "Prefix": "p/", "ContinuationToken": "t"})
+        st.add_response("delete_objects", {}, {"Bucket": "pp-1-bbbbbb", "Delete": {
+            "Objects": [{"Key": "p/c"}], "Quiet": True}})  # capped at 3 objects
+        out = _store(DO(), s3).delete_objects(1, "p/", max_objects=3)
+        st.assert_no_pending_responses()
+    assert out == {"deleted": 3, "truncated": True}
+
+
+def test_delete_objects_reports_partial_failure():
+    s3 = _s3()
+    with Stubber(s3) as st:
+        st.add_response("list_buckets", {"Buckets": [{"Name": "pp-1-bbbbbb"}]})
+        st.add_response("list_objects_v2", {"IsTruncated": False, "Contents": [{"Key": "a", "Size": 1}]})
+        st.add_response("delete_objects", {"Errors": [{"Key": "a", "Code": "AccessDenied", "Message": "x"}]})
+        with pytest.raises(ObjectStoreError):
+            _store(DO(), s3).delete_objects(1)
+
+
+def test_usage_totals_and_top_prefixes():
+    s3 = _s3()
+    with Stubber(s3) as st:
+        st.add_response("list_buckets", {"Buckets": [{"Name": "pp-1-bbbbbb"}]})
+        st.add_response("list_objects_v2", {"IsTruncated": False, "Contents": [
+            {"Key": "img/a", "Size": 300}, {"Key": "img/b", "Size": 200}, {"Key": "x", "Size": 5}]})
+        u = _store(DO(), s3).usage(1)
+    assert u["size_bytes"] == 505 and u["objects"] == 3
+    assert u["top_prefixes"][0] == {"prefix": "img/", "size_bytes": 500, "objects": 2}

@@ -50,7 +50,7 @@ class KubeProvider(ABC):
 
     @abstractmethod
     def get_used_limits(self, namespace: str) -> Optional[dict[str, int]]:
-        """Summed container limits ({"cpu_limit_m", "mem_limit_mi"}) of the existing (non-terminal) pods in the
+        """Summed container limits ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi"}) of the existing (non-terminal) pods in the
         namespace, i.e. what already consumes the ResourceQuota; None when there are none. Sizes the quota for a rollout."""
         raise NotImplementedError
 
@@ -113,8 +113,9 @@ class MySQLAdmin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def set_read_only(self, app_id: int, read_only: bool) -> None:
-        """Revoke/restore INSERT/UPDATE/CREATE once the app exceeds its DB quota."""
+    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
+        """Revoke/restore INSERT/UPDATE/CREATE once the app exceeds its DB quota. When revoking, also kills the
+        app user's open sessions and returns {"listed", "killed", "failed", "list_error"} (None when restoring)."""
         raise NotImplementedError
 
     @abstractmethod
@@ -149,6 +150,19 @@ class ObjectStore(ABC):
     @abstractmethod
     def bucket_size_bytes(self, app_id: int) -> int:
         """Sum of object sizes in the app's bucket, for the bucket quota check."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def usage(self, app_id: int) -> dict[str, Any]:
+        """{"size_bytes", "objects", "top_prefixes": [{"prefix", "size_bytes", "objects"}]} by first path segment
+        (at most 5, biggest first; root-level objects are grouped under "")."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_objects(self, app_id: int, prefix: Optional[str] = None, max_objects: int = 5000) -> dict[str, Any]:
+        """Delete objects with the PLATFORM's credentials (an over-quota app only holds a read-only key):
+        every object, or those under `prefix`. Paginated and capped at `max_objects`; returns
+        {"deleted": int, "truncated": bool} (truncated = more matching objects remain)."""
         raise NotImplementedError
 
     @abstractmethod

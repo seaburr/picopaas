@@ -81,8 +81,8 @@ reset and informational only (the server does not block other calls); the UI sho
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.raisehellpraisedale.xyz), image, port,
-image_digest, auto_update, image_checked_at, image_update_error, want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, retry_at, created_at, resources, env[]`.
-`retry_at` is when an app in `error` will next be retried (or null). `resources` is
+image_digest, auto_update, image_checked_at, image_update_error, want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, retry_at, created_at, resources, quota, env[]`.
+`quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, storage every 5 min), no live calls. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, overridden, exceeds_platform_caps}`.
 Each `env` item: `{key, value, is_secret, undecryptable}`. Secret values are returned as `********`. If a stored
 value cannot be decrypted (platform key changed) `undecryptable` is true and `value` is empty.
@@ -97,6 +97,9 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | PATCH | `/apps/{app_id}` | `AppUpdate` | `App`. 403 `app suspended`. Changing image, port, env or health check sets status `pending` and redeploys. |
 | DELETE | `/apps/{app_id}` | none | 204. Soft delete; the reconciler tears down namespace, DB and bucket. 403 `app suspended`. |
 | POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 `database|storage not provisioned yet` (also when the app has no DB/bucket); 502 `credential rotation failed`; 403 if suspended. |
+| GET | `/apps/{app_id}/database/usage` | none | Live `{size_bytes, limit_bytes, over_quota}`. 404 if the app has no database; 502 if the DB server is unreachable. Owner or admin. |
+| GET | `/apps/{app_id}/storage/usage` | none | Live `{size_bytes, limit_bytes, over_quota, objects, top_prefixes[{prefix, size_bytes, objects}]}` (top 5 first-path-segment prefixes). 404 if no bucket. Owner or admin. |
+| POST | `/apps/{app_id}/storage/delete` | `{"prefix": "..."}` or `{"all": true}` (exactly one; 422 otherwise) | `{deleted, size_bytes, truncated, over_quota}`. Deletes with the platform's credentials (an over-cap app's own key is read-only), at most 5000 objects per call (`truncated` = more remain). Re-measures; if now under the cap the read-write key is restored immediately. Audit-logged as `app.storage.delete`. Owner or admin. |
 | POST | `/apps/{app_id}/restart` | none | `App`. Owner or admin. Re-resolves the image tag first ("pull latest"); a new image that fails the checks is skipped and the old one restarted (`image_update_error` is set). |
 | POST | `/apps/{app_id}/check-image` | none | `App`. Owner or admin. Re-resolves the tag now and redeploys if it changed and passes the checks. 502 if the registry can't be reached; 409 if suspended. |
 | POST | `/apps/spec` | `{spec, secrets}` | Create-or-update from YAML; see below. |

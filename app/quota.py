@@ -27,31 +27,68 @@ def _summary(exc: Exception) -> str:
     return _provider_error_summary(exc)
 
 
+def _mb(n: int) -> str:
+    return f"{n / 1024 / 1024:.1f} MB"
+
+
+def _bounce_app(app: models.App | None) -> None:
+    """Roll the app's pod (same mechanism as the restart endpoint) so any database session we could not
+    kill is closed when the old pod terminates. Caller commits."""
+    if app is None or app.status in ("suspended", "pending"):
+        return
+    import uuid
+
+    app.restart_nonce = uuid.uuid4().hex[:16]
+    app.status = "pending"
+    app.reset_retry()
+
+
 def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bool:
-    """Returns True if the DB is over its limit. Enforcement via REVOKE applies to new
-    connections (open ones are killed best-effort by the provider)."""
+    """Returns True if the DB is over its limit.
+
+    REVOKE alone does NOT stop an already-open session (MySQL applies database-level privilege changes only
+    on the next USE), so the provider also kills the app user's sessions. While the DB stays over its cap we
+    re-run the enforcement every poll: it is cheap, and it catches sessions that reconnected, or a kill that
+    failed earlier. If the sessions could not be killed (no privilege, or invisible to the admin account),
+    the app's pod is rolled once, on the flip, which closes its connections."""
     size = admin.db_size_bytes(row.app_id)
     over = size > DB_QUOTA_BYTES
-    if over != row.over_quota:
-        admin.set_read_only(row.app_id, over)
+    result: dict | None = None
+    flipped = over != row.over_quota
+    if flipped:
+        result = admin.set_read_only(row.app_id, over)
         row.over_quota = over
-        log.info(
-            "quota: app %s db write access %s (%.1f MB, limit %d MB)",
-            row.app_id, "REVOKED" if over else "restored", size / 1024 / 1024, DB_QUOTA_BYTES // 1024 // 1024,
+        log.warning(
+            "quota: app %s db write access %s (%s, limit %d MB)",
+            row.app_id, "REVOKED" if over else "restored", _mb(size), DB_QUOTA_BYTES // 1024 // 1024,
         )
+    elif over:
+        result = admin.set_read_only(row.app_id, True)
+    if over and result is not None:
+        killed, failed = result.get("killed", 0), result.get("failed", 0)
+        unverified = bool(result.get("list_error")) or (result.get("listed", 0) == 0)
+        if flipped or killed or failed:
+            log.warning(
+                "quota: app %s db sessions: killed %d, failed %d%s",
+                row.app_id, killed, failed, ", listing failed" if result.get("list_error") else "",
+            )
+        if flipped and (failed or unverified):
+            log.warning("quota: app %s: could not confirm open db sessions were killed; rolling the app", row.app_id)
+            _bounce_app(row.app)
     row.size_bytes = size
     session.commit()
     return over
 
 
-def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) -> bool:
-    size = store.bucket_size_bytes(row.app_id)
+def apply_storage_state(session: Session, row: models.AppStorage, store: ObjectStore, size: int) -> bool:
+    """Record `size`, and flip the bucket key read-only / read-write if the over-cap state changed.
+    Returns True if over. Does NOT revoke old keys (see `revoke_stale_keys`)."""
     over = size > STORAGE_QUOTA_BYTES
     new_creds = None
     if over != row.over_quota:
-        log.info(
-            "quota: app %s storage write access %s (%.1f MB, limit %d MB)",
-            row.app_id, "REVOKED" if over else "restored", size / 1024 / 1024, STORAGE_QUOTA_BYTES // 1024 // 1024,
+        log.warning(
+            "quota: app %s storage write access %s (%s, limit %d MB)",
+            row.app_id, "REVOKED" if over else "restored", _mb(size), STORAGE_QUOTA_BYTES // 1024 // 1024,
         )
         new_creds = store.set_read_only(row.app_id, over)
         row.over_quota = over
@@ -73,12 +110,33 @@ def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) 
             except Exception:
                 log.warning("could not discard unpersisted key for app %s", row.app_id)
         raise
-    # Only after the new creds are committed: revoke old keys. Also run every poll so a
-    # revoke that failed earlier (leaving a stale read-write key) is retried.
+    return over
+
+
+def revoke_stale_keys(row: models.AppStorage, store: ObjectStore) -> None:
+    """Delete every key but the stored one, once the app is no longer rolling out.
+
+    Ordering choice: a swapped key is NOT revoked in the same poll. The running pod still holds the old key
+    until the reconciler has rolled it to the new one; deleting it immediately made reads AND writes fail with
+    InvalidAccessKeyId for the whole rollout (seen live). Instead we wait until the app is out of "pending".
+    Cost: when a bucket goes over cap, the old read-write key (and so writes) survives until the rollout
+    finishes plus at most one storage poll (<= STORAGE_QUOTA_POLL_SECONDS); the overshoot is bounded and
+    storage is cheap to overshoot, whereas breaking reads for a running app is a visible outage. Also runs
+    on every poll, so a revoke that failed earlier is retried."""
+    if row.app is not None and row.app.status == "pending":
+        return
     try:
         store.revoke_other_keys(row.app_id, row.access_key)
     except Exception:
         log.warning("could not revoke old storage key for app %s", row.app_id)
+
+
+def _poll_storage(session: Session, row: models.AppStorage, store: ObjectStore) -> bool:
+    size = store.bucket_size_bytes(row.app_id)
+    before = row.access_key
+    over = apply_storage_state(session, row, store, size)
+    if row.access_key == before:  # nothing was swapped now; clean up leftovers of an earlier swap
+        revoke_stale_keys(row, store)
     return over
 
 
@@ -87,24 +145,28 @@ def poll_quotas(
     *,
     mysql_admin_factory: Callable[[Any], MySQLAdmin],
     object_store: ObjectStore,
+    databases: bool = True,
+    storage: bool = True,
 ) -> None:
     dbs = buckets = over_n = 0
-    for row in session.query(models.AppDatabase).all():
-        app_id = row.app_id
-        try:
-            over_n += bool(_poll_db(session, row, mysql_admin_factory(row.server)))
-            dbs += 1
-        except Exception as exc:
-            session.rollback()
-            log.warning("quota: db check/enforcement failed for app %s: %s", app_id, _summary(exc))
-    for srow in session.query(models.AppStorage).all():
-        app_id = srow.app_id
-        try:
-            over_n += bool(_poll_storage(session, srow, object_store))
-            buckets += 1
-        except Exception as exc:
-            session.rollback()
-            log.warning("quota: storage check/enforcement failed for app %s: %s", app_id, _summary(exc))
+    if databases:
+        for row in session.query(models.AppDatabase).all():
+            app_id = row.app_id
+            try:
+                over_n += bool(_poll_db(session, row, mysql_admin_factory(row.server)))
+                dbs += 1
+            except Exception as exc:
+                session.rollback()
+                log.warning("quota: db check/enforcement failed for app %s: %s", app_id, _summary(exc))
+    if storage:
+        for srow in session.query(models.AppStorage).all():
+            app_id = srow.app_id
+            try:
+                over_n += bool(_poll_storage(session, srow, object_store))
+                buckets += 1
+            except Exception as exc:
+                session.rollback()
+                log.warning("quota: storage check/enforcement failed for app %s: %s", app_id, _summary(exc))
     log.info("quota poll: %d dbs, %d buckets checked, %d over limit", dbs, buckets, over_n)
 
 

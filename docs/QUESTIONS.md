@@ -11,6 +11,15 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
+- [ ] Weekly live quota test (`.github/workflows/quota-e2e.yml`): add repo secrets `E2E_USER_TOKEN` (a `pp_sk_` API key of an approved,
+      non-admin test user) and `E2E_ADMIN_TOKEN` (a `pp_sk_` key of the uberadmin). Until they exist the workflow skips itself with a
+      notice. It creates and deletes real test apps (DB + bucket) and runs up to ~1h. Details: `tests/e2e/README.md`.
+- [ ] After the next deploy, check the platform log for `quota: app N db sessions: killed ...` the first time an app goes over its DB cap.
+      If it says `failed` > 0 or `listing failed`, the DB admin (`doadmin`) cannot kill other users' sessions; the platform then rolls
+      the app's pod as a fallback (see the 2026-10-19 ledger entry), but tell Claude so it can look for a better mechanism.
+
+- [ ] Add the 250 MB scratch-disk cap to bootstrap.md alongside the other caps (per-app ephemeral storage; `EPHEMERAL_LIMIT_MI` in `app/config.py`).
+
 ## Resolved
 - 2026-10-19: **Own the platform encryption keys.** FERNET_KEY decrypts every secret the platform stores in MySQL; losing it
       loses that data (it happened in the 2026-10-19 cluster rebuild, harmless then). Claude put generated keys in

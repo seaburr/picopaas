@@ -14,11 +14,12 @@ You are an engineering team tasked with researching, designing, documenting, bui
 
 A basic platform that let's an engineer deploy a single Docker image, wire up environment variables/secrets, and request a SQL database and S3-compatible blob storage. 
 
-DB size is capped at 100MB.
-S3-compatible storage capped at 250MB
-Compute is capped at 250m (1/4 core)
-RAM is capped at 512MB
-Image size is capped at 512MB
+DB size is capped at 50MB.
+S3-compatible storage capped at 100MB
+Compute is capped at 100m (1/10th core)
+RAM is capped at 384MB
+Image size is capped at 256MB
+Scatch Disk: 250MB
 
 ## Hosting Underpinning
 

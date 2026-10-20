@@ -101,6 +101,11 @@ function trySample() {
   router.push({ path: '/apps/new', query: { sample: '1' } })
 }
 
+function overCapTip(app: App) {
+  const what = [app.quota?.db?.over_quota ? 'database' : '', app.quota?.storage?.over_quota ? 'storage' : ''].filter(Boolean)
+  return `Over its cap (${what.join(' and ')}): read-only until space is freed.`
+}
+
 function meta(app: App) {
   const bits = [app.image, `port ${app.port}`]
   const extras = [app.want_db ? 'database' : '', app.want_storage ? 'storage' : ''].filter(Boolean)
@@ -161,6 +166,7 @@ function meta(app: App) {
               <div class="flex min-w-0 items-center gap-2">
                 <RouterLink :to="`/apps/${app.id}`" class="truncate font-medium text-white hover:underline" :title="app.name">{{ app.name }}</RouterLink>
                 <StatusBadge :status="app.status" />
+                <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="badge-warn" :title="overCapTip(app)">over cap</span>
               </div>
               <div class="mt-0.5"><HostLink :hostname="app.hostname" /></div>
               <p class="meta mono truncate" :title="meta(app).join(' · ')">

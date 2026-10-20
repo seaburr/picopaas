@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, image_check, models, reconciler, resources, schemas
+from app import audit, config, crypto, image_check, models, reconciler, resources, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
@@ -63,6 +63,16 @@ def _env_var_out(env_var: models.AppEnvVar) -> schemas.EnvVarOut:
     return schemas.EnvVarOut(key=env_var.key, value=value, is_secret=env_var.is_secret, undecryptable=bad)
 
 
+def _quota_out(app: models.App) -> schemas.AppQuotaOut:
+    db_row, st_row = app.database, app.storage
+    return schemas.AppQuotaOut(
+        db=None if db_row is None else schemas.UsageOut(
+            size_bytes=db_row.size_bytes, limit_bytes=config.DB_QUOTA_BYTES, over_quota=db_row.over_quota),
+        storage=None if st_row is None else schemas.UsageOut(
+            size_bytes=st_row.size_bytes, limit_bytes=config.STORAGE_QUOTA_BYTES, over_quota=st_row.over_quota),
+    )
+
+
 def _app_out(app: models.App) -> schemas.AppOut:
     return schemas.AppOut(
         id=app.id,
@@ -85,6 +95,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         retry_at=reconciler.retry_at(app),
         created_at=app.created_at,
         resources=resources.describe(app),
+        quota=_quota_out(app),
         env=[_env_var_out(e) for e in app.env_vars],
     )
 

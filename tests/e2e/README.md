@@ -17,7 +17,7 @@ python -m pytest tests/e2e tests/pentest -v
 | `E2E_USER_TOKEN` | required | `pp_sk_` key of a test customer (approved, non-admin) |
 | `E2E_ADMIN_TOKEN` | required | `pp_sk_` key of the uberadmin |
 | `E2E_IMAGE_TAG` | latest | tag of `ghcr.io/seaburr/picopaas-testapp-{hello,probe,toolbox}` |
-| `E2E_SLOW` | unset | `1` enables the quota-fill tests (up to ~15 min each; quota poll is 5 min) |
+| `E2E_SLOW` | unset | `1` enables the quota-fill tests (DB polled every 60s, storage every 5 min; up to ~20 min each). Run by `.github/workflows/quota-e2e.yml` weekly |
 | `E2E_APP_PORT` | 8080 | port the test apps listen on |
 | `E2E_BIG_IMAGE` | unset | public non-root image over 256MB, enables the size-cap test |
 

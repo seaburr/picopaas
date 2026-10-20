@@ -24,6 +24,7 @@ A suspended account gets `403 account suspended`, and its apps are scaled to zer
 | Image size | Summed compressed layers at most **256 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422` "Couldn't find that image, or it's private...". |
 | CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
+| Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. The uberadmin can raise it. Over the limit gives `403` "You've reached your limit of N apps...". The uberadmin is exempt. |
 | Database | Optional, 50 MB. |
@@ -296,13 +297,28 @@ Rotation also repairs an app showing "stored secrets unreadable".
 
 ## 10. Quotas
 
-Sizes are polled every 5 minutes, so a limit is enforced with some delay.
+Database size is checked every minute and storage every 5 minutes, so a limit is enforced with some delay (a fast writer can
+overshoot a little before the next check). Both are shown on the app page ("Usage"), in `picopaas status <app>`, and in
+`GET /apps/{id}` under `quota`; an app over a cap gets an "over cap" badge in the list.
 
 | Resource | Limit | At the limit |
 |---|---|---|
-| Database | 50 MB | Writes that add data are blocked (INSERT/UPDATE/CREATE revoked); SELECT and DELETE keep working so you can clean up. Access is restored automatically once usage drops back under 50 MB. |
-| Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it. Delete objects to get back under 100 MB and the read-write key is restored. |
+| Database | 50 MB | Writes that add data are blocked (INSERT/UPDATE/CREATE/ALTER revoked) and your open database connections are closed (your app reconnects, read-only). SELECT, DELETE, TRUNCATE and DROP keep working so you can clean up. Writes are restored automatically within about a minute once usage drops back under 50 MB. See Recovering below. |
+| Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it, so reads keep working but writes fail and **your app cannot delete objects itself**. Free space through the platform (see Recovering below); the read-write key is restored right away once you are under 100 MB. |
 | Image | 256 MB | Deploy is rejected. |
+| Scratch disk | 250 MB | The pod is evicted and restarted; the app shows `error` with reason `disk` and is retried automatically. Files written to the container filesystem or `/tmp` are lost on restart. |
+
+### Recovering from an over-cap resource
+
+- **Database:** free space with `TRUNCATE TABLE t` or `DROP TABLE t` (or `DELETE`, but InnoDB keeps the freed pages, so the
+  reported size may not shrink until you TRUNCATE/DROP or `OPTIMIZE TABLE`). Within about a minute the platform re-measures
+  and restores writes; nothing to click. `GET /apps/{id}/database/usage` shows the live size.
+- **Storage:** your app only holds a read-only key while over the cap, so delete through the platform instead: on the app
+  page click **Free up space** (delete everything, or everything under a prefix), run
+  `picopaas storage-delete <app> --prefix uploads/old/` (or `--all`), or call `POST /apps/{id}/storage/delete` with
+  `{"prefix": "..."}` or `{"all": true}`. Each call deletes up to 5000 objects (repeat if the answer says `truncated`). As soon
+  as the bucket is back under 100 MB the read-write key is restored and the app restarts to pick it up.
+  `GET /apps/{id}/storage/usage` shows the live size, object count and the biggest prefixes.
 
 ## 11. Networking and egress
 
@@ -344,7 +360,9 @@ Deleting an app removes its namespace, database and bucket.
 | Stuck in `deploying` | Readiness not passing: check the health path, port, and that the app starts within a few seconds. |
 | `error` with `status_detail` | Read it. Note: apps in `error` are not retried automatically (open issue #8); change something (for example re-apply the spec with a small env change) or ask the uberadmin. The detail text can be terse (issue #9). |
 | TLS error from MySQL | Use the CA from `${{ db.ca_cert }}` and the strict-flag note above. |
-| DB writes fail with a read-only/permission error | You hit the 50 MB cap; delete rows. |
+| DB writes fail with a read-only/permission error | You hit the 50 MB cap (the app page shows it). `TRUNCATE`/`DROP TABLE` to free space; writes return within a minute. |
+| Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Use **Free up space** (or `picopaas storage-delete`); your app's own key is read-only and cannot delete. |
+| App restarts with "used more than 250 MB of local disk" | You wrote too much to the container filesystem, `/tmp` or logs. Use the storage bucket for files and log less. |
 | SMTP connection times out | SMTP is blocked by design. |
 | `stored secrets unreadable` | The platform key changed; re-enter your secrets or rotate credentials. |
 

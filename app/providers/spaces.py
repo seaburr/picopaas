@@ -41,6 +41,29 @@ def _key_name(app_id: int) -> str:
     return f"pp-{app_id}"
 
 
+def summarize_objects(objects, *, max_scan: int = 50000, top_n: int = 5) -> dict[str, Any]:
+    """Totals plus the biggest first-path-segment prefixes, from an iterable of {"Key", "Size"}."""
+    size = count = 0
+    groups: dict[str, list[int]] = {}
+    for o in objects:
+        if count >= max_scan:
+            break
+        n = int(o["Size"])
+        size += n
+        count += 1
+        key = str(o["Key"])
+        prefix = key.split("/", 1)[0] + "/" if "/" in key else ""
+        g = groups.setdefault(prefix, [0, 0])
+        g[0] += n
+        g[1] += 1
+    top = sorted(groups.items(), key=lambda kv: kv[1][0], reverse=True)[:top_n]
+    return {
+        "size_bytes": size,
+        "objects": count,
+        "top_prefixes": [{"prefix": k, "size_bytes": v[0], "objects": v[1]} for k, v in top],
+    }
+
+
 class SpacesStore(ObjectStore):
     def __init__(
         self,
@@ -200,6 +223,55 @@ class SpacesStore(ObjectStore):
             return sum(int(o["Size"]) for o in self._iter_objects(bucket))
         except (ClientError, BotoCoreError) as exc:
             raise ObjectStoreError(f"bucket_size_bytes failed: {exc}") from exc
+
+    def usage(self, app_id: int) -> dict[str, Any]:
+        bucket = self._find_bucket(app_id)
+        if bucket is None:
+            return {"size_bytes": 0, "objects": 0, "top_prefixes": []}
+        return summarize_objects(self._iter_objects_safe(bucket))
+
+    def _iter_objects_safe(self, bucket: str):
+        try:
+            yield from self._iter_objects(bucket)
+        except (ClientError, BotoCoreError) as exc:
+            raise ObjectStoreError(f"listing objects failed: {exc}") from exc
+
+    def delete_objects(self, app_id: int, prefix: Optional[str] = None, max_objects: int = 5000) -> dict[str, Any]:
+        bucket = self._find_bucket(app_id)
+        if bucket is None:
+            return {"deleted": 0, "truncated": False}
+        deleted = 0
+        truncated = False
+        try:
+            token = None
+            while True:
+                kwargs: dict[str, Any] = {"Bucket": bucket, "MaxKeys": 1000}
+                if prefix:
+                    kwargs["Prefix"] = prefix
+                if token:
+                    kwargs["ContinuationToken"] = token
+                resp = self._s3.list_objects_v2(**kwargs)
+                keys = [{"Key": o["Key"]} for o in resp.get("Contents", [])]
+                room = max_objects - deleted
+                if len(keys) > room:
+                    keys, truncated = keys[:room], True
+                if keys:
+                    out = self._s3.delete_objects(Bucket=bucket, Delete={"Objects": keys, "Quiet": True})
+                    errs = out.get("Errors") or []
+                    deleted += len(keys) - len(errs)
+                    if errs:
+                        raise ObjectStoreError(f"{len(errs)} object(s) could not be deleted")
+                if truncated:
+                    break
+                if not resp.get("IsTruncated"):
+                    break
+                if deleted >= max_objects:
+                    truncated = True
+                    break
+                token = resp["NextContinuationToken"]
+        except (ClientError, BotoCoreError) as exc:
+            raise ObjectStoreError(f"delete objects failed: {exc}") from exc
+        return {"deleted": deleted, "truncated": truncated}
 
     def _swap_key(self, app_id: int, old: dict[str, Any], permission: str) -> dict[str, Any]:
         grants = old.get("grants") or []

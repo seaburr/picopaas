@@ -98,10 +98,17 @@ MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1
 # Used by k8s_manifests (container limits, LimitRange, quota = 2x), quota.py, resources.py, health.py.
 DB_QUOTA_BYTES = int(os.environ.get("DB_QUOTA_BYTES", 50 * 1024 * 1024))
 STORAGE_QUOTA_BYTES = int(os.environ.get("STORAGE_QUOTA_BYTES", 100 * 1024 * 1024))
+# Quota poll cadence. DB is a cheap size query, and a runaway writer can add hundreds of MB in minutes, so poll
+# every minute. Storage lists the bucket and swaps keys (heavier), so every 5 minutes.
+DB_QUOTA_POLL_SECONDS = int(os.environ.get("DB_QUOTA_POLL_SECONDS", 60))
+STORAGE_QUOTA_POLL_SECONDS = int(os.environ.get("STORAGE_QUOTA_POLL_SECONDS", 300))
 DEFAULT_CPU_REQUEST_M = 64
 DEFAULT_CPU_LIMIT_M = int(os.environ.get("DEFAULT_CPU_LIMIT_M", 100))
 DEFAULT_MEM_REQUEST_MI = 128
 DEFAULT_MEM_LIMIT_MI = int(os.environ.get("DEFAULT_MEM_LIMIT_MI", 384))
+# Per-app scratch disk (container filesystem, /tmp, logs); a pod over it is evicted. Chas, 2026-10-19.
+EPHEMERAL_REQUEST_MI = 64
+EPHEMERAL_LIMIT_MI = int(os.environ.get("EPHEMERAL_LIMIT_MI", 250))
 
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.

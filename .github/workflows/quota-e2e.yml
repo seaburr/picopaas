@@ -1,0 +1,53 @@
+name: quota-e2e
+
+# Weekly LIVE test of quota enforcement against the deployed platform: fills a test app's database and storage
+# bucket past their caps, checks writes are revoked / reads survive / recovery works. Slow (up to ~1h) and it
+# creates and deletes real apps, DB and bucket (a few cents at most).
+#
+# NEEDS repo secrets E2E_USER_TOKEN (pp_sk_ key of an approved, non-admin test user) and E2E_ADMIN_TOKEN (pp_sk_
+# key of the uberadmin). They may not exist yet: see docs/QUESTIONS.md (to-do for Chas). Until they do, the job
+# skips itself with a notice instead of failing.
+on:
+  schedule:
+    - cron: "23 6 * * 1"   # Mondays 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quota-e2e
+  cancel-in-progress: false
+
+jobs:
+  quota:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      E2E_USER_TOKEN: ${{ secrets.E2E_USER_TOKEN }}
+      E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
+      E2E_SLOW: "1"
+      PICOPAAS_URL: https://platform.raisehellpraisedale.xyz
+    steps:
+      - name: Check secrets
+        id: gate
+        run: |
+          if [ -z "$E2E_USER_TOKEN" ] || [ -z "$E2E_ADMIN_TOKEN" ]; then
+            echo "::notice::E2E_USER_TOKEN / E2E_ADMIN_TOKEN repo secrets are not set; skipping the live quota test."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: pip install -r requirements.txt
+      - name: Live quota tests
+        if: steps.gate.outputs.run == 'true'
+        run: python -m pytest tests/e2e -k quota -v -x

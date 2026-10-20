@@ -170,6 +170,15 @@ def cmd_status(c, args) -> None:
     if retry:
         lines.append(("retry", retry))
     lines += [("image", a["image"]), ("health", health or "off")]
+    for label, key, name in (("database", "db", "Database"), ("storage", "storage", "Storage")):
+        u = (a.get("quota") or {}).get(key)
+        if u:
+            mb = lambda n: f"{n / 1024 / 1024:.1f}"  # noqa: E731
+            text = f"{mb(u['size_bytes'])} / {mb(u['limit_bytes'])} MB"
+            if u["over_quota"]:
+                hint = "delete rows or drop tables" if key == "db" else "picopaas storage-delete " + a["name"] + " --all"
+                text += f"  OVER CAP, read-only ({hint})"
+            lines.append((label, text))
     for k, v in lines:
         print(f"{k + ':':<9} {v}")
 
@@ -180,6 +189,20 @@ def cmd_rotate(c, args) -> None:
     _request(c, "POST", f"/apps/{a['id']}/rotate-credentials", json={"target": target})
     what = "database password" if target == "db" else "storage bucket keys"
     print(f"Rotated the {what} for {a['name']}. The app is restarting.")
+
+
+def cmd_storage_delete(c, args) -> None:
+    a = _find_app(c, args.name)
+    body = {"all": True} if args.all else {"prefix": args.prefix}
+    r = _request(c, "POST", f"/apps/{a['id']}/storage/delete", json=body).json()
+    left = r["size_bytes"] / 1024 / 1024
+    print(f"Deleted {r['deleted']} objects from {a['name']}'s bucket ({left:.1f} MB left).")
+    if r.get("truncated"):
+        print("More objects remain. Run the command again to continue.")
+    if r.get("over_quota"):
+        print("The bucket is still over its cap, so it stays read-only.")
+    else:
+        print("Writes are restored; the app restarts to pick up the new keys.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -210,6 +233,12 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--db", action="store_true", help="rotate the database password")
     g.add_argument("--storage", action="store_true", help="rotate the storage bucket keys")
     ro.set_defaults(fn=cmd_rotate)
+    sd = sub.add_parser("storage-delete", help="delete objects from an app's storage bucket (frees an over-cap bucket)")
+    sd.add_argument("name", help="the app's name")
+    g2 = sd.add_mutually_exclusive_group(required=True)
+    g2.add_argument("--prefix", help="delete only objects whose key starts with this")
+    g2.add_argument("--all", action="store_true", help="delete every object in the bucket")
+    sd.set_defaults(fn=cmd_storage_delete)
     return p
 
 

@@ -4,12 +4,14 @@ import { useRoute, useRouter } from 'vue-router'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
+import FreeStorageDialog from '../components/FreeStorageDialog.vue'
+import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
 import { PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
+import { deleteStorageObjects, getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { fullTime, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
@@ -158,6 +160,33 @@ async function confirmRotate() {
   }
 }
 
+// Usage / over-cap recovery
+const freeOpen = ref(false)
+const freeBusy = ref(false)
+const dbLimitMb = computed(() => Math.round((app.value?.quota?.db?.limit_bytes ?? 50 * 1024 * 1024) / 1024 / 1024))
+const storageLimitMb = computed(() => Math.round((app.value?.quota?.storage?.limit_bytes ?? 100 * 1024 * 1024) / 1024 / 1024))
+async function confirmFree(body: { prefix: string } | { all: true }) {
+  if (!app.value) return
+  freeBusy.value = true
+  try {
+    const r = await deleteStorageObjects(app.value.id, body)
+    const left = (r.size_bytes / 1024 / 1024).toFixed(1)
+    toast.success(
+      r.over_quota
+        ? `Deleted ${r.deleted} objects, but the bucket is still over its cap (${left} MB).`
+        : `Deleted ${r.deleted} objects. Writes are coming back; the app restarts to pick up new keys.`,
+    )
+    if (r.truncated) toast.info('Some objects remain. Run it again to continue.')
+    freeOpen.value = false
+    await loadApp(true)
+    syncPoll()
+  } catch (e) {
+    toast.error(`Couldn't delete objects: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    freeBusy.value = false
+  }
+}
+
 // Delete
 const deleteOpen = ref(false)
 const deleting = ref(false)
@@ -247,6 +276,22 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </p>
             <AppStatusNote :app="app" :restarting="restarting" @restart="restart" />
             <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2">{{ app.image_update_error }}</p>
+          </section>
+
+          <section v-if="app.quota?.db || app.quota?.storage" class="card card-pad" aria-labelledby="h-usage">
+            <h2 id="h-usage" class="section-title mb-2">Usage</h2>
+            <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <UsageBar v-if="app.quota?.db" label="Database" :usage="app.quota.db" />
+              <UsageBar v-if="app.quota?.storage" label="Storage" :usage="app.quota.storage" />
+            </div>
+            <p v-if="app.quota?.db?.over_quota" role="alert" class="alert-warn mt-3">
+              Database is over its {{ dbLimitMb }} MB cap and is read-only. Delete rows or drop tables to free space; writes come back within a minute.
+            </p>
+            <div v-if="app.quota?.storage?.over_quota" role="alert" class="alert-warn mt-3 flex flex-wrap items-center justify-between gap-2">
+              <span>Storage bucket is over its {{ storageLimitMb }} MB cap and is read-only.</span>
+              <button type="button" class="btn-secondary btn-sm" :disabled="suspended" @click="freeOpen = true">Free up space</button>
+            </div>
+            <p class="help mt-2">Sizes refresh about every minute (database) and every five minutes (storage). To shrink a database, TRUNCATE or DROP TABLE; DELETE alone may not reduce the size.</p>
           </section>
 
           <section id="logs" class="card card-pad scroll-mt-4" aria-labelledby="h-logs">
@@ -371,6 +416,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
       @confirm="confirmRotate"
       @cancel="rotating = null"
     />
+    <FreeStorageDialog :open="freeOpen" :busy="freeBusy" @confirm="confirmFree" @cancel="freeOpen = false" />
     <DeleteAppDialog :app="deleteOpen ? app : null" :busy="deleting" @confirm="confirmDelete" @cancel="deleteOpen = false" />
   </div>
 </template>

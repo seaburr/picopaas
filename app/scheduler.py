@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -113,7 +114,7 @@ def reconcile_job() -> None:
         session.close()
 
 
-def quota_job() -> None:
+def _quota_run(*, databases: bool, storage: bool) -> None:
     if not try_acquire_leader():
         return
     try:
@@ -125,11 +126,25 @@ def quota_job() -> None:
     store = _object_store() or _NoStorage()
     session = SessionLocal()
     try:
-        poll_quotas(session, mysql_admin_factory=_mysql_factory, object_store=store)
+        poll_quotas(session, mysql_admin_factory=_mysql_factory, object_store=store,
+                    databases=databases, storage=storage)
     except Exception:
         log.exception("poll_quotas failed")
     finally:
         session.close()
+
+
+def db_quota_job() -> None:
+    _quota_run(databases=True, storage=False)
+
+
+def storage_quota_job() -> None:
+    _quota_run(databases=False, storage=True)
+
+
+def quota_job() -> None:
+    """Both polls in one (kept for callers/tests)."""
+    _quota_run(databases=True, storage=True)
 
 
 def image_watch_job() -> None:
@@ -230,7 +245,13 @@ def bootstrap_db_server() -> None:
 def start_scheduler() -> BackgroundScheduler:
     sched = BackgroundScheduler()
     sched.add_job(reconcile_job, "interval", seconds=15, max_instances=1, coalesce=True, id="reconcile")
-    sched.add_job(quota_job, "interval", minutes=5, max_instances=1, coalesce=True, id="quota")
+    # next_run_time=now: every new pod would otherwise wait a full interval before its first check (the platform
+    # is redeployed often, which kept pushing the first run out and let a runaway writer go unnoticed).
+    now = datetime.now(timezone.utc)
+    sched.add_job(db_quota_job, "interval", seconds=config.DB_QUOTA_POLL_SECONDS, max_instances=1, coalesce=True,
+                  id="quota_db", next_run_time=now)
+    sched.add_job(storage_quota_job, "interval", seconds=config.STORAGE_QUOTA_POLL_SECONDS, max_instances=1,
+                  coalesce=True, id="quota_storage", next_run_time=now)
     sched.add_job(image_watch_job, "interval", minutes=config.IMAGE_WATCH_MINUTES, max_instances=1, coalesce=True,
                   id="image_watch")
     # Health snapshot refresh runs on EVERY replica (each has its own in-memory cache), not just the leader.

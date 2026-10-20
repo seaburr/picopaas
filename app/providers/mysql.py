@@ -185,7 +185,13 @@ class MySQLAdminClient(MySQLAdmin):
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"db_size_bytes({app_id}) failed: {exc}") from exc
 
-    def set_read_only(self, app_id: int, read_only: bool) -> None:
+    def set_read_only(self, app_id: int, read_only: bool) -> dict[str, Any] | None:
+        """Revoke/restore write privileges. When revoking, also kill the app user's open sessions and return
+        {"listed", "killed", "failed", "list_error"} (None when restoring).
+
+        The kill matters: MySQL applies database-level privilege changes to an open session only on its next
+        `USE`, so a long-lived connection (a pool, or one big loader) keeps writing after the REVOKE. Prod
+        showed one connection writing 300MB under a 50MB cap."""
         db_name = _validate_identifier(_db_name(app_id))
         db_user = _validate_identifier(_db_user(app_id))
         verb, preposition = ("REVOKE", "FROM") if read_only else ("GRANT", "TO")
@@ -195,35 +201,63 @@ class MySQLAdminClient(MySQLAdmin):
                 with conn.cursor() as cur:
                     if self._use_procs:
                         cur.execute("CALL picopaas_ops.set_app_read_only(%s, %s)", (app_id, int(read_only)))
-                        return
+                        return self._kill_via_proc(cur, app_id) if read_only else None
                     cur.execute(
                         f"{verb} {_WRITE_PRIVILEGES} ON `{db_name}`.* {preposition} '{db_user}'@'%'"
                     )
                     # No FLUSH PRIVILEGES: GRANT/REVOKE take effect without it, and it needs RELOAD,
                     # which managed MySQL admins may lack.
-                    if read_only:
-                        self._kill_connections(cur, db_user)
+                    return self._kill_connections(cur, db_user) if read_only else None
             finally:
                 conn.close()
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"set_read_only({app_id}, {read_only}) failed: {exc}") from exc
 
     @staticmethod
-    def _kill_connections(cur: Any, db_user: str) -> None:
-        """Best-effort: enforcement is guaranteed for NEW connections; an already-open session may keep
-        working under cached grants. Kill the app user's open sessions (needs CONNECTION_ADMIN/PROCESS);
-        failures are logged, not raised."""
+    def _kill_via_proc(cur: Any, app_id: int) -> dict[str, Any]:
+        """In-cluster MySQL: the admin has no KILL right, a root-owned procedure does it."""
+        result = {"listed": 0, "killed": 0, "failed": 0, "list_error": False}
+        try:
+            cur.execute("CALL picopaas_ops.kill_app_sessions(%s)", (app_id,))
+            row = cur.fetchone()
+            result["killed"] = result["listed"] = int(row[0]) if row else 0
+        except pymysql.MySQLError as exc:
+            # e.g. 1305 PROCEDURE does not exist: the data volume predates the procedure.
+            log.warning("kill_app_sessions failed for app %s: %s", app_id, exc)
+            result["list_error"] = True
+        return result
+
+    @staticmethod
+    def _kill_connections(cur: Any, db_user: str) -> dict[str, Any]:
+        """Kill the app user's open sessions (needs PROCESS to see them and CONNECTION_ADMIN/SUPER to kill
+        another user's thread). Never raises; the caller gets counts and decides on a fallback.
+
+        Managed-MySQL caveat (not verifiable from here): without PROCESS, information_schema.PROCESSLIST
+        silently shows only the admin's OWN threads, so `listed` is 0 even if the app is connected. The caller
+        treats listed == 0 as "unverified" and falls back to rolling the app's pod."""
+        result = {"listed": 0, "killed": 0, "failed": 0, "list_error": False}
         try:
             cur.execute("SELECT id FROM information_schema.PROCESSLIST WHERE user = %s", (db_user,))
             ids = [row[0] for row in cur.fetchall()]
         except pymysql.MySQLError as exc:
             log.warning("could not list connections of %s: %s", db_user, exc)
-            return
+            result["list_error"] = True
+            return result
+        result["listed"] = len(ids)
         for cid in ids:
             try:
                 cur.execute("KILL %s", (int(cid),))
-            except pymysql.MySQLError as exc:
+                result["killed"] += 1
+            except pymysql.err.OperationalError as exc:
+                if exc.args and exc.args[0] == 1094:  # unknown thread id: it already ended
+                    result["killed"] += 1
+                    continue
+                result["failed"] += 1
                 log.warning("could not kill connection %s of %s: %s", cid, db_user, exc)
+            except pymysql.MySQLError as exc:
+                result["failed"] += 1
+                log.warning("could not kill connection %s of %s: %s", cid, db_user, exc)
+        return result
 
     def set_password(self, app_id: int, password: str) -> dict[str, Any]:
         db_name = _validate_identifier(_db_name(app_id))

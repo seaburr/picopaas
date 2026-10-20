@@ -27,6 +27,7 @@ export interface Limits {
   image_mb: number
   db_mb: number
   bucket_mb: number
+  ephemeral_mi?: number
   override: { cpu_min_m: number; cpu_max_m: number; mem_min_mi: number; mem_max_mi: number }
 }
 
@@ -57,6 +58,17 @@ export interface ApiKeyCreated {
   name?: string | null
 }
 
+export interface UsageStat {
+  size_bytes: number
+  limit_bytes: number
+  over_quota: boolean
+}
+
+export interface AppQuota {
+  db: UsageStat | null
+  storage: UsageStat | null
+}
+
 export interface App {
   id: number
   owner_id: number
@@ -80,6 +92,7 @@ export interface App {
   env: EnvVar[]
   retry_at?: string | null
   resources?: AppResources
+  quota?: AppQuota
 }
 
 export interface AppResources {
@@ -206,6 +219,9 @@ export interface HealthNode {
   mem_used_mi: number | null
   pods: number
   pods_capacity: number
+  disk_capacity_mi?: number | null
+  disk_allocatable_mi?: number | null
+  conditions?: Record<string, boolean>
 }
 
 export interface HealthApp {
