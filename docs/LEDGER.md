@@ -565,3 +565,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [backend-dev] START: DB server SQL health metrics (connections, data size) on admin Health.
 - 2026-10-20 [backend-dev] DONE: MySQLAdminClient.server_health, health.py per-server 15s cache, db_servers[] metrics, MANAGED_DB_DISK_MB, HealthView columns, tests, OPERATIONS. Uncommitted.
 - 2026-10-20 [scm-security] START: commit+push DB health metrics; watch ci/image/deploy, verify /admin/health db_servers.
+- 2026-10-20 [scm-security] DONE: DB health metrics pushed (21ebfe4); ci/image/deploy green; live db_servers metrics verified, error=null.
