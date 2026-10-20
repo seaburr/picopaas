@@ -551,3 +551,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push platform PriorityClass (preemptionPolicy Never); verify deploy, 1 node, pods Running, healthz.
 - 2026-10-20 [scm-security] DONE: cbbace4 pushed; CI/image/deploy green; PriorityClass picopaas-platform created, rollout complete; diag shows 1 node (no scale-up), 2 picopaas pods Running, healthz ok.
 - 2026-10-20 [scm-security] START: commit+push hard app cap + Health UI fix.
+- 2026-10-20 [scm-security] DONE: c5e6ff9 (app cap) + 1c38e4c (health UI) pushed; CI/image/deploy success; /auth/me max_apps=5 app_limit_effective=5; healthz ok. CLAUDE.md left unstaged.
