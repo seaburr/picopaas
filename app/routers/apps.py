@@ -1,3 +1,4 @@
+import math
 import logging
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
@@ -30,6 +31,13 @@ router = APIRouter(prefix="/apps", tags=["apps"])
 DOMAIN_SUFFIX = "raisehellpraisedale.xyz"
 
 
+_ROTATE_FAILED = "Couldn't rotate the credentials, so the old ones still work. Try again; if it keeps failing, ask an admin."
+
+
+def app_limit_message(limit: int) -> str:
+    return f"You've reached your limit of {limit} app{'' if limit == 1 else 's'}. Delete one, or ask an admin to raise your limit."
+
+
 def _check_non_root(user: str) -> Optional[int]:
     """Root images aren't supported (ARCHITECTURE.md "No root images"). Returns the UID to force
     (NAMED_USER_RUN_AS_UID) when USER is a name kubelet can't verify, else None (numeric uid)."""
@@ -37,7 +45,7 @@ def _check_non_root(user: str) -> Optional[int]:
     if uid in ("", "0", "root"):
         raise HTTPException(
             status_code=422,
-            detail="image runs as root, which isn't supported. Add a non-root user to the Dockerfile, e.g. `USER 10001`",
+            detail="Image runs as root, which isn't allowed. Add USER 10001 to your Dockerfile, rebuild, and push again.",
         )
     if not uid.isdigit():
         return NAMED_USER_RUN_AS_UID
@@ -54,15 +62,15 @@ def _check_image_cap(registry: Registry, image: str) -> Optional[int]:
     try:
         info = registry.inspect(image)
     except RegistryError:
-        raise HTTPException(status_code=422, detail="image not found or not public")
+        raise HTTPException(status_code=422, detail="Couldn't find that image, or it's private. Check the name and tag, and make the image public in your registry.")
     run_as_uid = _check_non_root(info.user)
     size = info.size_bytes
     if size > MAX_IMAGE_SIZE_BYTES:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"image is {size} bytes, over the {MAX_IMAGE_SIZE_BYTES} byte "
-                f"({MAX_IMAGE_SIZE_BYTES // 1024 // 1024}MB) platform cap"
+                f"Image is {math.ceil(size / 1024 / 1024)} MB; the limit is {MAX_IMAGE_SIZE_BYTES // 1024 // 1024} MB. "
+                "Slim it down (for example a -slim or alpine base, or a multi-stage build)."
             ),
         )
     return run_as_uid
@@ -91,6 +99,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         health_check_path=app.health_check_path,
         status=app.status,
         status_detail=app.status_detail,
+        status_reason=app.status_reason if app.status == "error" else None,
         retry_at=reconciler.retry_at(app),
         created_at=app.created_at,
         resources=resources.describe(app),
@@ -105,20 +114,20 @@ def _get_owned_app_or_404(db: Session, app_id: int, owner_id: int) -> models.App
         .first()
     )
     if app is None:
-        raise HTTPException(status_code=404, detail="app not found")
+        raise HTTPException(status_code=404, detail="We can't find that app. It may have been deleted.")
     return app
 
 
 def _forbid_if_suspended(app: models.App) -> None:
     if app.status == "suspended":
-        raise HTTPException(status_code=403, detail="app suspended")
+        raise HTTPException(status_code=403, detail="This app is suspended by an admin, so it can't be changed. Contact an admin to get it restored.")
 
 
 def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool) -> None:
     seen = set()
     for item in env:
         if item.key in seen:
-            raise HTTPException(status_code=422, detail=f"duplicate env key {item.key!r}")
+            raise HTTPException(status_code=422, detail=f"{item.key} is listed twice. Env var names must be unique.")
         seen.add(item.key)
         try:
             validate_env_value(item.value, want_db=want_db, want_storage=want_storage)
@@ -143,10 +152,7 @@ def create_app(
 ):
     if not current_user.is_uberadmin:
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
-            raise HTTPException(
-                status_code=403,
-                detail=f"app limit reached ({current_user.app_limit}); contact the uberadmin to raise it",
-            )
+            raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 
     run_as_uid = _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)
@@ -178,7 +184,7 @@ def create_app(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="hostname collision, please retry")
+        raise HTTPException(status_code=409, detail="Couldn't reserve a hostname for the app. Try again in a moment.")
     db.refresh(app)
     audit.record(db, current_user, "app.create", "app", app.id, f"name={app.name}")
     return _app_out(app)
@@ -322,7 +328,7 @@ def rotate_credentials(
     if body.target == "db":
         row = app.database
         if row is None:
-            raise HTTPException(status_code=409, detail="database not provisioned yet")
+            raise HTTPException(status_code=409, detail="Your database is still being created. Try again in a minute.")
         # Persist-first (issue #2): commit the new password BEFORE ALTER USER, so a failed
         # commit leaves MySQL untouched and the stored password valid. If ALTER then fails,
         # restore the old stored password. If even that restore fails, the stored password
@@ -334,7 +340,7 @@ def rotate_credentials(
             db.commit()
         except Exception:
             db.rollback()
-            raise HTTPException(status_code=502, detail="credential rotation failed")
+            raise HTTPException(status_code=502, detail=_ROTATE_FAILED)
         try:
             mysql_admin_factory(row.server).set_password(app.id, new_password)
         except MySQLAdminError:
@@ -343,17 +349,17 @@ def rotate_credentials(
                 db.commit()
             except Exception:
                 db.rollback()
-            raise HTTPException(status_code=502, detail="credential rotation failed")
+            raise HTTPException(status_code=502, detail=_ROTATE_FAILED)
     else:
         row = app.storage
         if row is None:
-            raise HTTPException(status_code=409, detail="storage not provisioned yet")
+            raise HTTPException(status_code=409, detail="Your storage bucket is still being created. Try again in a minute.")
         # Create new key -> commit -> only then revoke the old key (issue #2). If the commit
         # fails, discard the NEW key (best effort); the old key is still stored and working.
         try:
             creds = object_store.rotate_key(app.id)
         except ObjectStoreError:
-            raise HTTPException(status_code=502, detail="credential rotation failed")
+            raise HTTPException(status_code=502, detail=_ROTATE_FAILED)
         row.access_key = creds["access_key"]
         row.secret_key_encrypted = crypto.encrypt(creds["secret_key"])
         try:
@@ -364,7 +370,7 @@ def rotate_credentials(
                 object_store.delete_key(app.id, creds["access_key"])
             except ObjectStoreError:
                 log.warning("could not discard unpersisted key for app %s", app.id)
-            raise HTTPException(status_code=502, detail="credential rotation failed")
+            raise HTTPException(status_code=502, detail=_ROTATE_FAILED)
         try:
             object_store.revoke_other_keys(app.id, creds["access_key"])
         except ObjectStoreError:

@@ -161,11 +161,12 @@ def test_cli_parsing_and_flow(tmp_path, monkeypatch, capsys):
     import json
     assert json.loads(seen[0].content) == {"spec": SPEC, "secrets": {"API_TOKEN": "s"}}
     assert seen[0].headers["authorization"] == "Bearer pp_sk_test"
-    assert "created demo" in capsys.readouterr().out
+    assert "Created demo (queued)" in capsys.readouterr().out
     assert picopaas.main(["apps"], transport=t) == 0
-    assert "demo\th\trunning" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "NAME" in out and "https://h" in out and "running" in out
     assert picopaas.main(["rotate", "demo", "--db"], transport=t) == 1
-    assert "422: nope" in capsys.readouterr().err
+    assert "error: nope" in capsys.readouterr().err
     assert json.loads(seen[-1].content) == {"target": "db"} and seen[-1].url.path == "/apps/7/rotate-credentials"
     monkeypatch.delenv("PICOPAAS_TOKEN")
     assert picopaas.main(["apps"], transport=t) == 1

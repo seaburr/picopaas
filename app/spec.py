@@ -47,31 +47,63 @@ class AppSpec(BaseModel):
     secrets: List[StrictStr] = Field(default_factory=list)
 
 
+def _loc(loc) -> str:
+    """env.0.value -> 'env, item 1, value'; empty -> 'spec'."""
+    parts = []
+    for p in loc:
+        if isinstance(p, int):
+            parts.append(f"item {p + 1}")
+        else:
+            parts.append(str(p))
+    return ", ".join(parts) or "spec"
+
+
+def _plain_msg(err) -> str:
+    """Pydantic's wording -> plain English (keeps our own ValueError text untouched)."""
+    t, msg = err.get("type", ""), err["msg"]
+    if t == "missing":
+        return "is required"
+    if t == "extra_forbidden":
+        return "isn't a known field"
+    if t == "literal_error":
+        return f"must be {err.get('ctx', {}).get('expected', 'a supported value')}"
+    if t.endswith("_type") or t in ("string_type", "bool_type", "int_type", "dict_type", "list_type"):
+        return "has the wrong type"
+    if t == "value_error":
+        return msg.removeprefix("Value error, ")
+    if t in ("greater_than", "less_than_equal", "string_too_short", "string_too_long"):
+        return "is out of range" if t.startswith(("greater", "less")) else ("can't be empty" if t == "string_too_short" else "is too long")
+    return msg
+
+
 def parse_spec(text: str) -> AppSpec:
     if len(text.encode("utf-8")) > MAX_SPEC_BYTES:
-        raise SpecError(f"spec is larger than {MAX_SPEC_BYTES // 1024}KB")
+        raise SpecError(f"Spec is over the {MAX_SPEC_BYTES // 1024} KB limit. Remove comments or unused entries.")
     try:
         for event in yaml.parse(text, Loader=yaml.SafeLoader):
             if isinstance(event, yaml.AliasEvent):
-                raise SpecError("YAML aliases/anchors are not allowed in a spec")
+                raise SpecError("Specs can't use YAML anchors or aliases (& and *). Write the values out in full.")
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise SpecError(f"invalid YAML: {exc.__class__.__name__}")
+        mark = getattr(exc, "problem_mark", None)
+        where = f" (line {mark.line + 1})" if mark is not None else ""
+        reason = getattr(exc, "problem", None)
+        reason = f": {reason}" if reason else ""
+        raise SpecError(f"Your spec isn't valid YAML{where}{reason}. Check indentation and colons.")
     except RecursionError:
-        raise SpecError("spec is nested too deeply")
+        raise SpecError("Your spec is nested too deeply. Flatten it.")
     if not isinstance(data, dict):
-        raise SpecError("spec must be a YAML mapping")
+        raise SpecError("A spec must be a YAML mapping of keys and values, starting with apiVersion: picopaas/v1.")
     try:
         spec = AppSpec.model_validate(data)
     except ValidationError as exc:
         parts = []
         for err in exc.errors():
-            loc = ".".join(str(p) for p in err["loc"]) or "spec"
-            parts.append(f"{loc}: {err['msg']}")
+            parts.append(f"{_loc(err['loc'])}: {_plain_msg(err)}")
         raise SpecError("; ".join(parts))
     if len(set(spec.secrets)) != len(spec.secrets):
-        raise SpecError("secrets: duplicate names")
+        raise SpecError("secrets: each name can only be listed once.")
     overlap = set(spec.secrets) & set(spec.env)
     if overlap:
-        raise SpecError(f"names in both env and secrets: {', '.join(sorted(overlap))}")
+        raise SpecError(f"{', '.join(sorted(overlap))} appears under both env and secrets. Keep it in one place.")
     return spec

@@ -11,7 +11,7 @@ from app import crypto, models
 from app.db import Base
 from app.providers.base import MySQLAdminError, ObjectStoreError
 from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
-from app.reconciler import delete_app, reconcile_all, reconcile_app
+from app.reconciler import STATUS_MESSAGES, delete_app, reconcile_all, reconcile_app
 
 
 @pytest.fixture()
@@ -159,7 +159,7 @@ def test_no_db_capacity_sets_error_status(session):
         settings={},
     )
     assert app.status == "error"
-    assert app.status_detail == "no database capacity"
+    assert app.status_detail == STATUS_MESSAGES["db_capacity"]
     assert app.database is None
 
 
@@ -199,7 +199,7 @@ def test_provider_failure_sets_error_without_leaking_secrets(session):
         settings={},
     )
     assert app.status == "error"
-    assert app.status_detail == "database provisioning failed"
+    assert app.status_detail == STATUS_MESSAGES["db_failed"]
     assert "s3cret" not in app.status_detail
     assert "password" not in app.status_detail
 
@@ -214,7 +214,7 @@ def test_provider_failure_sets_error_without_leaking_secrets(session):
         settings={},
     )
     assert app2.status == "error"
-    assert app2.status_detail == "storage provisioning failed"
+    assert app2.status_detail == STATUS_MESSAGES["storage_failed"]
     assert "secret" not in app2.status_detail.lower().replace("secret_", "")
 
 
@@ -347,7 +347,7 @@ def test_provisioning_failure_is_logged_without_secrets(session, caplog):
         reconcile_all(session, kube=kube, mysql_admin_factory=lambda s: Boom(), object_store=store, settings={})
     assert "db provisioning failed" in caplog.text
     assert "hunter2" not in caplog.text
-    assert app.status == "error" and app.status_detail == "database provisioning failed"
+    assert app.status == "error" and app.status_detail == STATUS_MESSAGES["db_failed"]
 
 
 def test_provider_error_summary_pymysql_and_botocore():
@@ -497,7 +497,7 @@ def test_no_db_capacity_is_retryable(session):
     kube = _FlakyKube()
     kube.fail = False
     _rsweep(session, kube, T0)
-    assert app.status_detail == "no database capacity" and app.error_retryable is True
+    assert app.status_detail == STATUS_MESSAGES["db_capacity"] and app.error_retryable is True
     _make_server(session)
     _rsweep(session, kube, T0 + timedelta(minutes=1))
     assert app.status != "error" and app.error_count == 0

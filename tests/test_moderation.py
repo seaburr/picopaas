@@ -34,7 +34,7 @@ def test_pending_blocked_cookie_and_approve_flips(make_client):
     for resp in (user.get("/apps"), user.post("/apps", json=APP), user.get("/api/keys"),
                  user.post("/api/keys"), user.post("/apps/spec", json={"spec": "x"})):
         assert resp.status_code == 403
-        assert resp.json()["detail"] == "account pending approval"
+        assert resp.json()["detail"] .startswith("Your account is waiting for admin approval")
     assert admin.post(f"/admin/users/{uid}/approve").status_code == 200
     assert user.get("/apps").status_code == 200
     assert user.post("/apps", json=APP).status_code == 201
@@ -48,7 +48,7 @@ def test_pending_blocked_with_api_key(make_client):
     admin.post(f"/admin/users/{uid}/suspend")
     kc = _api_key_client(make_client, raw)
     r = kc.get("/apps")
-    assert r.status_code == 403 and r.json()["detail"] == "account suspended"
+    assert r.status_code == 403 and r.json()["detail"] .startswith("Your account is suspended")
     assert kc.post("/apps/spec", json={"spec": "x"}).status_code == 403
     admin.post(f"/admin/users/{uid}/unsuspend")
     assert kc.get("/apps").status_code == 200
@@ -92,7 +92,7 @@ def test_owner_cannot_edit_suspended_app(make_client, db_session):
     app_id = user.post("/apps", json=APP).json()["id"]
     assert admin.post(f"/admin/apps/{app_id}/suspend").status_code == 200
     r = user.patch(f"/apps/{app_id}", json={"name": "x"})
-    assert r.status_code == 403 and r.json()["detail"] == "app suspended"
+    assert r.status_code == 403 and r.json()["detail"] .startswith("This app is suspended by an admin")
     assert admin.post(f"/admin/apps/{app_id}/unsuspend").json()["status"] == "pending"
     assert user.patch(f"/apps/{app_id}", json={"name": "x"}).status_code == 200
 
@@ -180,7 +180,7 @@ def test_owner_cannot_delete_suspended_app_admin_can(make_client, db_session):
     app_id = user.post("/apps", json=APP).json()["id"]
     admin.post(f"/admin/apps/{app_id}/suspend")
     r = user.delete(f"/apps/{app_id}")
-    assert r.status_code == 403 and r.json()["detail"] == "app suspended"
+    assert r.status_code == 403 and r.json()["detail"] .startswith("This app is suspended by an admin")
     assert admin.delete(f"/admin/apps/{app_id}").status_code == 204
 
 

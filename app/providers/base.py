@@ -13,6 +13,13 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 
+@dataclass
+class PodLogs:
+    pod: Optional[str]
+    lines: list[str]
+    note: Optional[str] = None
+
+
 class KubeProvider(ABC):
     """Applies rendered manifests (app/k8s_manifests.py) to the cluster."""
 
@@ -39,6 +46,24 @@ class KubeProvider(ABC):
     @abstractmethod
     def get_status(self, namespace: str) -> str:
         """Return a coarse status string (e.g. 'running', 'pending', 'unknown')."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_live_limits(self, namespace: str) -> Optional[dict[str, int]]:
+        """Container limits of the Deployment currently in the cluster ({"cpu_limit_m", "mem_limit_mi"}),
+        or None when there is no Deployment yet. Used to size the ResourceQuota for an in-flight rollout."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def pending_hint(self, namespace: str) -> str:
+        """What a not-yet-ready app looks like, for the deploy-timeout message:
+        'not_ready' (a pod is running but fails readiness), 'waiting' (pod exists, not running), 'none' (no pod)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def pod_logs(self, namespace: str, tail: int) -> "PodLogs":
+        """Logs of the app container of the newest pod in an APP namespace (never the platform namespace).
+        Includes the previous container's last lines when the current one restarted."""
         raise NotImplementedError
 
     @abstractmethod

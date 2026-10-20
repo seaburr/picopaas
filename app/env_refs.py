@@ -24,7 +24,8 @@ class EnvValidationError(ValueError):
 def validate_env_key(key: str) -> None:
     if not ENV_KEY_RE.match(key):
         raise EnvValidationError(
-            f"invalid env key {key!r}: must match ^[A-Z_][A-Z0-9_]*$"
+            f"{key!r} isn't a valid env var name. Use UPPER_SNAKE_CASE: capital letters, digits and "
+            "underscores, not starting with a digit."
         )
 
 
@@ -72,13 +73,14 @@ def validate_env_value(value: str, want_db: bool, want_storage: bool) -> None:
     allowed = ", ".join("${{ %s }}" % r for r in sorted(ALLOWED_REFS))
     if ref is None or ref not in ALLOWED_REFS:
         raise EnvValidationError(
-            f"invalid reference in value: a value containing '${{{{' must be exactly one "
-            f"reference. Allowed: {allowed}"
+            f"A value containing '${{{{' must be exactly one reference and nothing else. Allowed: {allowed}"
         )
     domain = ref.split(".", 1)[0]
     if domain == "db" and not want_db:
         raise EnvValidationError(
-            f"${{{{ {ref} }}}} references a database, but this app did not request one (set want_db)")
+            f"${{{{ {ref} }}}} needs a database, but this app doesn't have one. Turn on the database (MySQL) "
+            "option for this app, or remove the reference.")
     if domain == "storage" and not want_storage:
         raise EnvValidationError(
-            f"${{{{ {ref} }}}} references storage, but this app did not request any (set want_storage)")
+            f"${{{{ {ref} }}}} needs a storage bucket, but this app doesn't have one. Turn on the storage bucket "
+            "option for this app, or remove the reference.")

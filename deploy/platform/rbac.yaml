@@ -38,6 +38,11 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list"]
 
+  # Container logs for GET /apps/{id}/logs (read-only; the API only ever asks for app-<id> namespaces).
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
   # Read-only, for GET /admin/health (admin dashboard): node capacity + usage from metrics.k8s.io.
   - apiGroups: [""]
     resources: ["nodes"]

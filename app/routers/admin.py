@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
@@ -8,11 +9,12 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, health, models, resources
+from app import audit, crypto, health, models, resources, schemas
 from app.db import get_db
 from app.dependencies import get_kube, require_uberadmin
 from app.routers.apps import DOMAIN_SUFFIX
 from app.schemas import ResourcesOut
+from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_uberadmin)])
 
@@ -78,7 +80,7 @@ def _validate_ca_pem(v: Optional[str]) -> Optional[str]:
     try:
         x509.load_pem_x509_certificate(v.encode())
     except Exception:
-        raise ValueError("ca_cert must be a PEM-encoded x509 certificate")
+        raise ValueError("CA certificate must be PEM text starting with -----BEGIN CERTIFICATE-----.")
     return v
 
 
@@ -133,13 +135,13 @@ def list_users(db: Session = Depends(get_db)):
 def _get_user_or_404(db: Session, user_id: int) -> models.User:
     user = db.get(models.User, user_id)
     if user is None or user.status == "deleted":
-        raise HTTPException(status_code=404, detail="user not found")
+        raise HTTPException(status_code=404, detail="We can't find that user. They may have been deleted. Refresh the list.")
     return user
 
 
 def _protect_uberadmin(user: models.User) -> None:
     if user.is_uberadmin:
-        raise HTTPException(status_code=400, detail="the uberadmin cannot be suspended or deleted")
+        raise HTTPException(status_code=400, detail="The main admin account can't be suspended or deleted.")
 
 
 def _live_apps(db: Session, owner_id: int) -> list:
@@ -150,7 +152,11 @@ def _live_apps(db: Session, owner_id: int) -> list:
 def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
     user = _get_user_or_404(db, user_id)
     if user.status != "pending":
-        raise HTTPException(status_code=409, detail="user is not pending")
+        if user.status == "active":
+            msg = "This user was already approved. Refresh the list."
+        else:
+            msg = f"This user isn't waiting for approval (their status is {user.status}). Refresh the list."
+        raise HTTPException(status_code=409, detail=msg)
     user.status = "active"
     db.commit()
     audit.record(db, admin, "user.approve", "user", user.id)
@@ -176,7 +182,7 @@ def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
     user = _get_user_or_404(db, user_id)
     if user.status != "suspended":
-        raise HTTPException(status_code=409, detail="user is not suspended")
+        raise HTTPException(status_code=409, detail="This user isn't suspended. Refresh the list.")
     user.status = "active"
     for a in _live_apps(db, user.id):
         if a.status == "suspended" and a.suspended_by_user:
@@ -187,6 +193,19 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.Us
     db.commit()
     audit.record(db, admin, "user.unsuspend", "user", user.id)
     return _user_out(db, user)
+
+
+@router.post("/users/{user_id}/reset-password", response_model=schemas.TemporaryPasswordOut)
+def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+    """Set a random temporary password (shown once, never stored in clear or logged). The user is flagged
+    must_change_password and should change it via POST /auth/change-password after logging in."""
+    user = _get_user_or_404(db, user_id)
+    temp = secrets.token_urlsafe(12)  # 16 chars, comfortably over the password minimum
+    user.password_hash = hash_password(temp)
+    user.must_change_password = True
+    db.commit()
+    audit.record(db, admin, "user.reset_password", "user", user.id)
+    return schemas.TemporaryPasswordOut(temporary_password=temp)
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -213,7 +232,7 @@ def _app_admin_out(a: models.App) -> AdminAppOut:
 def _get_app_or_404(db: Session, app_id: int) -> models.App:
     a = db.get(models.App, app_id)
     if a is None or a.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="app not found")
+        raise HTTPException(status_code=404, detail="We can't find that app. It may have been deleted. Refresh the list.")
     return a
 
 
@@ -238,7 +257,7 @@ def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User =
 def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
     a = _get_app_or_404(db, app_id)
     if a.status != "suspended":
-        raise HTTPException(status_code=409, detail="app is not suspended")
+        raise HTTPException(status_code=409, detail="This app isn't suspended. Refresh the list.")
     a.status = "pending"
     a.suspended_by_user = False
     a.status_detail = None
@@ -271,9 +290,9 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
     cpu_req = new["cpu_request_m"] or resources.DEFAULT_CPU_REQUEST_M
     mem_req = new["mem_request_mi"] or resources.DEFAULT_MEM_REQUEST_MI
     if cpu_req > eff["cpu_limit_m"]:
-        raise HTTPException(status_code=422, detail="cpu_request_m must be <= cpu_limit_m")
+        raise HTTPException(status_code=422, detail="CPU request can't exceed the CPU limit.")
     if mem_req > eff["mem_limit_mi"]:
-        raise HTTPException(status_code=422, detail="mem_request_mi must be <= mem_limit_mi")
+        raise HTTPException(status_code=422, detail="Memory request can't exceed the memory limit.")
     old = _res_str(a)
     for f, v in new.items():
         setattr(a, f, v)
@@ -342,7 +361,7 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="a db server with that name already exists")
+        raise HTTPException(status_code=409, detail=f"A database server named \"{payload.name}\" already exists. Pick another name.")
     db.refresh(server)
     audit.record(db, admin, "dbserver.create", "db_server", server.id,
                  f"name={server.name} max_databases={server.max_databases} ca_cert={'set' if server.ca_cert else 'none'}")
@@ -354,7 +373,7 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
                     admin: models.User = Depends(require_uberadmin)):
     server = db.get(models.DbServer, server_id)
     if server is None:
-        raise HTTPException(status_code=404, detail="db server not found")
+        raise HTTPException(status_code=404, detail="We can't find that database server. Refresh the list.")
     if payload.status is not None:
         server.status = payload.status
     if payload.max_databases is not None:

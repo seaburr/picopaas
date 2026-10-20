@@ -9,13 +9,22 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.providers.base import KubeProvider
+from app.providers.base import KubeProvider, PodLogs
 
 log = logging.getLogger(__name__)
 
 FIELD_MANAGER = "picopaas"
-# Container waiting reasons that mean the app will not come up without a change.
-ERROR_REASONS = ("ImagePullBackOff", "ErrImagePull", "CrashLoopBackOff", "CreateContainerConfigError")
+# Container waiting reasons that mean the app will not come up without a change -> short codes the reconciler
+# turns into human messages (app/reconciler.py STATUS_MESSAGES).
+ERROR_CODES = {
+    "ImagePullBackOff": "image_pull",
+    "ErrImagePull": "image_pull",
+    "CrashLoopBackOff": "crash_loop",
+    "CreateContainerConfigError": "config",
+}
+APP_CONTAINER = "app"
+MAX_LOG_LINE = 2000
+PREVIOUS_TAIL = 50
 
 
 def _load_config() -> None:
@@ -65,8 +74,18 @@ def _as_dict(obj: Any) -> dict[str, Any]:
 
 
 class KubeClientProvider(KubeProvider):
-    def __init__(self, dynamic_client: Any | None = None) -> None:
+    def __init__(self, dynamic_client: Any | None = None, core_api: Any | None = None) -> None:
         self._dyn = dynamic_client
+        self._core = core_api
+
+    @property
+    def core(self) -> Any:
+        if self._core is None:
+            from kubernetes import client
+
+            _load_config()
+            self._core = client.CoreV1Api()
+        return self._core
 
     @property
     def dyn(self) -> Any:
@@ -113,12 +132,13 @@ class KubeClientProvider(KubeProvider):
         return {i["metadata"]["name"] for i in res.get("items", [])}
 
     def get_status(self, namespace: str) -> str:
-        """'running' | 'deploying' | 'error: <reason>' (the reconciler stores it as-is)."""
+        """'running' | 'deploying' | 'error: <code>' (codes: image_pull, crash_loop, oom, config, root_image,
+        quota, replica_failure; the reconciler maps them to human text)."""
         pods = self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
         for pod in _as_dict(pods).get("items", []):
-            reason = self._pod_error(pod)
-            if reason:
-                return f"error: {reason}"
+            code = self._pod_error(pod)
+            if code:
+                return f"error: {code}"
 
         deployments = self.dyn.resources.get(api_version="apps/v1", kind="Deployment").get(namespace=namespace)
         items = _as_dict(deployments).get("items", [])
@@ -126,15 +146,91 @@ class KubeClientProvider(KubeProvider):
             return "deploying"
         dep = items[0]
         st = dep.get("status") or {}
+        # The Deployment controller copies a ReplicaSet's FailedCreate (e.g. "exceeded quota") here. With an old
+        # pod still ready this would otherwise look like a rollout that is merely slow.
+        for cond in st.get("conditions") or []:
+            if cond.get("type") == "ReplicaFailure" and str(cond.get("status")) == "True":
+                return "error: quota" if "exceeded quota" in (cond.get("message") or "") else "error: replica_failure"
         ready = st.get("readyReplicas") or 0
         want = (dep.get("spec") or {}).get("replicas", 1)
-        # A rollout in flight (or stuck, e.g. surge pod rejected by quota) is "deploying", never "running":
+        # A rollout in flight (or stuck) is "deploying", never "running":
         # the ready old pod would otherwise mask the new spec not being live.
-        if (st.get("observedGeneration") or 0) < (dep.get("metadata") or {}).get("generation", 0):
+        meta = dep.get("metadata") or {}
+        if (st.get("observedGeneration") or 0) < meta.get("generation", 0):
             return "deploying"
         if (st.get("updatedReplicas") or 0) < want:
             return "deploying"
         return "running" if ready >= 1 else "deploying"
+
+    def get_live_limits(self, namespace: str) -> dict[str, int] | None:
+        deployments = self.dyn.resources.get(api_version="apps/v1", kind="Deployment").get(namespace=namespace)
+        items = _as_dict(deployments).get("items", [])
+        if not items:
+            return None
+        containers = (((items[0].get("spec") or {}).get("template") or {}).get("spec") or {}).get("containers") or []
+        if not containers:
+            return None
+        lim = (containers[0].get("resources") or {}).get("limits") or {}
+        out: dict[str, int] = {}
+        if lim.get("cpu"):
+            out["cpu_limit_m"] = parse_cpu_m(lim["cpu"])
+        if lim.get("memory"):
+            out["mem_limit_mi"] = parse_mem_mi(lim["memory"])
+        return out or None
+
+    def pending_hint(self, namespace: str) -> str:
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        hint = "none"
+        for pod in pods:
+            st = pod.get("status") or {}
+            if st.get("phase") == "Running":
+                return "not_ready"
+            hint = "waiting"
+        return hint
+
+    @staticmethod
+    def _created(pod: dict[str, Any]) -> str:
+        meta = pod.get("metadata") or {}
+        return str(meta.get("creationTimestamp") or meta.get("creation_timestamp") or "")
+
+    def pod_logs(self, namespace: str, tail: int) -> PodLogs:
+        # Only ever app namespaces (app-<id>); callers derive the name from the app id, never from user input.
+        if not namespace.startswith("app-"):
+            raise ValueError("not an app namespace")
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        pods = [p for p in pods if not (p.get("metadata") or {}).get("deletionTimestamp")] or pods
+        if not pods:
+            return PodLogs(pod=None, lines=[], note="No running pod yet.")
+        pod = max(pods, key=self._created)
+        name = pod["metadata"]["name"]
+        cstat = ((pod.get("status") or {}).get("containerStatuses") or [{}])[0]
+        restarts = int(cstat.get("restartCount") or 0)
+
+        def read(previous: bool, n: int) -> list[str] | None:
+            try:
+                text = self.core.read_namespaced_pod_log(
+                    name=name, namespace=namespace, container=APP_CONTAINER, tail_lines=n, previous=previous
+                )
+            except Exception as exc:  # noqa: BLE001 - container still creating / no previous container
+                log.info("pod log read failed (%s, previous=%s): %s", name, previous, type(exc).__name__)
+                return None
+            return [ln[:MAX_LOG_LINE] for ln in (text or "").splitlines()]
+
+        current = read(False, tail)
+        lines: list[str] = []
+        if restarts > 0:
+            prev = read(True, min(tail, PREVIOUS_TAIL))
+            if prev:
+                lines += [f"--- previous container (before restart #{restarts}), last {len(prev)} lines ---", *prev,
+                          "--- current container ---"]
+        note = None
+        if current is None:
+            note = "The container hasn't started yet, so there are no logs."
+        else:
+            lines += current
+            if not current and len(lines) == 0:
+                note = "The container hasn't printed anything yet."
+        return PodLogs(pod=name, lines=lines, note=note)
 
     def cluster_snapshot(self) -> dict[str, Any]:
         """Nodes + non-terminated pods (+ metrics.k8s.io usage when available). Read-only, resources only."""
@@ -222,13 +318,19 @@ class KubeClientProvider(KubeProvider):
     def _pod_error(pod: dict[str, Any]) -> str | None:
         statuses = (pod.get("status") or {}).get("containerStatuses") or []
         for cs in statuses:
-            waiting = ((cs.get("state") or {}).get("waiting")) or {}
+            state = cs.get("state") or {}
+            waiting = state.get("waiting") or {}
             reason = waiting.get("reason")
-            if reason in ERROR_REASONS:
+            last = (cs.get("lastState") or {}).get("terminated") or {}
+            if (state.get("terminated") or {}).get("reason") == "OOMKilled" or (
+                reason == "CrashLoopBackOff" and last.get("reason") == "OOMKilled"
+            ):
+                return "oom"
+            if reason in ERROR_CODES:
                 msg = waiting.get("message") or ""
                 if reason == "CreateContainerConfigError" and "runAsNonRoot" in msg:
-                    return "image runs as root (runAsNonRoot)"
-                return reason
+                    return "root_image"
+                return ERROR_CODES[reason]
         return None
 
 

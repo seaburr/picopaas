@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from app.providers.base import (
     ImageInfo,
+    PodLogs,
     KubeProvider,
     MySQLAdmin,
     MySQLAdminError,
@@ -24,6 +25,12 @@ class FakeKubeProvider(KubeProvider):
         self.snapshot: dict[str, Any] = {"nodes": [], "pods": [], "metrics_available": True, "errors": []}
         self.snapshot_calls = 0
         self.list_ns_calls = 0
+        # Tests: force what get_status reports after the next apply (ns -> "error: quota", "deploying", ...).
+        self.forced_status: dict[str, str] = {}
+        self.hints: dict[str, str] = {}  # ns -> pending_hint
+        self.logs: dict[str, PodLogs] = {}  # ns -> canned logs
+        self.log_calls: list[tuple[str, int]] = []
+        self.live_limits_override: dict[str, Optional[dict[str, int]]] = {}
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -45,7 +52,7 @@ class FakeKubeProvider(KubeProvider):
             if ns is None:
                 continue
             self.applied.setdefault(ns, []).append(manifest)
-            self.statuses[ns] = "running"
+            self.statuses[ns] = self.forced_status.get(ns, "running")
 
     def delete_namespace(self, namespace: str) -> None:
         self.deleted.add(namespace)
@@ -64,6 +71,23 @@ class FakeKubeProvider(KubeProvider):
 
     def get_status(self, namespace: str) -> str:
         return self.statuses.get(namespace, "unknown")
+
+    def get_live_limits(self, namespace: str) -> Optional[dict[str, int]]:
+        """Limits of the most recently applied Deployment (like the cluster would report), unless overridden."""
+        if namespace in self.live_limits_override:
+            return self.live_limits_override[namespace]
+        for m in reversed(self.applied.get(namespace, [])):
+            if m.get("kind") == "Deployment":
+                lim = m["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]
+                return {"cpu_limit_m": int(lim["cpu"].rstrip("m")), "mem_limit_mi": int(lim["memory"].rstrip("Mi"))}
+        return None
+
+    def pending_hint(self, namespace: str) -> str:
+        return self.hints.get(namespace, "none")
+
+    def pod_logs(self, namespace: str, tail: int) -> PodLogs:
+        self.log_calls.append((namespace, tail))
+        return self.logs.get(namespace, PodLogs(pod=None, lines=[], note="No running pod yet."))
 
 
 class FakeMySQLAdmin(MySQLAdmin):

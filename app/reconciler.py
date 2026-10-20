@@ -113,6 +113,45 @@ def _private_storage_ips(endpoint: str) -> list[str]:
 UNREADABLE_DETAIL = "stored secrets unreadable (platform key changed); re-enter secrets or rotate credentials"
 SUSPENDED_APPLIED = "scaled to zero"
 
+# Rollout that isn't ready after this long fails (retryable) instead of sitting in "deploying" forever.
+DEPLOY_TIMEOUT = timedelta(minutes=config.DEPLOY_TIMEOUT_MINUTES)
+
+# status_reason code -> human status_detail (fixed strings: what happened + what to do; never provider text).
+# Placeholders: {port}, {mem}, {path}, {minutes}.
+STATUS_MESSAGES = {
+    "image_pull": "Can't pull the image. Check the name and tag, and that it's public.",
+    "crash_loop": "Your app starts and then exits. Check the logs, that it listens on port {port}, and that required env vars are set.",
+    "oom": "Your app ran out of memory (limit {mem}Mi).",
+    "not_ready": "Port {port} isn't answering. Is that the port your app listens on?",
+    "not_ready_health": "Your app is running, but its health check on {path} isn't returning 2xx/3xx. Fix the path or turn the check off.",
+    "root_image": "Your image runs as root, which isn't allowed. Add USER 10001 to your Dockerfile, rebuild, push, and save the app again.",
+    "config": "The container couldn't be configured. Check the image's USER (must be non-root) and your env vars.",
+    "quota": "The cluster refused to start a pod because this app's resource quota is used up. We'll retry automatically; if it keeps failing, ask an administrator.",
+    "replica_failure": "The cluster couldn't create a pod for your app. We'll retry automatically; if it keeps failing, ask an administrator.",
+    "unreadable_secrets": UNREADABLE_DETAIL,
+    "timeout_not_ready": "Your app didn't become ready within {minutes} minutes: it is running but port {port} isn't answering. Is that the port your app listens on? We'll retry automatically.",
+    "timeout_not_ready_health": "Your app didn't become ready within {minutes} minutes: it is running, but its health check on {path} isn't returning 2xx/3xx. Fix the path or turn the check off. We'll retry automatically.",
+    "timeout_waiting": "Your app didn't become ready within {minutes} minutes: its pod is still waiting to start. We'll retry automatically; check the image and that the cluster has room.",
+    "timeout_none": "Your app didn't become ready within {minutes} minutes and no pod was started. We'll retry automatically; if it keeps failing, ask an administrator.",
+    "deploy_failed": "Couldn't deploy to the cluster. We'll retry automatically. If this keeps happening, edit and save the app to retry now, or ask an administrator.",
+    "env_invalid": "One of your env vars can't be read or used. Open Edit, re-enter the value, and save.",
+    "db_capacity": "No database space is free right now. Nothing you did wrong. We'll keep retrying; ask an administrator if it lasts more than an hour.",
+    "db_failed": "Couldn't create your database. We'll retry automatically. If it keeps failing, ask an administrator.",
+    "storage_failed": "Couldn't create your storage bucket. We'll retry automatically. If it keeps failing, ask an administrator.",
+}
+# Message key -> the status_reason code exposed on AppOut.
+_REASON_OF = {
+    "not_ready_health": "not_ready", "timeout_not_ready": "timeout", "timeout_not_ready_health": "timeout", "timeout_waiting": "timeout",
+    "timeout_none": "timeout", "deploy_failed": "unknown", "replica_failure": "unknown",
+}
+
+
+def status_message(key: str, app: models.App) -> str:
+    eff = resources.effective(app)
+    return STATUS_MESSAGES[key].format(
+        port=app.port, mem=eff["mem_limit_mi"], path=app.health_check_path, minutes=config.DEPLOY_TIMEOUT_MINUTES
+    )[:255]
+
 
 def _kube_error_summary(exc: Exception) -> str:
     """`ApiException` -> "422 Unprocessable Entity: <k8s Status message>" (truncated); else the exception type."""
@@ -178,7 +217,13 @@ def _record_failure(app: models.App, retryable: bool, now: Optional[datetime]) -
 
 
 def _fail(
-    session: Session, app: models.App, detail: str, *, retryable: bool = True, now: Optional[datetime] = None
+    session: Session,
+    app: models.App,
+    detail: str,
+    *,
+    retryable: bool = True,
+    now: Optional[datetime] = None,
+    reason: str = "unknown",
 ) -> None:
     """Mark an app 'error' with a short, secret-free detail and commit.
 
@@ -193,8 +238,16 @@ def _fail(
         return
     app.status = "error"
     app.status_detail = detail
+    app.status_reason = reason
+    app.deploying_since = None
     _record_failure(app, retryable, now)
     session.commit()
+
+
+def _fail_key(
+    session: Session, app: models.App, key: str, *, retryable: bool = True, now: Optional[datetime] = None
+) -> None:
+    _fail(session, app, status_message(key, app), retryable=retryable, now=now, reason=_REASON_OF.get(key, key))
 
 
 def reconcile_app(
@@ -230,13 +283,13 @@ def reconcile_app(
         try:
             server = choose_server(session)
         except NoDbCapacity:
-            _fail(session, app, "no database capacity", now=now)
+            _fail_key(session, app, "db_capacity", now=now)
             return
         try:
             creds = mysql_admin_factory(server).create_db_user(app.id)
         except Exception as exc:
             log.warning("app %s: db provisioning failed: %s", app.id, _provider_error_summary(exc))
-            _fail(session, app, "database provisioning failed", now=now)
+            _fail_key(session, app, "db_failed", now=now)
             return
         db_row = models.AppDatabase(
             app_id=app.id,
@@ -255,7 +308,7 @@ def reconcile_app(
             creds = object_store.create_bucket_and_key(app.id)
         except Exception as exc:
             log.warning("app %s: storage provisioning failed: %s", app.id, _provider_error_summary(exc))
-            _fail(session, app, "storage provisioning failed", now=now)
+            _fail_key(session, app, "storage_failed", now=now)
             return
         storage_row = models.AppStorage(
             app_id=app.id,
@@ -279,18 +332,22 @@ def reconcile_app(
         env_vars = {e.key: crypto.decrypt(e.value_encrypted) for e in app.env_vars}
     except ValueError:
         log.warning("app %s: stored secrets unreadable (platform key changed)", app.id)
-        _fail(session, app, UNREADABLE_DETAIL, retryable=False, now=now)
+        # Retryable with backoff: during a key-rotation rollout an old-key pod may lead the reconciler and
+        # fail on rows the new pod already re-encrypted; it self-heals once the rollout finishes.
+        _fail_key(session, app, "unreadable_secrets", retryable=True, now=now)
         return
     try:
         resolved_env = env_refs.resolve(env_vars, refs)
     except env_refs.EnvValidationError:
         if sweep:
             return
-        _fail(session, app, "environment configuration invalid", retryable=False, now=now)
+        _fail_key(session, app, "env_invalid", retryable=False, now=now)
         return
 
     # 4. Render + apply manifests.
-    manifests = k8s_manifests.render_app_manifests(
+    namespace = k8s_manifests.namespace_name(app.id)
+    suspended = app.status == "suspended"
+    render_kwargs = dict(
         app_id=app.id,
         hostname=app.hostname,
         image=app.image,
@@ -301,28 +358,53 @@ def reconcile_app(
         storage_ips=(
             _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []
         ),
-        replicas=0 if app.status == "suspended" else 1,
+        replicas=0 if suspended else 1,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         resources=resources.effective(app),
         run_as_uid=app.run_as_uid,
-        include_ingress=app.status != "suspended",
+        include_ingress=not suspended,
+        restart_nonce=app.restart_nonce,
     )
-    suspended = app.status == "suspended"
-    flat = k8s_manifests.flatten_manifests(manifests)
-    # Only the digest is stored (the manifests include the resolved Secret).
-    new_hash = hmac.new(
-        config.SECRET_KEY.encode(), json.dumps(flat, sort_keys=True, default=str).encode(), hashlib.sha256
-    ).hexdigest()  # keyed: unguessable offline
+
+    def _hash(flat_manifests: list[dict[str, Any]]) -> str:
+        # Only the digest is stored (the manifests include the resolved Secret). Keyed: unguessable offline.
+        return hmac.new(
+            config.SECRET_KEY.encode(), json.dumps(flat_manifests, sort_keys=True, default=str).encode(), hashlib.sha256
+        ).hexdigest()
+
+    # Steady-state render (quota = 2x the new limits). The stored hash is this one unless the quota had to be
+    # widened for an in-flight rollout, so a finished rollout makes the next sweep shrink the quota back.
+    flat = k8s_manifests.flatten_manifests(k8s_manifests.render_app_manifests(**render_kwargs))
+    new_hash = _hash(flat)
     if sweep and not force and app.rendered_hash == new_hash:
         return
 
+    # The old pod still holds its LIVE limits while the surge pod needs the NEW ones: size the quota for both.
+    eff = render_kwargs["resources"]
+    try:
+        live = kube.get_live_limits(namespace)
+    except Exception as exc:
+        log.warning("app %s: reading live limits failed: %s", app.id, _kube_error_summary(exc))
+        live = None
+    if live and (
+        (live.get("cpu_limit_m") or 0) > eff["cpu_limit_m"] or (live.get("mem_limit_mi") or 0) > eff["mem_limit_mi"]
+    ):
+        flat = k8s_manifests.flatten_manifests(
+            k8s_manifests.render_app_manifests(**render_kwargs, live_limits=live)
+        )
+        new_hash = _hash(flat)
+        if sweep and not force and app.rendered_hash == new_hash:
+            return
+
     if not suspended and not sweep:
+        if app.status != "deploying":
+            app.deploying_since = _naive(now) if now else _utcnow()
         app.status = "deploying"
         app.status_detail = None
+        app.status_reason = None
         session.commit()
 
-    namespace = k8s_manifests.namespace_name(app.id)
     try:
         kube.apply(flat)
         if suspended:
@@ -334,7 +416,7 @@ def reconcile_app(
         log.warning("app %s: kube apply failed: %s", app.id, _kube_error_summary(exc))
         if sweep:
             return
-        _fail(session, app, "deployment failed", now=now)
+        _fail_key(session, app, "deploy_failed", now=now)
         return
 
     app.rendered_hash = new_hash
@@ -342,14 +424,45 @@ def reconcile_app(
         # Scaled to zero; DB/storage kept. Marker stops the sweep from re-applying every tick.
         app.status_detail = SUSPENDED_APPLIED
     elif status.startswith("error:"):
+        code = status[len("error:"):].strip() or "unknown"
+        key = code if code in STATUS_MESSAGES else "replica_failure"
         app.status = "error"
-        app.status_detail = status[len("error:"):].strip()[:255] or None
+        app.status_detail = status_message(key, app)
+        app.status_reason = _REASON_OF.get(key, key)
+        app.deploying_since = None
         _record_failure(app, True, now)
+    elif status == "deploying" and not _deploy_timed_out(app, now):
+        app.status = status
+        app.status_detail = None
+        app.status_reason = None
+        if app.deploying_since is None:
+            app.deploying_since = _naive(now) if now else _utcnow()
+    elif status == "deploying":
+        # Not ready after DEPLOY_TIMEOUT: fail (retryable) saying what we saw.
+        try:
+            hint = kube.pending_hint(namespace)
+        except Exception:
+            hint = "none"
+        session.commit()  # keep rendered_hash
+        key = f"timeout_{hint if hint in ('not_ready', 'waiting') else 'none'}"
+        if key == "timeout_not_ready" and app.health_check_enabled:
+            key += "_health"
+        _fail_key(session, app, key, now=now)
+        return
     else:
         app.status = status
         app.status_detail = None
+        app.status_reason = None
+        app.deploying_since = None
         app.reset_retry()
     session.commit()
+
+
+def _deploy_timed_out(app: models.App, now: Optional[datetime]) -> bool:
+    since = app.deploying_since
+    if since is None:
+        return False
+    return (_naive(now) if now else _utcnow()) - _naive(since) > DEPLOY_TIMEOUT
 
 
 def delete_app(

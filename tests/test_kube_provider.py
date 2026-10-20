@@ -68,7 +68,8 @@ def _pod(reason, message=""):
 
 
 def test_status_errors():
-    for r in ("ImagePullBackOff", "ErrImagePull", "CrashLoopBackOff"):
-        assert KubeClientProvider(_dyn(pods=[_pod(r)])).get_status("n") == f"error: {r}"
+    for r, code in (("ImagePullBackOff", "image_pull"), ("ErrImagePull", "image_pull"),
+                    ("CrashLoopBackOff", "crash_loop"), ("CreateContainerConfigError", "config")):
+        assert KubeClientProvider(_dyn(pods=[_pod(r)])).get_status("n") == f"error: {code}"
     s = KubeClientProvider(_dyn(pods=[_pod("CreateContainerConfigError", "container has runAsNonRoot")])).get_status("n")
-    assert s.startswith("error:") and "runAsNonRoot" in s
+    assert s == "error: root_image"

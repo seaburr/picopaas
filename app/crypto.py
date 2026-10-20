@@ -78,7 +78,8 @@ def rotate_all(session, fernet: MultiFernet | None = None) -> dict[str, int]:
             setattr(row, col, new)
             rotated += 1
     session.commit()
-    log.info("fernet rotation: rotated=%d unchanged=%d skipped_undecryptable=%d", rotated, unchanged, skipped)
+    # WARNING level on purpose: prod logs only show WARNING and above, and this is the audit trail of a key rotation.
+    log.warning("fernet rotation: rotated=%d unchanged=%d skipped_undecryptable=%d", rotated, unchanged, skipped)
     if skipped:
         log.warning("fernet rotation: %d rows could not be decrypted by any key and were left as-is", skipped)
     return {"rotated": rotated, "unchanged": unchanged, "skipped": skipped}

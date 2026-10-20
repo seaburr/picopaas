@@ -119,3 +119,6 @@ INGRESS_NAMESPACE = os.environ.get("INGRESS_NAMESPACE", "traefik")
 
 # Node ceiling shown on the admin health dashboard (informational; the real cap is in Terraform).
 MAX_NODES = int(os.environ["MAX_NODES"]) if os.environ.get("MAX_NODES", "").isdigit() else None
+
+# A rollout still not ready after this many minutes fails (retryable) with a message saying what we saw.
+DEPLOY_TIMEOUT_MINUTES = 10

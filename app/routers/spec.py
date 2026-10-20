@@ -10,7 +10,7 @@ from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
 from app.providers.base import Registry
-from app.routers.apps import _active_app_count, _app_out, _check_image_cap, _validate_env
+from app.routers.apps import _active_app_count, app_limit_message, _app_out, _check_image_cap, _validate_env
 from app.schemas import MASKED_VALUE
 from app.spec import MAX_SPEC_BYTES, SpecError, parse_spec
 
@@ -43,7 +43,10 @@ def deploy_spec(
     if extra:
         raise HTTPException(
             status_code=422,
-            detail=f"secret values supplied for names not listed in spec.secrets: {', '.join(sorted(extra))}",
+            detail=(
+                f"You provided values for {', '.join(sorted(extra))}, but they aren't declared under secrets: "
+                "in the spec. Add them there or remove the values."
+            ),
         )
 
     app = (
@@ -57,7 +60,7 @@ def deploy_spec(
     )
     created = app is None
     if app is not None and app.status == "suspended":
-        raise HTTPException(status_code=403, detail="app suspended")
+        raise HTTPException(status_code=403, detail="This app is suspended by an admin, so it can't be changed. Contact an admin to get it restored.")
 
     existing_secrets: Dict[str, str] = {}
     if app is not None:
@@ -65,11 +68,17 @@ def deploy_spec(
         if app.want_db and not spec.resources.db or app.want_storage and not spec.resources.storage:
             raise HTTPException(
                 status_code=422,
-                detail="removing a db/storage resource from an existing app is not supported via spec",
+                detail=(
+                    "A spec can't remove a database or storage bucket from an existing app. Delete and recreate "
+                    "the app if you really want to drop it (this destroys the data)."
+                ),
             )
     missing = [s for s in spec.secrets if s not in payload.secrets and s not in existing_secrets]
     if missing:
-        raise HTTPException(status_code=422, detail=f"missing values for secrets: {', '.join(missing)}")
+        raise HTTPException(status_code=422, detail=(
+                f"Missing values for these secrets: {', '.join(missing)}. Pass --secret NAME=value (CLI) "
+                "or fill them in the secrets box (YAML tab)."
+            ))
 
     try:
         items = [schemas.EnvVarIn(key=k, value=v) for k, v in spec.env.items()]
@@ -78,14 +87,14 @@ def deploy_spec(
             for s in spec.secrets
         ]
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="; ".join(e["msg"] for e in exc.errors()))
+        raise HTTPException(
+            status_code=422,
+            detail="; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors()),
+        )
 
     if created and not current_user.is_uberadmin:
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
-            raise HTTPException(
-                status_code=403,
-                detail=f"app limit reached ({current_user.app_limit}); contact the uberadmin to raise it",
-            )
+            raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 
     run_as_uid = _check_image_cap(registry, spec.image)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
@@ -140,7 +149,7 @@ def deploy_spec(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="hostname collision, please retry")
+        raise HTTPException(status_code=409, detail="Couldn't reserve a hostname for the app. Try again in a moment.")
     db.refresh(app)
     audit.record(db, current_user, "app.create" if created else "app.update", "app", app.id,
                  f"name={app.name} via=spec")

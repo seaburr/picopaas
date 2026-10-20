@@ -14,9 +14,13 @@ Auth levels used below:
 
 - **public**: no auth.
 - **user**: any logged-in, non-deleted user (including pending and suspended).
-- **active**: user with status `active`. Pending gets `403 account pending approval`; anything else gets
-  `403 account suspended`.
-- **admin**: the `uberadmin` role (`403 uberadmin access required` otherwise). Missing auth is `401 Not authenticated`.
+- **active**: user with status `active`. Pending gets `403` "Your account is waiting for admin approval..."; anything
+  else gets `403` "Your account is suspended...".
+- **admin**: the `uberadmin` role (`403` "This needs admin access." otherwise). Missing auth is `401` "You're logged
+  out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked."
+
+Error `detail` strings are written to be shown to people as-is (what happened, why, what to do) and may be reworded;
+match on the status code, not the text.
 
 Request bodies reject unknown fields (422). Common errors: 401 unauthenticated, 403 forbidden, 404 not found
 (also used for other people's apps), 409 conflict, 422 validation.
@@ -31,7 +35,10 @@ under an `/api` prefix (issue #10 proposes moving it), the server decides per re
 - Everything else (the SPA's own `fetch` calls, curl, the CLI) gets the JSON API.
 - Never swapped: `/static/*`, `/healthz`, `/docs`, `/redoc`, `/openapi.json`.
 - Unknown non-API paths fall back to the SPA; unknown paths starting with `auth`, `apps`, `admin`, `api`,
-  `healthz` or `static` return `404 {"detail":"not found"}`.
+  `healthz` or `static` return a JSON 404.
+- A request whose `Accept` lists `application/json` first never gets the SPA, even with `Sec-Fetch-Mode: navigate`.
+- Caching: the SPA HTML is `Cache-Control: no-cache`; every JSON response is `Cache-Control: no-store`. Both carry
+  `Vary: Sec-Fetch-Mode, Accept`, because one URL can return either (a cache must not replay one for the other).
 
 If you script against the API, do not send `Accept: text/html` or a `Sec-Fetch-Mode: navigate` header on GET.
 The only route that already has an `/api` prefix is `/api/keys`.
@@ -46,13 +53,22 @@ The only route that already has an `/api` prefix is `/api/keys`.
 
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
-| POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `uberadmin`/`active`; later users are `user`/`pending`. 409 `email already registered`. |
-| POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 `invalid email or password` (also for deleted users; failures are audited). |
+| POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `uberadmin`/`active`; later users are `user`/`pending`. Enumeration-safe: registering an email that already has an account also returns 201 with a `pending` `User` and a cookie, but the cookie authenticates nobody (`/auth/me` is 401) and nothing changes; the owner just logs in. No email is sent. |
+| POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 "Email or password is wrong..." (same for unknown emails and deleted users; failures are audited). |
 | POST | `/auth/logout` | public | none | 204; clears cookie. |
-| GET | `/auth/me` | user | none | `User` |
+| GET | `/auth/me` | user | none | `User` plus `features` and `limits` |
+| POST | `/auth/change-password` | user (any status) | `{current_password, new_password}` (new: 8 to 256, must differ) | 204. 400 if `current_password` is wrong; 422 for a bad new password. Clears `must_change_password`. Audited as `user.change_password`. |
 
 `User`: `id, email, role ("user"|"uberadmin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"),
-created_at`. New users get `app_limit` 1.
+created_at, must_change_password`. New users get `app_limit` 1. `must_change_password` is set by an admin password
+reset and informational only (the server does not block other calls); the UI should send the user to change it.
+
+`/auth/me` adds:
+- `features: {databases, storage}`: `databases` is true when at least one DB server exists; `storage` is true when
+  Spaces credentials are configured. Hide the matching checkbox when false.
+- `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb,
+  override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform caps (from `app/config.py`) and the
+  range an admin may override per app.
 
 ## API keys (`/api/keys`, active)
 
@@ -117,9 +133,9 @@ spec's `secrets` list).
 Response: 200 `App` plus `created: bool` (200 for both create and update). The app is matched by
 `(you, spec.name)`; if it exists it is updated, declaratively: env, secrets and health check become exactly what
 the spec says (missing ones are removed; a secret still listed but not resupplied keeps its value).
-Errors: 422 for YAML/spec errors (message lists `field: problem`), `secret values supplied for names not listed in
-spec.secrets`, `missing values for secrets: ...`, `removing a db/storage resource from an existing app is not
-supported via spec`, `invalid reference in value: ...`; 403 `app suspended` or app limit. On create the app
+Errors: 422 for YAML/spec errors (message lists `field: problem` in plain words, e.g. `port: is required`),
+values given for undeclared secrets, missing secret values, trying to remove a database or bucket from an existing
+app, or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
 ## Admin (`/admin`, admin only)
@@ -128,13 +144,14 @@ limit is checked first, so at the limit you get the 403 before any image or env 
 |---|---|---|---|
 | GET | `/admin/users` | none | List of `{id, email, role, app_limit, app_count, status, created_at}` (excludes deleted). |
 | PATCH | `/admin/users/{id}` | `{app_limit: int >= 0}` | Updated user. Not audited. |
-| POST | `/admin/users/{id}/approve` | none | `pending` to `active`; 409 `user is not pending`. |
+| POST | `/admin/users/{id}/approve` | none | `pending` to `active`; 409 if the user is not pending. |
+| POST | `/admin/users/{id}/reset-password` | none | 200 `{"temporary_password": "..."}`. Sets a random 16-character password, shown once, and flags the user `must_change_password`. Audited as `user.reset_password` (the password is never logged). Existing sessions are not revoked. Hand the password over out of band. |
 | POST | `/admin/users/{id}/suspend` | none | User `suspended`; all their live apps `suspended` (scaled to zero). 400 for the uberadmin. |
-| POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 `user is not suspended`. |
+| POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 if the user is not suspended. |
 | DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the uberadmin. |
 | GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at}`. |
 | POST | `/admin/apps/{id}/suspend` | none | App `suspended`. |
-| POST | `/admin/apps/{id}/unsuspend` | none | App to `pending`; 409 `app is not suspended`. |
+| POST | `/admin/apps/{id}/unsuspend` | none | App to `pending`; 409 if the app is not suspended. |
 | DELETE | `/admin/apps/{id}` | none | 204; works even on suspended apps. |
 | GET | `/admin/audit?limit=100` | none | Newest first; `limit` 1 to 1000. Items: `{id, at, actor_email, action, target_type, target_id, detail}`. |
 | GET | `/admin/db-servers` | none | `{id, name, host, port, status, max_databases, used, pct, warn}`; `warn` at 80% or more. |
@@ -144,7 +161,7 @@ limit is checked first, so at the limit you get the 403 before any image or env 
 
 Audit actions recorded: `user.register`, `login.failed`, `apikey.create`, `apikey.revoke`, `app.create`,
 `app.update`, `app.delete`, `app.rotate`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`,
-`app.suspend`, `app.unsuspend`. Never contains secrets; `detail` is capped at 255 characters.
+`app.suspend`, `app.unsuspend`, `user.register_duplicate`, `user.change_password`, `user.reset_password`. Never contains secrets; `detail` is capped at 255 characters.
 
 ## Not an API
 

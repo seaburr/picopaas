@@ -9,20 +9,24 @@ from app.env_refs import EnvValidationError, validate_env_key
 
 MASKED_VALUE = "********"
 
+# One password policy for register, change-password and admin reset.
+PASSWORD_MIN = 8
+PASSWORD_MAX = 256
+
 
 # --- Auth ---
 
 class UserRegister(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=256)
+    password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
     accept_terms: bool
 
     @field_validator("accept_terms")
     @classmethod
     def _must_accept(cls, v: bool) -> bool:
         if v is not True:
-            raise ValueError("you must accept the terms (accept_terms: true) to register")
+            raise ValueError("Accept the Privacy Policy and Acceptable Use to continue (send accept_terms: true).")
         return v
 
 
@@ -30,6 +34,16 @@ class UserLogin(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     email: EmailStr
     password: str
+
+
+class ChangePassword(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_password: str = Field(max_length=PASSWORD_MAX)
+    new_password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+
+
+class TemporaryPasswordOut(BaseModel):
+    temporary_password: str
 
 
 class ApiKeyCreateOut(BaseModel):
@@ -59,6 +73,35 @@ class UserOut(BaseModel):
     app_limit: int
     status: str
     created_at: datetime
+    must_change_password: bool = False
+
+
+class Features(BaseModel):
+    databases: bool
+    storage: bool
+
+
+class LimitOverride(BaseModel):
+    cpu_min_m: int
+    cpu_max_m: int
+    mem_min_mi: int
+    mem_max_mi: int
+
+
+class Limits(BaseModel):
+    cpu_limit_m: int
+    mem_limit_mi: int
+    cpu_request_m: int
+    mem_request_mi: int
+    image_mb: int
+    db_mb: int
+    bucket_mb: int
+    override: LimitOverride
+
+
+class MeOut(UserOut):
+    features: Features
+    limits: Limits
 
 
 # --- Env vars ---
@@ -143,6 +186,7 @@ class AppOut(BaseModel):
     health_check_path: str = DEFAULT_HEALTH_PATH
     status: str
     status_detail: Optional[str] = None
+    status_reason: Optional[str] = None  # machine code for status=error (image_pull, crash_loop, oom, not_ready, quota, ...)
     retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)
     created_at: datetime
     resources: Optional[ResourcesOut] = None

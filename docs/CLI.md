@@ -8,7 +8,11 @@ python cli/picopaas.py apply -f app.yaml --secret API_TOKEN=s3cret
 python cli/picopaas.py apps
 python cli/picopaas.py status my-app
 python cli/picopaas.py rotate my-app --db      # or --storage
+python cli/picopaas.py -v apps                  # -v adds HTTP status codes to error messages
 ```
+
+`--help` on any command lists its flags. Output is plain text meant for people, so match on the exit code
+(0 ok, 1 error), not the wording.
 
 Example `app.yaml` (max 64KB, no YAML anchors/aliases, unknown keys rejected):
 
@@ -27,13 +31,30 @@ secrets:
 ```
 
 `image` above is a placeholder: use your own public image (or `ghcr.io/seaburr/picopaas-testapp-hello:latest`
-to try it), otherwise `apply` fails with `Error: 422: image not found or not public`.
+to try it), otherwise `apply` fails with `error: Couldn't find that image, or it's private. Check the name and tag, and make the
+image public in your registry.`
 
-`apply` creates the app, or updates it if you already have one with that `name`, and prints
-`created|updated <name>: https://<hostname> (<status>)`. On update, a secret without `--secret` keeps its
-stored value; anything removed from the file (env, secrets, healthCheck) is removed from the app. `rotate`
-prints `rotated db credentials for <name>`. On an API error every command prints the status and detail
-(for example `error: 409: storage not provisioned yet`) and exits 1. Env values must be strings (quote numbers and booleans).
+`apply` creates the app, or updates it if you already have one with that `name`, and prints what happened plus a
+next step:
+
+```
+Created my-app (queued). It'll be live in about a minute at https://<hostname>
+Check progress: picopaas status my-app
+```
+
+If the app has already failed, the first line says so and gives the reason. On update, a secret without `--secret`
+keeps its stored value; anything removed from the file (env, secrets, healthCheck) is removed from the app.
+
+- `apps` prints a `NAME  URL  STATUS` table, or `No apps yet. Create one with: picopaas apply -f app.yaml`.
+- `status <name>` prints `name`, `url`, `status`, and, when there is one, `detail` (why it failed and what to do) and
+  `retry` (when it will be retried), then `image` and `health`. Statuses read `queued` (API `pending`) and `failed`
+  (API `error`).
+- `rotate <name> --db|--storage` prints `Rotated the database password for <name>. The app is restarting.`
+
+Errors print `error: <message>` and exit 1. The message is the server's plain-language explanation (for example
+`error: Your storage bucket is still being created. Try again in a minute.`); `-v` prefixes the HTTP code. A missing
+token, a 401, an unreachable server and a timeout each say what to check (`PICOPAAS_TOKEN`, `PICOPAAS_URL`, your
+network). Env values must be strings (quote numbers and booleans).
 
 `healthCheck` (optional, unknown keys rejected): `enabled` (bool, default false) turns on HTTP readiness
 and liveness probes against `path` on your app's port; a 2xx/3xx response is healthy. `path` defaults to

@@ -99,19 +99,26 @@ def _res(resources: dict[str, int] | None) -> dict[str, int]:
     return resources or r.effective(None)
 
 
-def resource_quota_manifest(app_id: int, resources: dict[str, int] | None = None) -> dict[str, Any]:
-    # 2x the effective limits: headroom for the rolling-update surge pod (see comment above).
+def resource_quota_manifest(
+    app_id: int, resources: dict[str, int] | None = None, live_limits: dict[str, int] | None = None
+) -> dict[str, Any]:
+    """Quota = new limit + max(new limit, live limit): the surge pod of a rollout runs the NEW limits while the old
+    pod still holds the LIVE (pod-template) limits, so lowering the caps must not strand the rollout. `live_limits`
+    ({"cpu_limit_m", "mem_limit_mi"}, from the cluster) is None when there is no Deployment yet; steady state = 2x."""
     e = _res(resources)
+    live = live_limits or {}
+    cpu_total = e["cpu_limit_m"] + max(e["cpu_limit_m"], live.get("cpu_limit_m") or 0)
+    mem_total = e["mem_limit_mi"] + max(e["mem_limit_mi"], live.get("mem_limit_mi") or 0)
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
         "metadata": {"name": "app-quota", "namespace": namespace_name(app_id)},
         "spec": {
             "hard": {
-                "limits.cpu": f"{2 * e['cpu_limit_m']}m",
-                "limits.memory": f"{2 * e['mem_limit_mi']}Mi",
-                "requests.cpu": f"{2 * e['cpu_limit_m']}m",
-                "requests.memory": f"{2 * e['mem_limit_mi']}Mi",
+                "limits.cpu": f"{cpu_total}m",
+                "limits.memory": f"{mem_total}Mi",
+                "requests.cpu": f"{cpu_total}m",
+                "requests.memory": f"{mem_total}Mi",
                 "pods": QUOTA_PODS,
                 "services": QUOTA_SERVICES,
                 # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
@@ -343,6 +350,7 @@ def deployment_manifest(
     user_env: dict[str, str] | None = None,
     resources: dict[str, int] | None = None,
     run_as_uid: int | None = None,
+    restart_nonce: str | None = None,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
@@ -350,6 +358,8 @@ def deployment_manifest(
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
     # envFrom alone never restarts a running pod.
     pod_annotations = {"picopaas.io/env-checksum": env_checksum} if env_checksum else {}
+    if restart_nonce:  # POST /apps/{id}/restart: a new nonce changes the pod template, so the pod rolls
+        pod_annotations["picopaas.io/restart-nonce"] = restart_nonce
     if health_check_enabled:
         probes: dict[str, Any] = {
             "readinessProbe": {
@@ -491,11 +501,13 @@ def render_app_manifests(
     resources: dict[str, int] | None = None,
     include_ingress: bool = True,
     run_as_uid: int | None = None,
+    restart_nonce: str | None = None,
+    live_limits: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
-        "resource_quota": resource_quota_manifest(app_id, resources),
+        "resource_quota": resource_quota_manifest(app_id, resources, live_limits),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
         "secret": secret_manifest(app_id, env),
@@ -503,7 +515,8 @@ def render_app_manifests(
                                        replicas=replicas,
                                        health_check_enabled=health_check_enabled,
                                        health_check_path=health_check_path, user_env=env,
-                                       resources=resources, run_as_uid=run_as_uid),
+                                       resources=resources, run_as_uid=run_as_uid,
+                                       restart_nonce=restart_nonce),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
     }

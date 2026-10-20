@@ -20,7 +20,8 @@ def test_register_rejects_duplicate_email(client):
     resp = client.post(
         "/auth/register", json={"email": "dupe@example.com", "password": DEFAULT_PASSWORD, "accept_terms": True}
     )
-    assert resp.status_code == 409
+    # Enumeration-safe: looks exactly like a fresh pending signup (see tests/test_ux_backend.py).
+    assert resp.status_code == 201 and resp.json()["status"] == "pending"
 
 
 def test_login_real_flow_sets_session_cookie(make_client):
@@ -66,7 +67,7 @@ def test_register_requires_accept_terms(client):
     base = {"email": "t@example.com", "password": DEFAULT_PASSWORD}
     assert client.post("/auth/register", json=base).status_code == 422
     r = client.post("/auth/register", json={**base, "accept_terms": False})
-    assert r.status_code == 422 and "accept the terms" in r.text
+    assert r.status_code == 422 and "Accept the Privacy Policy" in r.text
     assert client.post("/auth/register", json={**base, "accept_terms": True, "x": 1}).status_code == 422
 
 

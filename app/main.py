@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app import config
 from app import models
 from app.db import Base, engine, get_db
-from app.routers import admin, api_keys, apps, auth, spec
+from app.routers import admin, api_keys, app_ops, apps, auth, spec
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
 # create_all is a no-op against tables that already exist, which keeps the SQLite
@@ -38,6 +38,7 @@ app = FastAPI(title="PicoPaaS API", lifespan=lifespan)
 
 app.include_router(auth.router)
 app.include_router(apps.router)
+app.include_router(app_ops.router)
 app.include_router(api_keys.router)
 app.include_router(spec.router)
 app.include_router(admin.router)
@@ -65,9 +66,29 @@ if _STATIC_DIR.is_dir():
 _NAV_PASSTHROUGH = ("/static/", "/healthz", "/docs", "/redoc", "/openapi.json")
 
 
+# The same URL serves the SPA (navigation) and JSON (fetch), so caches must key on these request headers.
+_VARY = "Sec-Fetch-Mode, Accept"
+
+
+def _spa_response() -> FileResponse:
+    """index.html: revalidate every time (it names the hashed asset files) and vary on navigation-vs-fetch,
+    so a browser never replays the HTML for a fetch() or the JSON for a page load (UX-1)."""
+    return FileResponse(_INDEX_HTML, headers={"Cache-Control": "no-cache", "Vary": _VARY})
+
+
+def _prefers_json(request: Request) -> bool:
+    """Accept lists application/json first (or only JSON-ish types) and not text/html first."""
+    accept = request.headers.get("accept", "")
+    first = accept.split(",", 1)[0].split(";", 1)[0].strip().lower()
+    return first == "application/json" or first.endswith("+json")
+
+
 def _is_browser_navigation(request: Request) -> bool:
     """A top-level page load (typing a URL, refresh, link click), as opposed to the SPA's own fetch() calls,
-    API clients, or curl. Browsers send Sec-Fetch-Mode: navigate on navigations and never on fetch()."""
+    API clients, or curl. Browsers send Sec-Fetch-Mode: navigate on navigations and never on fetch().
+    A request that explicitly prefers JSON is never a navigation, whatever else it sends."""
+    if _prefers_json(request):
+        return False
     mode = request.headers.get("sec-fetch-mode")
     if mode is not None:
         return mode == "navigate"
@@ -84,7 +105,7 @@ async def spa_on_navigation(request: Request, call_next):
         and not request.url.path.startswith(_NAV_PASSTHROUGH)
         and _is_browser_navigation(request)
     ):
-        return FileResponse(_INDEX_HTML)
+        return _spa_response()
     return await call_next(request)
 
 
@@ -194,6 +215,11 @@ async def robots_and_noindex(request: Request, call_next):
     else:
         response = await call_next(request)
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    if response.headers.get("content-type", "").startswith("application/json"):
+        # API responses are per-user and live: never cache them, and key whatever cache exists on the headers
+        # that decide between the SPA and the JSON for the same URL.
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Vary"] = _VARY
     return response
 
 
@@ -203,7 +229,7 @@ def spa_fallback(full_path: str):
     (client-side routing) for everything frontend/src/router doesn't know
     about either — same as any other single-page app host."""
     if full_path.startswith(_API_PREFIXES):
-        raise HTTPException(status_code=404, detail="not found")
+        raise HTTPException(status_code=404, detail="That API path doesn't exist. Check the URL against the API docs at /guide/api.")
     if _INDEX_HTML.is_file():
-        return FileResponse(_INDEX_HTML)
+        return _spa_response()
     raise HTTPException(status_code=404, detail="frontend not built: run `npm run build` in frontend/")

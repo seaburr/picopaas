@@ -22,10 +22,10 @@ A suspended account gets `403 account suspended`, and its apps are scaled to zer
 |---|---|
 | User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
 | Image size | Summed compressed layers at most **256 MB** (checked against the registry manifest on create and update). |
-| Image visibility | Public images only. A missing or private image gives `422 image not found or not public`. |
+| Image visibility | Public images only. A missing or private image gives `422` "Couldn't find that image, or it's private...". |
 | CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
-| Apps per user | **1** by default. The uberadmin can raise it. Over the limit gives `403 app limit reached (N); contact the uberadmin to raise it`. The uberadmin is exempt. |
+| Apps per user | **1** by default. The uberadmin can raise it. Over the limit gives `403` "You've reached your limit of N apps...". The uberadmin is exempt. |
 | Database | Optional, 50 MB. |
 | Storage | Optional, 100 MB bucket. |
 | Spec size | A YAML spec is at most 64 KB. |
@@ -279,8 +279,8 @@ ready.
 
 Rotate DB password or storage keys from the app edit page, with `picopaas rotate NAME --db|--storage`, or
 `POST /apps/{id}/rotate-credentials` with `{"target": "db"}` or `{"target": "storage"}`. The app moves to
-`pending`, is re-rendered with the new credentials and restarts. It returns `409 database not provisioned yet`
-(or `storage ...`) if the DB or bucket is not provisioned yet or the app never asked for one, and `502 credential rotation failed` if the provider call failed (the old credentials are kept).
+`pending`, is re-rendered with the new credentials and restarts. It returns `409` "Your database is still being created..."
+(or the storage bucket equivalent) if the DB or bucket is not provisioned yet or the app never asked for one, and `502` "Couldn't rotate the credentials, so the old ones still work..." if the provider call failed (the old credentials are kept).
 Rotation also repairs an app showing "stored secrets unreadable".
 
 ## 10. Quotas
@@ -321,10 +321,10 @@ Deleting an app removes its namespace, database and bucket.
 | Symptom | Likely cause and fix |
 |---|---|
 | `403 account pending approval` | Wait for the uberadmin to approve. |
-| `422 image runs as root` | Add a non-root `USER` (preferably numeric, e.g. `USER 10001`) to your Dockerfile. |
-| `422 image not found or not public` | Wrong tag, or private image. Make the package public. |
+| `422` "Image runs as root..." | Add a non-root `USER` (preferably numeric, e.g. `USER 10001`) to your Dockerfile. |
+| `422` "Couldn't find that image, or it's private" | Wrong tag, or private image. Make the package public. |
 | `422 ... over the 268435456 byte (256MB) platform cap` | Shrink the image. |
-| `403 app limit reached` | Delete your existing app or ask the uberadmin to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this 403 even if the spec has other problems. |
+| `403` "You've reached your limit..." | Delete your existing app or ask the uberadmin to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this 403 even if the spec has other problems. |
 | `422 ... references a database, but this app did not request one` | Add `resources: { db: true }` (or `storage`). |
 | `422 invalid reference in value` | Use exactly one `${{ db.x }}` / `${{ storage.x }}` from the list in section 5, as the whole value. |
 | `422 missing values for secrets` | Provide `--secret NAME=value` / the `secrets` body. |

@@ -51,7 +51,7 @@ def test_registry_error_maps_to_422_with_clear_message(client):
 
     resp = _create_app(client)
     assert resp.status_code == 422
-    assert resp.json()["detail"] == "image not found or not public"
+    assert resp.json()["detail"] == "Couldn't find that image, or it's private. Check the name and tag, and make the image public in your registry."
 
 
 def test_oversized_image_rejected_on_update(client):

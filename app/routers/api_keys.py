@@ -26,7 +26,7 @@ def _get_owned_key_or_404(db: Session, key_id: int, owner_id: int) -> models.Api
         .first()
     )
     if api_key is None:
-        raise HTTPException(status_code=404, detail="api key not found")
+        raise HTTPException(status_code=404, detail="We can't find that API key. It may already be revoked.")
     return api_key
 
 

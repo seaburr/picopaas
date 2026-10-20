@@ -26,6 +26,8 @@ class User(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="active")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    # Set by an admin password reset; cleared when the user changes their password.
+    must_change_password: Mapped[bool] = mapped_column(default=False, server_default="0", nullable=False)
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -81,6 +83,12 @@ class App(Base):
     # Short, secret-free human-readable reason for status='error'. Never holds
     # raw provider exception text (could echo creds) — see app/reconciler.py.
     status_detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Short machine code for status='error' (image_pull, crash_loop, oom, not_ready, quota, unreadable_secrets, timeout, unknown, ...).
+    status_reason: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    # When the app entered 'deploying' (reconciler's deploy timeout); NULL otherwise.
+    deploying_since: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    # Changed by POST /apps/{id}/restart; rendered as a pod-template annotation so the pod rolls.
+    restart_nonce: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     # sha256 of the last-applied flattened manifests (hash only; never the manifests). Lets the reconciler
     # re-apply running apps when the platform's rendering changes.
     rendered_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
