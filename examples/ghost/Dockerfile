@@ -28,12 +28,15 @@ RUN set -eux; \
       find "$A" -name '*.d.ts' -delete; \
       find "$A" -name '*.md' -delete; \
     fi; \
-    chown -R 10001:10001 /var/lib/ghost
+    # Only content/ must be writable by the runtime UID. chown of the WHOLE tree would duplicate all of
+    # Ghost into a second image layer (~+100 MB); the code dirs stay root-owned and world-readable.
+    chown -R 10001:10001 /var/lib/ghost/content
 
 COPY docker-entrypoint.sh /pico-entrypoint.sh
 RUN chmod +x /pico-entrypoint.sh
 
-ENV HOME=/var/lib/ghost
+# HOME must be writable by UID 10001 (Ghost/CLI may write dotfiles); /tmp is world-writable.
+ENV HOME=/tmp
 WORKDIR /var/lib/ghost
 USER 10001:10001
 EXPOSE 2368
