@@ -321,7 +321,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-center gap-1.5">
                     <span class="truncate font-medium text-white" :title="u.email">{{ u.email }}</span>
-                    <span v-if="u.role === 'uberadmin'" class="badge-info shrink-0">Admin</span>
+                    <span v-if="u.role === 'platform_admin'" class="badge-info shrink-0">Platform admin</span>
                   </div>
                   <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
                 </div>
@@ -334,7 +334,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
                 </form>
                 <div class="flex gap-0.5 md:justify-end">
-                  <template v-if="u.role !== 'uberadmin'">
+                  <template v-if="u.role !== 'platform_admin'">
                     <IconButton v-if="u.status === 'suspended'" :icon="Play" :label="`Unsuspend ${u.email}`" sm @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')" />
                     <IconButton v-if="u.status === 'active'" :icon="Ban" :label="`Suspend ${u.email}`" sm @click="askUser('suspend', u)" />
                     <IconButton :icon="KeyRound" :label="`Reset password for ${u.email}`" sm @click="askUser('reset', u)" />

@@ -44,7 +44,7 @@ async function onSubmit() {
           </div>
           <PasswordField v-model="form.password" :invalid="!!error" />
           <div v-if="route.query.registered && !error" class="alert-info" role="status">
-            If you already have an account, log in below. Otherwise an administrator will review your request, usually within a day.
+            If you already have an account, log in below. Otherwise, if your account is approved, a PicoPaaS platform admin will reach out, usually within a day.
           </div>
           <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
           <button type="submit" :disabled="loading" class="btn-primary btn-block">

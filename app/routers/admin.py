@@ -11,12 +11,12 @@ from sqlalchemy.orm import Session
 
 from app import audit, crypto, health, models, resources, schemas
 from app.db import get_db
-from app.dependencies import get_kube, require_uberadmin
+from app.dependencies import get_kube, require_platform_admin
 from app.routers.apps import DOMAIN_SUFFIX
 from app.schemas import ResourcesOut
 from app.security import hash_password
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_uberadmin)])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
 
 WARN_PCT = 80.0
 
@@ -139,8 +139,8 @@ def _get_user_or_404(db: Session, user_id: int) -> models.User:
     return user
 
 
-def _protect_uberadmin(user: models.User) -> None:
-    if user.is_uberadmin:
+def _protect_platform_admin(user: models.User) -> None:
+    if user.is_platform_admin:
         raise HTTPException(status_code=400, detail="The main administrator account can't be suspended or deleted.")
 
 
@@ -149,7 +149,7 @@ def _live_apps(db: Session, owner_id: int) -> list:
 
 
 @router.post("/users/{user_id}/approve", response_model=AdminUserOut)
-def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
     if user.status != "pending":
         if user.status == "active":
@@ -164,9 +164,9 @@ def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 
 
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
-def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
-    _protect_uberadmin(user)
+    _protect_platform_admin(user)
     user.status = "suspended"
     for a in _live_apps(db, user.id):
         if a.status != "suspended":  # already admin-suspended apps stay individually suspended
@@ -179,7 +179,7 @@ def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 
 
 @router.post("/users/{user_id}/unsuspend", response_model=AdminUserOut)
-def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
     if user.status != "suspended":
         raise HTTPException(status_code=409, detail="This user isn't suspended. Refresh the list.")
@@ -196,7 +196,7 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.Us
 
 
 @router.post("/users/{user_id}/reset-password", response_model=schemas.TemporaryPasswordOut)
-def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     """Set a random temporary password (shown once, never stored in clear or logged). The user is flagged
     must_change_password and should change it via POST /auth/change-password after logging in."""
     user = _get_user_or_404(db, user_id)
@@ -209,9 +209,9 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.Us
 
 
 @router.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
-    _protect_uberadmin(user)
+    _protect_platform_admin(user)
     now = datetime.now(timezone.utc)
     for a in _live_apps(db, user.id):
         a.deleted_at = now  # the reconciler tears these down
@@ -243,7 +243,7 @@ def list_all_apps(db: Session = Depends(get_db)):
 
 
 @router.post("/apps/{app_id}/suspend", response_model=AdminAppOut)
-def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     a = _get_app_or_404(db, app_id)
     a.status = "suspended"
     a.suspended_by_user = False
@@ -254,7 +254,7 @@ def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User =
 
 
 @router.post("/apps/{app_id}/unsuspend", response_model=AdminAppOut)
-def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     a = _get_app_or_404(db, app_id)
     if a.status != "suspended":
         raise HTTPException(status_code=409, detail="This app isn't suspended. Refresh the list.")
@@ -282,7 +282,7 @@ def _res_str(a: models.App) -> str:
 
 @router.patch("/apps/{app_id}/resources", response_model=AdminAppOut)
 def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = Depends(get_db),
-                        admin: models.User = Depends(require_uberadmin)):
+                        admin: models.User = Depends(require_platform_admin)):
     a = _get_app_or_404(db, app_id)
     changes = {f: getattr(payload, f) for f in payload.model_fields_set}
     new = {f: changes.get(f, getattr(a, f)) for f in resources.FIELDS}
@@ -308,7 +308,7 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
 
 
 @router.delete("/apps/{app_id}", status_code=204)
-def admin_delete_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_uberadmin)):
+def admin_delete_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     a = _get_app_or_404(db, app_id)
     a.deleted_at = datetime.now(timezone.utc)
     db.commit()
@@ -328,7 +328,7 @@ def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)
 def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db),
-               admin: models.User = Depends(require_uberadmin)):
+               admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
     user.app_limit = payload.app_limit
     db.commit()
@@ -350,7 +350,7 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)
 def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
-                     admin: models.User = Depends(require_uberadmin)):
+                     admin: models.User = Depends(require_platform_admin)):
     server = models.DbServer(
         name=payload.name, host=payload.host, port=payload.port, admin_user=payload.admin_user,
         admin_password_encrypted=crypto.encrypt(payload.admin_password),
@@ -370,7 +370,7 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
 
 @router.patch("/db-servers/{server_id}", response_model=DbServerOut)
 def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depends(get_db),
-                    admin: models.User = Depends(require_uberadmin)):
+                    admin: models.User = Depends(require_platform_admin)):
     server = db.get(models.DbServer, server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="We can't find that database server. Refresh the list.")

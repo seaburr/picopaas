@@ -122,9 +122,9 @@ def test_admin_routes_forbidden_for_non_admin(make_client):
         assert getattr(user, method)(path).status_code == 403, path
 
 
-def test_uberadmin_cannot_be_suspended_or_deleted(make_client):
+def test_platform_admin_cannot_be_suspended_or_deleted(make_client):
     admin, _, _ = _setup(make_client)
-    aid = next(u["id"] for u in admin.get("/admin/users").json() if u["role"] == "uberadmin")
+    aid = next(u["id"] for u in admin.get("/admin/users").json() if u["role"] == "platform_admin")
     assert admin.post(f"/admin/users/{aid}/suspend").status_code == 400
     assert admin.delete(f"/admin/users/{aid}").status_code == 400
     assert admin.get("/auth/me").json()["status"] == "active"
@@ -200,14 +200,14 @@ def test_user_unsuspend_keeps_individually_suspended_apps(make_client, db_sessio
     assert admin.post(f"/admin/apps/{bad}/unsuspend").json()["status"] == "pending"
 
 
-def test_first_user_race_only_one_uberadmin(db_session):
+def test_first_user_race_only_one_platform_admin(db_session):
     from app.routers.auth import create_user
     # Both registrants saw an empty users table; only one may claim the platform_init slot.
     a = create_user(db_session, "a@example.com", "Password123!x", first_hint=True)
     b = create_user(db_session, "b@example.com", "Password123!x", first_hint=True)
-    assert (a.role, a.status) == ("uberadmin", "active")
+    assert (a.role, a.status) == ("platform_admin", "active")
     assert (b.role, b.status) == ("user", "pending")
-    assert db_session.query(models.User).filter_by(role="uberadmin").count() == 1
+    assert db_session.query(models.User).filter_by(role="platform_admin").count() == 1
 
 
 def _cert_pem():

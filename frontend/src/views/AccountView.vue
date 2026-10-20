@@ -47,7 +47,7 @@ async function onSubmit() {
           <dt class="text-zinc-400">Email</dt>
           <dd class="truncate text-white" :title="auth.user?.email">{{ auth.user?.email }}</dd>
           <dt class="text-zinc-400">Role</dt>
-          <dd class="text-white">{{ auth.user?.role === 'uberadmin' ? 'Administrator' : 'User' }}</dd>
+          <dd class="text-white">{{ auth.user?.role === 'platform_admin' ? 'Platform admin' : 'User' }}</dd>
           <dt class="text-zinc-400">App limit</dt>
           <dd class="mono text-white">{{ auth.user?.app_limit }}</dd>
           <dt class="text-zinc-400">Joined</dt>

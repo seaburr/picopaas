@@ -1,4 +1,4 @@
-"""Per-app resource overrides (uberadmin): validation, reset, manifests, quota scaling, audit."""
+"""Per-app resource overrides (platform_admin): validation, reset, manifests, quota scaling, audit."""
 import pytest
 
 from app import health, k8s_manifests as k8s, models

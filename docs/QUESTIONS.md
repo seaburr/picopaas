@@ -7,23 +7,17 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Docs review (2026-10-20), decisions for you.**
-  1. GitHub issue #9 ("status_detail 'deployment failed' is too vague") looks fixed: `STATUS_MESSAGES` in `app/reconciler.py`
-     now give a reason and a next step for every failure. Close it? (I couldn't confirm it against live behaviour.)
-  2. The landing, privacy and dev-banner text said "Sign-up is open". I reworded it to "An administrator approves every
-     account by hand" so it matches the **Request access** flow. The privacy page date is now 2026-10-20. Confirm the wording
-     is what you want to publish.
-  3. The user docs and UI say "administrator". The API still returns the role value `uberadmin` and `docs/API.md` documents it.
-     Keep the role value as is, or rename it (a breaking API change)?
+- **Docs review (2026-10-20), still open.**
   4. Not verified against a live run: the Python 3.13 `VERIFY_X509_STRICT` workaround in the User Guide for DigitalOcean's
-     CA, and the claim that credential rotation repairs an app whose stored secrets are unreadable. Please spot-check once.
+     CA, and the claim that credential rotation repairs an app whose stored secrets are unreadable.
+     Claude testing: live TLS check via a Python 3.13 probe; rotation repair via a local integration test.
 
 ## To-dos (only you can do these)
 
-- [ ] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
+- [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
       second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.
 
-- [ ] **Add GitHub secrets `E2E_USER_TOKEN` and `E2E_ADMIN_TOKEN` so the weekly quota test can run.**
+- [x] **Add GitHub secrets `E2E_USER_TOKEN` and `E2E_ADMIN_TOKEN` so the weekly quota test can run.**
 
       *What it is.* `.github/workflows/quota-e2e.yml` runs every Monday (and on demand from the Actions tab). It logs in to the
       live platform as a test customer, deploys throwaway "probe" apps with a database and a bucket, fills them past the
@@ -53,10 +47,13 @@ background on each item if you want it.
       4. Optional: **Actions → quota-e2e → Run workflow** to see it pass once.
 
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
-      If it says `failed` > 0 or `listing failed`, the DB admin (`doadmin`) cannot kill other users' sessions; the platform then rolls
-      the app's pod as a fallback (see the 2026-10-19 ledger entry), but tell Claude so it can look for a better mechanism.
 
 ## Resolved
+- 2026-10-20: GitHub issue #9 (vague status_detail) closed (Chas).
+- 2026-10-20: Signup wording chosen: "Sign up, and if your account is approved, a PicoPaaS platform admin will reach out." Applied to landing, privacy, dev banner, register, login and pending views.
+- 2026-10-20: Role `uberadmin` renamed to `platform_admin` (breaking API change, approved by Chas); UI label "Platform admin"; migration `b4c8e2f6a1d3`.
+- 2026-10-20: CLAUDE.md budget rule updated by Chas.
+- 2026-10-20: E2E secrets `E2E_USER_TOKEN` / `E2E_ADMIN_TOKEN` added by Chas; first scheduled run triggered 2026-10-20.
 - 2026-10-20: Worker node `s-2vcpu-4gb-amd` costs $28/mo (Chas, from the DO bill).
 - 2026-10-20: bootstrap.md caps updated by Chas (DB 50MB, bucket 100MB, CPU 100m, RAM 384MB, image 256MB, scratch disk 250MB);
   matches `app/config.py`.

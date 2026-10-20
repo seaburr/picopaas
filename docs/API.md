@@ -16,7 +16,7 @@ Auth levels used below:
 - **user**: any logged-in, non-deleted user (including pending and suspended).
 - **active**: user with status `active`. Pending gets `403` "Your account is waiting for administrator approval..."; anything
   else gets `403` "Your account is suspended and your apps are stopped...".
-- **admin**: the `uberadmin` role (`403` "This needs administrator access." otherwise). Missing auth is `401` "You're logged
+- **admin**: the `platform_admin` role (`403` "This needs administrator access." otherwise). Missing auth is `401` "You're logged
   out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked."
 
 Error `detail` strings are written to be shown to people as-is (what happened, why, what to do) and may be reworded;
@@ -60,13 +60,13 @@ The only route that already has an `/api` prefix is `/api/keys`.
 
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
-| POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `uberadmin`/`active`; later users are `user`/`pending`. Enumeration-safe: registering an email that already has an account also returns 201 with a `pending` `User` and a cookie, but the cookie authenticates nobody (`/auth/me` is 401) and nothing changes; the owner just logs in. No email is sent. |
+| POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `platform_admin`/`active`; later users are `user`/`pending`. Enumeration-safe: registering an email that already has an account also returns 201 with a `pending` `User` and a cookie, but the cookie authenticates nobody (`/auth/me` is 401) and nothing changes; the owner just logs in. No email is sent. |
 | POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 "Email or password is wrong..." (same for unknown emails and deleted users; failures are audited as `login.failed`). |
 | POST | `/auth/logout` | public | none | 204; clears cookie. |
 | GET | `/auth/me` | user | none | `User` plus `features` and `limits` |
 | POST | `/auth/change-password` | user (any status) | `{current_password, new_password}` (new: 8 to 256, must differ) | 204. 400 if `current_password` is wrong; 422 for a bad new password. Clears `must_change_password`. Audited as `user.change_password`. |
 
-`User`: `id, email, role ("user"|"uberadmin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"),
+`User`: `id, email, role ("user"|"platform_admin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"),
 created_at, must_change_password`. New users get `app_limit` 1. `must_change_password` is set by an admin password
 reset and informational only (the server does not block other calls); the UI should send the user to change it.
 
@@ -171,9 +171,9 @@ limit is checked first, so at the limit you get the 403 before any image or env 
 | PATCH | `/admin/users/{id}` | `{app_limit: int >= 0}` | Updated user. Audited as `user.update`. |
 | POST | `/admin/users/{id}/approve` | none | `pending` to `active`; 409 if the user is not pending (the message says whether they were already approved). |
 | POST | `/admin/users/{id}/reset-password` | none | 200 `{"temporary_password": "..."}`. Sets a random 16-character password, shown once, and flags the user `must_change_password`. Audited as `user.reset_password` (the password is never logged). Existing sessions are not revoked. Hand the password over out of band. |
-| POST | `/admin/users/{id}/suspend` | none | User `suspended`; all their live apps `suspended` (scaled to zero). 400 for the uberadmin. |
+| POST | `/admin/users/{id}/suspend` | none | User `suspended`; all their live apps `suspended` (scaled to zero). 400 for the platform admin. |
 | POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 if the user is not suspended. |
-| DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the uberadmin. |
+| DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the platform admin. |
 | GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at, resources}`. |
 | PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi}` (ints; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
 | POST | `/admin/apps/{id}/suspend` | none | App `suspended`. |

@@ -93,7 +93,7 @@ def deploy_spec(
             detail="; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors()),
         )
 
-    if created and not current_user.is_uberadmin:
+    if created and not current_user.is_platform_admin:
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
             raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 

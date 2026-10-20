@@ -19,10 +19,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    # 'uberadmin' (first registered user, unlimited apps) or 'user'.
+    # 'platform_admin' (first registered user, unlimited apps) or 'user'.
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     app_limit: Mapped[int] = mapped_column(default=1, nullable=False)
-    # 'pending' (awaiting uberadmin approval) | 'active' | 'suspended' | 'deleted' (soft).
+    # 'pending' (awaiting platform_admin approval) | 'active' | 'suspended' | 'deleted' (soft).
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="active")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -33,12 +33,12 @@ class User(Base):
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     @property
-    def is_uberadmin(self) -> bool:
-        return self.role == "uberadmin"
+    def is_platform_admin(self) -> bool:
+        return self.role == "platform_admin"
 
 
 class PlatformInit(Base):
-    """Singleton (id=1) claimed by the first registrant; its PK makes uberadmin assignment atomic."""
+    """Singleton (id=1) claimed by the first registrant; its PK makes platform_admin assignment atomic."""
     __tablename__ = "platform_init"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
@@ -105,7 +105,7 @@ class App(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # False when only a user change can fix the error (invalid env refs, unreadable secrets): never auto-retried.
     error_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
-    # Uberadmin resource overrides; NULL = platform default (app/resources.py).
+    # Platform admin resource overrides; NULL = platform default (app/resources.py).
     cpu_request_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cpu_limit_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     mem_request_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

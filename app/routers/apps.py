@@ -144,7 +144,7 @@ def create_app(
     current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
-    if not current_user.is_uberadmin:
+    if not current_user.is_platform_admin:
         if _active_app_count(db, current_user.id) >= current_user.app_limit:
             raise HTTPException(status_code=403, detail=app_limit_message(current_user.app_limit))
 

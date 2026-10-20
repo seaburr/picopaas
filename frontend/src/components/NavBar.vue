@@ -8,7 +8,7 @@ import BrandMark from './BrandMark.vue'
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const isAdmin = computed(() => auth.user?.role === 'uberadmin')
+const isAdmin = computed(() => auth.user?.role === 'platform_admin')
 const pending = ref(0)
 async function refreshPending() {
   if (!isAdmin.value) return

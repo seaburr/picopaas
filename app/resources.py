@@ -1,4 +1,4 @@
-"""Per-app compute resources: platform defaults (bootstrap.md caps) and uberadmin overrides."""
+"""Per-app compute resources: platform defaults (bootstrap.md caps) and platform_admin overrides."""
 from __future__ import annotations
 
 from typing import Any

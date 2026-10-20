@@ -4,7 +4,7 @@ A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker im
 and optionally get a MySQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $60/mo.
 
-Live: https://platform.raisehellpraisedale.xyz (an administrator approves every new account)
+Live: https://platform.raisehellpraisedale.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
 Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Operations](docs/OPERATIONS.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
 
@@ -12,7 +12,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
-- Optional MySQL database and storage bucket per app, each with its own credentials.
+- Optional MySQL database and S3-compatible storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.raisehellpraisedale.xyz`) from a wildcard certificate.
 - Logs, restart, and live status in the UI.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
@@ -32,7 +32,7 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Scratch disk | 250 MB (pod is evicted over it) |
 | Image size | 256 MB compressed |
 | MySQL database | 50 MB (writes revoked over it) |
-| Storage bucket | 100 MB (key goes read-only over it) |
+| Storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
 | Apps per user | 1 by default (an administrator can raise it) |
 
 ## Architecture

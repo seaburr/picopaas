@@ -60,10 +60,10 @@ router.beforeEach(async (to) => {
     return to.path === '/pending' ? undefined : '/pending'
   }
   // Everyone lands on /apps, except an admin on a fresh platform (no DB servers yet) who lands on the setup checklist.
-  const home = auth.user?.role === 'uberadmin' && auth.user.features?.databases === false ? '/admin' : '/apps'
+  const home = auth.user?.role === 'platform_admin' && auth.user.features?.databases === false ? '/admin' : '/apps'
   if (to.path === '/') return home
   if (to.path === '/pending') return home
-  if (to.meta.requiresAdmin && auth.user?.role !== 'uberadmin') return '/apps'
+  if (to.meta.requiresAdmin && auth.user?.role !== 'platform_admin') return '/apps'
   if ((to.path === '/login' || to.path === '/register') && auth.user) return home
 })
 

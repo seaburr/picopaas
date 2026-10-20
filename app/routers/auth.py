@@ -48,7 +48,7 @@ def _try_insert(db: Session, email: str, password: str, first: bool,
     user = models.User(
         email=email.lower(),
         password_hash=hash_password(password),
-        role="uberadmin" if first else "user",
+        role="platform_admin" if first else "user",
         status="active" if first else "pending",
         app_limit=DEFAULT_APP_LIMIT,
         terms_accepted_at=datetime.now(timezone.utc).replace(tzinfo=None) if terms_accepted else None,
@@ -71,7 +71,7 @@ class DuplicateEmail(Exception):
 
 def create_user(db: Session, email: str, password: str, first_hint: bool = None,
                 terms_accepted: bool = False) -> models.User:
-    """Create a user; only the one that wins the platform_init insert becomes uberadmin."""
+    """Create a user; only the one that wins the platform_init insert becomes platform_admin."""
     first = (db.query(models.User).count() == 0) if first_hint is None else first_hint
     try:
         return _try_insert(db, email, password, first, terms_accepted)

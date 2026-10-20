@@ -50,7 +50,7 @@ def test_app_limit_change_takes_effect(admin, user):
     assert user.post("/apps", json={**body, "name": "b"}).status_code == 403
     uid = [u for u in admin.get("/admin/users").json() if u["role"] == "user"][0]["id"]
     assert admin.patch(f"/admin/users/{uid}", json={"app_limit": -1}).status_code == 422
-    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 2, "role": "uberadmin"}).status_code == 422
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 2, "role": "platform_admin"}).status_code == 422
     assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 2}).json()["role"] == "user"
     assert user.post("/apps", json={**body, "name": "b"}).status_code == 201
 

@@ -1,10 +1,10 @@
 from tests.conftest import DEFAULT_PASSWORD, register_and_login
 
 
-def test_first_user_becomes_uberadmin(client):
+def test_first_user_becomes_platform_admin(client):
     resp = register_and_login(client, "first@example.com")
     body = resp.json()
-    assert body["role"] == "uberadmin"
+    assert body["role"] == "platform_admin"
     assert body["app_limit"] == 1
 
 

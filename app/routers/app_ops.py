@@ -28,7 +28,7 @@ class LogsOut(BaseModel):
 def _get_app_or_404(db: Session, app_id: int, user: models.User) -> models.App:
     """Owner or administrator; anyone else gets 404 (no existence leak)."""
     q = db.query(models.App).filter(models.App.id == app_id, models.App.deleted_at.is_(None))
-    if not user.is_uberadmin:
+    if not user.is_platform_admin:
         q = q.filter(models.App.owner_id == user.id)
     app = q.first()
     if app is None:

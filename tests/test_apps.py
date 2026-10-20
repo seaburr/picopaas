@@ -20,7 +20,7 @@ def _create_app(client, **overrides):
 
 def test_app_limit_enforced_for_regular_user(make_client):
     # Register an unrelated first user so the one under test is NOT the
-    # first-user-becomes-uberadmin case, and is subject to app_limit.
+    # first-user-becomes-platform_admin case, and is subject to app_limit.
     register_and_login(make_client(), "admin-seed@example.com")
 
     client = make_client()
@@ -33,8 +33,8 @@ def test_app_limit_enforced_for_regular_user(make_client):
     assert second.status_code == 403
 
 
-def test_uberadmin_has_unlimited_apps(client):
-    register_and_login(client, "admin@example.com")  # first user => uberadmin
+def test_platform_admin_has_unlimited_apps(client):
+    register_and_login(client, "admin@example.com")  # first user => platform_admin
 
     for i in range(3):
         resp = _create_app(client, name=f"admin-app-{i}")

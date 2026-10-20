@@ -41,8 +41,8 @@ async function onLogout() {
         <span class="badge-warn">Waiting for approval</span>
         <h1 class="page-title mt-3">Thanks, you're on the list</h1>
         <p class="mt-2 text-sm text-zinc-300">
-          We've received your request for <strong class="break-words text-white">{{ auth.user?.email }}</strong>. An
-          administrator reviews new accounts, usually within a day. You don't need to do anything: this page checks
+          We've received your request for <strong class="break-words text-white">{{ auth.user?.email }}</strong>. If
+          your account is approved, a PicoPaaS platform admin will reach out, usually within a day. You don't need to do anything: this page checks
           every 20 seconds and takes you to your apps once you're approved.
         </p>
         <button type="button" class="btn-secondary btn-sm mt-4" :disabled="checking" @click="check">

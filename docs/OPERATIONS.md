@@ -1,6 +1,6 @@
 # PicoPaaS Operations Guide
 
-This guide is for the administrator (role `uberadmin`) who runs the platform. App-owner docs are in [USER_GUIDE.md](USER_GUIDE.md), routes in [API.md](API.md),
+This guide is for the platform admin (role `platform_admin`) who runs the platform. App-owner docs are in [USER_GUIDE.md](USER_GUIDE.md), routes in [API.md](API.md),
 design in [ARCHITECTURE.md](ARCHITECTURE.md), the manual runbook in [../deploy/README.md](../deploy/README.md).
 
 ## 1. Architecture at a glance
@@ -46,7 +46,7 @@ All are manual (`workflow_dispatch`) unless noted. `bootstrap` and `deploy` shar
 | `diag` | Something is broken in-cluster | Inputs `namespace` (default `picopaas-system`), `selector`, `tail`. Prints nodes, pods, events, non-ready pod descriptions and logs with secret values masked. |
 | `testapps` (push to `testapps/**`) | Automatic, or run to rebuild | Builds `hello`, `probe`, `toolbox`, `webpage` to `ghcr.io/seaburr/picopaas-testapp-*`. |
 
-Typical order for a new environment: `terraform` -> `bootstrap` -> register the first user (becomes uberadmin) ->
+Typical order for a new environment: `terraform` -> `bootstrap` -> register the first user (becomes platform admin) ->
 run `tests/e2e` and `tests/pentest` (see their READMEs).
 
 ## 3. Key management

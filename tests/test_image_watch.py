@@ -211,7 +211,7 @@ def test_patch_auto_update(client, reg):
 
 def test_check_image_authz_and_redeploy(make_client, db_session, reg):
     owner, other, admin = make_client(), make_client(), make_client()
-    register_and_login(admin, "root@example.com")  # first user = uberadmin
+    register_and_login(admin, "root@example.com")  # first user = platform_admin
     register_and_login(owner, "owner@example.com")
     register_and_login(other, "other@example.com")
     aid = _create(owner)["id"]

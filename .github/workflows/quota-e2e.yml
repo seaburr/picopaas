@@ -5,7 +5,7 @@ name: quota-e2e
 # creates and deletes real apps, DB and bucket (a few cents at most).
 #
 # NEEDS repo secrets E2E_USER_TOKEN (pp_sk_ key of an approved, non-admin test user) and E2E_ADMIN_TOKEN (pp_sk_
-# key of the uberadmin). They may not exist yet: see docs/QUESTIONS.md (to-do for Chas). Until they do, the job
+# key of the platform_admin). They may not exist yet: see docs/QUESTIONS.md (to-do for Chas). Until they do, the job
 # skips itself with a notice instead of failing.
 on:
   schedule:

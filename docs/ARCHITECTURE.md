@@ -129,8 +129,8 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 
 ### Abuse & moderation (Chas, 2026-10-19)
 - Audience is an internal team, not the public.
-- Signups are inert until the uberadmin approves them.
-- The uberadmin can suspend or delete users and apps. An audit log records these actions.
+- Signups are inert until the platform admin approves them.
+- The platform admin can suspend or delete users and apps. An audit log records these actions.
 - SMTP egress (ports 25/465/587) is blocked by NetworkPolicy.
 - Apps and the platform live on the separate throwaway domain `raisehellpraisedale.xyz`, which protects seaburr.io's reputation.
 - `hostUsers: false` (user namespaces) was considered and not adopted.
@@ -159,8 +159,8 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 ```
 
 ### Users and roles
-- The first registered user becomes `uberadmin`. Everyone after that is `user`.
-- `user.app_limit` defaults to 1. The uberadmin can raise it per user in the admin UI.
+- The first registered user becomes `platform_admin`. Everyone after that is `user`.
+- `user.app_limit` defaults to 1. The platform admin can raise it per user in the admin UI.
 
 ### DNS and TLS
 - Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
@@ -180,7 +180,7 @@ cert-manager wildcard cert (secret in ns `traefik`) to per-app Ingresses that ha
 
 ## 3. Scaling
 
-Principle: **the platform tracks capacity and tells the uberadmin when more is needed, but never buys
+Principle: **the platform tracks capacity and tells the platform admin when more is needed, but never buys
 infrastructure by itself.** Every new paid resource still goes through a `docs/requests/` approval
 (bootstrap budget rule). What the platform does automate is *placement*: putting each new app on a
 server that has room.
@@ -201,12 +201,12 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
 ### Database: many servers, one placement table
 - `db_servers` table: each registered MySQL server (host, port, encrypted admin creds, `max_databases`,
   status `active | draining`; `full` is a legacy value that behaves like `draining`). The first server comes from Terraform. More are added by the
-  uberadmin in the admin UI after a request is approved, or by Terraform outputs.
+  platform admin in the admin UI after a request is approved, or by Terraform outputs.
 - `app_databases` table: which server each app's DB lives on (`db_server_id`), plus its size and quota flag.
   The reconciler builds the reference variables (`db.host`, `db.url`, …) from that row, so apps on different
   servers simply get different hosts.
 - **Placement** (`app/db_placement.py`): a new DB goes on the `active` server with the most free slots. If
-  there's no room, the deploy fails with a clear "no database capacity" error and the uberadmin is alerted.
+  there's no room, the deploy fails with a clear "no database capacity" error and the platform admin is alerted.
 - **Tracking:** the reconciler's quota poll (it already measures per-DB size for the 50 MB cap) also
   rolls up per-server counts and bytes. When a server reaches 80%, the admin dashboard shows a banner and
   the platform logs a "capacity request" containing the text of a new `docs/requests/` entry

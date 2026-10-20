@@ -159,7 +159,7 @@ def get_json(url: str, headers: Optional[dict] = None, ok_only=True):
 @pytest.fixture(scope="session")
 def admin():
     a = Admin(ADMIN_TOKEN, "admin")
-    assert a.me["role"] == "uberadmin", "E2E_ADMIN_TOKEN must belong to the uberadmin"
+    assert a.me["role"] == "platform_admin", "E2E_ADMIN_TOKEN must belong to the platform_admin"
     return a
 
 

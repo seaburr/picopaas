@@ -44,7 +44,7 @@ async function onSubmit() {
 
       <div class="card card-pad">
         <h2 class="section-title mb-1">Request access</h2>
-        <p class="help mb-4 mt-0">An administrator approves new accounts by hand, usually within a day.</p>
+        <p class="help mb-4 mt-0">Sign up, and if your account is approved, a PicoPaaS platform admin will reach out, usually within a day.</p>
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div>
             <label :for="emailId" class="label">Email</label>

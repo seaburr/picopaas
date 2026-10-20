@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0d0d14">
 <title>PicoPaaS: tiny hosting for throwaway projects</title>
-<meta name="description" content="Run a Docker container on the web in a minute: a public image, a port, an HTTPS URL, and an optional MySQL database and file bucket.">
+<meta name="description" content="Run a Docker container on the web in a minute: a public image, a port, an HTTPS URL, and an optional MySQL database and S3-compatible storage bucket.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -35,15 +35,15 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:var(--pane
 </style>
 </head>
 <body>
-<div class="dev" role="note"><strong>Dev/test platform.</strong> An administrator approves every account by hand. No uptime guarantees; don&rsquo;t store personal data.</div>
+<div class="dev" role="note"><strong>Dev/test platform.</strong> Sign up, and if your account is approved, a PicoPaaS platform admin will reach out. No uptime guarantees; don&rsquo;t store personal data.</div>
 <header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.raisehellpraisedale.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.raisehellpraisedale.xyz/login">Log in</a></nav></div></header>
 <main class="w" id="main">
 <section class="hero">
 <h1>Tiny hosting for throwaway projects</h1>
-<p>Run a Docker container on the web in a minute. Give us a public image and a port; you get an HTTPS URL, plus an optional MySQL database and storage bucket. Built for demos, experiments and class projects.</p>
+<p>Run a Docker container on the web in a minute. Give us a public image and a port; you get an HTTPS URL, plus an optional MySQL database and S3-compatible storage bucket. Built for demos, experiments and class projects.</p>
 <div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/register">Request access</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/login">Log in</a></div>
-<p class="strip"><span>Public Docker image</span><span>0.1 CPU / 384 MB RAM</span><span>optional 50 MB database + 100 MB storage bucket</span></p>
-<p class="sub">Image must be public and run as non-root. An administrator approves every account by hand.</p>
+<p class="strip"><span>Public Docker image</span><span>0.1 CPU / 384 MB RAM</span><span>optional 50 MB database + 100 MB storage bucket (S3-compatible)</span></p>
+<p class="sub">Image must be public and run as non-root. Sign up, and if your account is approved, a PicoPaaS platform admin will reach out.</p>
 </section>
 <section>
 <h2>What it is</h2>
@@ -56,7 +56,7 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:var(--pane
 <section>
 <h2>How it works</h2>
 <div class="grid">
-<div class="card"><span class="n">1</span><h3>Request access</h3><p>Request access with your email. An administrator approves new accounts by hand, usually within a day.</p></div>
+<div class="card"><span class="n">1</span><h3>Request access</h3><p>Request access with your email. If your account is approved, a PicoPaaS platform admin will reach out, usually within a day.</p></div>
 <div class="card"><span class="n">2</span><h3>Create an app</h3><p>Image, port, env vars, and a database or bucket if you need one.</p></div>
 <div class="card"><span class="n">3</span><h3>Open your URL</h3><p>Live in about a minute over HTTPS. Edit the config to redeploy.</p></div>
 </div>
@@ -78,9 +78,9 @@ https://&lt;generated-name&gt;.raisehellpraisedale.xyz</pre>
 <tr><td>Scratch disk per app</td><td>250 MB</td></tr>
 <tr><td>Image size</td><td>256 MB</td></tr>
 <tr><td>Database (MySQL)</td><td>50 MB</td></tr>
-<tr><td>Storage bucket</td><td>100 MB</td></tr>
+<tr><td>Storage bucket (S3-compatible)</td><td>100 MB</td></tr>
 </table>
-<div class="note"><strong style="color:#fff">An administrator approves every account by hand.</strong> This is a hobby platform for throwaway projects, not for anything you depend on.</div>
+<div class="note"><strong style="color:#fff">Sign up, and if your account is approved, a PicoPaaS platform admin will reach out.</strong> This is a hobby platform for throwaway projects, not for anything you depend on.</div>
 </section>
 <section class="hero" style="padding-bottom:0"><div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/register">Request access</a></div></section>
 </main>

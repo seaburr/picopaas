@@ -125,7 +125,7 @@ def test_platform_counts(make_client, kube, db_session):
     from app import models
     admin = _admin(make_client)
     d = admin.get("/admin/health").json()
-    assert d["users"] == {"total": 0, "active": 0, "pending": 0, "suspended": 0}  # uberadmin excluded
+    assert d["users"] == {"total": 0, "active": 0, "pending": 0, "suspended": 0}  # platform_admin excluded
     base = datetime(2026, 1, 1)
     for i in range(22):
         db_session.add(models.User(email=f"p{i}@x.io", password_hash="x", role="user", status="pending",
