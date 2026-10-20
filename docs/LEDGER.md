@@ -554,3 +554,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: c5e6ff9 (app cap) + 1c38e4c (health UI) pushed; CI/image/deploy success; /auth/me max_apps=5 app_limit_effective=5; healthz ok. CLAUDE.md left unstaged.
 - 2026-10-20 [backend] START+DONE: ${{ app.url }} env ref (https://<hostname>.<APP_DOMAIN>, always available); image cap 256->512 MB (config, docs, landing, UI fallback, tests); examples workflow builds Ghost with WITH_S3=1. NOTE: bootstrap.md still says 256MB; not edited (edit permission arrived only via agent message, not from Chas directly).
 - 2026-10-20 [scm-security] START: commit+push image cap 512MB, app.url ref, Ghost S3 example.
+- 2026-10-20 [scm-security] DONE: 346379b pushed; CI/image/examples/deploy success; /auth/me image_mb=512; healthz ok; ghost image :346379b built with WITH_S3=1.
