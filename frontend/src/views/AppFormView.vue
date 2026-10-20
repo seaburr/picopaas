@@ -53,8 +53,7 @@ const error = ref('')
 
 // Backend 422s for the image field (app/routers/apps.py _check_non_root /
 // _check_image_cap) are plain strings that all start with "image" — e.g.
-// "image runs as root, which isn't supported...", "image USER '...' must be
-// a numeric UID...", "image not found or not public", "image is N bytes,
+// "image runs as root, which isn't supported...", "image not found or not public", "image is N bytes,
 // over the M byte limit...". Show those verbatim next to the field instead
 // of (or in addition to) the generic error banner.
 const imageError = computed(() => (error.value.toLowerCase().startsWith('image') ? error.value : ''))
@@ -176,8 +175,8 @@ async function onSubmit() {
             class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
           />
           <p class="mt-1 text-xs text-zinc-500">
-            Images must run as a non-root numeric user — add <code class="font-mono">USER 10001</code> to your
-            Dockerfile.
+            Images must not run as root. A named non-root user (e.g. <code class="font-mono">USER app</code>) runs as
+            UID 10001, so files it owns may not be writable; a numeric <code class="font-mono">USER 10001</code> avoids that.
           </p>
           <p v-if="imageError" class="mt-1 text-xs text-danger">{{ imageError }}</p>
         </div>

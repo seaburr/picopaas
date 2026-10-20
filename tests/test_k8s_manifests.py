@@ -19,6 +19,7 @@ def test_namespace_name_and_labels():
     assert ns["metadata"]["name"] == "app-42"
     assert ns["metadata"]["labels"]["pod-security.kubernetes.io/enforce"] == "restricted"
     assert ns["metadata"]["labels"]["picopaas.io/app-id"] == "42"
+    assert ns["metadata"]["labels"]["pod-security.kubernetes.io/enforce-version"] == "latest"
 
 
 def test_resource_quota_caps():
@@ -214,3 +215,23 @@ def test_deployment_rolling_update_strategy():
     dep = k8s.deployment_manifest(APP_ID, IMAGE, PORT)
     assert dep["spec"]["strategy"] == {
         "type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}}
+
+
+def _container_sc(**kw):
+    d = k8s.deployment_manifest(APP_ID, IMAGE, PORT, **kw)
+    return d["spec"]["template"]["spec"]["containers"][0]["securityContext"]
+
+
+def test_run_as_user_only_when_set():
+    sc = _container_sc()
+    assert "runAsUser" not in sc and "runAsGroup" not in sc
+    sc = _container_sc(run_as_uid=10001)
+    assert sc["runAsUser"] == 10001 and sc["runAsGroup"] == 10001
+    assert sc["runAsNonRoot"] is True and sc["allowPrivilegeEscalation"] is False
+    assert sc["capabilities"] == {"drop": ["ALL"]}
+
+
+def test_render_passes_run_as_uid():
+    r = k8s.render_app_manifests(APP_ID, HOSTNAME, IMAGE, PORT, ENV, MYSQL_CIDR, run_as_uid=10001)
+    sc = r["deployment"]["spec"]["template"]["spec"]["containers"][0]["securityContext"]
+    assert sc["runAsUser"] == 10001

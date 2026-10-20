@@ -74,7 +74,9 @@ The lean option leaves about $10/mo of headroom, enough for a second node or man
 - **No root images (decided by Chas, 2026-10-18):** pods run with `runAsNonRoot: true`, so an image whose
   default user is root won't start. The deploy API should check the image config's `User` field ahead of
   time and reject root images with a clear 422 instead of letting the pod fail. Docs should show a
-  `USER` line example.
+  `USER` line example. A named non-root user (kubelet can't verify it) is accepted and forced to
+  `runAsUser`/`runAsGroup` = `NAMED_USER_RUN_AS_UID` (10001, `apps.run_as_uid`). Every app namespace also
+  carries Pod Security Admission `enforce: restricted` (+ `enforce-version: latest`) as a backstop.
 - **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `max_user_connections=10`,
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
   `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the

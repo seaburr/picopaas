@@ -87,7 +87,7 @@ def deploy_spec(
                 detail=f"app limit reached ({current_user.app_limit}); contact the uberadmin to raise it",
             )
 
-    _check_image_cap(registry, spec.image)
+    run_as_uid = _check_image_cap(registry, spec.image)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
 
     if created:
@@ -96,6 +96,7 @@ def deploy_spec(
             name=spec.name,
             hostname=generate_unique_hostname(db),
             image=spec.image,
+            run_as_uid=run_as_uid,
             port=spec.port,
             want_db=spec.resources.db,
             want_storage=spec.resources.storage,
@@ -107,11 +108,12 @@ def deploy_spec(
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
-            (app.image, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
-            != (spec.image, spec.port, spec.resources.db, spec.resources.storage,
+            (app.image, app.run_as_uid, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
+            != (spec.image, run_as_uid, spec.port, spec.resources.db, spec.resources.storage,
                 spec.healthCheck.enabled, spec.healthCheck.path)
         )
         app.image = spec.image
+        app.run_as_uid = run_as_uid
         app.port = spec.port
         app.want_db = spec.resources.db
         app.want_storage = spec.resources.storage

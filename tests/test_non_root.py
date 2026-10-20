@@ -2,6 +2,7 @@
 import httpx
 import pytest
 
+from app.config import NAMED_USER_RUN_AS_UID
 from app.providers.fake import FakeRegistry
 from app.providers.registry import RegistryClient
 from tests.conftest import register_and_login
@@ -19,12 +20,49 @@ def test_root_images_rejected(client, user):
     assert "root" in resp.json()["detail"]
 
 
-def test_named_user_rejected_as_unverifiable(client):
+def _run_as_uid(db_session, app_id):
+    from app import models
+
+    db_session.expire_all()
+    return db_session.get(models.App, app_id).run_as_uid
+
+
+@pytest.mark.parametrize("user", ["app", "app:app", "nobody"])
+def test_named_user_accepted_with_forced_uid(client, db_session, user):
     register_and_login(client, "named@example.com")
-    _override_registry(FakeRegistry(default_size_bytes=1, users={IMAGE: "app"}))
+    _override_registry(FakeRegistry(default_size_bytes=1, users={IMAGE: user}))
     resp = _create_app(client)
-    assert resp.status_code == 422
-    assert "numeric UID" in resp.json()["detail"]
+    assert resp.status_code == 201
+    assert _run_as_uid(db_session, resp.json()["id"]) == NAMED_USER_RUN_AS_UID
+
+
+@pytest.mark.parametrize("user", ["10001", "1000:app"])
+def test_numeric_user_leaves_uid_unset(client, db_session, user):
+    register_and_login(client, "numeric@example.com")
+    _override_registry(FakeRegistry(default_size_bytes=1, users={IMAGE: user}))
+    resp = _create_app(client)
+    assert resp.status_code == 201
+    assert _run_as_uid(db_session, resp.json()["id"]) is None
+
+
+def test_image_update_recomputes_run_as_uid(client, db_session):
+    register_and_login(client, "upd@example.com")
+    other = "ghcr.io/example/other:1.0"
+    _override_registry(FakeRegistry(default_size_bytes=1, users={IMAGE: "app", other: "10001"}))
+    app_id = _create_app(client).json()["id"]
+    assert _run_as_uid(db_session, app_id) == NAMED_USER_RUN_AS_UID
+    assert client.patch(f"/apps/{app_id}", json={"image": other}).status_code == 200
+    assert _run_as_uid(db_session, app_id) is None
+    assert client.patch(f"/apps/{app_id}", json={"image": IMAGE}).status_code == 200
+    assert _run_as_uid(db_session, app_id) == NAMED_USER_RUN_AS_UID
+
+
+def test_root_update_rejected(client):
+    register_and_login(client, "rootupd@example.com")
+    other = "ghcr.io/example/rootimg:1.0"
+    _override_registry(FakeRegistry(default_size_bytes=1, users={IMAGE: "10001", other: "root"}))
+    app_id = _create_app(client).json()["id"]
+    assert client.patch(f"/apps/{app_id}", json={"image": other}).status_code == 422
 
 
 @pytest.mark.parametrize("user", ["10001", "10001:10001", "1000:0"])

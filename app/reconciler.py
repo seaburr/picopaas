@@ -305,6 +305,7 @@ def reconcile_app(
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         resources=resources.effective(app),
+        run_as_uid=app.run_as_uid,
         include_ingress=app.status != "suspended",
     )
     suspended = app.status == "suspended"

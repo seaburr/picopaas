@@ -20,7 +20,7 @@ A suspended account gets `403 account suspended`, and its apps are scaled to zer
 
 | Rule | Value |
 |---|---|
-| User | The image must declare a **numeric, non-zero `USER`** (for example `USER 10001`). `root`, `0`, empty, or a name like `appuser` is rejected with 422, because pods run with `runAsNonRoot` and the platform can only verify a numeric UID. |
+| User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
 | Image size | Summed compressed layers at most **256 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422 image not found or not public`. |
 | CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
@@ -136,7 +136,7 @@ secrets:
 |---|---|---|---|---|
 | `apiVersion` | string | yes | | Exactly `picopaas/v1`. |
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
-| `image` | string | yes | | 1 to 512 chars. Public, non-root numeric `USER`, at most 256 MB. |
+| `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 256 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a MySQL database. Cannot be removed from an existing app via spec (422). |
 | `resources.storage` | boolean | no | `false` | Provisions a Spaces bucket. Same removal rule. |
@@ -321,7 +321,7 @@ Deleting an app removes its namespace, database and bucket.
 | Symptom | Likely cause and fix |
 |---|---|
 | `403 account pending approval` | Wait for the uberadmin to approve. |
-| `422 image runs as root` / `must be a numeric UID` | Add `USER 10001` (numeric) to your Dockerfile. |
+| `422 image runs as root` | Add a non-root `USER` (preferably numeric, e.g. `USER 10001`) to your Dockerfile. |
 | `422 image not found or not public` | Wrong tag, or private image. Make the package public. |
 | `422 ... over the 268435456 byte (256MB) platform cap` | Shrink the image. |
 | `403 app limit reached` | Delete your existing app or ask the uberadmin to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this 403 even if the spec has other problems. |

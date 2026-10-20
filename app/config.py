@@ -68,6 +68,10 @@ LEGACY_HOSTS = tuple(
 
 # Hard cap on (summed, compressed-layer) image size, enforced at app create/update
 # via app/providers/registry.py (ARCHITECTURE.md §2 "Image size").
+# Images whose USER is a name (not a number) can't be verified by kubelet's runAsNonRoot, so
+# the pod is forced to run as this UID/GID instead (app.run_as_uid; see routers/apps.py).
+NAMED_USER_RUN_AS_UID = 10001
+
 MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 256 * 1024 * 1024))
 
 # --- Platform caps: SINGLE SOURCE OF TRUTH (Chas lowered them 2026-10-19; bootstrap.md pending his update) ---

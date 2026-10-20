@@ -86,6 +86,7 @@ def namespace_manifest(app_id: int) -> dict[str, Any]:
             "name": namespace_name(app_id),
             "labels": {
                 "pod-security.kubernetes.io/enforce": "restricted",
+                "pod-security.kubernetes.io/enforce-version": "latest",
                 "picopaas.io/app-id": str(app_id),
             },
         },
@@ -341,6 +342,7 @@ def deployment_manifest(
     health_check_path: str = "/healthz",
     user_env: dict[str, str] | None = None,
     resources: dict[str, int] | None = None,
+    run_as_uid: int | None = None,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
@@ -410,6 +412,11 @@ def deployment_manifest(
                                 "allowPrivilegeEscalation": False,
                                 "capabilities": {"drop": ["ALL"]},
                                 "seccompProfile": {"type": "RuntimeDefault"},
+                                **(
+                                    {"runAsUser": run_as_uid, "runAsGroup": run_as_uid}
+                                    if run_as_uid is not None
+                                    else {}
+                                ),
                             },
                             **port_env,
                             **probes,
@@ -483,6 +490,7 @@ def render_app_manifests(
     storage_ips: list[str] | None = None,
     resources: dict[str, int] | None = None,
     include_ingress: bool = True,
+    run_as_uid: int | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
@@ -495,7 +503,7 @@ def render_app_manifests(
                                        replicas=replicas,
                                        health_check_enabled=health_check_enabled,
                                        health_check_path=health_check_path, user_env=env,
-                                       resources=resources),
+                                       resources=resources, run_as_uid=run_as_uid),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
     }

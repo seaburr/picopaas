@@ -440,3 +440,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [frontend-dev] DONE: /guide/{user,api,cli} public pages (GuideView.vue, marked+DOMPurify, ?raw from docs/ via @docs alias), NavBar/landing/"?" deep links, Dockerfile COPY docs/ + .dockerignore un-ignores docs, caps (100m/384Mi, 50MB DB, 100MB bucket, 256MB image) in landing + ResourcesDialog. Uncommitted.
 - 2026-10-19 [backend-dev] START: apply lowered platform caps everywhere (app/config.py single source)
 - 2026-10-19 [backend-dev] DONE: caps in app/config.py (env-overridable) used by k8s_manifests, quota, resources, image check; tests/docs/e2e updated; pytest green. Uncommitted.
+- 2026-10-19 [backend-dev] START: allow named non-root USER (run as UID 10001), PSA restricted labels on app namespaces
+- 2026-10-19 [backend-dev] DONE: named non-root USER accepted (apps.run_as_uid=10001 -> runAsUser/runAsGroup, migration e7a3c9b1d5f2); PSA enforce-version label on app namespaces (reapplied by reconciler via hash change); only Deployment is created in app ns (compliant); tests+docs+UI hint updated; 344 passed/58 skipped. Uncommitted.

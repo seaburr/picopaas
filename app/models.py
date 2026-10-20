@@ -68,6 +68,8 @@ class App(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hostname: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     image: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Set (NAMED_USER_RUN_AS_UID) when the image USER is a name; forces runAsUser/runAsGroup. None = numeric USER.
+    run_as_uid: Mapped[Optional[int]] = mapped_column(nullable=True)
     port: Mapped[int] = mapped_column(nullable=False)
     want_db: Mapped[bool] = mapped_column(default=False, nullable=False)
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
