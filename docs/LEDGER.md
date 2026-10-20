@@ -548,3 +548,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push ghost content.orig seeding fix; watching examples build.
 - 2026-10-20 [scm-security] DONE: Ghost CMS live on PicoPaaS (app ghost-demo), content persists in MySQL across restart; S3-image variant over cap, follow-up. README at examples/ghost/README.md committed.
 - 2026-10-20 [scm-security] START: commit+push platform PriorityClass (preemptionPolicy Never); verify deploy, 1 node, pods Running, healthz.
+- 2026-10-20 [scm-security] DONE: cbbace4 pushed; CI/image/deploy green; PriorityClass picopaas-platform created, rollout complete; diag shows 1 node (no scale-up), 2 picopaas pods Running, healthz ok.
