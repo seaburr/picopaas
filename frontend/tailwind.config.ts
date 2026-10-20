@@ -18,6 +18,18 @@ export default {
           dark: '#233775',
           light: '#7aa0d4',
         },
+        // Primary button fill: white text is 5.0:1 on DEFAULT, 5.9:1 on hover.
+        primary: {
+          DEFAULT: '#3a6bd0',
+          hover: '#2f5fc4',
+          active: '#2653b0',
+        },
+        // Contrast floor: zinc 500/600 are remapped so text-zinc-500/600 (and placeholders) stay >= 4.5:1
+        // on the panel/card surfaces (#8b8b96 is 5.3:1 on panel, 5.0:1 on card). Do not use darker greys for text.
+        zinc: {
+          500: '#8b8b96',
+          600: '#8b8b96',
+        },
         danger: {
           DEFAULT: '#d95555',
           dark: '#9e2424',

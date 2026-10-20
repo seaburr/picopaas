@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import AppStatusNote from '../components/AppStatusNote.vue'
+import DeleteAppDialog from '../components/DeleteAppDialog.vue'
+import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
+import RowMenu from '../components/RowMenu.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
+import { SAMPLE_APP } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
+import { useAuthStore } from '../stores/auth'
+import { useToastStore } from '../stores/toast'
 import type { App } from '../types'
 
 const store = useAppsStore()
+const auth = useAuthStore()
+const toast = useToastStore()
+const router = useRouter()
 const loading = ref(true)
 const error = ref('')
+const restarting = ref<number | null>(null)
 
+const limit = computed(() => auth.user?.app_limit ?? 0)
+const atLimit = computed(() => limit.value > 0 && store.apps.length >= limit.value)
+
+// Poll while anything is queued or deploying.
 let timer: ReturnType<typeof setInterval> | null = null
 function inFlight() {
   return store.apps.some((a) => a.status === 'pending' || a.status === 'deploying')
@@ -23,8 +38,7 @@ function syncPolling() {
       } catch {
         // keep last known state; next tick retries
       }
-      syncPolling()
-    }, 5000)
+    }, 4000)
   } else if (!inFlight() && timer) {
     clearInterval(timer)
     timer = null
@@ -36,36 +50,61 @@ onUnmounted(() => {
   timer = null
 })
 
-const pendingDelete = ref<App | null>(null)
-
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  error.value = ''
   try {
     await store.load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to load apps'
+    error.value = e instanceof ApiError ? e.message : "Couldn't load your apps."
   } finally {
     loading.value = false
   }
-})
-
-function retryText(iso: string) {
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
+onMounted(load)
 
-function askDelete(app: App) {
-  pendingDelete.value = app
-}
-
+const pendingDelete = ref<App | null>(null)
+const deleting = ref(false)
 async function confirmDelete() {
-  if (!pendingDelete.value) return
+  const app = pendingDelete.value
+  if (!app) return
+  deleting.value = true
   try {
-    await store.remove(pendingDelete.value.id)
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to delete app'
-  } finally {
+    await store.remove(app.id)
+    toast.success(`Deleted ${app.name}.`)
     pendingDelete.value = null
+  } catch (e) {
+    toast.error(`Couldn't delete ${app.name}: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    deleting.value = false
   }
+}
+
+async function restart(app: App) {
+  restarting.value = app.id
+  try {
+    await store.restart(app.id)
+    toast.success(`Restarting ${app.name}.`)
+  } catch (e) {
+    toast.error(
+      e instanceof ApiError && e.status === 404
+        ? "Restart isn't available on this platform version yet."
+        : `Couldn't restart ${app.name}: ${e instanceof ApiError ? e.message : 'unknown error'}`,
+    )
+  } finally {
+    restarting.value = null
+  }
+}
+
+function trySample() {
+  router.push({ path: '/apps/new', query: { sample: '1' } })
+}
+
+function meta(app: App) {
+  const bits = [app.image, `port ${app.port}`]
+  const extras = [app.want_db ? 'database' : '', app.want_storage ? 'storage' : ''].filter(Boolean)
+  if (extras.length) bits.push(extras.join(' + '))
+  return bits
 }
 </script>
 
@@ -73,96 +112,86 @@ async function confirmDelete() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-      <div class="mb-4 flex items-center justify-between">
-        <h1 class="text-lg font-semibold text-white">Apps</h1>
-        <RouterLink
-          to="/apps/new"
-          class="rounded-md bg-accent-dark px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent"
-        >
-          + New app
-        </RouterLink>
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-baseline gap-3">
+          <h1 class="page-title">Apps</h1>
+          <span v-if="!loading && limit" class="meta" :title="`You can have up to ${limit} apps`">{{ store.apps.length }} / {{ limit }}</span>
+        </div>
+        <div v-if="store.apps.length > 0" class="flex items-center gap-3">
+          <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
+          <button v-if="atLimit" type="button" class="btn-primary" disabled>+ New app</button>
+          <RouterLink v-else to="/apps/new" class="btn-primary">+ New app</RouterLink>
+        </div>
       </div>
 
-      <div v-if="error" class="mb-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-        {{ error }}
+      <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
+        <span>{{ error }}</span>
+        <button type="button" class="btn-secondary btn-sm" @click="load">Retry</button>
       </div>
 
-      <div v-if="loading" class="text-sm text-zinc-500">Loading…</div>
+      <ul v-if="loading" class="space-y-2" aria-busy="true" aria-label="Loading apps">
+        <li v-for="n in 3" :key="n" class="card card-pad">
+          <div class="h-4 w-40 animate-pulse rounded bg-pico-card" />
+          <div class="mt-3 h-3 w-64 max-w-full animate-pulse rounded bg-pico-card" />
+        </li>
+      </ul>
 
-      <div v-else-if="store.apps.length === 0" class="rounded-md border border-pico-border bg-pico-panel p-6 text-center text-sm text-zinc-500">
-        No apps yet. Create your first one.
+      <div v-else-if="!error && store.apps.length === 0" class="card card-pad">
+        <h2 class="section-title">Deploy your first app</h2>
+        <p class="mt-1 text-sm text-zinc-300">Three things and you're live:</p>
+        <ol class="mt-3 list-decimal space-y-1 pl-5 text-sm text-zinc-300">
+          <li>A public Docker image that runs as a non-root user.</li>
+          <li>The port it listens on.</li>
+          <li>We give you an https URL.</li>
+        </ol>
+        <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <RouterLink to="/apps/new" class="btn-primary">Create app</RouterLink>
+          <button type="button" class="btn-secondary" @click="trySample">Try a sample app</button>
+          <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
+        </div>
+        <p class="help">The sample deploys podinfo ({{ SAMPLE_APP.image }}, port {{ SAMPLE_APP.port }}), a tiny demo web app.</p>
       </div>
 
-      <ul v-else class="space-y-2">
-        <li
-          v-for="app in store.apps"
-          :key="app.id"
-          class="flex items-center justify-between rounded-md border border-pico-border bg-pico-panel p-4"
-        >
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="font-medium text-white">{{ app.name }}</span>
-              <StatusBadge :status="app.status" />
+      <ul v-else-if="store.apps.length" class="space-y-2">
+        <li v-for="app in store.apps" :key="app.id" class="card card-pad">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <RouterLink :to="`/apps/${app.id}`" class="break-all font-medium text-white hover:underline">{{ app.name }}</RouterLink>
+                <StatusBadge :status="app.status" />
+              </div>
+              <div class="mt-1"><HostLink :hostname="app.hostname" /></div>
+              <p class="meta mt-1 break-all">
+                <template v-for="(b, i) in meta(app)" :key="i"><span v-if="i" aria-hidden="true"> · </span>{{ b }}</template>
+              </p>
             </div>
-            <p v-if="app.status === 'suspended'" class="text-xs text-amber-400">Suspended by an administrator</p>
-            <template v-else-if="app.status === 'error'">
-              <p v-if="app.retry_at" class="text-xs text-amber-400">will retry at {{ retryText(app.retry_at) }}</p>
-              <p v-else class="text-xs text-amber-400">needs your change to recover</p>
-              <p v-if="app.status_detail" class="break-words text-xs text-zinc-400">{{ app.status_detail }}</p>
-            </template>
-            <p v-else-if="app.status_detail" class="truncate text-xs text-zinc-400">{{ app.status_detail }}</p>
-            <a
-              :href="`https://${app.hostname}`"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block truncate text-sm text-accent-light hover:underline"
-            >
-              {{ app.hostname }}
-              <svg class="ml-1 inline h-3 w-3 align-baseline" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                <path d="M9 2h5v5M14 2 7.5 8.5M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4" />
-              </svg>
-              <span class="sr-only">(opens in new tab)</span>
-            </a>
-            <p class="truncate text-xs text-zinc-500">{{ app.image }}</p>
-            <p class="truncate text-xs text-zinc-500">
-              Health check: {{ app.health_check_enabled ? app.health_check_path : 'off' }}
-            </p>
+            <div class="flex shrink-0 items-center gap-1">
+              <span
+                v-if="app.status === 'suspended'"
+                class="btn-secondary btn-sm hidden sm:inline-flex"
+                aria-disabled="true"
+                title="Suspended. Contact the administrator to restore."
+              >Edit</span>
+              <RouterLink v-else :to="`/apps/${app.id}/edit`" class="btn-secondary btn-sm hidden sm:inline-flex">Edit</RouterLink>
+              <RouterLink :to="`/apps/${app.id}`" class="btn-secondary btn-sm hidden sm:inline-flex">Manage</RouterLink>
+              <RowMenu :label="`Actions for ${app.name}`">
+                <RouterLink role="menuitem" :to="`/apps/${app.id}`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card sm:hidden">Manage</RouterLink>
+                <a role="menuitem" :href="`https://${app.hostname}`" target="_blank" rel="noopener noreferrer" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card">Open app</a>
+                <RouterLink role="menuitem" :to="`/apps/${app.id}#logs`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card">View logs</RouterLink>
+                <RouterLink v-if="app.status !== 'suspended'" role="menuitem" :to="`/apps/${app.id}/edit`" class="block px-3 py-2 text-sm text-zinc-200 hover:bg-pico-card sm:hidden">Edit</RouterLink>
+                <button v-if="app.status !== 'suspended'" type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-pico-card" @click="restart(app)">Restart</button>
+                <button type="button" role="menuitem" class="block w-full px-3 py-2 text-left text-sm text-danger-light hover:bg-danger/10" @click="pendingDelete = app">Delete…</button>
+              </RowMenu>
+            </div>
           </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <span
-              v-if="app.status === 'suspended'"
-              class="cursor-not-allowed rounded border border-pico-border px-2 py-1 text-xs text-zinc-600"
-            >
-              Edit
-            </span>
-            <RouterLink
-              v-else
-              :to="`/apps/${app.id}/edit`"
-              class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
-            >
-              Edit
-            </RouterLink>
-            <button
-              type="button"
-              class="rounded border border-pico-border px-2 py-1 text-xs text-danger hover:bg-danger/10"
-              @click="askDelete(app)"
-            >
-              Delete
-            </button>
+          <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-3 border-t border-pico-border pt-3">
+            <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="restart(app)" />
           </div>
         </li>
       </ul>
     </main>
 
-    <ConfirmDialog
-      :open="pendingDelete !== null"
-      title="Delete app"
-      :message="`Delete '${pendingDelete?.name}'? This can't be undone.`"
-      confirm-label="Delete"
-      danger
-      @confirm="confirmDelete"
-      @cancel="pendingDelete = null"
-    />
+    <DeleteAppDialog :app="pendingDelete" :busy="deleting" @confirm="confirmDelete" @cancel="pendingDelete = null" />
   </div>
 </template>

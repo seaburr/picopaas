@@ -1,9 +1,30 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { onErrorCaptured, ref, watch } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import DevBanner from './components/DevBanner.vue'
+import PasswordBanner from './components/PasswordBanner.vue'
+import ToastHost from './components/ToastHost.vue'
+
+// Last-resort boundary: a view that throws while rendering shows this instead of a blank page.
+const crashed = ref(false)
+onErrorCaptured((err) => {
+  console.error(err)
+  crashed.value = true
+  return false
+})
+const route = useRoute()
+watch(() => route.fullPath, () => (crashed.value = false))
+const reload = () => window.location.reload()
 </script>
 
 <template>
   <DevBanner slim />
-  <RouterView />
+  <PasswordBanner />
+  <div v-if="crashed" role="alert" class="mx-auto max-w-md px-4 py-16 text-center">
+    <h1 class="page-title">Something went wrong</h1>
+    <p class="help">The page failed to load. Reloading usually fixes it.</p>
+    <button type="button" class="btn-primary mt-4" @click="reload">Reload</button>
+  </div>
+  <RouterView v-else />
+  <ToastHost />
 </template>

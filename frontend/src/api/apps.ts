@@ -31,3 +31,14 @@ export const rotateCredentials = (id: number, target: 'db' | 'storage') =>
     method: 'POST',
     body: JSON.stringify({ target }),
   })
+
+export interface AppLogs {
+  lines: string[]
+  pod: string | null
+  note: string | null
+}
+
+// Backend contract (docs/UX plan): GET /apps/{id}/logs?tail=N and POST /apps/{id}/restart. 404 = older backend.
+export const getAppLogs = (id: number, tail = 200) => apiFetch<AppLogs>(`/apps/${id}/logs?tail=${tail}`)
+
+export const restartApp = (id: number) => apiFetch<App>(`/apps/${id}/restart`, { method: 'POST' })

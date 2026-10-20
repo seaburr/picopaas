@@ -3,11 +3,162 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: dark;
+  }
   html,
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
   }
   * {
     @apply border-pico-border;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
+  }
+  main:focus {
+    outline: none; /* skip-link target only */
+  }
+  [hidden] {
+    display: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/*
+ * Design tokens as component classes. Use these instead of ad-hoc utility soup.
+ *   Buttons : .btn-primary .btn-secondary .btn-danger .btn-danger-solid .btn-ghost  (+ .btn-sm, .btn-block)
+ *   Forms   : .input .label .help .field-error .check
+ *   Surfaces: .card .card-pad .alert-error .alert-warn .alert-info .alert-success
+ *   Badges  : .badge-ok .badge-warn .badge-error .badge-neutral .badge-info
+ *   Text    : .page-title .section-title .meta .link .table-th
+ */
+@layer components {
+  .btn {
+    @apply inline-flex min-h-[40px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3.5 py-2 text-sm font-medium transition-colors;
+    @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
+  }
+  .btn-sm {
+    @apply min-h-[32px] px-2.5 py-1 text-xs;
+  }
+  .btn-block {
+    @apply w-full;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-hover active:bg-primary-active;
+    @apply disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+    @apply aria-disabled:border-zinc-700 aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
+  }
+  .btn-secondary {
+    @apply btn border-zinc-500 bg-transparent text-zinc-200 hover:bg-pico-card hover:text-white;
+    @apply disabled:border-dashed disabled:border-zinc-700 disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
+    @apply aria-disabled:border-dashed aria-disabled:border-zinc-700 aria-disabled:text-zinc-500;
+  }
+  .btn-danger {
+    @apply btn border-danger/50 bg-transparent text-danger-light hover:bg-danger/10;
+    @apply disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500 disabled:hover:bg-transparent;
+  }
+  .btn-danger-solid {
+    @apply btn bg-danger-dark text-white hover:bg-[#b32b2b] active:bg-[#8a1f1f];
+    @apply disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+  }
+  .btn-ghost {
+    @apply btn text-zinc-300 hover:bg-pico-card hover:text-white;
+    @apply disabled:text-zinc-500 disabled:hover:bg-transparent;
+  }
+
+  .input {
+    @apply block w-full rounded-md border border-zinc-500 bg-pico-card px-3 py-2 text-sm text-white placeholder-zinc-500;
+    @apply focus-visible:border-accent-light disabled:cursor-not-allowed disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500;
+  }
+  .input[aria-invalid='true'] {
+    @apply border-danger-light;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-zinc-200;
+  }
+  .help {
+    @apply mt-1 text-xs text-zinc-400;
+  }
+  .field-error {
+    @apply mt-1 text-xs text-danger-light;
+  }
+  .check {
+    @apply h-4 w-4 rounded border-zinc-500 accent-primary;
+  }
+
+  .card {
+    @apply rounded-lg border border-pico-border bg-pico-panel;
+  }
+  .card-pad {
+    @apply p-4 sm:p-5;
+  }
+  .alert-error,
+  .alert-warn,
+  .alert-info,
+  .alert-success {
+    @apply rounded-md border px-3 py-2 text-sm;
+  }
+  .alert-error {
+    @apply border-danger/40 bg-danger/10 text-danger-light;
+  }
+  .alert-warn {
+    @apply border-amber-500/40 bg-amber-500/10 text-amber-300;
+  }
+  .alert-info {
+    @apply border-accent/40 bg-accent/10 text-accent-light;
+  }
+  .alert-success {
+    @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-ok {
+    @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
+  }
+  .badge-warn {
+    @apply badge border-amber-500/30 bg-amber-500/10 text-amber-300;
+  }
+  .badge-error {
+    @apply badge border-danger/40 bg-danger/10 text-danger-light;
+  }
+  .badge-neutral {
+    @apply badge border-zinc-500/40 bg-zinc-500/10 text-zinc-300;
+  }
+  .badge-info {
+    @apply badge border-accent/40 bg-accent/10 text-accent-light;
+  }
+
+  .nav-link {
+    @apply inline-flex min-h-[40px] items-center whitespace-nowrap rounded-md px-2.5 py-2 text-sm text-zinc-300 hover:bg-pico-card hover:text-white;
+  }
+  .nav-link.nav-active {
+    @apply bg-pico-card font-medium text-white;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold text-white;
+  }
+  .section-title {
+    @apply text-base font-semibold text-white;
+  }
+  .meta {
+    @apply text-xs text-zinc-400;
+  }
+  .link {
+    @apply text-accent-light underline-offset-2 hover:underline;
+  }
+  .table-th {
+    @apply text-left text-xs font-medium uppercase tracking-wide text-zinc-400;
   }
 }

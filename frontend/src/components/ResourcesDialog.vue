@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, useId, watch } from 'vue'
+import { useModal } from '../composables/useModal'
+import { useAuthStore } from '../stores/auth'
 import type { AdminApp, ResourcesPatch } from '../types'
 
 const props = defineProps<{ app: AdminApp | null; error?: string }>()
 const emit = defineEmits<{ save: [body: ResourcesPatch]; cancel: [] }>()
 
-const CAPS = { cpu: 100, mem: 384 }
+const auth = useAuthStore()
+const uid = useId()
+const dlg = ref<HTMLDialogElement | null>(null)
+const m = useModal(dlg, () => !!props.app, () => emit('cancel'))
+// Caps come from /auth/me limits when the backend provides them; fallback matches app/config.py.
+const CAPS = computed(() => ({
+  cpu: auth.user?.limits?.cpu_limit_m ?? 100,
+  mem: auth.user?.limits?.mem_limit_mi ?? 384,
+}))
 const DEFAULTS = { cpu_request_m: 64, cpu_limit_m: 100, mem_request_mi: 128, mem_limit_mi: 384 }
 type Key = keyof typeof DEFAULTS
 const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limit_mi']
@@ -29,8 +39,8 @@ const num = (k: Key) => (/^\d+$/.test(vals[k].trim()) ? Number(vals[k].trim()) :
 const invalid = computed(() => keys.some((k) => vals[k].trim() !== '' && num(k) === null))
 const exceeds = computed(
   () =>
-    (num('cpu_request_m') ?? 0) > CAPS.cpu || (num('cpu_limit_m') ?? 0) > CAPS.cpu ||
-    (num('mem_request_mi') ?? 0) > CAPS.mem || (num('mem_limit_mi') ?? 0) > CAPS.mem,
+    (num('cpu_request_m') ?? 0) > CAPS.value.cpu || (num('cpu_limit_m') ?? 0) > CAPS.value.cpu ||
+    (num('mem_request_mi') ?? 0) > CAPS.value.mem || (num('mem_limit_mi') ?? 0) > CAPS.value.mem,
 )
 
 function save() {
@@ -43,41 +53,43 @@ function reset() {
 </script>
 
 <template>
-  <div v-if="app" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-    <form class="w-full max-w-md rounded-lg border border-pico-border bg-pico-panel p-5 shadow-xl" @submit.prevent="save">
-      <h2 class="text-base font-semibold text-white">Resources: {{ app.name }}</h2>
-      <p class="mt-1 text-xs text-zinc-500">Leave a field empty to use the default (shown as placeholder).</p>
+  <dialog
+    ref="dlg"
+    :aria-labelledby="`${uid}-title`"
+    class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+    @cancel="m.onNativeCancel"
+    @click="m.onBackdrop"
+  >
+    <form v-if="app" class="p-5" @submit.prevent="save">
+      <h2 :id="`${uid}-title`" class="section-title">Resources: {{ app.name }}</h2>
+      <p class="help">Leave a field empty to use the default (shown as placeholder).</p>
       <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label v-for="f in fields" :key="f.key" class="flex flex-col gap-1 text-xs text-zinc-400">
-          <span class="font-medium text-zinc-200">{{ f.label }} ({{ f.unit }})</span>
+        <div v-for="f in fields" :key="f.key">
+          <label :for="`${uid}-${f.key}`" class="label">{{ f.label }} ({{ f.unit }})</label>
           <input
+            :id="`${uid}-${f.key}`"
             v-model="vals[f.key]"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
             :placeholder="`${DEFAULTS[f.key]}${f.unit}`"
-            class="rounded-md border border-pico-border bg-pico-card px-2 py-1.5 text-sm text-white focus:border-accent focus:outline-none"
+            class="input"
+            :aria-invalid="vals[f.key].trim() !== '' && num(f.key) === null ? 'true' : undefined"
           />
-        </label>
+        </div>
       </div>
-      <p v-if="invalid" class="mt-3 text-xs text-danger">Enter whole numbers only.</p>
-      <p v-if="exceeds" class="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
-        Exceeds platform caps in bootstrap.md (100m CPU / 384Mi memory).
+      <p v-if="invalid" class="field-error" role="alert">Enter whole numbers only.</p>
+      <p v-if="exceeds" class="alert-warn mt-3 text-xs" role="status">
+        Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }}Mi memory). The scheduler may not fit this app.
       </p>
-      <p v-if="error" class="mt-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{{ error }}</p>
+      <p v-if="error" class="alert-error mt-3 text-xs" role="alert">{{ error }}</p>
       <div class="mt-5 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" class="rounded-md border border-pico-border px-3 py-1.5 text-sm text-zinc-300 hover:bg-pico-card" @click="reset">
-          Reset to defaults
-        </button>
+        <button type="button" class="link -ml-1 rounded px-1 text-sm" @click="reset">Reset to defaults</button>
         <div class="flex gap-2">
-          <button type="button" class="rounded-md border border-pico-border px-3 py-1.5 text-sm text-zinc-300 hover:bg-pico-card" @click="emit('cancel')">
-            Cancel
-          </button>
-          <button type="submit" :disabled="invalid" class="rounded-md bg-accent-dark px-3 py-1.5 text-sm font-medium text-white hover:bg-accent disabled:opacity-50">
-            Save
-          </button>
+          <button type="button" class="btn-secondary" @click="emit('cancel')">Cancel</button>
+          <button type="submit" :disabled="invalid" class="btn-primary">Save</button>
         </div>
       </div>
     </form>
-  </div>
+  </dialog>
 </template>

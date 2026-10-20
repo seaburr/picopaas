@@ -88,6 +88,40 @@ const sortedApps = computed(() => {
 })
 const ariaSort = (k: SortKey) => (sortKey.value === k ? (sortDesc.value ? 'descending' : 'ascending') : 'none')
 
+// Backend error strings are developer-facing ("cluster snapshot failed (ApiException)"); say what it means.
+function humanize(e: string): string {
+  if (/metrics\.k8s\.io/i.test(e)) return 'Metrics are unavailable. CPU and memory usage show as n/a until the metrics server responds.'
+  if (/cluster snapshot/i.test(e)) return "Can't reach the Kubernetes API. Metrics and node data are unavailable."
+  return e
+}
+const humanErrors = computed(() => [...new Set((data.value?.errors ?? []).map(humanize))])
+const otherErrors = computed(() => humanErrors.value.filter((e) => !/Kubernetes API/.test(e))) // that one is in the verdict row
+
+// Verdict: every problem links to where it is.
+interface Problem { text: string; target: string }
+const problems = computed<Problem[]>(() => {
+  const d = data.value
+  if (!d) return []
+  const out: Problem[] = []
+  if (humanErrors.value.some((e) => /Kubernetes API/.test(e))) out.push({ text: "Can't reach the Kubernetes API (metrics and node data unavailable)", target: 'sec-nodes' })
+  const down = d.nodes.filter((n) => !n.ready)
+  if (down.length) out.push({ text: `${down.length} node${down.length > 1 ? 's' : ''} not ready`, target: 'sec-nodes' })
+  const tight = d.nodes.filter((n) => pressure(n).tight)
+  if (tight.length) out.push({ text: `${tight.length} node${tight.length > 1 ? 's' : ''} nearly full`, target: 'sec-nodes' })
+  const failed = d.apps.filter((a) => a.status === 'error')
+  if (failed.length) out.push({ text: `${failed.length} failed app${failed.length > 1 ? 's' : ''}`, target: 'sec-apps' })
+  const notReady = d.platform.filter((p) => !p.ready)
+  if (notReady.length) out.push({ text: `${notReady.length} platform component${notReady.length > 1 ? 's' : ''} not ready`, target: 'sec-platform' })
+  const full = d.db_servers.filter((s) => s.warn)
+  if (full.length) out.push({ text: `${full.length} DB server${full.length > 1 ? 's' : ''} above 80%`, target: 'sec-db' })
+  if (!d.metrics_available && !out.some((p) => /Kubernetes/.test(p.text))) out.push({ text: 'Metrics unavailable', target: 'sec-summary' })
+  return out
+})
+const pendingN = computed(() => data.value?.users?.pending ?? data.value?.pending_users?.length ?? 0)
+function jump(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
 const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-left text-sm text-zinc-300'
 </script>
@@ -95,46 +129,56 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h1 class="text-lg font-semibold text-white">Cluster health</h1>
-        <div class="flex items-center gap-3 text-xs text-zinc-500" aria-live="polite">
+        <h1 class="page-title">Cluster health</h1>
+        <div class="flex items-center gap-3 text-xs text-zinc-400" aria-live="polite">
           <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
-          <button
-            class="rounded border border-pico-border px-2 py-1 text-zinc-300 hover:bg-pico-card disabled:opacity-50"
-            :disabled="loading"
-            @click="load"
-          >
+          <button type="button" class="btn-secondary btn-sm" :disabled="loading" @click="load">
             {{ loading ? 'Refreshing…' : 'Refresh' }}
           </button>
         </div>
       </div>
 
-      <div v-if="error" role="alert" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-        {{ error }}
-      </div>
+      <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
 
       <template v-if="data">
-        <div v-if="data.errors.length" role="alert" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
-          <div class="font-semibold">Warnings</div>
+        <div
+          :class="problems.length || pendingN ? 'alert-warn' : 'alert-success'"
+          class="flex flex-wrap items-center gap-x-3 gap-y-1"
+          role="status"
+          aria-label="Overall status"
+        >
+          <template v-if="!problems.length">
+            <strong>All systems normal</strong>
+            <span v-if="!pendingN" class="text-xs opacity-80">Nodes ready, no failed apps, DB capacity fine.</span>
+          </template>
+          <template v-else>
+            <strong>{{ problems.length }} {{ problems.length === 1 ? 'problem' : 'problems' }}:</strong>
+            <button v-for="p in problems" :key="p.text" type="button" class="underline underline-offset-2" @click="jump(p.target)">{{ p.text }}</button>
+          </template>
+          <RouterLink v-if="pendingN" to="/admin" class="underline underline-offset-2">{{ pendingN }} {{ pendingN === 1 ? 'user' : 'users' }} waiting for approval</RouterLink>
+        </div>
+
+        <div v-if="otherErrors.length" role="alert" class="alert-warn">
           <ul class="list-inside list-disc">
-            <li v-for="(e, i) in data.errors" :key="i">{{ e }}</li>
+            <li v-for="e in otherErrors" :key="e">{{ e }}</li>
           </ul>
         </div>
 
         <section v-if="data.users || data.workloads" class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Users and workloads">
           <div v-if="data.users" :class="card">
-            <div class="text-xs text-zinc-500">Users</div>
+            <div class="text-xs text-zinc-400">Users</div>
             <div class="text-xl font-semibold text-white">{{ data.users.total }}</div>
-            <div class="text-xs text-zinc-500">{{ data.users.active }} active · {{ data.users.suspended }} suspended</div>
+            <div class="text-xs text-zinc-400">{{ data.users.active }} active · {{ data.users.suspended }} suspended</div>
           </div>
           <div v-if="data.users" :class="[card, data.users.pending > 0 ? 'border-amber-500/40' : '']">
-            <div class="text-xs text-zinc-500">Pending approval</div>
+            <div class="text-xs text-zinc-400">Pending approval</div>
             <div :class="['text-xl font-semibold', data.users.pending > 0 ? 'text-amber-400' : 'text-white']">{{ data.users.pending }}</div>
           </div>
           <div v-if="data.workloads" :class="[card, 'col-span-2']">
-            <div class="text-xs text-zinc-500">Workloads</div>
-            <div class="text-xl font-semibold text-white">{{ data.workloads.apps_total }} <span class="text-sm font-normal text-zinc-500">apps</span></div>
+            <div class="text-xs text-zinc-400">Workloads</div>
+            <div class="text-xl font-semibold text-white">{{ data.workloads.apps_total }} <span class="text-sm font-normal text-zinc-400">apps</span></div>
             <div class="flex flex-wrap gap-x-3 text-xs text-zinc-400">
               <span
                 v-for="st in statuses"
@@ -142,22 +186,22 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                 :class="st === 'error' && (data.workloads.by_status[st] ?? 0) > 0 ? 'font-semibold text-status-error' : ''"
               >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</span>
             </div>
-            <div class="text-xs text-zinc-500">{{ data.workloads.with_db }} with DB · {{ data.workloads.with_storage }} with storage</div>
+            <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with DB · {{ data.workloads.with_storage }} with storage</div>
           </div>
         </section>
 
         <section v-if="data.pending_users?.length" aria-label="Waiting for approval">
           <div class="mb-2 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-zinc-300">Waiting for approval</h2>
-            <RouterLink to="/admin" class="text-xs text-accent hover:underline">Admin page (suspend/delete)</RouterLink>
+            <RouterLink to="/admin" class="link text-xs">Manage users</RouterLink>
           </div>
           <ul class="divide-y divide-pico-border rounded-md border border-pico-border bg-pico-panel text-sm text-zinc-300">
             <li v-for="u in data.pending_users" :key="u.id" class="flex items-center justify-between gap-2 p-2">
               <span class="min-w-0 truncate">{{ u.email }}</span>
               <span class="flex shrink-0 items-center gap-3">
-                <span class="text-xs text-zinc-500">waiting {{ waiting(u.created_at) }}</span>
+                <span class="text-xs text-zinc-400">waiting {{ waiting(u.created_at) }}</span>
                 <button
-                  class="rounded bg-accent-dark px-2 py-1 text-xs text-white hover:bg-accent disabled:opacity-50"
+                  class="btn-primary btn-sm"
                   :disabled="approving === u.id"
                   @click="approve(u.id)"
                 >
@@ -167,15 +211,15 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
             </li>
           </ul>
         </section>
-        <div v-else-if="data.users" class="text-right text-xs"><RouterLink to="/admin" class="text-accent hover:underline">Admin page</RouterLink></div>
+        <div v-else-if="data.users" class="text-right text-xs"><RouterLink to="/admin" class="link">Admin page</RouterLink></div>
 
-        <section class="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Summary">
+        <section id="sec-summary" class="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Summary">
           <div :class="card">
-            <div class="text-xs text-zinc-500">Nodes</div>
+            <div class="text-xs text-zinc-400">Nodes</div>
             <div class="text-xl font-semibold text-white">
-              {{ data.cluster.node_count }}<span v-if="data.cluster.max_nodes !== null" class="text-sm text-zinc-500"> / {{ data.cluster.max_nodes }}</span>
+              {{ data.cluster.node_count }}<span v-if="data.cluster.max_nodes !== null" class="text-sm text-zinc-400"> / {{ data.cluster.max_nodes }}</span>
             </div>
-            <div class="text-xs text-zinc-500">
+            <div class="text-xs text-zinc-400">
               <template v-if="data.cluster.max_nodes !== null">
                 {{ Math.max(0, data.cluster.max_nodes - data.cluster.node_count) }} autoscaler headroom
               </template>
@@ -183,23 +227,19 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
             </div>
           </div>
           <div :class="card">
-            <div class="text-xs text-zinc-500">Pods</div>
+            <div class="text-xs text-zinc-400">Pods</div>
             <div class="text-xl font-semibold text-white">{{ data.cluster.pods_total }}</div>
           </div>
           <div :class="card">
-            <div class="text-xs text-zinc-500">Metrics</div>
+            <div class="text-xs text-zinc-400">Metrics</div>
             <div :class="['text-xl font-semibold', data.metrics_available ? 'text-status-running' : 'text-amber-400']">
               {{ data.metrics_available ? 'Available' : 'Unavailable' }}
             </div>
-            <div v-if="!data.metrics_available" class="text-xs text-zinc-500">usage shown as n/a</div>
-          </div>
-          <div :class="card">
-            <div class="text-xs text-zinc-500">Generated</div>
-            <div class="text-sm text-white">{{ new Date(data.generated_at).toLocaleTimeString() }}</div>
+            <div v-if="!data.metrics_available" class="text-xs text-zinc-400">usage shown as n/a</div>
           </div>
         </section>
 
-        <section>
+        <section id="sec-nodes" class="scroll-mt-4">
           <h2 class="mb-2 text-sm font-semibold text-zinc-300">Nodes</h2>
           <div class="grid gap-3 sm:grid-cols-2">
             <div v-for="n in data.nodes" :key="n.name" :class="card">
@@ -242,21 +282,21 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
               >
                 Requested {{ pressure(n).c }}% CPU, {{ pressure(n).m }}% memory: next app may trigger a new node
               </div>
-              <div class="flex justify-between text-xs text-zinc-500">
+              <div class="flex justify-between text-xs text-zinc-400">
                 <span>Pods {{ n.pods }}/{{ n.pods_capacity }}</span>
                 <span>Age {{ age(n.age_s) }}</span>
               </div>
             </div>
-            <div v-if="data.nodes.length === 0" class="text-sm text-zinc-500">No nodes reported.</div>
+            <div v-if="data.nodes.length === 0" class="text-sm text-zinc-400">No nodes reported.</div>
           </div>
-          <p class="mt-1 text-xs text-zinc-500">Bars: grey = requested (drives scheduling), colored = used, full width = allocatable.</p>
+          <p class="mt-1 text-xs text-zinc-400">Bars: grey = requested (drives scheduling), colored = used, full width = allocatable.</p>
         </section>
 
-        <section>
+        <section id="sec-apps" class="scroll-mt-4">
           <h2 class="mb-2 text-sm font-semibold text-zinc-300">Apps</h2>
           <div class="overflow-x-auto">
             <table :class="table">
-              <thead class="text-xs text-zinc-500">
+              <thead class="text-xs text-zinc-400">
                 <tr>
                   <th class="p-2">App</th><th class="p-2">Owner</th><th class="p-2">Status</th><th class="p-2">Pods</th><th class="p-2">Restarts</th>
                   <th class="p-2" :aria-sort="ariaSort('cpu')">
@@ -269,31 +309,31 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
               </thead>
               <tbody>
                 <tr v-for="a in sortedApps" :key="a.id" class="border-t border-pico-border">
-                  <td class="p-2">{{ a.name }}<div class="font-mono text-xs text-zinc-500">{{ a.namespace }}</div></td>
+                  <td class="p-2">{{ a.name }}<div class="font-mono text-xs text-zinc-400">{{ a.namespace }}</div></td>
                   <td class="p-2">{{ a.owner_email }}</td>
                   <td class="p-2"><StatusBadge :status="a.status" /></td>
                   <td class="p-2" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
                   <td class="p-2" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
                   <td class="whitespace-nowrap p-2" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, a.cpu_limit_m, 'm') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-500">limit {{ a.cpu_limit_m }}m</span></template>
+                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-400">limit {{ a.cpu_limit_m }}m</span></template>
                   </td>
                   <td class="whitespace-nowrap p-2" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, a.mem_limit_mi, 'Mi') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-500">limit {{ a.mem_limit_mi }}Mi</span></template>
+                    <template v-else><span :title="NA">—</span> <span class="text-xs font-normal text-zinc-400">limit {{ a.mem_limit_mi }}Mi</span></template>
                   </td>
                 </tr>
-                <tr v-if="sortedApps.length === 0"><td colspan="7" class="p-3 text-zinc-500">No apps.</td></tr>
+                <tr v-if="sortedApps.length === 0"><td colspan="7" class="p-3 text-zinc-400">No apps.</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section>
+        <section id="sec-platform" class="scroll-mt-4">
           <h2 class="mb-2 text-sm font-semibold text-zinc-300">Platform components</h2>
           <div class="overflow-x-auto">
             <table :class="table">
-              <thead class="text-xs text-zinc-500">
+              <thead class="text-xs text-zinc-400">
                 <tr><th class="p-2">Name</th><th class="p-2">Namespace</th><th class="p-2">Ready</th><th class="p-2">Restarts</th><th class="p-2">CPU</th><th class="p-2">Memory</th></tr>
               </thead>
               <tbody>
@@ -305,17 +345,17 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                   <td class="p-2"><span v-if="p.cpu_used_m === null" :title="NA">—</span><template v-else>{{ p.cpu_used_m }}m</template></td>
                   <td class="p-2"><span v-if="p.mem_used_mi === null" :title="NA">—</span><template v-else>{{ p.mem_used_mi }}Mi</template></td>
                 </tr>
-                <tr v-if="data.platform.length === 0"><td colspan="6" class="p-3 text-zinc-500">None reported.</td></tr>
+                <tr v-if="data.platform.length === 0"><td colspan="6" class="p-3 text-zinc-400">None reported.</td></tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section>
+        <section id="sec-db" class="scroll-mt-4">
           <h2 class="mb-2 text-sm font-semibold text-zinc-300">DB servers</h2>
           <div class="overflow-x-auto">
             <table :class="table">
-              <thead class="text-xs text-zinc-500">
+              <thead class="text-xs text-zinc-400">
                 <tr><th class="p-2">Name</th><th class="p-2">Host</th><th class="p-2">Capacity</th><th class="p-2">Status</th></tr>
               </thead>
               <tbody>
@@ -325,13 +365,13 @@ const table = 'w-full rounded-md border border-pico-border bg-pico-panel text-le
                   <td class="p-2"><DbCapacityBar :server="s" /></td>
                   <td class="p-2">{{ s.status }}</td>
                 </tr>
-                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="p-3 text-zinc-500">No DB servers.</td></tr>
+                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="p-3 text-zinc-400">No DB servers.</td></tr>
               </tbody>
             </table>
           </div>
         </section>
       </template>
-      <p v-else-if="!error" class="text-sm text-zinc-500">Loading…</p>
+      <p v-else-if="!error" class="text-sm text-zinc-400" role="status">Querying cluster…</p>
     </main>
   </div>
 </template>

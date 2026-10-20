@@ -1,85 +1,93 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import SpecEditor from '../components/SpecEditor.vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
+import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
-import { rotateCredentials } from '../api/apps'
+import SpecEditor from '../components/SpecEditor.vue'
+import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
+import { SAMPLE_APP } from '../composables/appUi'
+import { envKeyError } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
-import type { EnvVar } from '../types'
+import { useAuthStore } from '../stores/auth'
+import { useToastStore } from '../stores/toast'
+import type { App, EnvVar } from '../types'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
+const route = useRoute()
 const store = useAppsStore()
+const auth = useAuthStore()
+const toast = useToastStore()
 
 const isEdit = computed(() => props.id !== undefined)
 const appId = computed(() => (props.id !== undefined ? Number(props.id) : null))
+const loadedApp = ref<App | null>(null)
 
 const form = reactive({
   name: '',
   image: '',
-  port: 8080,
+  port: 8080 as number | string,
   want_db: false,
   want_storage: false,
   health_check_enabled: false,
   health_check_path: '/healthz',
 })
 const env = ref<EnvVar[]>([])
+const originalImage = ref('')
 
 const tab = ref<'form' | 'yaml'>('form')
-const rotating = ref<'db' | 'storage' | null>(null)
-const rotateMsg = ref('')
-
-async function confirmRotate() {
-  const target = rotating.value
-  rotating.value = null
-  if (!target || appId.value === null) return
-  error.value = ''
-  rotateMsg.value = ''
-  try {
-    await rotateCredentials(appId.value, target)
-    rotateMsg.value = target === 'db' ? 'DB password rotated; app restarting.' : 'Storage keys rotated; app restarting.'
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to rotate credentials'
-  }
-}
-
 const suspended = ref(false)
 const loading = ref(isEdit.value)
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
+const errorBox = ref<HTMLElement | null>(null)
 
-// Backend 422s for the image field (app/routers/apps.py _check_non_root /
-// _check_image_cap) are plain strings that all start with "image" — e.g.
-// "image runs as root, which isn't supported...", "image not found or not public", "image is N bytes,
-// over the M byte limit...". Show those verbatim next to the field instead
-// of (or in addition to) the generic error banner.
-const imageError = computed(() => (error.value.toLowerCase().startsWith('image') ? error.value : ''))
-const formError = computed(() => (imageError.value ? '' : error.value))
+const limits = computed(() => auth.user?.limits)
+const dbOff = computed(() => auth.user?.features?.databases === false)
+const storageOff = computed(() => auth.user?.features?.storage === false)
+const dbLabel = computed(() => `MySQL, ${limits.value?.db_mb ?? 50} MB`)
+const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket`)
+const imageMb = computed(() => limits.value?.image_mb ?? 256)
+
+const imageError = computed(() => {
+  if (fieldErrors.value.image) return fieldErrors.value.image
+  return error.value.toLowerCase().startsWith('image') ? error.value : ''
+})
+const formError = computed(() => (error.value && !error.value.toLowerCase().startsWith('image') ? error.value : ''))
 
 onMounted(async () => {
-  if (!isEdit.value || appId.value === null) return
-  try {
-    const app = await store.fetchOne(appId.value)
-    suspended.value = app.status === 'suspended'
-    form.name = app.name
-    form.image = app.image
-    form.port = app.port
-    form.want_db = app.want_db
-    form.want_storage = app.want_storage
-    form.health_check_enabled = app.health_check_enabled ?? false
-    form.health_check_path = app.health_check_path || '/healthz'
-    env.value = app.env
-  } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to load app'
-  } finally {
-    loading.value = false
+  if (isEdit.value && appId.value !== null) {
+    try {
+      const app = await store.fetchOne(appId.value)
+      loadedApp.value = app
+      suspended.value = app.status === 'suspended'
+      form.name = app.name
+      form.image = app.image
+      originalImage.value = app.image
+      form.port = app.port
+      form.want_db = app.want_db
+      form.want_storage = app.want_storage
+      form.health_check_enabled = app.health_check_enabled ?? false
+      form.health_check_path = app.health_check_path || '/healthz'
+      env.value = app.env
+      document.title = `Edit ${app.name} · PicoPaaS`
+    } catch (e) {
+      error.value = e instanceof ApiError ? e.message : "Couldn't load this app."
+    } finally {
+      loading.value = false
+    }
+  } else if (route.query.sample) {
+    form.name = SAMPLE_APP.name
+    form.image = SAMPLE_APP.image
+    form.port = SAMPLE_APP.port
   }
 })
 
 const pathError = computed(() => {
+  if (fieldErrors.value.health_check_path) return fieldErrors.value.health_check_path
   if (!form.health_check_enabled) return ''
   const p = form.health_check_path
   if (!p.startsWith('/')) return 'Path must start with /'
@@ -87,38 +95,80 @@ const pathError = computed(() => {
   return ''
 })
 
+// Empty rows are dropped before sending; keep the mapping so server errors (env.N.key) land on the right editor row.
+const keptIdx = computed(() => env.value.map((e, i) => (e.key || e.value ? i : -1)).filter((i) => i >= 0))
+const envErrors = computed(() => {
+  const out: Record<string, string> = {}
+  for (const [path, msg] of Object.entries(fieldErrors.value)) {
+    const m = path.match(/^env\.(\d+)\.(key|value)$/)
+    if (m) out[`${keptIdx.value[Number(m[1])] ?? m[1]}.${m[2]}`] = msg
+  }
+  return out
+})
+const envInvalid = computed(() => env.value.some((e) => (e.key || e.value) && envKeyError(e.key)))
+
+function onField(name: string) {
+  if (fieldErrors.value[name]) fieldErrors.value = { ...fieldErrors.value, [name]: '' }
+  if (name === 'image') error.value = error.value.toLowerCase().startsWith('image') ? '' : error.value
+}
+
+async function showError() {
+  await nextTick()
+  errorBox.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+const busyLabel = computed(() => (!isEdit.value || form.image !== originalImage.value ? 'Checking image…' : 'Saving…'))
+
 async function onSubmit() {
   error.value = ''
+  fieldErrors.value = {}
   if (pathError.value) return
+  if (envInvalid.value) {
+    error.value = 'Fix the highlighted environment variable names.'
+    return showError()
+  }
+  const envOut = keptIdx.value.map((i) => env.value[i])
+  const port = Number(form.port)
   saving.value = true
   try {
     if (isEdit.value && appId.value !== null) {
-      await store.update(appId.value, {
-        name: form.name,
-        image: form.image,
-        port: form.port,
+      const app = await store.update(appId.value, {
+        name: form.name.trim(),
+        image: form.image.trim(),
+        port,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
-        env: env.value,
+        env: envOut,
       })
+      toast.success(`Saved. Redeploying ${app.name}…`)
+      await router.push(`/apps/${app.id}`)
     } else {
-      await store.create({
-        name: form.name,
-        image: form.image,
-        port: form.port,
+      const app = await store.create({
+        name: form.name.trim(),
+        image: form.image.trim(),
+        port,
         want_db: form.want_db,
         want_storage: form.want_storage,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
-        env: env.value,
+        env: envOut,
       })
+      toast.success(`${app.name} created. Deploying, usually about a minute.`)
+      await router.push(`/apps/${app.id}`)
     }
-    await router.push('/apps')
   } catch (e) {
-    // The backend's own message is already user-friendly, e.g. for the app
-    // limit (app/routers/apps.py create_app): "app limit reached (N);
-    // contact the uberadmin to raise it".
-    error.value = e instanceof ApiError ? e.message : 'Failed to save app'
+    if (e instanceof ApiError) {
+      fieldErrors.value = e.fieldErrors
+      error.value = Object.keys(e.fieldErrors).length && e.status === 422 ? 'Some fields need attention.' : e.message
+      // Backend image checks (not found / private / root / too big) are plain 422 strings that mention "image".
+      if (e.status === 422 && /\bimage\b/i.test(e.message) && !Object.keys(e.fieldErrors).length) {
+        fieldErrors.value = { image: e.message }
+      }
+      if (fieldErrors.value.image) error.value = ''
+    } else {
+      error.value = "Couldn't save the app."
+    }
+    await showError()
   } finally {
     saving.value = false
   }
@@ -129,182 +179,191 @@ async function onSubmit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main class="mx-auto max-w-2xl px-4 py-6">
-      <h1 class="mb-4 text-lg font-semibold text-white">{{ isEdit ? 'Edit app' : 'New app' }}</h1>
+    <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-6">
+      <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
+        <RouterLink to="/apps" class="link">Apps</RouterLink>
+        <span aria-hidden="true"> / </span>
+        <RouterLink v-if="loadedApp" :to="`/apps/${loadedApp.id}`" class="link">{{ loadedApp.name }}</RouterLink>
+        <span aria-hidden="true"> / </span>Edit
+      </nav>
+      <nav v-else class="meta mb-2" aria-label="Breadcrumb">
+        <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
+      </nav>
 
-      <div v-if="!isEdit" class="mb-3 flex gap-1 text-sm">
+      <div class="mb-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Edit app') : 'New app' }}</h1>
+          <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
+        </div>
+        <HostLink v-if="loadedApp" :hostname="loadedApp.hostname" class="mt-1" />
+        <p v-if="!isEdit" class="help">Deploy a public Docker image. You'll get an https URL as soon as the app is created.</p>
+      </div>
+
+      <div v-if="!isEdit" class="mb-3 flex gap-1 border-b border-pico-border" role="tablist">
         <button
           v-for="t in (['form', 'yaml'] as const)"
           :key="t"
           type="button"
-          :class="['rounded px-3 py-1', tab === t ? 'bg-pico-card text-white' : 'text-zinc-400 hover:text-white']"
+          role="tab"
+          :aria-selected="tab === t"
+          :class="['-mb-px border-b-2 px-3 py-2 text-sm', tab === t ? 'border-accent-light text-white' : 'border-transparent text-zinc-400 hover:text-white']"
           @click="tab = t"
         >
-          {{ t === 'form' ? 'Form' : 'YAML' }}
+          {{ t === 'form' ? 'Form' : 'YAML (advanced)' }}
         </button>
       </div>
 
       <SpecEditor v-if="!isEdit && tab === 'yaml'" />
 
-      <div v-else-if="loading" class="text-sm text-zinc-500">Loading…</div>
+      <div v-else-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
 
-      <form v-else class="space-y-5 rounded-lg border border-pico-border bg-pico-panel p-5" @submit.prevent="onSubmit">
-        <div v-if="suspended" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
-          Suspended by an administrator. This app can't be edited.
-        </div>
+      <div v-else-if="isEdit && !loadedApp" role="alert" class="alert-error">
+        {{ error || "Couldn't load this app." }}
+        <RouterLink to="/apps" class="link ml-1">Back to apps</RouterLink>
+      </div>
+
+      <form v-else class="card card-pad space-y-5" novalidate @submit.prevent="onSubmit">
+        <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
         <fieldset :disabled="suspended" class="space-y-5">
-        <div>
-          <label class="mb-1 block text-sm font-medium text-zinc-300">Name</label>
-          <input
-            v-model="form.name"
-            type="text"
-            required
-            maxlength="255"
-            class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-          />
-        </div>
-
-        <div>
-          <label class="mb-1 block text-sm font-medium text-zinc-300">Image</label>
-          <input
-            v-model="form.image"
-            type="text"
-            required
-            maxlength="512"
-            placeholder="ghcr.io/me/app:1.2"
-            class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-          />
-          <p class="mt-1 text-xs text-zinc-500">
-            Images must not run as root. A named non-root user (e.g. <code class="font-mono">USER app</code>) runs as
-            UID 10001, so files it owns may not be writable; a numeric <code class="font-mono">USER 10001</code> avoids that.
-          </p>
-          <p v-if="imageError" class="mt-1 text-xs text-danger">{{ imageError }}</p>
-        </div>
-
-        <div>
-          <label class="mb-1 block text-sm font-medium text-zinc-300">Port</label>
-          <input
-            v-model.number="form.port"
-            type="number"
-            required
-            min="1"
-            max="65535"
-            class="w-32 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-white focus:outline-none focus:border-accent"
-          />
-        </div>
-
-        <div class="flex gap-6">
-          <label class="flex items-center gap-2 text-sm text-zinc-300">
-            <input
-              v-model="form.want_db"
-              type="checkbox"
-              :disabled="isEdit"
-              class="accent-accent"
-            />
-            Database
-          </label>
-          <label class="flex items-center gap-2 text-sm text-zinc-300">
-            <input
-              v-model="form.want_storage"
-              type="checkbox"
-              :disabled="isEdit"
-              class="accent-accent"
-            />
-            Storage
-          </label>
-        </div>
-        <p v-if="isEdit" class="text-xs text-zinc-500">
-          Database and storage can't be changed after an app is created.
-        </p>
-
-        <div class="space-y-3">
-          <h2 class="text-sm font-medium text-zinc-300">Health check <RouterLink to="/guide/user#8-health-checks" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-xs text-zinc-400 hover:text-white" title="Docs: health checks">?</RouterLink></h2>
           <div>
-            <label class="flex items-center gap-2 text-sm text-zinc-300">
-              <input
-                v-model="form.health_check_enabled"
-                type="checkbox"
-                aria-describedby="hc-enabled-help"
-                class="accent-accent"
-              />
-              Enable HTTP health check
-            </label>
-            <p id="hc-enabled-help" class="mt-1 text-xs text-zinc-500">
-              Off: traffic is sent once the port accepts connections. On: the platform calls this path; non-2xx/3xx
-              responses take the app out of rotation and restart it if they persist.
-            </p>
-          </div>
-          <div>
-            <label for="hc-path" class="mb-1 block text-sm text-zinc-300">Health check path</label>
+            <label for="f-name" class="label">Name</label>
             <input
-              id="hc-path"
-              v-model="form.health_check_path"
+              id="f-name"
+              v-model="form.name"
               type="text"
+              required
               maxlength="255"
-              :disabled="!form.health_check_enabled"
-              aria-describedby="hc-path-help"
-              class="w-64 rounded-md border border-pico-border bg-pico-card px-3 py-2 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent disabled:opacity-50"
+              placeholder="my-app"
+              aria-describedby="f-name-help"
+              :aria-invalid="!!fieldErrors.name || undefined"
+              class="input"
+              @input="onField('name')"
             />
-            <p id="hc-path-help" class="mt-1 text-xs text-zinc-500">Must start with /. Default /healthz.</p>
-            <p v-if="pathError" class="mt-1 text-xs text-danger">{{ pathError }}</p>
+            <p v-if="fieldErrors.name" class="field-error" role="alert">{{ fieldErrors.name }}</p>
+            <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
           </div>
-        </div>
 
-        <div>
-          <label class="mb-2 block text-sm font-medium text-zinc-300">Env vars</label>
-          <RouterLink to="/guide/user#5-env-vars-secrets-and-references" target="_blank" class="mb-1 inline-block rounded-full border border-pico-border px-1.5 text-xs text-zinc-400 hover:text-white" title="Docs: env vars and references">? env refs</RouterLink>
-          <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" />
-        </div>
+          <div>
+            <label for="f-image" class="label">Image</label>
+            <input
+              id="f-image"
+              v-model="form.image"
+              type="text"
+              required
+              maxlength="512"
+              placeholder="ghcr.io/me/app:1.2"
+              spellcheck="false"
+              autocapitalize="off"
+              aria-describedby="f-image-help"
+              :aria-invalid="!!imageError || undefined"
+              class="input font-mono"
+              @input="onField('image')"
+            />
+            <p v-if="imageError" class="field-error" role="alert">{{ imageError }}</p>
+            <p id="f-image-help" class="help">A public image, e.g. <code class="font-mono">ghcr.io/me/app:1.2</code>. Pin a tag rather than <code class="font-mono">latest</code>.</p>
+            <details class="mt-2 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm">
+              <summary class="cursor-pointer text-zinc-200">Image requirements</summary>
+              <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-300">
+                <li>Public: anonymous pulls must work (Docker Hub, GHCR, etc.).</li>
+                <li>Must not run as root. Set a non-root <code class="font-mono">USER</code> in the Dockerfile.</li>
+                <li>A named USER (e.g. <code class="font-mono">USER app</code>) runs as UID 10001, so files it owns may not be writable. A numeric <code class="font-mono">USER 10001</code> avoids that.</li>
+                <li>Up to {{ imageMb }} MB compressed.</li>
+              </ul>
+            </details>
+          </div>
 
-        <div v-if="isEdit && (form.want_db || form.want_storage)" class="flex flex-wrap items-center gap-2">
-          <button
-            v-if="form.want_db"
-            type="button"
-            class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
-            @click="rotating = 'db'"
-          >
-            Rotate DB password
-          </button>
-          <button
-            v-if="form.want_storage"
-            type="button"
-            class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
-            @click="rotating = 'storage'"
-          >
-            Rotate storage keys
-          </button>
-          <span v-if="rotateMsg" class="text-xs text-zinc-400">{{ rotateMsg }}</span>
-        </div>
+          <div>
+            <label for="f-port" class="label">Container port</label>
+            <input
+              id="f-port"
+              v-model="form.port"
+              type="number"
+              required
+              min="1"
+              max="65535"
+              aria-describedby="f-port-help"
+              :aria-invalid="!!fieldErrors.port || undefined"
+              class="input !w-32"
+              @input="onField('port')"
+            />
+            <p v-if="fieldErrors.port" class="field-error" role="alert">{{ fieldErrors.port }}</p>
+            <p id="f-port-help" class="help">The port your app listens on inside the container (often 8080, or 80 for nginx).</p>
+          </div>
 
+          <fieldset>
+            <legend class="label">Add-ons</legend>
+            <div class="space-y-2">
+              <label class="flex items-start gap-2 text-sm text-zinc-200">
+                <input v-model="form.want_db" type="checkbox" :disabled="isEdit || dbOff" class="check mt-0.5" />
+                <span>
+                  Database <span class="text-zinc-400">({{ dbLabel }})</span>
+                  <span v-if="dbOff && !isEdit" class="help block !mt-0">Databases aren't available right now.</span>
+                </span>
+              </label>
+              <label class="flex items-start gap-2 text-sm text-zinc-200">
+                <input v-model="form.want_storage" type="checkbox" :disabled="isEdit || storageOff" class="check mt-0.5" />
+                <span>
+                  Storage <span class="text-zinc-400">({{ bucketLabel }})</span>
+                  <span v-if="storageOff && !isEdit" class="help block !mt-0">Storage buckets aren't available right now.</span>
+                </span>
+              </label>
+            </div>
+            <p class="help">Can't be changed after creation.</p>
+          </fieldset>
+
+          <div>
+            <p class="label">Environment variables</p>
+            <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" :errors="envErrors" />
+          </div>
+
+          <details class="rounded-md border border-pico-border bg-pico-card px-3 py-2" :open="form.health_check_enabled || !!pathError">
+            <summary class="cursor-pointer text-sm text-zinc-200">Advanced: health check</summary>
+            <div class="mt-3 space-y-3">
+              <div>
+                <label class="flex items-center gap-2 text-sm text-zinc-200">
+                  <input v-model="form.health_check_enabled" type="checkbox" aria-describedby="hc-enabled-help" class="check" />
+                  Enable HTTP health check
+                </label>
+                <p id="hc-enabled-help" class="help">
+                  Off: traffic is sent once the port accepts connections. On: the platform calls this path; non-2xx/3xx responses
+                  take the app out of rotation and restart it if they persist.
+                  <RouterLink to="/guide/user#8-health-checks" target="_blank" class="link">Docs</RouterLink>
+                </p>
+              </div>
+              <div>
+                <label for="hc-path" class="label">Health check path</label>
+                <input
+                  id="hc-path"
+                  v-model="form.health_check_path"
+                  type="text"
+                  maxlength="255"
+                  :disabled="!form.health_check_enabled"
+                  aria-describedby="hc-path-help"
+                  :aria-invalid="!!pathError || undefined"
+                  class="input !w-64 font-mono"
+                />
+                <p v-if="pathError" class="field-error" role="alert">{{ pathError }}</p>
+                <p id="hc-path-help" class="help">Must start with /. Default /healthz.</p>
+              </div>
+            </div>
+          </details>
         </fieldset>
 
-        <div v-if="formError" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {{ formError }}
+        <div ref="errorBox">
+          <div v-if="formError" role="alert" class="alert-error">{{ formError }}</div>
         </div>
 
-        <div class="flex justify-end gap-2">
-          <RouterLink to="/apps" class="rounded-md border border-pico-border px-4 py-2 text-sm text-zinc-300 hover:bg-pico-card">
-            Cancel
-          </RouterLink>
-          <button
-            type="submit"
-            :disabled="saving || suspended"
-            class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
-          >
-            {{ saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create app' }}
-          </button>
+        <p class="meta sm:hidden">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
+        <div class="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:-mb-5 sm:px-5">
+          <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
+          <div class="flex w-full gap-2 sm:w-auto">
+            <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>
+            <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="saving || suspended" :aria-busy="saving">
+              {{ saving ? busyLabel : isEdit ? 'Save changes' : 'Create app' }}
+            </button>
+          </div>
         </div>
       </form>
     </main>
-
-    <ConfirmDialog
-      :open="rotating !== null"
-      :title="rotating === 'db' ? 'Rotate DB password' : 'Rotate storage keys'"
-      message="New credentials are generated and the old ones stop working. The app will restart to pick them up."
-      confirm-label="Rotate"
-      danger
-      @confirm="confirmRotate"
-      @cancel="rotating = null"
-    />
   </div>
 </template>

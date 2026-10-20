@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { createApp, deleteApp, getApp, listApps, updateApp } from '../api/apps'
+import { createApp, deleteApp, getApp, listApps, restartApp, updateApp } from '../api/apps'
 import type { App, AppCreatePayload, AppUpdatePayload } from '../types'
 
 export const useAppsStore = defineStore('apps', () => {
@@ -8,7 +8,7 @@ export const useAppsStore = defineStore('apps', () => {
   const loaded = ref(false)
 
   async function load() {
-    apps.value = await listApps()
+    apps.value = (await listApps()) ?? []
     loaded.value = true
   }
 
@@ -33,5 +33,17 @@ export const useAppsStore = defineStore('apps', () => {
     apps.value = apps.value.filter((a) => a.id !== id)
   }
 
-  return { apps, loaded, load, fetchOne, create, update, remove }
+  function upsert(app: App) {
+    apps.value = apps.value.some((a) => a.id === app.id)
+      ? apps.value.map((a) => (a.id === app.id ? app : a))
+      : [app, ...apps.value]
+  }
+
+  async function restart(id: number) {
+    const app = await restartApp(id)
+    if (app) upsert(app)
+    return app
+  }
+
+  return { apps, loaded, load, fetchOne, create, update, remove, restart, upsert }
 })

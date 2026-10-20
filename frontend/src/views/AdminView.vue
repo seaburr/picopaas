@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, useId } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
@@ -7,138 +8,200 @@ import StatusBadge from '../components/StatusBadge.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listAudit, listDbServers, listUsers,
-  patchAppResources, patchDbServer, setAppLimit, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
+  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
+import { useModal } from '../composables/useModal'
+import { useToastStore } from '../stores/toast'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
+import { copyText, fullDate, humanDate } from '../utils/format'
+
+const route = useRoute()
+const router = useRouter()
+const toast = useToastStore()
+const uid = useId()
 
 const users = ref<AdminUser[]>([])
 const servers = ref<DbServer[]>([])
 const allApps = ref<AdminApp[]>([])
 const audit = ref<AuditEntry[]>([])
-const auditFilter = ref('')
-const pendingUsers = computed(() => users.value.filter((u) => u.status === 'pending'))
-const filteredAudit = computed(() => {
-  const q = auditFilter.value.trim().toLowerCase()
-  if (!q) return audit.value
-  return audit.value.filter((a) => a.action.toLowerCase().includes(q) || (a.actor_email ?? '').toLowerCase().includes(q))
-})
-
-type Confirm = { title: string; message: string; label: string; run: () => Promise<void> }
-const confirm = ref<Confirm | null>(null)
-async function runConfirm() {
-  const c = confirm.value
-  confirm.value = null
-  if (c) await act(c.run)
-}
-async function act(fn: () => Promise<unknown>) {
-  error.value = ''
-  try {
-    await fn()
-  } catch (e) {
-    error.value = msg(e, 'Action failed')
-  }
-  await load()
-}
-function askUser(kind: 'suspend' | 'delete', u: AdminUser) {
-  confirm.value =
-    kind === 'suspend'
-      ? {
-          title: `Suspend ${u.email}`,
-          message: 'Suspending stops all of this user\'s apps and blocks them from using the platform. Data is kept; unsuspend to restore.',
-          label: 'Suspend',
-          run: () => suspendUser(u.id),
-        }
-      : {
-          title: `Delete ${u.email}`,
-          message: 'Deleting removes this user and permanently destroys all their apps, databases and storage. This cannot be undone.',
-          label: 'Delete',
-          run: () => deleteUser(u.id),
-        }
-}
-function askApp(kind: 'suspend' | 'delete', a: AdminApp) {
-  confirm.value =
-    kind === 'suspend'
-      ? {
-          title: `Suspend ${a.name}`,
-          message: 'The app is stopped and its owner cannot edit or unsuspend it.',
-          label: 'Suspend',
-          run: () => suspendApp(a.id),
-        }
-      : {
-          title: `Delete ${a.name}`,
-          message: 'Permanently deletes the app, its database and storage. This cannot be undone.',
-          label: 'Delete',
-          run: () => deleteAdminApp(a.id),
-        }
-}
-const limits = reactive<Record<number, number>>({})
+const loaded = ref(false)
 const error = ref('')
-const saving = ref(false)
-
-const emptyForm = () => ({
-  name: '',
-  host: '',
-  port: 3306,
-  admin_user: '',
-  admin_password: '',
-  max_databases: 25,
-})
-const form = reactive(emptyForm())
-
-const anyWarn = computed(() => servers.value.some((s) => s.warn))
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
+
+// Tabs live in ?tab= so they are linkable.
+const TABS = ['users', 'apps', 'servers', 'audit'] as const
+type Tab = (typeof TABS)[number]
+const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'users'))
+const q = ref('')
+function setTab(t: Tab) {
+  q.value = ''
+  router.replace({ path: '/admin', query: t === 'users' ? {} : { tab: t } })
+}
+function onTabKey(e: KeyboardEvent) {
+  const i = TABS.indexOf(tab.value)
+  const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : -1
+  if (n < 0) return
+  const t = TABS[(n + TABS.length) % TABS.length]
+  setTab(t)
+  document.getElementById(`${uid}-tab-${t}`)?.focus()
+}
+
+const match = (q: string, ...fields: (string | null | undefined)[]) => {
+  const s = q.trim().toLowerCase()
+  return !s || fields.some((f) => (f ?? '').toLowerCase().includes(s))
+}
+const pendingUsers = computed(() => users.value.filter((u) => u.status === 'pending' && match(q.value, u.email)))
+const otherUsers = computed(() => users.value.filter((u) => u.status !== 'pending' && match(q.value, u.email)))
+const pendingCount = computed(() => users.value.filter((u) => u.status === 'pending').length)
+const filteredApps = computed(() => allApps.value.filter((a) => match(q.value, a.name, a.hostname, a.owner_email, a.image)))
+const filteredAudit = computed(() => audit.value.filter((a) => match(q.value, a.action, a.actor_email, a.target_type, String(a.target_id ?? ''), a.detail)))
+const warnServers = computed(() => servers.value.filter((s) => s.warn))
 
 async function load() {
   try {
     ;[users.value, servers.value, allApps.value, audit.value] = await Promise.all([
-      listUsers(),
-      listDbServers(),
-      listAllApps(),
-      listAudit(100),
+      listUsers(), listDbServers(), listAllApps(), listAudit(100),
     ])
     for (const u of users.value) limits[u.id] = u.app_limit
+    error.value = ''
   } catch (e) {
-    error.value = msg(e, 'Failed to load admin data')
+    error.value = msg(e, "Couldn't load admin data. Reload to try again.")
+  } finally {
+    loaded.value = true
   }
 }
 onMounted(load)
 
+async function act(fn: () => Promise<unknown>, ok: string, fail: string) {
+  error.value = ''
+  try {
+    await fn()
+    toast.success(ok)
+  } catch (e) {
+    error.value = `${fail}: ${msg(e, 'try again')}`
+  }
+  await load()
+}
+
+// ---- confirms (type-the-name for deletes) ----
+type Confirm = { title: string; message: string; label: string; require?: string; run: () => Promise<void> }
+const confirm = ref<Confirm | null>(null)
+const confirmBusy = ref(false)
+async function runConfirm() {
+  const c = confirm.value
+  if (!c) return
+  confirmBusy.value = true
+  await c.run()
+  confirmBusy.value = false
+  confirm.value = null
+  if (pendingTemp) {
+    // open the result dialog only after the confirm dialog has closed (one modal at a time)
+    await nextTick()
+    tempPw.value = pendingTemp
+    pendingTemp = null
+  }
+}
+function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) {
+  if (kind === 'suspend')
+    confirm.value = { title: `Suspend ${u.email}`, message: "This stops all of their apps and blocks them from the platform. Their data is kept; unsuspend to restore.", label: 'Suspend user', run: () => act(() => suspendUser(u.id), `${u.email} suspended.`, "Couldn't suspend the user") }
+  else if (kind === 'reject')
+    confirm.value = { title: `Reject ${u.email}`, message: 'This removes their request. They can request access again.', label: 'Reject request', run: () => act(() => deleteUser(u.id), `${u.email} rejected.`, "Couldn't reject the request") }
+  else if (kind === 'reset')
+    confirm.value = { title: `Reset password for ${u.email}`, message: 'This generates a temporary password. Their current password stops working immediately. Give them the new one; they should change it right away.', label: 'Reset password', run: () => resetPassword(u) }
+  else
+    confirm.value = { title: `Delete ${u.email}`, message: 'This permanently deletes the user and all of their apps, databases and storage. This cannot be undone.', label: 'Delete user and data', require: u.email, run: () => act(() => deleteUser(u.id), `${u.email} deleted.`, "Couldn't delete the user") }
+}
+function askApp(kind: 'suspend' | 'delete', a: AdminApp) {
+  confirm.value =
+    kind === 'suspend'
+      ? { title: `Suspend ${a.name}`, message: "The app is stopped. Its owner can't edit or restart it until you unsuspend it.", label: 'Suspend app', run: () => act(() => suspendApp(a.id), `${a.name} suspended.`, "Couldn't suspend the app") }
+      : { title: `Delete ${a.name}`, message: `Permanently deletes ${a.name}, its database and its storage bucket. This cannot be undone.`, label: 'Delete app', require: a.name, run: () => act(() => deleteAdminApp(a.id), `${a.name} deleted.`, "Couldn't delete the app") }
+}
+
+// ---- approve ----
+const approving = ref<number | null>(null)
+async function approve(u: AdminUser) {
+  approving.value = u.id
+  await act(() => approveUser(u.id), `${u.email} approved.`, "Couldn't approve the user")
+  approving.value = null
+}
+
+// ---- reset password: result dialog shows the temp password once ----
+const tempPw = ref<{ email: string; password: string } | null>(null)
+let pendingTemp: { email: string; password: string } | null = null
+const pwDlg = ref<HTMLDialogElement | null>(null)
+const pwModal = useModal(pwDlg, () => tempPw.value !== null, () => (tempPw.value = null))
+async function resetPassword(u: AdminUser) {
+  try {
+    const r = await resetUserPassword(u.id)
+    pendingTemp = { email: u.email, password: r.temporary_password }
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) error.value = "Password reset isn't available on this server yet."
+    else error.value = `Couldn't reset the password: ${msg(e, 'try again')}`
+  }
+}
+async function copyTemp() {
+  if (tempPw.value && (await copyText(tempPw.value.password))) toast.success('Copied.', 2000)
+  else toast.error("Couldn't copy. Select the password and copy it manually.")
+}
+
+// ---- app limit with inline saved check ----
+const limits = reactive<Record<number, number>>({})
+const saved = reactive<Record<number, boolean>>({})
 async function saveLimit(u: AdminUser) {
   error.value = ''
   try {
     const updated = await setAppLimit(u.id, limits[u.id])
     users.value = users.value.map((x) => (x.id === u.id ? { ...x, ...updated } : x))
+    saved[u.id] = true
+    setTimeout(() => (saved[u.id] = false), 2000)
   } catch (e) {
-    error.value = msg(e, 'Failed to update app limit')
+    error.value = `Couldn't update the app limit: ${msg(e, 'try again')}`
   }
 }
 
+// ---- DB servers ----
 async function patch(s: DbServer, payload: { status?: string; max_databases?: number }) {
   error.value = ''
   try {
     const updated = await patchDbServer(s.id, payload)
     servers.value = servers.value.map((x) => (x.id === s.id ? updated : x))
+    toast.success(`${s.name} set to ${updated.status}.`)
   } catch (e) {
-    error.value = msg(e, 'Failed to update DB server')
+    error.value = `Couldn't update the DB server: ${msg(e, 'try again')}`
     await load()
   }
 }
-
+const emptyForm = () => ({ name: '', host: '', port: 3306, admin_user: '', admin_password: '', max_databases: 25 })
+const form = reactive(emptyForm())
+const addOpen = ref(false)
+const addDlg = ref<HTMLDialogElement | null>(null)
+const addModal = useModal(addDlg, () => addOpen.value, () => !saving.value && (addOpen.value = false))
+const saving = ref(false)
+const addError = ref('')
+function openAdd() {
+  Object.assign(form, emptyForm())
+  addError.value = ''
+  addOpen.value = true
+}
 async function addServer() {
-  error.value = ''
+  addError.value = ''
   saving.value = true
   try {
     await createDbServer({ ...form })
     Object.assign(form, emptyForm()) // clears the password
-    servers.value = await listDbServers()
+    addOpen.value = false
+    toast.success('DB server added. Apps can now request a MySQL database.')
+    await load()
   } catch (e) {
-    error.value = msg(e, 'Failed to add DB server')
+    addError.value = msg(e, "Couldn't add the DB server. Check the host and credentials.")
   } finally {
     saving.value = false
   }
 }
 
+// ---- app resources ----
 const resApp = ref<AdminApp | null>(null)
 const resError = ref('')
 async function saveResources(body: ResourcesPatch) {
@@ -146,213 +209,285 @@ async function saveResources(body: ResourcesPatch) {
   resError.value = ''
   try {
     await patchAppResources(resApp.value.id, body)
+    toast.success(`Resources updated for ${resApp.value.name}.`)
     resApp.value = null
     await load()
   } catch (e) {
-    resError.value = msg(e, 'Failed to update resources')
+    resError.value = msg(e, "Couldn't update resources. Try again.")
   }
 }
 const resSummary = (a: AdminApp) =>
-  a.resources
-    ? `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m CPU, ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi`
-    : ''
+  a.resources ? `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m CPU, ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi` : ''
 
-const btn = 'rounded border border-pico-border px-2.5 py-1 text-xs text-zinc-300 hover:bg-pico-card'
-const btnPrimary = 'rounded bg-accent-dark px-2.5 py-1 text-xs font-medium text-white hover:bg-accent'
-const btnDanger = 'rounded border border-danger/40 px-2.5 py-1 text-xs text-danger hover:bg-danger/10'
-const input =
-  'w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent'
-const inputSm =
-  'rounded-md border border-pico-border bg-pico-card px-2 py-1 text-sm text-white focus:outline-none focus:border-accent'
-const card = 'rounded-md border border-pico-border bg-pico-panel'
-const th = 'px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500'
-const td = 'px-3 py-2.5 align-middle'
-const label = 'flex flex-col gap-1 text-xs text-zinc-400'
-const labelText = 'text-sm font-medium text-zinc-200'
+const rowBase = 'flex flex-col gap-2 px-4 py-3 text-sm text-zinc-200 md:items-center md:gap-4'
+const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_7rem_11rem_auto]'
+const appsGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_7rem_10rem_auto]'
+const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_11rem_7rem]'
+const auditGrid = 'md:grid md:grid-cols-[10rem_9rem_11rem_8rem_minmax(0,1fr)] md:items-start'
 </script>
 
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main class="mx-auto max-w-5xl space-y-10 px-4 py-6 sm:px-6">
-      <h1 class="text-xl font-semibold text-white">Admin</h1>
+    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6">
+      <h1 class="page-title">Admin</h1>
 
-      <div v-if="anyWarn" class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
-        DB capacity above 80%, file a capacity request.
+      <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
+
+      <div v-if="warnServers.length" class="alert-warn flex flex-wrap items-center justify-between gap-2" role="status">
+        <span>DB capacity is above 80% on {{ warnServers.map((s) => s.name).join(', ') }}. Add a DB server or raise the limit.</span>
+        <button type="button" class="btn-secondary btn-sm" @click="setTab('servers')">Go to DB servers</button>
       </div>
-      <div v-if="error" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</div>
 
-      <section v-if="pendingUsers.length" class="space-y-3">
-        <h2 class="text-base font-semibold text-amber-400">Pending approval ({{ pendingUsers.length }})</h2>
-        <ul class="divide-y divide-pico-border rounded-md border border-amber-500/30 bg-pico-panel">
-          <li v-for="u in pendingUsers" :key="u.id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm text-zinc-300">
-            <div class="min-w-0">
-              <div class="break-all">{{ u.email }}</div>
-              <div class="text-xs text-zinc-500">Requested {{ u.created_at }}</div>
-            </div>
-            <button :class="btnPrimary" @click="act(() => approveUser(u.id))">Approve</button>
+      <section v-if="loaded && servers.length === 0" class="card card-pad border-accent/40" aria-labelledby="setup-title">
+        <h2 id="setup-title" class="section-title">Set up your platform</h2>
+        <p class="help">Finish these so users can deploy apps with databases.</p>
+        <ol class="mt-3 space-y-2 text-sm text-zinc-200">
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="badge-warn">To do</span>
+            <span>Add a MySQL DB server. Until then the Database option is hidden from users.</span>
+            <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add DB server</button>
           </li>
-        </ul>
+          <li class="flex flex-wrap items-center gap-2">
+            <span :class="pendingCount ? 'badge-warn' : 'badge-neutral'">{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
+            <span>Approve access requests{{ pendingCount ? ` (${pendingCount} waiting)` : '' }}.</span>
+            <button v-if="pendingCount" type="button" class="btn-secondary btn-sm" @click="setTab('users')">Review</button>
+          </li>
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="badge-neutral">Optional</span>
+            <span>Check cluster capacity on the <RouterLink to="/admin/health" class="link">Health</RouterLink> page.</span>
+          </li>
+        </ol>
       </section>
 
-      <section class="space-y-3">
-        <h2 class="text-base font-semibold text-white">Users <span class="text-sm font-normal text-zinc-500">({{ users.length }})</span></h2>
-        <div :class="[card, 'overflow-x-auto']">
-          <table class="w-full min-w-[640px] text-left text-sm text-zinc-300">
-            <thead><tr><th :class="th">Email</th><th :class="th">Role</th><th :class="th">Apps</th><th :class="th">Status</th><th :class="th">App limit</th><th :class="th"><span class="sr-only">Actions</span></th></tr></thead>
-            <tbody>
-              <tr v-for="u in users" :key="u.id" class="border-t border-pico-border">
-                <td :class="[td, 'break-all']">{{ u.email }}</td>
-                <td :class="td">{{ u.role }}</td>
-                <td :class="td">{{ u.app_count }}</td>
-                <td :class="td"><StatusBadge :status="u.status" /></td>
-                <td :class="td">
-                  <form class="flex items-center gap-2" @submit.prevent="saveLimit(u)">
-                    <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" aria-label="App limit" :class="[inputSm, 'w-16']" />
-                    <button v-if="limits[u.id] !== u.app_limit" type="submit" :class="btnPrimary">Save</button>
-                  </form>
-                </td>
-                <td :class="[td, 'whitespace-nowrap text-right']">
-                  <div v-if="u.role !== 'uberadmin'" class="flex justify-end gap-1.5">
-                    <button v-if="u.status === 'pending'" :class="btnPrimary" @click="act(() => approveUser(u.id))">Approve</button>
-                    <button v-if="u.status === 'suspended'" :class="btn" @click="act(() => unsuspendUser(u.id))">Unsuspend</button>
-                    <button v-if="u.status === 'active'" :class="btn" @click="askUser('suspend', u)">Suspend</button>
-                    <button :class="btnDanger" @click="askUser('delete', u)">Delete</button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="users.length === 0"><td colspan="6" class="px-3 py-6 text-center text-zinc-500">No users.</td></tr>
-            </tbody>
-          </table>
+      <div role="tablist" aria-label="Admin sections" class="flex gap-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
+        <button
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'DB servers', n: servers.length }, { id: 'audit', label: 'Audit', n: null }] as const"
+          :id="`${uid}-tab-${t.id}`"
+          :key="t.id"
+          type="button"
+          role="tab"
+          :aria-selected="tab === t.id"
+          :aria-controls="`${uid}-panel`"
+          :tabindex="tab === t.id ? 0 : -1"
+          class="-mb-px inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm"
+          :class="tab === t.id ? 'border-accent-light font-medium text-white' : 'border-transparent text-zinc-300 hover:text-white'"
+          @click="setTab(t.id)"
+        >
+          {{ t.label }}
+          <span v-if="t.n !== null" class="meta">{{ t.n }}</span>
+          <span v-if="t.id === 'users' && pendingCount" class="badge-warn">{{ pendingCount }} pending</span>
+        </button>
+      </div>
+
+      <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-4">
+        <div v-if="tab !== 'servers'">
+          <label :for="`${uid}-q`" class="sr-only">Search</label>
+          <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
         </div>
-      </section>
 
-      <section class="space-y-3">
-        <h2 class="text-base font-semibold text-white">Apps <span class="text-sm font-normal text-zinc-500">({{ allApps.length }})</span></h2>
-        <div :class="[card, 'overflow-x-auto']">
-          <table class="w-full min-w-[720px] text-left text-sm text-zinc-300">
-            <thead><tr><th :class="th">App</th><th :class="th">Owner</th><th :class="th">Status</th><th :class="th">Resources</th><th :class="th"><span class="sr-only">Actions</span></th></tr></thead>
-            <tbody>
-              <tr v-for="a in allApps" :key="a.id" class="border-t border-pico-border">
-                <td :class="td">
-                  <div class="font-medium text-white">{{ a.name }}</div>
-                  <div class="break-all font-mono text-xs text-zinc-500">{{ a.hostname }}</div>
-                </td>
-                <td :class="[td, 'break-all']">{{ a.owner_email }}</td>
-                <td :class="td"><StatusBadge :status="a.status" /></td>
-                <td :class="td">
-                  <template v-if="a.resources">
-                    <div class="text-xs">{{ resSummary(a) }}</div>
-                    <div class="mt-0.5 flex gap-1 text-xs">
-                      <span v-if="a.resources.overridden" class="text-accent-light">overridden</span>
-                      <span v-else class="text-zinc-600">default</span>
-                      <span v-if="a.resources.exceeds_platform_caps" class="text-amber-400">exceeds caps</span>
-                    </div>
+        <!-- USERS -->
+        <template v-if="tab === 'users'">
+          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="space-y-2">
+            <h2 class="section-title text-amber-300">Waiting for approval ({{ pendingUsers.length }})</h2>
+            <ul class="card divide-y divide-pico-border border-amber-500/40">
+              <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:justify-between']">
+                <div class="min-w-0">
+                  <div class="break-all font-medium text-white">{{ u.email }}</div>
+                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · gets {{ u.app_limit }} apps</div>
+                </div>
+                <div class="flex gap-2">
+                  <button type="button" class="btn-primary btn-sm" :disabled="approving === u.id" @click="approve(u)">{{ approving === u.id ? 'Approving…' : 'Approve' }}</button>
+                  <button type="button" class="btn-danger btn-sm" @click="askUser('reject', u)">Reject</button>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <div class="card overflow-hidden">
+            <div :class="[usersGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
+              <span>User</span><span>Status</span><span>Apps / limit</span><span class="sr-only">Actions</span>
+            </div>
+            <ul class="divide-y divide-pico-border">
+              <li v-for="u in otherUsers" :key="u.id" :class="[rowBase, usersGrid]">
+                <div class="min-w-0">
+                  <div class="break-all font-medium text-white">{{ u.email }} <span v-if="u.role === 'uberadmin'" class="badge-info ml-1">Admin</span></div>
+                  <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
+                </div>
+                <div><StatusBadge :status="u.status" /></div>
+                <form class="flex items-center gap-2" @submit.prevent="saveLimit(u)">
+                  <span class="meta shrink-0">{{ u.app_count }} apps · limit</span>
+                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :aria-label="`App limit for ${u.email}`" class="input w-16 px-2 py-1" />
+                  <button v-if="limits[u.id] !== u.app_limit" type="submit" class="btn-primary btn-sm">Save</button>
+                  <span v-else-if="saved[u.id]" class="text-xs text-emerald-300" role="status">&#10003; Saved</span>
+                </form>
+                <div class="flex flex-wrap gap-1.5 md:justify-end">
+                  <template v-if="u.role !== 'uberadmin'">
+                    <button v-if="u.status === 'suspended'" type="button" class="btn-secondary btn-sm" @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')">Unsuspend</button>
+                    <button v-if="u.status === 'active'" type="button" class="btn-secondary btn-sm" @click="askUser('suspend', u)">Suspend</button>
+                    <button type="button" class="btn-secondary btn-sm" @click="askUser('reset', u)">Reset password</button>
+                    <button type="button" class="btn-danger btn-sm" @click="askUser('delete', u)">Delete</button>
                   </template>
-                  <span v-else class="text-zinc-600">-</span>
-                </td>
-                <td :class="[td, 'whitespace-nowrap text-right']">
-                  <div class="flex justify-end gap-1.5">
-                    <button :class="btn" @click="resError = ''; resApp = a">Edit resources</button>
-                    <button v-if="a.status === 'suspended'" :class="btn" @click="act(() => unsuspendApp(a.id))">Unsuspend</button>
-                    <button v-else :class="btn" @click="askApp('suspend', a)">Suspend</button>
-                    <button :class="btnDanger" @click="askApp('delete', a)">Delete</button>
+                </div>
+              </li>
+              <li v-if="loaded && otherUsers.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">{{ q ? 'No users match your search.' : 'No other users yet.' }}</li>
+            </ul>
+          </div>
+        </template>
+
+        <!-- APPS -->
+        <div v-else-if="tab === 'apps'" class="card overflow-hidden">
+          <div :class="[appsGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
+            <span>App</span><span>Owner</span><span>Status</span><span>Resources</span><span class="sr-only">Actions</span>
+          </div>
+          <ul class="divide-y divide-pico-border">
+            <li v-for="a in filteredApps" :key="a.id" :class="[rowBase, appsGrid]">
+              <div class="min-w-0">
+                <div class="font-medium text-white">{{ a.name }}</div>
+                <div class="break-all font-mono text-xs text-zinc-400">{{ a.hostname }}</div>
+              </div>
+              <div class="break-all text-zinc-300"><span class="meta md:hidden">Owner: </span>{{ a.owner_email }}</div>
+              <div><StatusBadge :status="a.status" /></div>
+              <div class="text-xs">
+                <template v-if="a.resources">
+                  <div>{{ resSummary(a) }}</div>
+                  <div class="mt-0.5 flex gap-2">
+                    <span v-if="a.resources.overridden" class="text-accent-light">overridden</span>
+                    <span v-else class="text-zinc-400">default</span>
+                    <span v-if="a.resources.exceeds_platform_caps" class="text-amber-300">exceeds caps</span>
                   </div>
-                </td>
-              </tr>
-              <tr v-if="allApps.length === 0"><td colspan="5" class="px-3 py-6 text-center text-zinc-500">No apps yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="space-y-3">
-        <h2 class="text-base font-semibold text-white">DB servers <span class="text-sm font-normal text-zinc-500">({{ servers.length }})</span></h2>
-        <div :class="[card, 'overflow-x-auto']">
-          <table class="w-full min-w-[560px] text-left text-sm text-zinc-300">
-            <thead><tr><th :class="th">Name</th><th :class="th">Host</th><th :class="th">Capacity</th><th :class="th">Status</th></tr></thead>
-            <tbody>
-              <tr v-for="s in servers" :key="s.id" class="border-t border-pico-border">
-                <td :class="td">{{ s.name }}</td>
-                <td :class="[td, 'break-all font-mono text-xs']">{{ s.host }}:{{ s.port }}</td>
-                <td :class="td"><DbCapacityBar :server="s" /></td>
-                <td :class="td">
-                  <select :value="s.status" aria-label="Server status" :class="[inputSm, 'w-28']" @change="patch(s, { status: ($event.target as HTMLSelectElement).value })">
-                    <option>active</option>
-                    <option>draining</option>
-                    <option>full</option>
-                  </select>
-                </td>
-              </tr>
-              <tr v-if="servers.length === 0"><td colspan="4" class="px-3 py-6 text-center text-zinc-500">No DB servers. Add one below.</td></tr>
-            </tbody>
-          </table>
+                </template>
+                <span v-else class="text-zinc-400">-</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5 md:justify-end">
+                <button type="button" class="btn-secondary btn-sm" @click="resError = ''; resApp = a">Edit resources</button>
+                <button v-if="a.status === 'suspended'" type="button" class="btn-secondary btn-sm" @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')">Unsuspend</button>
+                <button v-else type="button" class="btn-secondary btn-sm" @click="askApp('suspend', a)">Suspend</button>
+                <button type="button" class="btn-danger btn-sm" @click="askApp('delete', a)">Delete</button>
+              </div>
+            </li>
+            <li v-if="loaded && filteredApps.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</li>
+          </ul>
         </div>
 
-        <form :class="[card, 'space-y-5 p-4 sm:p-5']" @submit.prevent="addServer">
-          <h3 class="text-sm font-semibold text-zinc-200">Add DB server</h3>
-          <label :class="label">
-            <span :class="labelText">Name</span>
-            <input v-model="form.name" required placeholder="primary" :class="input" />
-            <span>Label shown in the admin UI.</span>
-          </label>
-          <label :class="label">
-            <span :class="labelText">Host</span>
-            <input v-model="form.host" required placeholder="private-xxxx.db.ondigitalocean.com" :class="[input, 'font-mono']" />
-            <span>Hostname the platform connects to. For DO managed MySQL use the private host.</span>
-          </label>
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <label :class="label">
-              <span :class="labelText">Port</span>
-              <input v-model.number="form.port" required type="text" inputmode="numeric" pattern="[0-9]{1,5}" placeholder="25060" :class="input" />
-              <span>25060 for DO managed, 3306 in-cluster.</span>
-            </label>
-            <label :class="label">
-              <span :class="labelText">Max databases</span>
-              <input v-model.number="form.max_databases" required type="text" inputmode="numeric" pattern="[0-9]{1,4}" placeholder="25" :class="input" />
-              <span>Databases placed here before it counts as full (~25 for 1 GiB).</span>
-            </label>
+        <!-- DB SERVERS -->
+        <template v-else-if="tab === 'servers'">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-sm text-zinc-300">MySQL servers that app databases are placed on.</p>
+            <button type="button" class="btn-primary btn-sm shrink-0" @click="openAdd">+ Add server</button>
           </div>
-          <label :class="label">
-            <span :class="labelText">Admin user</span>
-            <input v-model="form.admin_user" required placeholder="doadmin" autocomplete="off" :class="input" />
-            <span>Account used to create each app's database and user. Never root.</span>
-          </label>
-          <label :class="label">
-            <span :class="labelText">Admin password</span>
-            <input v-model="form.admin_password" required type="password" autocomplete="new-password" :class="input" />
-            <span>Stored encrypted; never shown again.</span>
-          </label>
-          <div class="flex justify-end">
-            <button type="submit" :disabled="saving" class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50">
-              {{ saving ? 'Adding…' : 'Add DB server' }}
-            </button>
+          <div class="card overflow-hidden">
+            <div :class="[serversGrid, 'table-th hidden border-b border-pico-border px-4 py-2 md:gap-4']">
+              <span>Name</span><span>Host</span><span>Capacity</span><span>Status</span>
+            </div>
+            <ul class="divide-y divide-pico-border">
+              <li v-for="s in servers" :key="s.id" :class="[rowBase, serversGrid]">
+                <div class="font-medium text-white">{{ s.name }}</div>
+                <div class="break-all font-mono text-xs text-zinc-300">{{ s.host }}:{{ s.port }}</div>
+                <DbCapacityBar :server="s" />
+                <select :value="s.status" :aria-label="`Status of ${s.name}`" class="input w-28 px-2 py-1" @change="patch(s, { status: ($event.target as HTMLSelectElement).value })">
+                  <option>active</option>
+                  <option>draining</option>
+                  <option>full</option>
+                </select>
+              </li>
+              <li v-if="loaded && servers.length === 0" class="px-4 py-8 text-center">
+                <p class="text-sm text-zinc-300">No DB servers yet. Users can't create apps with a database until you add one.</p>
+                <button type="button" class="btn-primary mt-3" @click="openAdd">+ Add server</button>
+              </li>
+            </ul>
           </div>
-        </form>
-      </section>
+        </template>
 
-      <section class="space-y-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-semibold text-white">Audit log <span class="text-sm font-normal text-zinc-500">(last 100)</span></h2>
-          <input v-model="auditFilter" placeholder="filter by action or actor" aria-label="Filter audit log" :class="[inputSm, 'w-full sm:w-64']" />
+        <!-- AUDIT -->
+        <div v-else class="card max-h-[32rem] overflow-auto">
+          <div :class="[auditGrid, 'table-th sticky top-0 hidden border-b border-pico-border bg-pico-panel px-4 py-2 md:gap-4']">
+            <span>When</span><span>Actor</span><span>Action</span><span>Target</span><span>Detail</span>
+          </div>
+          <ul class="divide-y divide-pico-border text-xs">
+            <li v-for="a in filteredAudit" :key="a.id" :class="[rowBase, auditGrid, 'text-zinc-200']">
+              <span class="whitespace-nowrap text-zinc-300" :title="fullDate(a.at)">{{ humanDate(a.at) }}</span>
+              <span class="break-all">{{ a.actor_email ?? '-' }}</span>
+              <span class="font-mono">{{ a.action }}</span>
+              <span>{{ a.target_type }} {{ a.target_id }}</span>
+              <span class="break-words text-zinc-300">{{ a.detail }}</span>
+            </li>
+            <li v-if="loaded && filteredAudit.length === 0" class="px-4 py-6 text-center text-sm text-zinc-400">No entries.</li>
+          </ul>
         </div>
-        <div :class="[card, 'max-h-96 overflow-auto']">
-          <table class="w-full min-w-[640px] text-left text-xs text-zinc-300">
-            <thead class="sticky top-0 bg-pico-panel"><tr><th :class="th">At</th><th :class="th">Actor</th><th :class="th">Action</th><th :class="th">Target</th><th :class="th">Detail</th></tr></thead>
-            <tbody>
-              <tr v-for="a in filteredAudit" :key="a.id" class="border-t border-pico-border">
-                <td class="whitespace-nowrap px-3 py-2">{{ a.at }}</td>
-                <td class="px-3 py-2">{{ a.actor_email ?? '-' }}</td>
-                <td class="px-3 py-2 font-mono">{{ a.action }}</td>
-                <td class="px-3 py-2">{{ a.target_type }} {{ a.target_id }}</td>
-                <td class="px-3 py-2 text-zinc-400">{{ a.detail }}</td>
-              </tr>
-              <tr v-if="filteredAudit.length === 0"><td colspan="5" class="px-3 py-6 text-center text-zinc-500">No entries.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      </div>
     </main>
+
+    <!-- Add DB server -->
+    <dialog
+      ref="addDlg"
+      :aria-labelledby="`${uid}-add-title`"
+      class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      @cancel="addModal.onNativeCancel"
+      @click="addModal.onBackdrop"
+    >
+      <form v-if="addOpen" class="space-y-4 p-5" @submit.prevent="addServer">
+        <h2 :id="`${uid}-add-title`" class="section-title">Add DB server</h2>
+        <div>
+          <label :for="`${uid}-n`" class="label">Name</label>
+          <input :id="`${uid}-n`" v-model="form.name" required placeholder="primary" class="input" data-autofocus />
+          <p class="help">Label shown in this page.</p>
+        </div>
+        <div>
+          <label :for="`${uid}-h`" class="label">Host</label>
+          <input :id="`${uid}-h`" v-model="form.host" required placeholder="private-xxxx.db.ondigitalocean.com" class="input font-mono" />
+          <p class="help">Hostname the platform connects to. For DO managed MySQL use the private host.</p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label :for="`${uid}-p`" class="label">Port</label>
+            <input :id="`${uid}-p`" v-model.number="form.port" required type="text" inputmode="numeric" pattern="[0-9]{1,5}" placeholder="25060" class="input" />
+            <p class="help">25060 for DO managed, 3306 in-cluster.</p>
+          </div>
+          <div>
+            <label :for="`${uid}-m`" class="label">Max databases</label>
+            <input :id="`${uid}-m`" v-model.number="form.max_databases" required type="text" inputmode="numeric" pattern="[0-9]{1,4}" placeholder="25" class="input" />
+            <p class="help">How many app databases this server may hold before it counts as full.</p>
+          </div>
+        </div>
+        <div>
+          <label :for="`${uid}-u`" class="label">Admin user</label>
+          <input :id="`${uid}-u`" v-model="form.admin_user" required placeholder="doadmin" autocomplete="off" class="input" />
+          <p class="help">Account used to create each app's database and user. Never root.</p>
+        </div>
+        <div>
+          <label :for="`${uid}-pw`" class="label">Admin password</label>
+          <input :id="`${uid}-pw`" v-model="form.admin_password" required type="password" autocomplete="new-password" class="input" />
+          <p class="help">Stored encrypted; never shown again.</p>
+        </div>
+        <div v-if="addError" class="alert-error" role="alert">{{ addError }}</div>
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" class="btn-secondary" :disabled="saving" @click="addOpen = false">Cancel</button>
+          <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Adding…' : 'Add DB server' }}</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Temporary password, shown once -->
+    <dialog
+      ref="pwDlg"
+      :aria-labelledby="`${uid}-pw-title`"
+      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      @cancel="pwModal.onNativeCancel"
+      @click="pwModal.onBackdrop"
+    >
+      <div v-if="tempPw" class="p-5">
+        <h2 :id="`${uid}-pw-title`" class="section-title">Temporary password</h2>
+        <p class="mt-2 text-sm text-zinc-300">
+          Give this to <strong class="break-all text-white">{{ tempPw.email }}</strong>. It is shown once and can't be retrieved later. They should change it on the Account page.
+        </p>
+        <div class="mt-3 flex items-stretch gap-2">
+          <code class="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded bg-pico-card px-3 py-2 text-sm text-accent-light">{{ tempPw.password }}</code>
+          <button type="button" class="btn-primary shrink-0" data-autofocus @click="copyTemp">Copy</button>
+        </div>
+        <div class="mt-5 flex justify-end"><button type="button" class="btn-secondary" @click="tempPw = null">Done</button></div>
+      </div>
+    </dialog>
 
     <ResourcesDialog :app="resApp" :error="resError" @save="saveResources" @cancel="resApp = null" />
     <ConfirmDialog
@@ -360,6 +495,8 @@ const labelText = 'text-sm font-medium text-zinc-200'
       :title="confirm?.title ?? ''"
       :message="confirm?.message ?? ''"
       :confirm-label="confirm?.label"
+      :require-text="confirm?.require"
+      :busy="confirmBusy"
       danger
       @confirm="runConfirm"
       @cancel="confirm = null"

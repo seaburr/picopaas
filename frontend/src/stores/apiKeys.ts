@@ -8,16 +8,16 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
   const loaded = ref(false)
 
   async function load() {
-    keys.value = await listApiKeys()
+    keys.value = (await listApiKeys()) ?? []
     loaded.value = true
   }
 
   // Returns the full create response (including the one-time plaintext key)
   // to the caller; only the non-secret fields go into the list.
-  async function create() {
-    const created = await createApiKey()
+  async function create(name?: string) {
+    const created = await createApiKey(name)
     keys.value = [
-      { id: created.id, prefix: created.prefix, created_at: created.created_at, revoked_at: null },
+      { id: created.id, prefix: created.prefix, created_at: created.created_at, revoked_at: null, name: created.name ?? name ?? null },
       ...keys.value,
     ]
     return created

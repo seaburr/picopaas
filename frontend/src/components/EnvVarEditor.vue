@@ -1,25 +1,19 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
+import { envKeyError, REF_TIPS, refLabel, SUGGESTED_KEYS } from '../composables/envKeys'
 import { DB_REFS, MASKED_VALUE, STORAGE_REFS, type EnvVar } from '../types'
 
 const props = defineProps<{
   modelValue: EnvVar[]
   wantDb: boolean
   wantStorage: boolean
+  // Server-side errors by dotted path from the API, re-indexed to editor rows: "<row>.key" / "<row>.value".
+  errors?: Record<string, string>
 }>()
 const emit = defineEmits<{ 'update:modelValue': [EnvVar[]] }>()
 
-// Local row shape adds `touched`: whether the user has actually edited this
-// row's value since load. A secret row loaded from the API only ever carries
-// the masked placeholder (app/schemas.py MASKED_VALUE) — we never see the
-// real value — so untouched secret rows are re-sent as that same placeholder.
-//
-// KNOWN GAP (see docs/LEDGER.md backend-dev note): AppUpdate.env replaces the
-// whole env list, so there is no server-side "leave this one alone". Until
-// the backend supports a partial env patch, saving an edit that doesn't touch
-// a given secret re-sends the masked placeholder string as its value, which
-// is harmless today (the reconciler isn't live yet / status stays "pending")
-// but would overwrite the real secret once it is. Flagged here deliberately.
+// `touched`: the user edited this row's value since load. A secret row loaded from the API only carries the masked
+// placeholder (app/schemas.py MASKED_VALUE), so untouched secret rows are re-sent as that same placeholder.
 interface Row extends EnvVar {
   touched: boolean
 }
@@ -31,149 +25,164 @@ function idFor(row: Row): number {
   return rowId.get(row)!
 }
 
-const rows = reactive<Row[]>(
-  props.modelValue.map((v) => ({ ...v, touched: v.is_secret ? false : true })),
-)
-
+const rows = reactive<Row[]>(props.modelValue.map((v) => ({ ...v, touched: !v.is_secret })))
 let activeIndex: number | null = null
 
 function emitChange() {
-  const payload: EnvVar[] = rows.map((r) => ({
-    key: r.key,
-    value: r.is_secret && !r.touched ? MASKED_VALUE : r.value,
-    is_secret: r.is_secret,
-  }))
-  emit('update:modelValue', payload)
+  emit(
+    'update:modelValue',
+    rows.map((r) => ({ key: r.key, value: r.is_secret && !r.touched ? MASKED_VALUE : r.value, is_secret: r.is_secret })),
+  )
 }
-
 watch(rows, emitChange, { deep: true })
 
-function addRow() {
-  rows.push({ key: '', value: '', is_secret: false, touched: true })
+const dupes = computed(() => {
+  const count: Record<string, number> = {}
+  for (const r of rows) if (r.key) count[r.key] = (count[r.key] ?? 0) + 1
+  return new Set(Object.keys(count).filter((k) => count[k] > 1))
+})
+
+const blank = (r: Row) => !r.key && !r.value
+function keyMsg(r: Row, i: number): string {
+  if (props.errors?.[`${i}.key`]) return props.errors[`${i}.key`]
+  if (blank(r)) return ''
+  if (!r.key) return 'Name is required.'
+  return r.key ? envKeyError(r.key) : ''
+}
+function valueMsg(i: number): string {
+  return props.errors?.[`${i}.value`] ?? ''
 }
 
+function addRow(key = '', value = '') {
+  rows.push({ key, value, is_secret: false, touched: true })
+  activeIndex = null
+}
 function removeRow(i: number) {
   rows.splice(i, 1)
+  activeIndex = null
 }
-
 function startChangingSecret(i: number) {
   rows[i].value = ''
   rows[i].touched = true
 }
-
 function onToggleSecret(i: number) {
   const row = rows[i]
-  if (row.is_secret && !row.touched) {
-    // Flipping a masked, untouched row to "secret" or away from it needs a
-    // real value either way — clear it and force the user to retype.
+  row.is_secret = !row.is_secret
+  if (!row.touched) {
+    // Flipping a masked row needs a real value either way: clear it and force a retype.
     row.value = ''
     row.touched = true
   }
 }
-
-function setActive(i: number) {
-  activeIndex = i
-}
-
-function refLabel(ref: string): string {
-  return '${{ ' + ref + ' }}'
+function onKeyInput(i: number, e: Event) {
+  rows[i].key = (e.target as HTMLInputElement).value.toUpperCase().replace(/\s+/g, '_')
 }
 
 function insertRef(ref: string) {
   const value = refLabel(ref)
-  if (activeIndex !== null && rows[activeIndex]) {
-    rows[activeIndex].value = value
-    rows[activeIndex].touched = true
+  const r = activeIndex !== null ? rows[activeIndex] : undefined
+  if (r && !r.value && !(r.is_secret && !r.touched)) {
+    r.value = value
+    r.touched = true
+    if (!r.key) r.key = SUGGESTED_KEYS[ref] ?? ''
+  } else if (!r && rows.length === 1 && blank(rows[0])) {
+    rows[0].key = SUGGESTED_KEYS[ref] ?? ''
+    rows[0].value = value
   } else {
-    rows.push({ key: '', value, is_secret: false, touched: true })
+    addRow(SUGGESTED_KEYS[ref] ?? '', value)
   }
 }
 
-defineExpose({ addRow })
+const groups = computed(() => [
+  ...(props.wantDb ? [{ title: 'Database', refs: DB_REFS }] : []),
+  ...(props.wantStorage ? [{ title: 'Storage', refs: STORAGE_REFS }] : []),
+])
+const explainer = 'Use ' + refLabel('db.url') + ' references to inject database and storage credentials.'
 </script>
 
 <template>
   <div class="space-y-3">
-    <div v-if="rows.length === 0" class="text-sm text-zinc-500">No env vars yet.</div>
+    <p class="help !mt-0">
+      Plain values are visible to you. Mark a value <strong class="font-medium text-zinc-200">secret</strong> to encrypt it; it can't be shown again.
+      {{ explainer }}
+    </p>
 
-    <div
-      v-for="(row, i) in rows"
-      :key="idFor(row)"
-      class="flex flex-wrap items-start gap-2 rounded-md border border-pico-border bg-pico-card p-2"
-    >
-      <input
-        v-model="row.key"
-        type="text"
-        placeholder="KEY"
-        class="w-40 rounded border border-pico-border bg-pico-panel px-2 py-1.5 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-      />
+    <p v-if="rows.length === 0" class="rounded-md border border-dashed border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
+      No env vars yet.
+    </p>
 
-      <template v-if="row.is_secret && !row.touched">
-        <input
-          type="password"
-          value="********"
-          disabled
-          class="min-w-[10rem] flex-1 rounded border border-pico-border bg-pico-panel/50 px-2 py-1.5 font-mono text-sm text-zinc-500"
-        />
-        <button
-          type="button"
-          class="rounded border border-pico-border px-2 py-1.5 text-xs text-zinc-300 hover:bg-pico-panel"
-          @click="startChangingSecret(i)"
-        >
-          Change
-        </button>
-      </template>
-      <input
-        v-else
-        v-model="row.value"
-        :type="row.is_secret ? 'password' : 'text'"
-        placeholder="value"
-        class="min-w-[10rem] flex-1 rounded border border-pico-border bg-pico-panel px-2 py-1.5 font-mono text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-        @focus="setActive(i)"
-      />
+    <div v-for="(row, i) in rows" :key="idFor(row)" class="rounded-md border border-pico-border bg-pico-card p-2">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
+        <div class="sm:w-56 sm:shrink-0">
+          <input
+            :value="row.key"
+            type="text"
+            placeholder="KEY"
+            autocapitalize="characters"
+            autocomplete="off"
+            spellcheck="false"
+            :aria-label="`Name of variable ${i + 1}`"
+            :aria-invalid="!!keyMsg(row, i) || undefined"
+            class="input bg-pico-panel py-1.5 font-mono"
+            @input="onKeyInput(i, $event)"
+            @focus="activeIndex = null"
+          />
+        </div>
 
-      <label class="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-400">
-        <input
-          type="checkbox"
-          :checked="row.is_secret"
-          class="accent-accent"
-          @change="row.is_secret = !row.is_secret; onToggleSecret(i)"
-        />
-        secret
-      </label>
+        <div class="min-w-0 flex-1">
+          <div v-if="row.is_secret && !row.touched" class="flex gap-2">
+            <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input bg-pico-panel/50 py-1.5 font-mono" />
+            <button type="button" class="btn-secondary btn-sm shrink-0" :aria-label="`Change secret ${row.key}`" @click="startChangingSecret(i)">Change</button>
+          </div>
+          <input
+            v-else
+            v-model="row.value"
+            :type="row.is_secret ? 'password' : 'text'"
+            placeholder="value"
+            autocomplete="off"
+            :aria-label="`Value for ${row.key || 'variable ' + (i + 1)}`"
+            :aria-invalid="!!valueMsg(i) || undefined"
+            class="input bg-pico-panel py-1.5 font-mono"
+            @focus="activeIndex = i"
+          />
+        </div>
 
-      <button
-        type="button"
-        class="rounded border border-pico-border px-2 py-1.5 text-xs text-danger hover:bg-danger/10"
-        @click="removeRow(i)"
-      >
-        Remove
-      </button>
+        <div class="flex items-center justify-between gap-3 sm:justify-end">
+          <label class="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-300">
+            <input type="checkbox" :checked="row.is_secret" class="check" @change="onToggleSecret(i)" />
+            secret
+          </label>
+          <button type="button" class="btn-danger btn-sm" :aria-label="`Remove ${row.key || 'variable ' + (i + 1)}`" @click="removeRow(i)">Remove</button>
+        </div>
+      </div>
+      <p v-if="keyMsg(row, i)" class="field-error" role="alert">{{ keyMsg(row, i) }}</p>
+      <p v-else-if="row.key && dupes.has(row.key)" class="mt-1 text-xs text-amber-300">{{ row.key }} is used more than once; only the last one is kept.</p>
+      <p v-if="valueMsg(i)" class="field-error" role="alert">{{ valueMsg(i) }}</p>
     </div>
 
-    <button
-      type="button"
-      class="rounded border border-pico-border px-3 py-1.5 text-sm text-zinc-300 hover:bg-pico-card"
-      @click="addRow"
-    >
-      + Add env var
-    </button>
+    <button type="button" class="btn-secondary" @click="addRow()">+ Add env var</button>
 
-    <div v-if="wantDb || wantStorage" class="rounded-md border border-pico-border bg-pico-card p-3">
-      <p class="mb-2 text-xs text-zinc-500">
-        Reference variables — click to insert into the last-focused value field (or add a new row).
+    <div v-if="groups.length" class="rounded-md border border-pico-border bg-pico-card p-3">
+      <p class="mb-2 text-xs text-zinc-300">
+        Click a reference to put it in the focused empty value field, or add a new row with a suggested name.
       </p>
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="ref in [...(wantDb ? DB_REFS : []), ...(wantStorage ? STORAGE_REFS : [])]"
-          :key="ref"
-          type="button"
-          class="rounded border border-pico-border bg-pico-panel px-2 py-1 font-mono text-xs text-accent-light hover:border-accent"
-          @click="insertRef(ref)"
-        >
-          {{ refLabel(ref) }}
-        </button>
+      <div v-for="g in groups" :key="g.title" class="mt-2 first:mt-0">
+        <p class="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">{{ g.title }}</p>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="ref in g.refs"
+            :key="ref"
+            type="button"
+            :title="REF_TIPS[ref] ?? SUGGESTED_KEYS[ref]"
+            class="rounded border border-pico-border bg-pico-panel px-2 py-1 font-mono text-xs text-accent-light hover:border-accent"
+            @mousedown.prevent
+            @click="insertRef(ref)"
+          >
+            {{ refLabel(ref) }}
+          </button>
+        </div>
       </div>
     </div>
+    <p v-else class="help">Tick Database or Storage above to get <code class="font-mono">{{ refLabel('…') }}</code> references for their credentials.</p>
   </div>
 </template>

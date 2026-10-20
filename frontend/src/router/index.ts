@@ -4,38 +4,45 @@ import { useAuthStore } from '../stores/auth'
 const router = createRouter({
   history: createWebHistory('/'),
   scrollBehavior(to, _from, saved) {
-    if (to.hash) return { el: to.hash, top: 8 }
+    if (to.hash) return { el: to.hash, top: window.innerWidth < 768 ? 64 : 8 } // mobile: clear the sticky guide bar
     return saved || { top: 0 }
   },
   routes: [
     { path: '/guide', redirect: '/guide/user' },
-    { path: '/guide/:doc(user|api|cli)', component: () => import('../views/GuideView.vue') }, // public, no auth
-    { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true } },
-    { path: '/login', component: () => import('../views/LoginView.vue') },
-    { path: '/register', component: () => import('../views/RegisterView.vue') },
-    { path: '/', redirect: '/apps' }, // role-aware redirect in beforeEach
-    { path: '/apps', component: () => import('../views/AppsListView.vue'), meta: { requiresAuth: true } },
+    { path: '/guide/:doc(user|api|cli)', component: () => import('../views/GuideView.vue'), meta: { title: 'Docs' } }, // public, no auth
+    { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true, title: 'Account status' } },
+    { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in' } },
+    { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Request access' } },
+    { path: '/', component: { render: () => null }, meta: { requiresAuth: true } }, // always redirected in beforeEach
+    { path: '/account', component: () => import('../views/AccountView.vue'), meta: { requiresAuth: true, title: 'Account' } },
+    { path: '/apps', component: () => import('../views/AppsListView.vue'), meta: { requiresAuth: true, title: 'Apps' } },
     {
       path: '/apps/new',
       component: () => import('../views/AppFormView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, title: 'New app' },
+    },
+    {
+      path: '/apps/:id(\\d+)',
+      component: () => import('../views/AppDetailView.vue'),
+      meta: { requiresAuth: true, title: 'App' },
+      props: true,
     },
     {
       path: '/apps/:id/edit',
       component: () => import('../views/AppFormView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: true, title: 'Edit app' },
       props: true,
     },
-    { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true } },
+    { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true, title: 'API keys' } },
     {
       path: '/admin',
       component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresAdmin: true, title: 'Admin' },
     },
     {
       path: '/admin/health',
       component: () => import('../views/HealthView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true },
+      meta: { requiresAuth: true, requiresAdmin: true, title: 'Health' },
     },
   ],
 })
@@ -44,15 +51,24 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.loaded) await auth.load()
   if (to.path.startsWith('/guide')) return
-  if (to.meta.requiresAuth && !auth.user) return '/login'
+  if (to.meta.requiresAuth && !auth.user) {
+    return to.fullPath === '/' ? '/login' : { path: '/login', query: { next: to.fullPath } }
+  }
   if (auth.user && auth.user.status !== 'active') {
     return to.path === '/pending' ? undefined : '/pending'
   }
-  const home = auth.user?.role === 'uberadmin' ? '/admin/health' : '/apps'
+  // Everyone lands on /apps, except an admin on a fresh platform (no DB servers yet) who lands on the setup checklist.
+  const home = auth.user?.role === 'uberadmin' && auth.user.features?.databases === false ? '/admin' : '/apps'
   if (to.path === '/') return home
   if (to.path === '/pending') return home
   if (to.meta.requiresAdmin && auth.user?.role !== 'uberadmin') return '/apps'
   if ((to.path === '/login' || to.path === '/register') && auth.user) return home
+})
+
+// Per-route document.title, e.g. "Apps · PicoPaaS". A view can override it by setting document.title itself after mount.
+router.afterEach((to) => {
+  const t = to.meta.title as string | undefined
+  document.title = t ? `${t} · PicoPaaS` : 'PicoPaaS'
 })
 
 export default router

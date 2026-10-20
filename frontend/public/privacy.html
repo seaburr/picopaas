@@ -4,21 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d0d14">
 <title>Privacy Policy and Acceptable Use - PicoPaaS</title>
-<!-- NOTE: This is a template for a small hobby platform. It is NOT legal advice. Have it reviewed before relying on it. -->
+<link rel="icon" href="/static/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
+<link rel="manifest" href="/static/site.webmanifest">
 <style>
-*{box-sizing:border-box}body{margin:0;background:#0d0d14;color:#e4e4e7;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}a{color:#7aa0d4}.w{max-width:960px;margin:0 auto;padding:0 20px}header.t{border-bottom:1px solid #2c2c3c;background:#16161f}header.t .w{display:flex;justify-content:space-between;align-items:center;height:56px}.logo{font-weight:700;color:#fff;text-decoration:none}.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:#233775;color:#fff;text-decoration:none;font-weight:600;border:1px solid #4a78c2}.btn:hover{background:#4a78c2}.btn.s{background:transparent;border-color:#2c2c3c;color:#d4d4d8}.btn.s:hover{background:#1c1c28}footer{border-top:1px solid #2c2c3c;margin-top:64px;padding:24px 0;color:#71717a;font-size:14px}h1,h2,h3{color:#fff;line-height:1.25}
-main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 8px}p,li{color:#c4c4cc}li{margin:4px 0}.d{color:#71717a;font-size:14px}
+:root{--bg:#0d0d14;--panel:#16161f;--card:#1c1c28;--border:#2c2c3c;--primary:#3a6bd0;--primary-h:#2f5fc4;--accent-light:#7aa0d4;--text:#e4e4e7;--muted:#a1a1aa}
+*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent-light)}a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px;border-radius:6px}
+h1,h2,h3{color:#fff;line-height:1.25}.w{max-width:960px;margin:0 auto;padding:0 20px}
 .dev{background:rgba(245,158,11,.1);border-bottom:1px solid rgba(245,158,11,.4);color:#fde68a;text-align:center;font-size:14px;padding:6px 20px}
+header.t{border-bottom:1px solid var(--border);background:var(--panel)}header.t .w{display:flex;justify-content:space-between;align-items:center;min-height:56px;gap:12px}
+.logo{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em;color:#fff;text-decoration:none}.logo img{width:28px;height:28px;border-radius:6px;display:block}
+nav.r{display:flex;align-items:center;gap:6px}nav.r a.l{color:#d4d4d8;text-decoration:none;font-size:14px;padding:8px 10px;border-radius:6px}nav.r a.l:hover{color:#fff;background:var(--card)}
+.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;border:1px solid transparent;white-space:nowrap}.btn:hover{background:var(--primary-h)}
+.btn.s{background:transparent;border-color:#71717a;color:#e4e4e7}.btn.s:hover{background:var(--card)}.btn.sm{padding:8px 14px;font-size:14px}
+footer{border-top:1px solid var(--border);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px;text-align:center}footer a{white-space:nowrap}
+main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 8px}p,li{color:#c4c4cc}li{margin:4px 0}.d{color:var(--muted);font-size:14px}header.t .w{max-width:760px}footer .w{max-width:760px}
 </style>
+<!-- NOTE: This is a template for a small hobby platform. It is NOT legal advice. Have it reviewed before relying on it. -->
 </head>
 <body>
-<div class="dev"><strong>Development / test platform.</strong> Invite only. No uptime guarantees; apps and data may be deleted at any time. Don't store personal or sensitive data here.</div>
-<header class="t"><div class="w"><a class="logo" href="/">PicoPaaS</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/login" style="padding:6px 14px">Log in</a></div></header>
-<main class="w">
+<div class="dev" role="note"><strong>Dev/test platform.</strong> Sign-up is open and every account is approved by hand. No uptime guarantees; don&rsquo;t store personal data.</div>
+<header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a><nav class="r" aria-label="Main"><a class="btn s sm" href="https://platform.raisehellpraisedale.xyz/login">Log in</a></nav></div></header>
+<main class="w" id="main">
 <h1>Privacy Policy and Acceptable Use</h1>
 <p class="d">Last updated 2026-10-19</p>
-<p>PicoPaaS is a development and test platform run by an individual. It is invite only and provided as is, best effort, with no SLA. This page explains in plain language what we collect and what we expect from users.</p>
+<p>PicoPaaS is a development and test platform run by an individual. Sign-up is open, every account is approved by hand, and it is provided as is, best effort, with no SLA. This page explains in plain language what we collect and what we expect from users.</p>
 
 <h2>Data we collect</h2>
 <ul>
@@ -65,6 +80,6 @@ main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{fon
 <h2>Contact</h2>
 <p>Abuse and privacy reports, and deletion requests: <a href="mailto:abuse@raisehellpraisedale.xyz">abuse@raisehellpraisedale.xyz</a></p>
 </main>
-<footer><div class="w"><a href="/">PicoPaaS</a> &middot; <a href="/privacy">Privacy &amp; Acceptable Use</a></div></footer>
+<footer><div class="w">PicoPaaS &middot; <a href="https://platform.raisehellpraisedale.xyz/guide">Docs</a> &middot; <a href="/privacy">Privacy &amp; Acceptable Use</a><div style="margin-top:6px">&copy; 2026 PicoPaaS</div></div></footer>
 </body>
 </html>

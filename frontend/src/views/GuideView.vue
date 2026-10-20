@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { Marked } from 'marked'
 import userMd from '@docs/USER_GUIDE.md?raw'
@@ -61,6 +61,38 @@ const rendered = computed(() => {
   return { html, toc }
 })
 
+// Active section: the last h2/h3 whose top has scrolled past the top of the viewport.
+const activeId = ref('')
+let raf = 0
+function updateActive() {
+  raf = 0
+  const heads = document.querySelectorAll<HTMLElement>('.doc h2[id], .doc h3[id]')
+  let cur = ''
+  for (const h of heads) {
+    if (h.getBoundingClientRect().top <= 90) cur = h.id
+    else break
+  }
+  activeId.value = cur
+}
+function onScroll() {
+  if (!raf) raf = requestAnimationFrame(updateActive)
+}
+onMounted(() => {
+  window.addEventListener('scroll', onScroll, { passive: true })
+  nextTick(updateActive)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
+  if (raf) cancelAnimationFrame(raf)
+})
+watch(rendered, () => nextTick(updateActive))
+const activeText = computed(() => rendered.value.toc.find((t) => t.id === activeId.value)?.text ?? '')
+function go(id: string) {
+  navOpen.value = false
+  router.push({ hash: '#' + id })
+}
+const router = useRouter()
+
 function onClick(e: MouseEvent) {
   const t = e.target as HTMLElement
   if (t.classList.contains('copy-btn')) {
@@ -75,32 +107,51 @@ function onClick(e: MouseEvent) {
 <template>
   <div class="min-h-screen">
     <NavBar />
-    <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 md:flex-row">
+    <div id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 md:flex md:gap-8 md:py-6">
       <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 md:self-start md:overflow-y-auto">
-        <div class="mb-3 flex gap-2 text-sm">
+        <nav aria-label="Documents" class="mb-3 flex border-b border-pico-border text-sm">
           <RouterLink
             v-for="(d, k) in DOCS"
             :key="k"
             :to="`/guide/${k}`"
-            class="rounded border border-pico-border px-2 py-1 text-zinc-300 hover:bg-pico-card"
-            :class="{ 'bg-pico-card text-white': doc === k }"
+            class="-mb-px flex-1 border-b-2 px-3 py-2 text-center md:flex-none"
+            :class="doc === k ? 'border-accent-light font-semibold text-white' : 'border-transparent text-zinc-300 hover:text-white'"
+            :aria-current="doc === k ? 'page' : undefined"
           >{{ d.title }}</RouterLink>
+        </nav>
+
+        <!-- Mobile: sticky Contents bar that follows the reader down a very long page -->
+        <div class="sticky top-0 z-30 -mx-4 border-b border-pico-border bg-pico-bg/95 px-4 py-2 backdrop-blur md:hidden">
+          <button type="button" class="btn-secondary btn-sm w-full justify-between" :aria-expanded="navOpen" aria-controls="toc" @click="navOpen = !navOpen">
+            <span class="shrink-0">Contents</span>
+            <span class="min-w-0 truncate font-normal text-zinc-400">{{ activeText }}</span>
+            <span aria-hidden="true">{{ navOpen ? '&#9650;' : '&#9660;' }}</span>
+          </button>
+          <nav v-show="navOpen" id="toc" aria-label="Contents (mobile)" class="absolute inset-x-0 top-full max-h-[60vh] space-y-0.5 overflow-y-auto border-b border-pico-border bg-pico-panel px-4 py-2 text-sm shadow-xl">
+            <a
+              v-for="t in rendered.toc"
+              :key="t.id"
+              :href="`#${t.id}`"
+              class="block rounded px-2 py-2"
+              :class="[t.level === 3 ? 'pl-6 text-xs' : '', activeId === t.id ? 'bg-pico-card font-medium text-white' : 'text-zinc-300']"
+              @click.prevent="go(t.id)"
+            >{{ t.text }}</a>
+          </nav>
         </div>
-        <button type="button" class="mb-2 text-xs text-zinc-400 md:hidden" @click="navOpen = !navOpen">
-          {{ navOpen ? 'Hide' : 'Show' }} contents
-        </button>
-        <nav :class="[navOpen ? 'block' : 'hidden', 'space-y-0.5 text-sm md:block']">
+
+        <nav aria-label="Contents" class="hidden space-y-0.5 text-sm md:block">
           <a
             v-for="t in rendered.toc"
             :key="t.id"
             :href="`#${t.id}`"
-            class="block truncate text-zinc-400 hover:text-white"
-            :class="t.level === 3 ? 'pl-4 text-xs' : ''"
-            @click.prevent="$router.push({ hash: '#' + t.id }); navOpen = false"
+            class="block truncate rounded border-l-2 px-2 py-1 hover:text-white"
+            :class="[t.level === 3 ? 'pl-5 text-xs' : '', activeId === t.id ? 'border-accent-light bg-pico-card/60 font-medium text-white' : 'border-transparent text-zinc-300']"
+            :aria-current="activeId === t.id ? 'location' : undefined"
+            @click.prevent="go(t.id)"
           >{{ t.text }}</a>
         </nav>
       </aside>
-      <article class="doc min-w-0 flex-1" @click="onClick" v-html="rendered.html" />
+      <article class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
     </div>
   </div>
 </template>
@@ -110,7 +161,8 @@ function onClick(e: MouseEvent) {
 .doc h1 { font-size: 1.75rem; margin: 0 0 1rem; color: #fff; font-weight: 700; }
 .doc h2 { font-size: 1.35rem; margin: 2.25rem 0 .75rem; padding-bottom: .3rem; border-bottom: 1px solid #2c2c3c; color: #fff; font-weight: 600; }
 .doc h3 { font-size: 1.1rem; margin: 1.5rem 0 .5rem; color: #fff; font-weight: 600; }
-.doc h2, .doc h3 { scroll-margin-top: 8px; }
+.doc h2, .doc h3 { scroll-margin-top: 64px; }
+@media (min-width: 768px) { .doc h2, .doc h3 { scroll-margin-top: 8px; } }
 .doc .anchor { margin-left: -1.1em; padding-right: .4em; color: #4a4a5e; opacity: 0; text-decoration: none; }
 .doc h2:hover .anchor, .doc h3:hover .anchor { opacity: 1; }
 .doc p, .doc ul, .doc ol { margin: .6rem 0; }

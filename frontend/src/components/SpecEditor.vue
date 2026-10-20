@@ -1,97 +1,105 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { applySpec } from '../api/apps'
 import { ApiError } from '../api/client'
+import { useToastStore } from '../stores/toast'
 
 const router = useRouter()
+const toast = useToastStore()
 
-const spec = ref(`apiVersion: picopaas/v1
+const EXAMPLE = `apiVersion: picopaas/v1
 name: my-app              # display name only; hostname is generated
-image: ghcr.io/me/app:1.2
-port: 8080
+image: ghcr.io/stefanprodan/podinfo:6.15.0
+port: 9898
 # healthCheck: { enabled: true, path: /healthz }   # opt-in; default off
-resources: { db: true, storage: false }
+resources: { db: false, storage: false }
 env:
   LOG_LEVEL: info
-  DATABASE_URL: \${{ db.url }}
-secrets:                  # values supplied below, never in the file
+secrets:                  # values are entered below, never in the file
   - API_TOKEN
-`)
-const secrets = ref<{ key: string; value: string }[]>([{ key: '', value: '' }])
+`
+
+const spec = ref('')
+const secrets = ref<{ key: string; value: string }[]>([])
 const error = ref('')
-const result = ref('')
 const busy = ref(false)
+
+// Secret names listed under `secrets:` get a value row automatically.
+function secretNames(text: string): string[] {
+  const out: string[] = []
+  let inBlock = false
+  for (const line of text.split('\n')) {
+    if (/^secrets:\s*(#.*)?$/.test(line)) inBlock = true
+    else if (inBlock) {
+      const m = line.match(/^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*(#.*)?$/)
+      if (m) out.push(m[1])
+      else if (/^\S/.test(line)) inBlock = false
+    }
+  }
+  return out
+}
+watch(spec, (text) => {
+  for (const n of secretNames(text)) {
+    if (!secrets.value.some((s) => s.key === n)) secrets.value.push({ key: n, value: '' })
+  }
+})
 
 async function apply() {
   error.value = ''
-  result.value = ''
   busy.value = true
   try {
     const map: Record<string, string> = {}
     for (const s of secrets.value) if (s.key.trim()) map[s.key.trim()] = s.value
     const app = await applySpec(spec.value, map)
-    result.value = `${app.created ? 'Created' : 'Updated'} ${app.name}`
-    await router.push('/apps')
+    toast.success(`${app.name} ${app.created ? 'created. Deploying, usually about a minute' : 'updated. Redeploying'}.`)
+    await router.push(`/apps/${app.id}`)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Failed to apply spec'
+    error.value = e instanceof ApiError ? e.message : "Couldn't apply the spec."
   } finally {
     busy.value = false
   }
 }
-
-const input =
-  'rounded-md border border-pico-border bg-pico-card px-2 py-1 text-sm text-white focus:outline-none focus:border-accent'
 </script>
 
 <template>
-  <form class="space-y-4 rounded-lg border border-pico-border bg-pico-panel p-5" @submit.prevent="apply">
-    <div class="text-xs text-zinc-500">
-      YAML spec
-      <RouterLink to="/guide/user#4-yaml-spec-reference" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-zinc-400 hover:text-white" title="Docs: YAML spec reference">?</RouterLink>
-      <RouterLink to="/guide/user#5-env-vars-secrets-and-references" target="_blank" class="ml-1 rounded-full border border-pico-border px-1.5 text-zinc-400 hover:text-white" title="Docs: env refs">? env refs</RouterLink>
-    </div>
-    <textarea v-model="spec" rows="14" spellcheck="false" :class="[input, 'w-full font-mono']" />
-
+  <form class="card card-pad space-y-4" @submit.prevent="apply">
     <div>
-      <label class="mb-1 block text-sm font-medium text-zinc-300">Secrets</label>
-      <div v-for="(s, i) in secrets" :key="i" class="mb-1 flex gap-2">
-        <input v-model="s.key" placeholder="KEY" autocomplete="off" :class="[input, 'w-48 font-mono']" />
-        <input
-          v-model="s.value"
-          type="password"
-          placeholder="value"
-          autocomplete="new-password"
-          :class="[input, 'flex-1 font-mono']"
-        />
-        <button
-          type="button"
-          class="rounded border border-pico-border px-2 text-xs text-danger hover:bg-danger/10"
-          @click="secrets.splice(i, 1)"
-        >
-          Remove
-        </button>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <label for="spec-text" class="label !mb-0">
+          YAML spec
+          <RouterLink to="/guide/user#4-yaml-spec-reference" target="_blank" class="link ml-2 text-xs font-normal">Spec reference</RouterLink>
+        </label>
+        <button type="button" class="btn-secondary btn-sm" @click="spec = EXAMPLE">Load example</button>
       </div>
-      <button
-        type="button"
-        class="rounded border border-pico-border px-2 py-1 text-xs text-zinc-300 hover:bg-pico-card"
-        @click="secrets.push({ key: '', value: '' })"
-      >
-        + Add secret
-      </button>
+      <p class="help">The same thing as the form, as a file. Applying an existing name updates that app.</p>
+      <textarea
+        id="spec-text"
+        v-model="spec"
+        rows="14"
+        spellcheck="false"
+        wrap="off"
+        placeholder="Paste a spec, or press Load example."
+        :aria-invalid="!!error || undefined"
+        class="input mt-2 font-mono"
+      />
     </div>
 
-    <pre v-if="error" class="whitespace-pre-wrap rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</pre>
-    <div v-if="result" class="text-sm text-zinc-300">{{ result }}</div>
+    <div v-if="secrets.length">
+      <p class="label">Secret values</p>
+      <p class="help !mt-0 mb-2">Names come from <code class="font-mono">secrets:</code> in the spec. Values are encrypted and can't be shown again.</p>
+      <div v-for="(s, i) in secrets" :key="i" class="mb-2 flex flex-col gap-2 sm:flex-row">
+        <input v-model="s.key" placeholder="KEY" autocomplete="off" aria-label="Secret name" class="input font-mono sm:w-56" />
+        <input v-model="s.value" type="password" placeholder="value" autocomplete="new-password" aria-label="Secret value" class="input font-mono sm:flex-1" />
+        <button type="button" class="btn-danger btn-sm self-start sm:self-center" @click="secrets.splice(i, 1)">Remove</button>
+      </div>
+    </div>
+    <button type="button" class="btn-secondary btn-sm" @click="secrets.push({ key: '', value: '' })">+ Add secret</button>
+
+    <pre v-if="error" role="alert" class="alert-error whitespace-pre-wrap font-sans">{{ error }}</pre>
 
     <div class="flex justify-end">
-      <button
-        type="submit"
-        :disabled="busy"
-        class="rounded-md bg-accent-dark px-4 py-2 text-sm font-semibold text-white hover:bg-accent disabled:opacity-50"
-      >
-        {{ busy ? 'Applying…' : 'Apply' }}
-      </button>
+      <button type="submit" class="btn-primary" :disabled="busy || !spec.trim()">{{ busy ? 'Applying…' : 'Apply spec' }}</button>
     </div>
   </form>
 </template>

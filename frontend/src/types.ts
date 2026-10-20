@@ -8,6 +8,26 @@ export interface User {
   app_limit: number
   status: UserStatus
   created_at: string
+  must_change_password?: boolean // true after an admin password reset
+  // GET /auth/me only (optional until the backend ships them; treat undefined as "unknown, allow").
+  features?: Features
+  limits?: Limits
+}
+
+export interface Features {
+  databases: boolean
+  storage: boolean
+}
+
+export interface Limits {
+  cpu_limit_m: number
+  mem_limit_mi: number
+  cpu_request_m: number
+  mem_request_mi: number
+  image_mb: number
+  db_mb: number
+  bucket_mb: number
+  override: { cpu_min_m: number; cpu_max_m: number; mem_min_mi: number; mem_max_mi: number }
 }
 
 export type UserStatus = 'pending' | 'active' | 'suspended' | 'deleted'
@@ -23,6 +43,8 @@ export interface ApiKey {
   prefix: string
   created_at: string
   revoked_at: string | null
+  name?: string | null
+  last_used_at?: string | null
 }
 
 // Returned only once, at creation time (app/schemas.py ApiKeyCreateOut) — the
@@ -32,6 +54,7 @@ export interface ApiKeyCreated {
   key: string
   prefix: string
   created_at: string
+  name?: string | null
 }
 
 export interface App {
@@ -45,6 +68,8 @@ export interface App {
   want_storage: boolean
   status: string
   status_detail: string | null
+  // short machine code: image_pull | crash_loop | oom | not_ready | quota | root_image | unknown
+  status_reason?: string | null
   created_at: string
   health_check_enabled: boolean
   health_check_path: string

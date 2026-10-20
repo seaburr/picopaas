@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref, useId } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/client'
-import DevBanner from '../components/DevBanner.vue'
+import BrandMark from '../components/BrandMark.vue'
+import PasswordField from '../components/PasswordField.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
+const emailId = useId()
 
 const form = reactive({ email: '', password: '' })
 const error = ref('')
@@ -17,9 +20,11 @@ async function onSubmit() {
   loading.value = true
   try {
     await auth.login(form.email, form.password)
-    await router.push('/')
+    // ?next= is only honoured for same-site paths (no protocol-relative or absolute URLs).
+    const next = typeof route.query.next === 'string' ? route.query.next : ''
+    await router.push(next.startsWith('/') && !next.startsWith('//') ? next : '/')
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Login failed'
+    error.value = e instanceof ApiError ? e.message : "Couldn't log you in. Try again."
   } finally {
     loading.value = false
   }
@@ -27,47 +32,33 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-pico-bg px-4">
+  <div class="flex min-h-[calc(100vh-2rem)] items-center justify-center px-4 py-8">
     <div class="w-full max-w-sm">
-      <h1 class="mb-4 text-center text-xl font-bold text-white">PicoPaaS</h1>
-      <DevBanner class="mb-4" />
-      <div class="rounded-lg border border-pico-border bg-pico-panel p-6">
+      <h1 class="mb-1 flex justify-center"><BrandMark :size="40" /></h1>
+      <p class="mb-5 text-center text-sm text-zinc-300">Log in to PicoPaaS</p>
+      <div class="card card-pad">
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div>
-            <label class="mb-1 block text-sm font-medium text-zinc-300">Email</label>
-            <input
-              v-model="form.email"
-              type="email"
-              required
-              autocomplete="username"
-              class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-            />
+            <label :for="emailId" class="label">Email</label>
+            <input :id="emailId" v-model="form.email" type="email" required autocomplete="username" class="input" :aria-invalid="error ? 'true' : undefined" />
           </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-zinc-300">Password</label>
-            <input
-              v-model="form.password"
-              type="password"
-              required
-              autocomplete="current-password"
-              class="w-full rounded-md border border-pico-border bg-pico-card px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-accent"
-            />
+          <PasswordField v-model="form.password" :invalid="!!error" />
+          <div v-if="route.query.registered && !error" class="alert-info" role="status">
+            If you already have an account, log in below. Otherwise an administrator will review your request, usually within a day.
           </div>
-          <div v-if="error" class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            {{ error }}
-          </div>
-          <button
-            type="submit"
-            :disabled="loading"
-            class="w-full rounded-md bg-accent-dark px-4 py-2 font-semibold text-white hover:bg-accent disabled:opacity-50"
-          >
-            {{ loading ? 'Signing in…' : 'Sign in' }}
+          <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
+          <button type="submit" :disabled="loading" class="btn-primary btn-block">
+            {{ loading ? 'Logging in…' : 'Log in' }}
           </button>
         </form>
-        <p class="mt-4 text-center text-sm text-zinc-500">
-          No account? <RouterLink to="/register" class="text-accent-light hover:underline">Register</RouterLink>
+        <p class="help mt-4 text-center">Forgot your password? Ask the administrator to reset it.</p>
+        <p class="mt-3 text-center text-sm text-zinc-300">
+          Need access? <RouterLink to="/register" class="link">Request access</RouterLink>
         </p>
       </div>
+      <p class="mt-4 text-center text-xs text-zinc-400">
+        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a>
+      </p>
     </div>
   </div>
 </template>

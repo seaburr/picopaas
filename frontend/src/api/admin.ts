@@ -31,3 +31,7 @@ export const getHealth = () => apiFetch<ClusterHealth>('/admin/health')
 
 export const patchAppResources = (id: number, body: ResourcesPatch) =>
   apiFetch<AppResources>(`/admin/apps/${id}/resources`, { method: 'PATCH', body: JSON.stringify(body) })
+
+// Backend: POST /admin/users/{id}/reset-password -> { temporary_password } (shown once).
+export const resetUserPassword = (id: number) =>
+  apiFetch<{ temporary_password: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' })

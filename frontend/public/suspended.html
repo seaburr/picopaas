@@ -4,15 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d0d14">
 <title>App suspended - PicoPaaS</title>
+<link rel="icon" href="https://platform.raisehellpraisedale.xyz/static/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="https://platform.raisehellpraisedale.xyz/static/icon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="https://platform.raisehellpraisedale.xyz/static/icon-180.png">
 <style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;background:#0d0d14;color:#e4e4e7;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}h1{font-size:64px;margin:0;color:#fff;line-height:1.1}h2{font-size:22px;margin:8px 0;color:#fff}p{color:#a1a1aa;max-width:460px;margin:8px auto 24px}.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:#233775;color:#fff;text-decoration:none;font-weight:600;border:1px solid #4a78c2}.btn:hover{background:#4a78c2}.btn.s{background:transparent;border-color:#2c2c3c;color:#d4d4d8}.btn.s:hover{background:#1c1c28}
+:root{--bg:#0d0d14;--panel:#16161f;--card:#1c1c28;--border:#2c2c3c;--primary:#3a6bd0;--primary-h:#2f5fc4;--accent-light:#7aa0d4;--text:#e4e4e7;--muted:#a1a1aa}
+*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent-light)}a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px;border-radius:6px}
+h1,h2,h3{color:#fff;line-height:1.25}.w{max-width:960px;margin:0 auto;padding:0 20px}
+.dev{background:rgba(245,158,11,.1);border-bottom:1px solid rgba(245,158,11,.4);color:#fde68a;text-align:center;font-size:14px;padding:6px 20px}
+header.t{border-bottom:1px solid var(--border);background:var(--panel)}header.t .w{display:flex;justify-content:space-between;align-items:center;min-height:56px;gap:12px}
+.logo{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em;color:#fff;text-decoration:none}.logo img{width:28px;height:28px;border-radius:6px;display:block}
+nav.r{display:flex;align-items:center;gap:6px}nav.r a.l{color:#d4d4d8;text-decoration:none;font-size:14px;padding:8px 10px;border-radius:6px}nav.r a.l:hover{color:#fff;background:var(--card)}
+.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;border:1px solid transparent;white-space:nowrap}.btn:hover{background:var(--primary-h)}
+.btn.s{background:transparent;border-color:#71717a;color:#e4e4e7}.btn.s:hover{background:var(--card)}.btn.sm{padding:8px 14px;font-size:14px}
+footer{border-top:1px solid var(--border);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px;text-align:center}footer a{white-space:nowrap}
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}.logo{margin-bottom:28px}.code{margin:0;font-size:14px;letter-spacing:.12em;color:var(--muted);font-weight:600}h1{font-size:clamp(26px,6vw,36px);margin:6px 0 10px;letter-spacing:-.01em}p.m{color:var(--muted);max-width:460px;margin:0 auto 24px}.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
-<h1>503</h1>
-<h2>This app is suspended</h2>
-<p>The platform operator has paused this app. If it's yours, log in to see its status, or contact the person who invited you.</p>
+<a class="logo" href="https://raisehellpraisedale.xyz"><img src="https://platform.raisehellpraisedale.xyz/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a>
+<main>
+<p class="code" aria-hidden="true">503</p>
+<h1>This app is suspended</h1>
+<p class="m">An admin paused this app. If it&rsquo;s yours, log in to see its status; your data is kept.</p>
 <div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/login">Log in</a><a class="btn s" href="https://raisehellpraisedale.xyz">PicoPaaS home</a></div>
+</main>
 </body>
 </html>
