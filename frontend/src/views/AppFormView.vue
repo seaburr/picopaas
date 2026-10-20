@@ -61,6 +61,8 @@ const imageError = computed(() => {
 })
 const formError = computed(() => (error.value && !error.value.toLowerCase().startsWith('image') ? error.value : ''))
 
+const templateNote = ref<{ name: string; notes: string } | null>(null)
+
 onMounted(async () => {
   if (isEdit.value && appId.value !== null) {
     try {
@@ -97,7 +99,7 @@ onMounted(async () => {
         form.want_db = t.wants_db && !dbOff.value
         form.want_storage = t.wants_storage && !storageOff.value
         env.value = Object.entries(t.env).map(([key, value]) => ({ key, value, is_secret: false }))
-        if (t.notes) toast.success(`Prefilled from template: ${t.name}. ${t.notes}`)
+        templateNote.value = { name: t.name, notes: t.notes ?? '' }
       } else {
         error.value = `Unknown template "${route.query.template}".`
       }
@@ -224,6 +226,10 @@ async function onSubmit() {
           <RouterLink to="/templates" class="link">Browse templates</RouterLink>
         </p>
       </div>
+
+      <p v-if="templateNote" class="alert-info mb-3">
+        <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
+      </p>
 
       <div v-if="!isEdit" class="mb-3 flex gap-1 border-b border-pico-border" role="tablist">
         <button

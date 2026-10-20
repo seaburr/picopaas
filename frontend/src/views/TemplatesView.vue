@@ -40,7 +40,7 @@ onMounted(async () => {
             <span v-if="t.wants_storage" class="badge badge-info">Storage bucket</span>
             <span v-if="!t.wants_db && !t.wants_storage" class="badge badge-neutral">No add-ons</span>
           </div>
-          <p class="mono break-all text-xs text-zinc-400">{{ t.image }} · port {{ t.port }}</p>
+          <p class="mono text-xs text-zinc-400"><span class="break-all">{{ t.image }}</span> <span class="whitespace-nowrap">· port {{ t.port }}</span></p>
           <p v-if="t.notes" class="meta">{{ t.notes }}</p>
           <div class="mt-auto flex items-center justify-between gap-2 pt-2">
             <RouterLink v-if="t.docs_url" :to="t.docs_url" target="_blank" class="link text-sm">Docs</RouterLink>

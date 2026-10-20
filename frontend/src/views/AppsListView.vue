@@ -123,7 +123,7 @@ function meta(app: App) {
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-baseline gap-3">
           <h1 class="page-title">Apps</h1>
-          <span v-if="!loading && limit" class="meta" :title="`You can have up to ${limit} apps`">{{ store.apps.length }} / {{ limit }}</span>
+          <span v-if="!loading && limit" class="meta">{{ store.apps.length }}</span>
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>

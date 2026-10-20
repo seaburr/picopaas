@@ -584,3 +584,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: committed templates catalog (/templates, GET /templates, ?template= prefill) and image history + rollback + deploy health-gate auto-rollback (migration b4e7a2c9d1f6). Pushed; see CI/deploy results.
 - 2026-10-20 [scm-security] START: commit per-app CPU/memory history (app_metric_samples, metrics-history endpoint, sparklines); push; verify deploy + migration d2f6a8c0e4b9.
 - 2026-10-20 [scm-security] DONE: committed per-app metrics history; scale-to-zero (item 7) deferred to backlog in ROADMAP. Pushed; see CI/deploy results.
+- 2026-10-20 [scm-security] START: commit UI/UX pass on new features (app detail reorder, templates port wrap, inline prefill notice, apps-list count); push; verify deploy.
+- 2026-10-20 [scm-security] DONE: committed UI/UX pass (frontend views only). Pushed; see CI/deploy results.

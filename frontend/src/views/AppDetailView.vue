@@ -359,23 +359,10 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <h2 id="h-status" class="section-title mb-2">Status</h2>
             <p v-if="app.status === 'running'" class="text-sm text-zinc-200">
               Running and serving traffic.
-              <span class="text-zinc-400">Created <span :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</span>.</span>
             </p>
             <AppStatusNote :app="app" :restarting="restarting" @restart="restart" />
             <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2">{{ app.image_update_error }}</p>
             <p v-if="app.last_event" class="alert-info mt-2">{{ eventNote(app.last_event, now) }}</p>
-          </section>
-
-          <section v-if="versions.length" class="card card-pad" aria-labelledby="h-versions">
-            <h2 id="h-versions" class="section-title mb-2">Recent versions</h2>
-            <ul class="space-y-1 text-sm">
-              <li v-for="v in versions" :key="v.digest" class="flex items-center gap-3">
-                <span class="mono">{{ shortDigest(v.digest) }}</span>
-                <span class="meta" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</span>
-                <span v-if="v.current" class="meta">current</span>
-                <button v-else type="button" class="btn-secondary ml-auto" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
-              </li>
-            </ul>
           </section>
 
           <section v-if="metrics && !suspended" class="card card-pad" aria-labelledby="h-metrics">
@@ -385,16 +372,6 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <Sparkline label="CPU" unit="m" :values="metrics.points.map((p) => p.cpu_m)" :limit="metrics.cpu_limit_m" />
               <Sparkline label="Mem" unit="Mi" :values="metrics.points.map((p) => p.mem_mi)" :limit="metrics.mem_limit_mi" />
             </div>
-          </section>
-
-          <section v-if="events.length" class="card card-pad" aria-labelledby="h-events">
-            <h2 id="h-events" class="section-title mb-2">Recent events</h2>
-            <ul class="space-y-1 text-sm">
-              <li v-for="ev in events" :key="ev.at + ev.kind" class="flex gap-3">
-                <span class="meta mono shrink-0" :title="fullTime(ev.at) + ' (' + relTime(ev.at, now) + ')'">{{ stamp(parseTs(ev.at).toISOString()) }}</span>
-                <span class="text-zinc-200">{{ ev.message }}</span>
-              </li>
-            </ul>
           </section>
 
           <section v-if="app.quota?.db || app.quota?.storage" class="card card-pad" aria-labelledby="h-usage">
@@ -439,6 +416,28 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               </p>
             </template>
             <p v-else class="text-sm text-zinc-400">Loading logs…</p>
+          </section>
+
+          <section v-if="events.length" class="card card-pad" aria-labelledby="h-events">
+            <h2 id="h-events" class="section-title mb-2">Recent events</h2>
+            <ul class="space-y-1 text-sm">
+              <li v-for="ev in events" :key="ev.at + ev.kind" class="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
+                <span class="meta mono shrink-0" :title="fullTime(ev.at) + ' (' + relTime(ev.at, now) + ')'">{{ stamp(parseTs(ev.at).toISOString()) }}</span>
+                <span class="min-w-0 text-zinc-200">{{ ev.message }}</span>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="versions.length" class="card card-pad" aria-labelledby="h-versions">
+            <h2 id="h-versions" class="section-title mb-1">Recent versions</h2>
+            <ul class="divide-y divide-pico-border text-sm">
+              <li v-for="v in versions" :key="v.digest" class="flex min-h-[2rem] items-center gap-3 py-1">
+                <span class="mono">{{ shortDigest(v.digest) }}</span>
+                <span class="meta" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</span>
+                <span v-if="v.current" class="badge-ok ml-auto">current</span>
+                <button v-else type="button" class="btn-secondary btn-sm ml-auto" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
+              </li>
+            </ul>
           </section>
 
           <section class="card card-pad" aria-labelledby="h-conf">
