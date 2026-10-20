@@ -540,3 +540,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: Ghost CMS demo build committed (non-root UID 10001, env-translation entrypoint, MySQL content + S3 image storage); image ghcr.io/seaburr/picopaas-example-ghost. CLAUDE.md left unstaged.
 - 2026-10-20 [scm-security] BLOCKED: 512d03f examples build (ghost) failed: Dockerfile pins ghost-storage-adapter-s3@3.0.1 which does not exist on npm (ETARGET); latest is 2.8.0. Owner: whoever owns examples/ghost. GHCR package not created yet, so visibility not set.
 - 2026-10-20 [scm-security] START: commit+push ghost adapter pin fix (2.8.0); watching examples build.
+- 2026-10-20 [scm-security] DONE: 1bf049f pushed; examples build (ghost) succeeded; image ghcr.io/seaburr/picopaas-example-ghost:1bf049f, anonymously pullable (public); compressed amd64 size 296.7 MiB (311 MB) EXCEEDS 256MB cap. CLAUDE.md left unstaged.
