@@ -24,14 +24,15 @@ nav.r{display:flex;align-items:center;gap:6px}nav.r a.l{color:#d4d4d8;text-decor
 .btn{display:inline-block;padding:10px 20px;border-radius:6px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;border:1px solid transparent;white-space:nowrap}.btn:hover{background:var(--primary-h)}
 .btn.s{background:transparent;border-color:#71717a;color:#e4e4e7}.btn.s:hover{background:var(--card)}.btn.sm{padding:8px 14px;font-size:14px}
 footer{border-top:1px solid var(--border);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px;text-align:center}footer a{white-space:nowrap}
-.hero{padding:72px 0 40px;text-align:center}.hero h1{font-size:clamp(30px,6vw,52px);margin:0 0 16px;letter-spacing:-.02em}.hero p{max-width:620px;margin:0 auto 28px;color:var(--muted);font-size:18px}
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.hero p.strip{margin:28px auto 0;max-width:640px;color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;justify-content:center;gap:2px 18px}.hero p.sub{margin:10px auto 0;font-size:14px;color:var(--muted)}
-h2{font-size:24px;margin:56px 0 20px}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:20px}.card h3{margin:0 0 8px;font-size:17px}.card p{margin:0;color:var(--muted);font-size:15px}
+.hero{padding:72px 0 32px;text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 0,rgba(58,107,208,.16),transparent 70%)}.eyebrow{display:inline-block;margin:0 0 16px;padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);color:var(--accent-light);font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.hero h1{font-size:clamp(30px,6vw,52px);margin:0 0 16px;letter-spacing:-.02em}.hero p{max-width:620px;margin:0 auto 28px;color:var(--muted);font-size:18px}.hero p.eyebrow{font-size:13px;margin:0 0 16px;color:var(--accent-light)}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.hero p.sub{margin:10px auto 0;font-size:14px;color:var(--muted)}
+h2{font-size:22px;margin:56px 0 20px;padding-bottom:10px;border-bottom:1px solid var(--border);letter-spacing:-.01em}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:20px}.card h3{margin:0 0 8px;font-size:16px}.card{transition:border-color .15s}.card:hover{border-color:#3d3d52}.card p{margin:0;color:var(--muted);font-size:15px}
 .n{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;margin-bottom:10px}
 pre{margin:20px 0 0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;color:#d4d4d8;font:14px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}pre .c{color:var(--muted)}
 .pre{margin-top:16px;color:var(--muted);font-size:15px}
-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}td{padding:10px 16px;border-top:1px solid var(--border)}tr:first-child td{border-top:0}td:last-child{text-align:right;color:#fff;font-weight:600}
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden}td{padding:10px 16px;border-top:1px solid var(--border)}td:first-child{color:var(--muted)}tr:nth-child(even) td{background:rgba(255,255,255,.015)}tr:first-child td{border-top:0}td:last-child{text-align:right;color:#fff;font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}@media(max-width:480px){.hero{padding:44px 0 24px}.hero p{font-size:16px}td{padding:10px 12px}}
 .note{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-top:24px;color:var(--muted)}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -39,24 +40,24 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:var(--pane
 <header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.raisehellpraisedale.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.raisehellpraisedale.xyz/login">Log in</a></nav></div></header>
 <main class="w" id="main">
 <section class="hero">
+<p class="eyebrow">docker image in, https url out</p>
 <h1>Tiny hosting for throwaway projects</h1>
-<p>Run a Docker container on the web in a minute. Give us a public image and a port; you get an HTTPS URL, plus an optional MySQL database and S3-compatible storage bucket. Built for demos, experiments and class projects.</p>
+<p>Run a Docker container on the web in a minute. Give us a public image and a port; you get an HTTPS URL, plus an optional MySQL database and S3-compatible storage bucket. Built for demos, experiments, and class projects.</p>
 <div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/register">Request access</a><a class="btn s" href="https://platform.raisehellpraisedale.xyz/login">Log in</a></div>
-<p class="strip"><span>Public Docker image</span><span>0.1 CPU / 384 MB RAM</span><span>optional 50 MB database + 100 MB storage bucket (S3-compatible)</span></p>
-<p class="sub">Image must be public and run as non-root. Sign up, and if your account is approved, a PicoPaaS platform admin will reach out.</p>
+<p class="sub">Images must be public and run as non-root. Access is approved manually.</p>
 </section>
 <section>
 <h2>What it is</h2>
 <div class="grid">
-<div class="card"><h3>One container</h3><p>Bring any public Docker image and tell us its port. Add env vars and secrets (encrypted) in the dashboard, YAML, or CLI.</p></div>
-<div class="card"><h3>Optional database and storage</h3><p>Tick a box and we create a private MySQL database and an S3-compatible storage bucket. You map their connection details to env vars for your app.</p></div>
-<div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate.</p></div>
+<div class="card"><h3>One container</h3><p>Bring any public Docker image and tell us its port. Set env vars and encrypted secrets in the dashboard, YAML, or CLI.</p></div>
+<div class="card"><h3>Optional database and storage</h3><p>Tick a box to get a private MySQL database and an S3-compatible bucket. Map their connection details to env vars for your app.</p></div>
+<div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain and an automatic Let&rsquo;s Encrypt certificate.</p></div>
 </div>
 </section>
 <section>
 <h2>How it works</h2>
 <div class="grid">
-<div class="card"><span class="n">1</span><h3>Request access</h3><p>Request access with your email. If your account is approved, a PicoPaaS platform admin will reach out, usually within a day.</p></div>
+<div class="card"><span class="n">1</span><h3>Request access</h3><p>Sign up with your email. If approved, a platform admin will reach out, usually within a day.</p></div>
 <div class="card"><span class="n">2</span><h3>Create an app</h3><p>Image, port, env vars, and a database or bucket if you need one.</p></div>
 <div class="card"><span class="n">3</span><h3>Open your URL</h3><p>Live in about a minute over HTTPS. Edit the config to redeploy.</p></div>
 </div>
@@ -80,9 +81,9 @@ https://&lt;generated-name&gt;.raisehellpraisedale.xyz</pre>
 <tr><td>Database (MySQL)</td><td>50 MB</td></tr>
 <tr><td>Storage bucket (S3-compatible)</td><td>100 MB</td></tr>
 </table>
-<div class="note"><strong style="color:#fff">Sign up, and if your account is approved, a PicoPaaS platform admin will reach out.</strong> This is a hobby platform for throwaway projects, not for anything you depend on.</div>
+<div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
 </section>
-<section class="hero" style="padding-bottom:0"><div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/register">Request access</a></div></section>
+<section class="hero" style="padding-bottom:0;background:none"><div class="cta"><a class="btn" href="https://platform.raisehellpraisedale.xyz/register">Request access</a></div></section>
 </main>
 <footer><div class="w">PicoPaaS &middot; <a href="https://platform.raisehellpraisedale.xyz/guide">Docs</a> &middot; <a href="/privacy">Privacy &amp; Acceptable Use</a><div style="margin-top:6px">&copy; 2026 PicoPaaS</div></div></footer>
 </body>

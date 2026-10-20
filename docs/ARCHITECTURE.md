@@ -241,6 +241,12 @@ a cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Ro
 implemented; see `docs/OPERATIONS.md` §3.
 
 ## Auth throttling and security headers
-- `/auth/login` and `/auth/register` are throttled by `app/ratelimit.py` using the `auth_throttle` table (fixed windows, hashed keys), so the limit holds across replicas. Login: 10 failures per email / 15 min (primary control, no IP dependence; applies identically to unknown emails; success clears it) and 30 per client IP. Register: 5 attempts per client IP / hour. 429 + `Retry-After`. Store errors fail open (logged). API-key traffic is not throttled here.
-- Client IP = rightmost `X-Forwarded-For` entry (Traefik discards client-supplied XFF and writes the peer it saw). Behind the DO LB in TCP mode without PROXY protocol the peer may be the LB, so IP buckets can be coarse; hence the looser login IP limit. Enable PROXY protocol on LB+Traefik to make them precise.
+- `/auth/login` and `/auth/register` are throttled by `app/ratelimit.py` using the `auth_throttle` table (fixed windows, hashed keys), so the limit holds across replicas. Login: 10 failures per email / 15 min (primary control, no IP dependence; applies identically to unknown emails; success clears it) and 100 per client IP. Register: 40 attempts per client IP / hour. 429 + `Retry-After`. Store errors fail open (logged). API-key traffic is not throttled here.
+- Client IP = rightmost `X-Forwarded-For` entry (Traefik discards client-supplied XFF and writes the peer it saw). Behind the DO LB in TCP mode without PROXY protocol the peer may be the LB, so IP buckets are effectively shared platform-wide; the per-IP limits are therefore a generous floodwall (not per-client) and the per-email lockout is the real control. Enable PROXY protocol on LB+Traefik to make the IP buckets precise, then tighten them.
 - Every response carries HSTS, nosniff, X-Frame-Options DENY and an enforcing CSP (`/docs`, `/redoc` exempt from CSP: they load a CDN).
+
+## Production hardening (deferred 2026-10-20)
+This is a hobby/dev deployment. Before any real production use (tracked in docs/QUESTIONS.md):
+- **Scope the cloud credentials.** The API pod's `picopaas-env` secret currently holds an account-wide DigitalOcean API token and a full-access Spaces key, so a code-execution bug in the API reaches the whole DO account. Replace with a DO token scoped to only what bootstrap/the reconciler need and a Spaces key limited as far as DO allows; update the GitHub/k8s secrets and re-run bootstrap.
+- **CI/CD:** protect `main` (require PRs + checks) and move the Actions secrets into a protected GitHub Environment rather than repo-level. (Left open now because the repo is private and single-maintainer.)
+- The 2026-10-20 pentest pass (SSRF/rebinding, registry content verification, auth rate limiting, security headers, per-namespace RBAC, CI hardening) is already fixed and deployed; these two are the remaining account-level items.

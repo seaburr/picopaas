@@ -7,26 +7,13 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Docs review (2026-10-20), still open.**
-  4. Not verified against a live run: the Python 3.13 `VERIFY_X509_STRICT` workaround in the User Guide for DigitalOcean's
-     CA, and the claim that credential rotation repairs an app whose stored secrets are unreadable.
-     Claude testing: live TLS check via a Python 3.13 probe; rotation repair via a local integration test.
+- **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
+  secret holds an **account-wide** DO API token and a **full-access** Spaces key, so a code-execution bug in the API reaches
+  the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a
+  Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
+  protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
 
 ## To-dos (only you can do these)
-
-- [ ] **Security hardening before trial users (from the 2026-10-20 pentest pass; full notes in the scratchpad, not committed since the repo is public).**
-      The code-side findings Claude is fixing separately; these four only you can do:
-  - [ ] **Make the repo private.** Biggest single mitigation: a public repo exposes the full design, and the read-only diag
-        workflow logs print infra details (DB hostname, node IP, network policies). Settings → General → Danger Zone.
-  - [ ] **Scope the DigitalOcean credentials in the API pod.** Today the API pod's `picopaas-env` secret holds an
-        account-wide DO API token and a full-access Spaces key, so any code-execution bug in the API reaches the whole DO
-        account. Create a DO token with only the scopes bootstrap/the app need, and a Spaces key limited where DO allows.
-        Then update the GitHub/k8s secrets and re-run bootstrap. Tell Claude and it can help narrow exactly what's needed.
-  - [ ] **GitHub repo settings:** protect `main` (require PRs/checks), move the Actions secrets into a protected
-        Environment rather than repo-level, and when your pentester friend gets access give them only a **tenant account** on
-        the platform — never GitHub repo write.
-  - [ ] **Decide:** should `/docs`, `/redoc` and `/openapi.json` stay public? They're reachable unauthenticated today
-        (looks intentional — the 404 page points at the API docs). Say "keep" or "gate behind admin" and Claude will do it.
 
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
       second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.
@@ -63,7 +50,15 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
-- 2026-10-20: PENTEST #19 step 2 done in deploy/platform/rbac.yaml (pending deploy): cluster-wide secrets/resourcequotas/limitranges/services removed from ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual: the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
+- 2026-10-20: Pentest-pass follow-ups (Chas): repo made **private**; `/docs`/`/redoc`/`/openapi.json` stay **public** for now;
+  `main` left unprotected for now (private repo); DO/Spaces credential scoping **deferred to production** (tracked under Open →
+  "Production hardening"). Docs review item 4 (TLS workaround + rotation-repair) verified by Claude: TLS probe shipped on the
+  py3.13 toolbox; rotation repairs DB/storage creds but not unreadable secret env vars (docs corrected).
+- 2026-10-20: PENTEST #19 step 2 done in deploy/platform/rbac.yaml (deployed d42256a, verified live: new-app create + env-secret
+  rewrite both reached running under the narrowed grant): cluster-wide secrets/resourcequotas/limitranges/services removed from
+  ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual:
+  the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
+- 2026-10-20: PENTEST #19 step 2 (superseded by the line above): cluster-wide secrets/resourcequotas/limitranges/services removed from ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual: the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
 - 2026-10-20: GitHub issue #9 (vague status_detail) closed (Chas).
 - 2026-10-20: Signup wording chosen: "Sign up, and if your account is approved, a PicoPaaS platform admin will reach out." Applied to landing, privacy, dev banner, register, login and pending views.
 - 2026-10-20: Role `uberadmin` renamed to `platform_admin` (breaking API change, approved by Chas); UI label "Platform admin"; migration `b4c8e2f6a1d3`.
