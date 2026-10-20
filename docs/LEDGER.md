@@ -511,3 +511,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [backend-dev] DONE: probe on python:3.13-slim + GET /db/tlscheck (db() already cleared VERIFY_X509_STRICT, unchanged); tests/test_rotation_repair.py (2 tests, both pass: rotation repairs DB/storage; env-var needs re-entry). No app code changed. 450 passed/60 skipped. Uncommitted.
 - 2026-10-20 [scm-security] START: commit rename / rotation-doc / S3+probe+test as three commits; push; watch ci, image, deploy, testapps; verify
 - 2026-10-20 [scm-security] DONE: 3 commits made (CLAUDE.md budget edit left uncommitted, not in scope); pushing
+- 2026-10-20 [scm-security] DONE: 5ea84b8 pushed; ci/image/deploy/testapps success; /auth/me role platform_admin, healthz ok, demo 200
