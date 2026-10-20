@@ -21,6 +21,8 @@ from app.config import (
     DEFAULT_CPU_REQUEST_M,
     DEFAULT_MEM_LIMIT_MI,
     DEFAULT_MEM_REQUEST_MI,
+    EPHEMERAL_LIMIT_MI,
+    EPHEMERAL_REQUEST_MI,
     INGRESS_CLASS,
     INGRESS_NAMESPACE,
 )
@@ -34,6 +36,7 @@ RUN_AS_NON_ROOT = True
 # "exceeded quota: app-quota" and the rollout never completes.
 POD_LIMIT_CPU = f"{DEFAULT_CPU_LIMIT_M}m"  # per-pod caps (what the health page shows)
 POD_LIMIT_MEMORY = f"{DEFAULT_MEM_LIMIT_MI}Mi"
+POD_LIMIT_EPHEMERAL = f"{EPHEMERAL_LIMIT_MI}Mi"
 QUOTA_PODS = "2"
 QUOTA_SERVICES = "1"
 
@@ -41,6 +44,7 @@ LIMIT_RANGE_DEFAULT_CPU = POD_LIMIT_CPU
 LIMIT_RANGE_DEFAULT_MEMORY = POD_LIMIT_MEMORY
 LIMIT_RANGE_DEFAULT_REQUEST_CPU = f"{DEFAULT_CPU_REQUEST_M}m"
 LIMIT_RANGE_DEFAULT_REQUEST_MEMORY = f"{DEFAULT_MEM_REQUEST_MI}Mi"
+LIMIT_RANGE_DEFAULT_REQUEST_EPHEMERAL = f"{EPHEMERAL_REQUEST_MI}Mi"
 
 DNS_NAMESPACE = "kube-system"
 DNS_PORT = 53
@@ -104,11 +108,12 @@ def resource_quota_manifest(
 ) -> dict[str, Any]:
     """Quota = max(2 x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
-    ({"cpu_limit_m", "mem_limit_mi"}, summed over the pods in the cluster) is None when there are no pods."""
+    ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi"}, summed over the pods in the cluster) is None when there are no pods."""
     e = _res(resources)
     used = used_limits or {}
     cpu_total = max(2 * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
     mem_total = max(2 * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
+    eph_total = max(2 * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
@@ -119,6 +124,8 @@ def resource_quota_manifest(
                 "limits.memory": f"{mem_total}Mi",
                 "requests.cpu": f"{cpu_total}m",
                 "requests.memory": f"{mem_total}Mi",
+                "limits.ephemeral-storage": f"{eph_total}Mi",
+                "requests.ephemeral-storage": f"{eph_total}Mi",
                 "pods": QUOTA_PODS,
                 "services": QUOTA_SERVICES,
                 # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
@@ -140,9 +147,12 @@ def limit_range_manifest(app_id: int, resources: dict[str, int] | None = None) -
             "limits": [
                 {
                     "type": "Container",
-                    "max": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
-                    "default": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
-                    "defaultRequest": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi"},
+                    "max": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
+                            "ephemeral-storage": POD_LIMIT_EPHEMERAL},
+                    "default": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
+                                "ephemeral-storage": POD_LIMIT_EPHEMERAL},
+                    "defaultRequest": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi",
+                                       "ephemeral-storage": LIMIT_RANGE_DEFAULT_REQUEST_EPHEMERAL},
                 }
             ]
         },
@@ -419,8 +429,10 @@ def deployment_manifest(
                             "image": image,
                             "ports": [{"containerPort": port}],
                             "resources": {
-                                "requests": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi"},
-                                "limits": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi"},
+                                "requests": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi",
+                                             "ephemeral-storage": LIMIT_RANGE_DEFAULT_REQUEST_EPHEMERAL},
+                                "limits": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
+                                           "ephemeral-storage": POD_LIMIT_EPHEMERAL},
                             },
                             "envFrom": [{"secretRef": {"name": _secret_name(app_id)}}],
                             "securityContext": {

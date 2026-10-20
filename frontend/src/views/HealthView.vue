@@ -108,6 +108,8 @@ const problems = computed<Problem[]>(() => {
   if (humanErrors.value.some((e) => /Kubernetes API/.test(e))) out.push({ text: "Can't reach the Kubernetes API (metrics and node data unavailable)", target: 'sec-nodes' })
   const down = d.nodes.filter((n) => !n.ready)
   if (down.length) out.push({ text: `${down.length} node${down.length > 1 ? 's' : ''} not ready`, target: 'sec-nodes' })
+  const diskP = d.nodes.filter((n) => n.conditions?.DiskPressure)
+  if (diskP.length) out.push({ text: 'node disk nearly full (DiskPressure)', target: 'sec-nodes' })
   const tight = d.nodes.filter((n) => pressure(n).tight)
   if (tight.length) out.push({ text: `${tight.length} node${tight.length > 1 ? 's' : ''} nearly full`, target: 'sec-nodes' })
   const failed = d.apps.filter((a) => a.status === 'error')
@@ -275,6 +277,12 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
                 class="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-400"
               >
                 Requested {{ pressure(n).c }}% CPU, {{ pressure(n).m }}% memory: next app may trigger a new node
+              </div>
+              <div class="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+                <span v-for="c in ['DiskPressure', 'MemoryPressure', 'PIDPressure']" :key="c" class="mono" :class="n.conditions?.[c] ? 'font-semibold text-status-error' : ''">
+                  {{ c }} {{ n.conditions ? (n.conditions[c] ? 'YES' : 'no') : 'n/a' }}
+                </span>
+                <span v-if="n.disk_allocatable_mi != null" class="mono">Disk alloc {{ n.disk_allocatable_mi }}Mi / cap {{ n.disk_capacity_mi }}Mi</span>
               </div>
               <div class="flex justify-between text-xs text-zinc-400">
                 <span>Pods {{ n.pods }}/{{ n.pods_capacity }}</span>

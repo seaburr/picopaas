@@ -39,8 +39,8 @@ def test_resource_quota_caps():
 def test_limit_range_defaults():
     lr = k8s.limit_range_manifest(APP_ID)
     limits = lr["spec"]["limits"][0]
-    assert limits["default"] == {"cpu": "100m", "memory": "384Mi"}
-    assert limits["defaultRequest"] == {"cpu": "64m", "memory": "128Mi"}
+    assert limits["default"] == {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
+    assert limits["defaultRequest"] == {"cpu": "64m", "memory": "128Mi", "ephemeral-storage": "64Mi"}
 
 
 def _policy(policies, name):

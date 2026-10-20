@@ -15,6 +15,7 @@ from app.config import (
     DEFAULT_CPU_REQUEST_M,
     DEFAULT_MEM_LIMIT_MI,
     DEFAULT_MEM_REQUEST_MI,
+    EPHEMERAL_LIMIT_MI,
     JWT_EXPIRE_DAYS,
     MAX_IMAGE_SIZE_BYTES,
     SESSION_COOKIE_NAME,
@@ -148,6 +149,7 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
             image_mb=MAX_IMAGE_SIZE_BYTES // (1024 * 1024),
             db_mb=DB_QUOTA_BYTES // (1024 * 1024),
             bucket_mb=STORAGE_QUOTA_BYTES // (1024 * 1024),
+            ephemeral_mi=EPHEMERAL_LIMIT_MI,
             override=schemas.LimitOverride(
                 cpu_min_m=resources.CPU_MIN_M, cpu_max_m=resources.CPU_MAX_M,
                 mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=resources.MEM_MAX_MI,

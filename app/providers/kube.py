@@ -135,8 +135,17 @@ class KubeClientProvider(KubeProvider):
         """'running' | 'deploying' | 'error: <code>' (codes: image_pull, crash_loop, oom, config, root_image,
         quota, replica_failure; the reconciler maps them to human text)."""
         pods = self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
-        for pod in _as_dict(pods).get("items", []):
+        items = _as_dict(pods).get("items", [])
+        # Evicted pods linger as Failed; once a replacement is serving they are history, not an error.
+        serving = any(
+            (p.get("status") or {}).get("phase") == "Running"
+            and any(c.get("ready") for c in (p.get("status") or {}).get("containerStatuses") or [])
+            for p in items
+        )
+        for pod in items:
             code = self._pod_error(pod)
+            if code == "disk" and serving:
+                continue
             if code:
                 return f"error: {code}"
 
@@ -166,7 +175,7 @@ class KubeClientProvider(KubeProvider):
         """Sum of container limits of the pods that count against the ResourceQuota (non-terminal pods): exactly
         what the quota admission compares against. None when there are none."""
         pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
-        cpu = mem = 0
+        cpu = mem = eph = 0
         found = False
         for pod in pods:
             if (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
@@ -179,7 +188,10 @@ class KubeClientProvider(KubeProvider):
                 if lim.get("memory"):
                     mem += parse_mem_mi(lim["memory"])
                     found = True
-        return {"cpu_limit_m": cpu, "mem_limit_mi": mem} if found else None
+                if lim.get("ephemeral-storage"):
+                    eph += parse_mem_mi(lim["ephemeral-storage"])
+                    found = True
+        return {"cpu_limit_m": cpu, "mem_limit_mi": mem, "ephemeral_limit_mi": eph} if found else None
 
     def pending_hint(self, namespace: str) -> str:
         pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
@@ -314,12 +326,21 @@ class KubeClientProvider(KubeProvider):
                 "mem_used_mi": parse_mem_mi(use["memory"]) if use and use.get("memory") else None,
                 "pods": counts.get(name, 0),
                 "pods_capacity": int(alloc.get("pods") or cap.get("pods") or 0),
+                "disk_capacity_mi": parse_mem_mi(cap["ephemeral-storage"]) if cap.get("ephemeral-storage") else None,
+                "disk_allocatable_mi": parse_mem_mi(alloc["ephemeral-storage"]) if alloc.get("ephemeral-storage") else None,
+                "conditions": {
+                    t: any(c.get("type") == t and c.get("status") == "True" for c in st.get("conditions") or [])
+                    for t in ("DiskPressure", "MemoryPressure", "PIDPressure")
+                },
             })
         return {"nodes": nodes_out, "pods": pods_out, "metrics_available": metrics_ok, "errors": errors}
 
     @staticmethod
     def _pod_error(pod: dict[str, Any]) -> str | None:
-        statuses = (pod.get("status") or {}).get("containerStatuses") or []
+        pst = pod.get("status") or {}
+        if pst.get("reason") == "Evicted" and "ephemeral" in (pst.get("message") or "").lower():
+            return "disk"
+        statuses = pst.get("containerStatuses") or []
         for cs in statuses:
             state = cs.get("state") or {}
             waiting = state.get("waiting") or {}

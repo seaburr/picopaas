@@ -122,6 +122,7 @@ STATUS_MESSAGES = {
     "image_pull": "Can't pull the image. Check the name and tag, and that it's public.",
     "crash_loop": "Your app starts and then exits. Check the logs, that it listens on port {port}, and that required env vars are set.",
     "oom": "Your app ran out of memory (limit {mem}Mi).",
+    "disk": "Your app used more than {disk} MB of local disk (files, /tmp or logs) and was restarted. Store files in the storage bucket instead.",
     "not_ready": "Port {port} isn't answering. Is that the port your app listens on?",
     "not_ready_health": "Your app is running, but its health check on {path} isn't returning 2xx/3xx. Fix the path or turn the check off.",
     "root_image": "Your image runs as root, which isn't allowed. Add USER 10001 to your Dockerfile, rebuild, push, and save the app again.",
@@ -149,7 +150,7 @@ _REASON_OF = {
 def status_message(key: str, app: models.App) -> str:
     eff = resources.effective(app)
     return STATUS_MESSAGES[key].format(
-        port=app.port, mem=eff["mem_limit_mi"], path=app.health_check_path, minutes=config.DEPLOY_TIMEOUT_MINUTES
+        port=app.port, mem=eff["mem_limit_mi"], disk=config.EPHEMERAL_LIMIT_MI, path=app.health_check_path, minutes=config.DEPLOY_TIMEOUT_MINUTES
     )[:255]
 
 
@@ -391,6 +392,7 @@ def reconcile_app(
     if used and (
         (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > 2 * eff["cpu_limit_m"]
         or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > 2 * eff["mem_limit_mi"]
+        or (used.get("ephemeral_limit_mi") or 0) + config.EPHEMERAL_LIMIT_MI > 2 * config.EPHEMERAL_LIMIT_MI
     ):
         flat = k8s_manifests.flatten_manifests(
             k8s_manifests.render_app_manifests(**render_kwargs, used_limits=used)

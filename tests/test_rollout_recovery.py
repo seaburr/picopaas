@@ -108,7 +108,7 @@ def _pod(cpu, mem, phase="Running"):
 
 def test_used_limits_sum_existing_pods():
     prov = KubeClientProvider(tk._dyn(pods=[_pod("250m", "512Mi"), _pod("100m", "384Mi"), _pod("900m", "1Gi", "Succeeded")]))
-    assert prov.get_used_limits("n") == {"cpu_limit_m": 350, "mem_limit_mi": 896}
+    assert prov.get_used_limits("n") == {"cpu_limit_m": 350, "mem_limit_mi": 896, "ephemeral_limit_mi": 0}
     assert KubeClientProvider(tk._dyn()).get_used_limits("n") is None
 
 

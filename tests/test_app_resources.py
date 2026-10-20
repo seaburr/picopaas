@@ -93,9 +93,9 @@ def test_manifests_default_unchanged():
     q = k8s.resource_quota_manifest(1)["spec"]["hard"]
     assert (q["limits.cpu"], q["limits.memory"], q["requests.cpu"], q["requests.memory"]) == ("200m", "768Mi", "200m", "768Mi")
     lr = k8s.limit_range_manifest(1)["spec"]["limits"][0]
-    assert lr["max"] == {"cpu": "100m", "memory": "384Mi"}
+    assert lr["max"] == {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
     c = k8s.deployment_manifest(1, "img", 80)["spec"]["template"]["spec"]["containers"][0]
-    assert c["resources"] == {"requests": {"cpu": "64m", "memory": "128Mi"}, "limits": {"cpu": "100m", "memory": "384Mi"}}
+    assert c["resources"] == {"requests": {"cpu": "64m", "memory": "128Mi", "ephemeral-storage": "64Mi"}, "limits": {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}}
 
 
 def test_manifests_scale_with_overrides():
@@ -103,10 +103,10 @@ def test_manifests_scale_with_overrides():
     m = k8s.render_app_manifests(1, "h", "img", 80, {}, None, resources=eff)
     q = m["resource_quota"]["spec"]["hard"]
     assert (q["limits.cpu"], q["limits.memory"]) == ("1200m", "2048Mi")
-    assert m["limit_range"]["spec"]["limits"][0]["max"] == {"cpu": "600m", "memory": "1024Mi"}
+    assert m["limit_range"]["spec"]["limits"][0]["max"] == {"cpu": "600m", "memory": "1024Mi", "ephemeral-storage": "250Mi"}
     c = m["deployment"]["spec"]["template"]["spec"]["containers"][0]
-    assert c["resources"]["limits"] == {"cpu": "600m", "memory": "1024Mi"}
-    assert c["resources"]["requests"] == {"cpu": "100m", "memory": "256Mi"}
+    assert c["resources"]["limits"] == {"cpu": "600m", "memory": "1024Mi", "ephemeral-storage": "250Mi"}
+    assert c["resources"]["requests"] == {"cpu": "100m", "memory": "256Mi", "ephemeral-storage": "64Mi"}
 
 
 def test_reconciler_applies_effective_resources_and_health(admin, aid, db_session):

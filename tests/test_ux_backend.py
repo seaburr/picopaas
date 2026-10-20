@@ -190,7 +190,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
         "cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI,
         "cpu_request_m": config.DEFAULT_CPU_REQUEST_M, "mem_request_mi": config.DEFAULT_MEM_REQUEST_MI,
         "image_mb": config.MAX_IMAGE_SIZE_BYTES // 1048576, "db_mb": config.DB_QUOTA_BYTES // 1048576,
-        "bucket_mb": config.STORAGE_QUOTA_BYTES // 1048576,
+        "bucket_mb": config.STORAGE_QUOTA_BYTES // 1048576, "ephemeral_mi": config.EPHEMERAL_LIMIT_MI,
         "override": {"cpu_min_m": 10, "cpu_max_m": 1000, "mem_min_mi": 32, "mem_max_mi": 2048},
     }
     assert me["must_change_password"] is False
