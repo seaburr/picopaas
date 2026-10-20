@@ -297,8 +297,8 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-apps" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Apps</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[56rem]">
-              <colgroup><col /><col class="w-52" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-36" /><col class="w-40" /></colgroup>
+            <table class="tbl min-w-[60rem]">
+              <colgroup><col /><col class="w-52" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-40" /><col class="w-48" /></colgroup>
               <thead>
                 <tr>
                   <th scope="col">App</th><th scope="col">Owner</th><th scope="col">Status</th>
@@ -318,11 +318,11 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
                   <td><StatusBadge :status="a.status" /></td>
                   <td class="mono text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
                   <td class="mono text-right" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
-                  <td class="mono truncate text-right" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
+                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, a.cpu_limit_m, 'm') }}</template>
                     <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.cpu_limit_m }}m</span></template>
                   </td>
-                  <td class="mono truncate text-right" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
+                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
                     <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, a.mem_limit_mi, 'Mi') }}</template>
                     <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.mem_limit_mi }}Mi</span></template>
                   </td>
