@@ -130,7 +130,7 @@ function jump(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
+const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
 </script>
 
 <template>
@@ -257,7 +257,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
                 { label: 'CPU', unit: 'm', cap: n.cpu_allocatable_m, req: n.cpu_requested_m, used: n.cpu_used_m },
                 { label: 'Memory', unit: 'Mi', cap: n.mem_allocatable_mi, req: n.mem_requested_mi, used: n.mem_used_mi },
               ]" :key="r.label">
-                <div class="mb-1 flex justify-between text-xs text-zinc-400">
+                <div class="mb-1 flex flex-wrap justify-between gap-x-3 text-xs text-zinc-400">
                   <span>{{ r.label }}</span>
                   <span class="mono">used {{ num(r.used, r.unit) }} · req {{ r.req }}{{ r.unit }} · alloc {{ r.cap }}{{ r.unit }}</span>
                 </div>
@@ -301,7 +301,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Apps</h2>
           <div class="card overflow-x-auto">
             <table class="tbl min-w-[60rem]">
-              <colgroup><col /><col class="w-52" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-40" /><col class="w-48" /></colgroup>
+              <colgroup><col /><col class="w-44" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-40" /><col class="w-48" /></colgroup>
               <thead>
                 <tr>
                   <th scope="col">App</th><th scope="col">Owner</th><th scope="col">Status</th>
@@ -365,8 +365,8 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-db" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Database servers</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[56rem]">
-              <colgroup><col class="w-32" /><col /><col class="w-48" /><col class="w-40" /><col class="w-48" /><col class="w-24" /></colgroup>
+            <table class="tbl min-w-[68rem]">
+              <colgroup><col class="w-32" /><col /><col class="w-44" /><col class="w-52" /><col class="w-64" /><col class="w-24" /></colgroup>
               <thead>
                 <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Capacity</th><th scope="col">Connections</th><th scope="col">Data</th><th scope="col">Status</th></tr>
               </thead>

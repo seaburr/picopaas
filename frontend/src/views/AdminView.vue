@@ -163,7 +163,7 @@ async function saveLimit(u: AdminUser) {
   error.value = ''
   try {
     if (!Number.isInteger(limits[u.id]) || limits[u.id] < 0 || limits[u.id] > maxApps.value) {
-      error.value = `App limit must be a whole number from 0 to ${maxApps.value} (the platform max).`
+      error.value = 'App limit must be a whole number, and it can\'t be higher than the platform allows.'
       return
     }
     const updated = await setAppLimit(u.id, limits[u.id])
@@ -235,7 +235,7 @@ const resSummary = (a: AdminApp) =>
 
 const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
-const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_7rem_3.5rem_6rem_6.5rem] md:items-center md:gap-3'
+const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_7rem_6.5rem] md:items-center md:gap-3'
 const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
 const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_9rem_8.5rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
@@ -321,7 +321,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
           <div class="card overflow-hidden">
             <div :class="[usersGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>User</span><span>Status</span><span class="text-right">Apps</span><span>Limit</span><span class="text-right">Actions</span>
+              <span>User</span><span>Status</span><span class="text-right">Apps</span><span>App limit</span><span class="text-right">Actions</span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="u in otherUsers" :key="u.id" :class="[rowBase, usersGrid]">
@@ -333,16 +333,15 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
                 </div>
                 <div><StatusBadge :status="u.status" /></div>
-                <div class="mono md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}<span class="meta"> / {{ u.app_limit_effective }}</span></div>
-                <div v-if="u.role === 'platform_admin'" class="mono text-sm" :title="`Platform admins use the platform max (${maxApps})`">
-                  <span class="meta md:hidden">Limit </span>{{ u.app_limit_effective }}<span class="meta"> (platform max)</span>
+                <div class="mono whitespace-nowrap md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}<span class="meta"> / {{ u.app_limit_effective }}</span></div>
+                <div v-if="u.role === 'platform_admin'" class="mono whitespace-nowrap text-sm">
+                  <span class="meta md:hidden">Limit </span>{{ u.app_limit_effective }}
                 </div>
-                <form v-else class="flex h-7 items-center gap-1" @submit.prevent="saveLimit(u)">
+                <form v-else class="flex h-7 items-center gap-1 whitespace-nowrap" @submit.prevent="saveLimit(u)">
                   <span class="meta md:hidden">Limit</span>
                   <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono !min-h-[28px] w-14 !px-2 !py-0.5" />
                   <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
-                  <span class="meta" :title="`The platform max is ${maxApps} apps per account`">of {{ maxApps }} max</span>
                 </form>
                 <div class="flex gap-0.5 md:justify-end">
                   <template v-if="u.role !== 'platform_admin'">

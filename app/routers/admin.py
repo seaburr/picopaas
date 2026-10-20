@@ -335,7 +335,7 @@ def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_
     user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
     from app import config
     if payload.app_limit > config.MAX_APPS_PER_USER:
-        raise HTTPException(status_code=422, detail=f"app_limit can't exceed the platform max of {config.MAX_APPS_PER_USER}")
+        raise HTTPException(status_code=422, detail="That's above the platform's per-account app limit.")
     user.app_limit = payload.app_limit
     db.commit()
     audit.record(db, admin, "user.update", "user", user.id, f"app_limit={payload.app_limit}")

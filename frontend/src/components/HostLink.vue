@@ -8,7 +8,7 @@ defineProps<{ hostname: string }>()
 
 <template>
   <div class="flex min-w-0 items-center gap-0.5">
-    <a :href="`https://${hostname}`" target="_blank" rel="noopener noreferrer" class="link mono truncate" :title="hostname">
+    <a :href="`https://${hostname}`" target="_blank" rel="noopener noreferrer" class="link mono relative truncate" :title="hostname">
       {{ hostname }}<span class="sr-only"> (opens in new tab)</span>
     </a>
     <CopyButton :text="`https://${hostname}`" label="Copy URL" sm />
