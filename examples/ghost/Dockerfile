@@ -14,7 +14,7 @@ RUN set -eux; \
     fi; \
     # S3 storage adapter for uploaded images -> content/adapters/storage/s3 (where Ghost loads adapters).
     cd /var/lib/ghost; \
-    npm install --no-save ghost-storage-adapter-s3@3.0.1; \
+    npm install --no-save ghost-storage-adapter-s3@2.8.0; \
     mkdir -p content/adapters/storage/s3; \
     cp -a node_modules/ghost-storage-adapter-s3/. content/adapters/storage/s3/; \
     chown -R 10001:10001 /var/lib/ghost
