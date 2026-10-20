@@ -73,10 +73,15 @@ def test_numeric_non_root_accepted(client, user):
 
 
 def test_registry_inspect_reads_user_from_config_blob():
+    import hashlib
+    import json
+
+    cfg_raw = json.dumps({"config": {"User": "10001"}}).encode()
+    cfg_digest = "sha256:" + hashlib.sha256(cfg_raw).hexdigest()
     manifest = {
         "schemaVersion": 2,
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "config": {"digest": "sha256:cfg", "size": 10},
+        "config": {"digest": cfg_digest, "size": 10},
         "layers": [{"size": 5}, {"size": 7}],
     }
 
@@ -85,10 +90,10 @@ def test_registry_inspect_reads_user_from_config_blob():
             return httpx.Response(200)
         if request.url.path == "/v2/example/demo/manifests/1.0":
             return httpx.Response(200, json=manifest, headers={"content-type": manifest["mediaType"]})
-        if request.url.path == "/v2/example/demo/blobs/sha256:cfg":
+        if request.url.path == "/v2/example/demo/blobs/" + cfg_digest:
             return httpx.Response(307, headers={"location": "https://blobs.example.com/cfg"})
         if request.url.host == "blobs.example.com":
-            return httpx.Response(200, json={"config": {"User": "10001"}})
+            return httpx.Response(200, content=cfg_raw)
         return httpx.Response(404)
 
     info = RegistryClient(client=httpx.Client(transport=httpx.MockTransport(handler))).inspect(IMAGE)

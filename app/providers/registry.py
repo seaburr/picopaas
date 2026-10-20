@@ -14,13 +14,16 @@ entry (falling back to the first entry if none matches) before summing.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import ipaddress
 import logging
 import re
 import socket
 from typing import Any, Optional
 
+import httpcore
 import httpx
+from urllib.parse import urljoin
 
 from app.providers.base import ImageInfo, Registry, RegistryError
 
@@ -90,18 +93,85 @@ def _check_public_host(host: str) -> None:
             raise RegistryError("image registry not allowed")
 
 
+class _PinnedBackend(httpcore.SyncBackend):
+    """Network backend that closes the DNS-rebinding TOCTOU.
+
+    Resolves the name ONCE at connect time, requires every returned address to be
+    global, then connects to that exact validated IP (no second resolution). TLS
+    SNI / certificate verification still use the original hostname (httpcore passes
+    the origin host as server_hostname), so only the address is pinned."""
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        try:
+            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise httpcore.ConnectError(str(exc)) from exc
+        ips = [i[4][0].split("%")[0] for i in infos]
+        if not ips or not all(ipaddress.ip_address(ip).is_global for ip in ips):
+            raise RegistryError("image registry not allowed")
+        return super().connect_tcp(ips[0], port, timeout=timeout, local_address=local_address,
+                                   socket_options=socket_options)
+
+
+def _pinned_client(timeout: float) -> httpx.Client:
+    # trust_env=False: no env proxies (a proxy would resolve the name itself).
+    transport = httpx.HTTPTransport()
+    transport._pool._network_backend = _PinnedBackend()  # httpx exposes no public hook
+    return httpx.Client(transport=transport, timeout=timeout, trust_env=False, follow_redirects=False)
+
+
+_MAX_REDIRECTS = 5
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_MAX_BODY_BYTES = 4 * 1024 * 1024  # manifests and image configs are small JSON
+
+
+def _verify_digest(content: bytes, expected: str) -> str:
+    """Return `expected` if sha256/sha512 of `content` matches it; else RegistryError."""
+    algo, _, hexdigest = expected.partition(":")
+    if algo not in ("sha256", "sha512") or not hexdigest:
+        raise RegistryError("unsupported digest algorithm")
+    if not hmac.compare_digest(hashlib.new(algo, content).hexdigest(), hexdigest.lower()):
+        log.warning("registry content does not match digest %s", expected)
+        raise RegistryError("image content does not match its digest")
+    return expected
+
+
 def _parse_www_authenticate(header: str) -> dict[str, str]:
     return dict(_WWW_AUTH_PARAM_RE.findall(header))
 
 
 class RegistryClient(Registry):
     def __init__(self, client: Optional[httpx.Client] = None, timeout: float = 10.0) -> None:
-        self._client = client or httpx.Client(timeout=timeout)
+        self._client = client or _pinned_client(timeout)
 
     def _get(self, url: str, **kw: Any) -> httpx.Response:
-        host = httpx.URL(url).host
-        _check_public_host(host)
-        return self._client.get(url, **kw)
+        """GET with manual, validated redirects. Every hop (including the first) is
+        host-checked; auto-follow is off. Connect-time IP pinning (see _PinnedBackend)
+        closes the rebinding gap for the default client; with an injected client
+        (tests) only the per-hop name check applies. Body is capped at _MAX_BODY_BYTES."""
+        kw.pop("follow_redirects", None)
+        headers = dict(kw.pop("headers", None) or {})
+        origin = httpx.URL(url).host
+        for _ in range(_MAX_REDIRECTS + 1):
+            parsed = httpx.URL(url)
+            if parsed.scheme != "https":
+                raise RegistryError("image registry not allowed")
+            _check_public_host(parsed.host)
+            if parsed.host != origin:
+                headers.pop("Authorization", None)  # never leak the bearer token cross-host
+            with self._client.stream("GET", url, headers=headers, follow_redirects=False, **kw) as resp:
+                if resp.status_code in _REDIRECT_STATUSES and resp.headers.get("location"):
+                    url = urljoin(str(resp.url), resp.headers["location"])
+                    kw.pop("params", None)
+                    continue
+                body = bytearray()
+                for chunk in resp.iter_bytes():
+                    body += chunk
+                    if len(body) > _MAX_BODY_BYTES:
+                        raise RegistryError("registry response too large")
+                return httpx.Response(resp.status_code, headers=resp.headers, content=bytes(body),
+                                      request=resp.request)
+        raise RegistryError("image registry not allowed")  # redirect chain too long
 
     def image_size_bytes(self, image_ref: str) -> int:
         return self._sum_layer_sizes(self._wrap(lambda: self._resolve(image_ref)[0]))
@@ -128,12 +198,16 @@ class RegistryClient(Registry):
                 raise RegistryError("manifest has no config digest; unsupported schema")
             headers = {"Authorization": f"Bearer {token}"} if token else {}
             # Blobs are commonly served via a redirect to object storage.
-            resp = self._get(
-                f"https://{registry}/v2/{repository}/blobs/{digest}", headers=headers, follow_redirects=True
-            )
+            resp = self._get(f"https://{registry}/v2/{repository}/blobs/{digest}", headers=headers)
             if resp.status_code != 200:
                 log.warning("registry blob fetch %s/%s: HTTP %s", registry, repository, resp.status_code)
                 raise RegistryError("image not found or not public")
+            # The config carries USER: it must be the exact blob the manifest names.
+            _verify_digest(resp.content, digest)
+            # RESIDUAL: the size cap counts compressed layer bytes. Neither the manifest nor the
+            # config exposes uncompressed layer sizes (rootfs.diff_ids are hashes only), so a
+            # decompressed-layer bomb is not bounded here. Layers are deliberately not fetched
+            # or inflated (that would be its own DoS); kubelet ephemeral-storage limits apply.
             user = (resp.json().get("config") or {}).get("User") or ""
             return ImageInfo(size_bytes=size, user=user, digest=manifest_digest)
 
@@ -190,15 +264,24 @@ class RegistryClient(Registry):
         if token:
             headers["Authorization"] = f"Bearer {token}"
         url = f"https://{registry}/v2/{repository}/manifests/{reference}"
-        resp = self._get(url, headers=headers, follow_redirects=True)
+        resp = self._get(url, headers=headers)
         if resp.status_code in (401, 404):
             log.warning("registry manifest %s/%s: HTTP %s", registry, repository, resp.status_code)
             raise RegistryError("image not found or not public")
         if resp.status_code != 200:
             raise RegistryError(f"registry returned HTTP {resp.status_code} for {image_ref_desc(repository, reference)}")
-        digest = resp.headers.get("docker-content-digest") or "sha256:" + hashlib.sha256(resp.content).hexdigest()
-        if reference.startswith("sha256:"):
-            digest = reference  # we asked for exactly this content
+        # The digest we pin to is the one we HASHED, never just a header value.
+        if ":" in reference:
+            digest = _verify_digest(resp.content, reference)  # asked for exact content
+        else:
+            digest = "sha256:" + hashlib.sha256(resp.content).hexdigest()
+        header = resp.headers.get("docker-content-digest")
+        if header and header != digest:
+            if header.partition(":")[0] != "sha256":
+                _verify_digest(resp.content, header)  # other algo: must still match the bytes
+            else:
+                log.warning("registry Docker-Content-Digest header mismatch for %s", reference)
+                raise RegistryError("image content does not match its digest")
         return resp.json(), resp.headers.get("content-type", ""), digest
 
     @staticmethod

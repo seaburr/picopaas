@@ -7,6 +7,7 @@ from app.config import MAX_IMAGE_SIZE_BYTES
 from app.dependencies import get_registry
 from app.main import app as fastapi_app
 from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore, FakeRegistry
+from app.providers.base import RegistryError
 from app.providers.registry import RegistryClient
 from app.reconciler import reconcile_app
 from tests.conftest import register_and_login
@@ -78,34 +79,45 @@ def _mock_registry(handler):
 
 
 def test_real_registry_returns_manifest_digest_and_amd64_for_index():
-    manifest = {"schemaVersion": 2, "config": {"digest": "sha256:cfg", "size": 1}, "layers": [{"size": 5}]}
-    index = {"mediaType": "application/vnd.oci.image.index.v1+json",
-             "manifests": [{"digest": "sha256:arm", "platform": {"os": "linux", "architecture": "arm64"}},
-                           {"digest": "sha256:amd", "platform": {"os": "linux", "architecture": "amd64"}}]}
+    import hashlib
+    import json
+
+    def enc(o):
+        raw = json.dumps(o).encode()
+        return raw, "sha256:" + hashlib.sha256(raw).hexdigest()
+
+    cfg_raw, cfg_d = enc({"config": {"User": "10001"}})
+    man_raw, man_d = enc({"schemaVersion": 2, "config": {"digest": cfg_d, "size": 1}, "layers": [{"size": 5}]})
+    idx_raw, _ = enc({"mediaType": "application/vnd.oci.image.index.v1+json",
+                      "manifests": [{"digest": "sha256:" + "0" * 64, "platform": {"os": "linux", "architecture": "arm64"}},
+                                    {"digest": man_d, "platform": {"os": "linux", "architecture": "amd64"}}]})
 
     def handler(req: httpx.Request) -> httpx.Response:
         p = req.url.path
         if p == "/v2/":
             return httpx.Response(200)
         if p.endswith("/manifests/single"):
-            return httpx.Response(200, json=manifest, headers={"docker-content-digest": "sha256:hdr"})
+            return httpx.Response(200, content=man_raw, headers={"docker-content-digest": man_d})
+        if p.endswith("/manifests/badhdr"):
+            return httpx.Response(200, content=man_raw, headers={"docker-content-digest": "sha256:" + "1" * 64})
         if p.endswith("/manifests/nohdr"):
-            return httpx.Response(200, json=manifest)
+            return httpx.Response(200, content=man_raw)
         if p.endswith("/manifests/multi"):
-            return httpx.Response(200, json=index, headers={"content-type": "application/vnd.oci.image.index.v1+json"})
-        if p.endswith("/manifests/sha256:amd"):
-            return httpx.Response(200, json=manifest)
+            return httpx.Response(200, content=idx_raw, headers={"content-type": "application/vnd.oci.image.index.v1+json"})
+        if p.endswith("/manifests/" + man_d):
+            return httpx.Response(200, content=man_raw)
         if "/blobs/" in p:
-            return httpx.Response(200, json={"config": {"User": "10001"}})
+            return httpx.Response(200, content=cfg_raw)
         return httpx.Response(404)
 
     c = _mock_registry(handler)
-    assert c.resolve_digest("registry.example.com/a/b:single") == "sha256:hdr"
-    assert c.inspect("registry.example.com/a/b:single").digest == "sha256:hdr"
-    assert c.resolve_digest("registry.example.com/a/b:nohdr").startswith("sha256:") and len(
-        c.resolve_digest("registry.example.com/a/b:nohdr")) == 71
-    assert c.resolve_digest("registry.example.com/a/b:multi") == "sha256:amd"
-    assert c.inspect("registry.example.com/a/b:multi").digest == "sha256:amd"
+    assert c.resolve_digest("registry.example.com/a/b:single") == man_d
+    assert c.inspect("registry.example.com/a/b:single").digest == man_d
+    assert c.resolve_digest("registry.example.com/a/b:nohdr") == man_d  # computed, not a header
+    assert c.resolve_digest("registry.example.com/a/b:multi") == man_d
+    assert c.inspect("registry.example.com/a/b:multi").digest == man_d
+    with pytest.raises(RegistryError):
+        c.resolve_digest("registry.example.com/a/b:badhdr")
 
 
 # --- watcher ---
