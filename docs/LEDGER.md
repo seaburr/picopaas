@@ -463,3 +463,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] START: commit quota-sizing fix, push, watch ci/image/deploy
 - 2026-10-19 [scm-security] DONE: pushed ff6136f (quota sizing from existing pods); ci/image/deploy green
 - 2026-10-19 [scm-security] DONE: SPA catch-all 404 route (unknown paths rendered a blank shell)
+- 2026-10-19 [scm-security] DONE: reload once onto the target route when a lazy chunk from a previous build is gone (post-deploy dead links)
