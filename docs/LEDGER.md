@@ -535,3 +535,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [backend-dev] START: probe /db 500 "No username set" on py3.13 (UID 10001)
 - 2026-10-20 [backend-dev] DONE: root cause = pymysql calls getpass.getuser() at import; 3.13 raises OSError (not KeyError) with no passwd entry/USER env. DB_USER was fine. Fix: testapps/probe Dockerfile `ENV HOME=/tmp USER=app` + os.environ.setdefault in app.py; USER_GUIDE troubleshooting row. Verified live (existing image + USER/HOME app env): all endpoints 200, tlscheck matches guide. New image needs scm-security commit/push to rebuild. Uncommitted.
 - 2026-10-20 [scm-security] START: commit+push probe UID/py3.13 fix; watching testapps + ci.
+- 2026-10-20 [scm-security] DONE: 0f7da86 pushed; testapps+ci+image+deploy success; probe image ghcr.io/seaburr/picopaas-testapp-probe:0f7da86 (sha256:0dde23077c1cc00e68c4eefce160bc2dbf33555173958ffbe7bdd5eb29933fc2). CLAUDE.md left unstaged.
+- 2026-10-20 [scm-security] START: commit+push Ghost CMS demo (examples/ghost image + examples workflow); watch build, make GHCR package public.
+- 2026-10-20 [scm-security] DONE: Ghost CMS demo build committed (non-root UID 10001, env-translation entrypoint, MySQL content + S3 image storage); image ghcr.io/seaburr/picopaas-example-ghost. CLAUDE.md left unstaged.
