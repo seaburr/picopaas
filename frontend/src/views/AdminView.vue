@@ -230,7 +230,7 @@ const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
 const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_7rem_3.5rem_6rem_6.5rem] md:items-center md:gap-3'
 const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
-const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_9rem_7rem] md:items-center md:gap-3'
+const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_9rem_8.5rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
 
@@ -401,7 +401,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   :value="s.status"
                   :aria-label="`Status of ${s.name}`"
                   :title="SERVER_STATUS_HELP[s.status] ?? ''"
-                  class="input !min-h-[28px] w-32 !py-0.5 !pl-2"
+                  class="input !min-h-[28px] w-full !py-0.5 !pl-2"
                   @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
                 >
                   <option value="active">Active</option>

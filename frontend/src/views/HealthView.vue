@@ -113,7 +113,8 @@ const problems = computed<Problem[]>(() => {
   const failed = d.apps.filter((a) => a.status === 'error')
   if (failed.length) out.push({ text: `${failed.length} failed app${failed.length > 1 ? 's' : ''}`, target: 'sec-apps' })
   const notReady = d.platform.filter((p) => !p.ready)
-  if (notReady.length) out.push({ text: `${notReady.length} platform component${notReady.length > 1 ? 's' : ''} not ready`, target: 'sec-platform' })
+  // Names, so a pod that is just starting during a platform deploy is recognisable as such.
+  if (notReady.length) out.push({ text: `Platform pod${notReady.length > 1 ? 's' : ''} not ready: ${notReady.map((p) => p.name).join(', ')}`, target: 'sec-platform' })
   const full = d.db_servers.filter((s) => s.warn)
   if (full.length) out.push({ text: `${full.length} DB server${full.length > 1 ? 's' : ''} above 80%`, target: 'sec-db' })
   if (!d.metrics_available && !out.some((p) => /Kubernetes/.test(p.text))) out.push({ text: 'Metrics unavailable', target: 'sec-summary' })

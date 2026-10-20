@@ -471,3 +471,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] START: commit UI polish pass
 - 2026-10-19 [scm-security] DONE: pushed 66e4d40 (UI polish); ci/image/deploy green
 - 2026-10-19 [scm-security] DONE: select chevron spacing; DB server status options labelled + explained (drain)
+- 2026-10-19 [scm-security] DONE: DB server status select fits its column; Health verdict names not-ready platform pods
