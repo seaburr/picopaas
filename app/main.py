@@ -207,6 +207,27 @@ async def host_routing(request: Request, call_next):
     return await call_next(request)
 
 
+def _csp() -> str:
+    # Checked against the real build (static/): one module script, one stylesheet, no eval, no external fonts or
+    # scripts. style-src needs 'unsafe-inline' for the <style> blocks / style attributes on the static pages and
+    # Vue's style bindings. img-src: data: for the select-arrow SVG in the CSS; the platform host because the
+    # apex landing/privacy pages load icons from it.
+    return (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        f"img-src 'self' data: https://{config.PLATFORM_HOST}; font-src 'self'; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    )
+
+
+def _add_security_headers(response, path: str) -> None:
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    # FastAPI's /docs and /redoc pull Swagger/ReDoc from a CDN with inline scripts; a strict CSP would break them.
+    if path not in ("/docs", "/redoc"):
+        response.headers["Content-Security-Policy"] = _csp()
+
+
 @app.middleware("http")
 async def robots_and_noindex(request: Request, call_next):
     """Outermost middleware (registered last): /robots.txt on every host, and X-Robots-Tag on every response.
@@ -216,6 +237,7 @@ async def robots_and_noindex(request: Request, call_next):
     else:
         response = await call_next(request)
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    _add_security_headers(response, request.url.path)
     if response.headers.get("content-type", "").startswith("application/json"):
         # API responses are per-user and live: never cache them, and key whatever cache exists on the headers
         # that decide between the SPA and the JSON for the same URL.

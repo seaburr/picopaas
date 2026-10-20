@@ -9,6 +9,7 @@ import os
 
 os.environ.setdefault("ENVIRONMENT", "dev")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "0")
 
 import pytest
 from fastapi.testclient import TestClient

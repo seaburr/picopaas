@@ -10,9 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import audit, crypto, health, models, resources, schemas
+from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_kube, require_platform_admin
-from app.routers.apps import DOMAIN_SUFFIX
 from app.schemas import ResourcesOut
 from app.security import hash_password
 
@@ -224,7 +224,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 
 
 def _app_admin_out(a: models.App) -> AdminAppOut:
-    return AdminAppOut(id=a.id, name=a.name, hostname=f"{a.hostname}.{DOMAIN_SUFFIX}", status=a.status,
+    return AdminAppOut(id=a.id, name=a.name, hostname=f"{a.hostname}.{APP_DOMAIN}", status=a.status,
                        owner_id=a.owner_id, owner_email=a.owner.email, image=a.image, created_at=a.created_at,
                        resources=resources.describe(a))
 

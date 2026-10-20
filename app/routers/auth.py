@@ -1,13 +1,13 @@
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import audit, models, schemas
-from app import resources
+from app import ratelimit, resources
 from app.config import (
     DB_QUOTA_BYTES,
     DEFAULT_APP_LIMIT,
@@ -86,7 +86,8 @@ def create_user(db: Session, email: str, password: str, first_hint: bool = None,
 
 
 @router.post("/register", response_model=schemas.UserOut, status_code=201)
-def register(payload: schemas.UserRegister, response: Response, db: Session = Depends(get_db)):
+def register(payload: schemas.UserRegister, request: Request, response: Response, db: Session = Depends(get_db)):
+    ratelimit.check_register(db, request)
     try:
         user = create_user(db, payload.email, payload.password, terms_accepted=True)
     except DuplicateEmail:
@@ -109,15 +110,18 @@ def register(payload: schemas.UserRegister, response: Response, db: Session = De
 
 
 @router.post("/login", response_model=schemas.UserOut)
-def login(payload: schemas.UserLogin, response: Response, db: Session = Depends(get_db)):
+def login(payload: schemas.UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
+    ratelimit.check_login(db, request, payload.email)
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if user is None or user.status == "deleted" or not verify_password(payload.password, user.password_hash):
+        ratelimit.record_login_failure(db, request, payload.email)
         audit.record(db, None, "login.failed", "user", user.id if user else None,
                      "invalid credentials", actor_email=payload.email.lower()[:255])
         raise HTTPException(
             status_code=401,
             detail="Email or password is wrong. Try again, or ask an administrator to reset your password.",
         )
+    ratelimit.clear_login_failures(db, payload.email)
     _set_session_cookie(response, user.id)
     return user
 

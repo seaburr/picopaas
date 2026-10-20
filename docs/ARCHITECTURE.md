@@ -239,3 +239,8 @@ passwords). The session signing key is derived from it unless `SECRET_KEY` is se
 secret `PICOPAAS_FERNET_KEY`; `bootstrap.yml` writes it into `picopaas-env`. It must never be generated per cluster:
 a cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is
 implemented; see `docs/OPERATIONS.md` §3.
+
+## Auth throttling and security headers
+- `/auth/login` and `/auth/register` are throttled by `app/ratelimit.py` using the `auth_throttle` table (fixed windows, hashed keys), so the limit holds across replicas. Login: 10 failures per email / 15 min (primary control, no IP dependence; applies identically to unknown emails; success clears it) and 30 per client IP. Register: 5 attempts per client IP / hour. 429 + `Retry-After`. Store errors fail open (logged). API-key traffic is not throttled here.
+- Client IP = rightmost `X-Forwarded-For` entry (Traefik discards client-supplied XFF and writes the peer it saw). Behind the DO LB in TCP mode without PROXY protocol the peer may be the LB, so IP buckets can be coarse; hence the looser login IP limit. Enable PROXY protocol on LB+Traefik to make them precise.
+- Every response carries HSTS, nosniff, X-Frame-Options DENY and an enforcing CSP (`/docs`, `/redoc` exempt from CSP: they load a CDN).

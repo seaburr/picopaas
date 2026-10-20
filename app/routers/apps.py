@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import audit, config, crypto, image_check, models, reconciler, resources, schemas
+from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
@@ -26,7 +27,6 @@ from app.schemas import MASKED_VALUE
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/apps", tags=["apps"])
 
-DOMAIN_SUFFIX = "raisehellpraisedale.xyz"
 
 
 _ROTATE_FAILED = "Couldn't rotate the credentials, so the old ones still work. Try again; if it keeps failing, ask an administrator."
@@ -78,7 +78,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         id=app.id,
         owner_id=app.owner_id,
         name=app.name,
-        hostname=f"{app.hostname}.{DOMAIN_SUFFIX}",
+        hostname=f"{app.hostname}.{APP_DOMAIN}",
         image=app.image,
         image_digest=app.image_digest,
         auto_update=app.auto_update,

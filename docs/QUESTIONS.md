@@ -14,6 +14,20 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
+- [ ] **Security hardening before trial users (from the 2026-10-20 pentest pass; full notes in the scratchpad, not committed since the repo is public).**
+      The code-side findings Claude is fixing separately; these four only you can do:
+  - [ ] **Make the repo private.** Biggest single mitigation: a public repo exposes the full design, and the read-only diag
+        workflow logs print infra details (DB hostname, node IP, network policies). Settings → General → Danger Zone.
+  - [ ] **Scope the DigitalOcean credentials in the API pod.** Today the API pod's `picopaas-env` secret holds an
+        account-wide DO API token and a full-access Spaces key, so any code-execution bug in the API reaches the whole DO
+        account. Create a DO token with only the scopes bootstrap/the app need, and a Spaces key limited where DO allows.
+        Then update the GitHub/k8s secrets and re-run bootstrap. Tell Claude and it can help narrow exactly what's needed.
+  - [ ] **GitHub repo settings:** protect `main` (require PRs/checks), move the Actions secrets into a protected
+        Environment rather than repo-level, and when your pentester friend gets access give them only a **tenant account** on
+        the platform — never GitHub repo write.
+  - [ ] **Decide:** should `/docs`, `/redoc` and `/openapi.json` stay public? They're reachable unauthenticated today
+        (looks intentional — the 404 page points at the API docs). Say "keep" or "gate behind admin" and Claude will do it.
+
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
       second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.
 

@@ -131,3 +131,17 @@ MAX_NODES = int(os.environ["MAX_NODES"]) if os.environ.get("MAX_NODES", "").isdi
 
 # A rollout still not ready after this many minutes fails (retryable) with a message saying what we saw.
 DEPLOY_TIMEOUT_MINUTES = 10
+
+# Brute-force protection on /auth/login and /auth/register (app/ratelimit.py). DB-backed so the limits are
+# shared by every replica. RATE_LIMIT_ENABLED=0 turns it off (the test suite does; limiter tests turn it on).
+RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "1") != "0"
+# The per-email login lockout is the real brute-force control and is IP-independent. The per-IP limits are a
+# coarse floodwall: the DO LB runs in TCP mode without PROXY protocol, so the app currently sees the LB's
+# address, not the client's — the IP buckets are effectively shared platform-wide. They're set generously so
+# they never block a legitimate trickle; enabling PROXY protocol (see docs/ARCHITECTURE.md) would let us tighten
+# them to real per-client values.
+LOGIN_EMAIL_MAX_FAILS = 10       # failed logins per email per window: the primary control
+LOGIN_IP_MAX_FAILS = 100         # per client IP (shared LB address today) — a floodwall, not the main control
+LOGIN_WINDOW_SECONDS = 15 * 60
+REGISTER_IP_MAX = 40             # signups per IP per window (shared LB address today); approval still gates every account
+REGISTER_WINDOW_SECONDS = 60 * 60

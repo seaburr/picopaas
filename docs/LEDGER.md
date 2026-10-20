@@ -512,3 +512,8 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit rename / rotation-doc / S3+probe+test as three commits; push; watch ci, image, deploy, testapps; verify
 - 2026-10-20 [scm-security] DONE: 3 commits made (CLAUDE.md budget edit left uncommitted, not in scope); pushing
 - 2026-10-20 [scm-security] DONE: 5ea84b8 pushed; ci/image/deploy/testapps success; /auth/me role platform_admin, healthz ok, demo 200
+- 2026-10-20 [backend-dev] START: registry SSRF (manual redirects, pinned IP) + manifest/config digest verification
+- 2026-10-20 [backend-dev] START: pentest fixes: auth rate limiting (DB-backed), security headers + CSP, DOMAIN_SUFFIX -> config.APP_DOMAIN (app/ratelimit.py, main.py, routers/auth|apps|admin.py, migration, tests)
+- 2026-10-20 [backend-dev] DONE: registry hardening: manual redirects (https only, <=5 hops, per-hop public-host check, Authorization dropped cross-host), connect-time pinned-IP backend (resolve once, all-global check, connect to that IP; SNI unchanged), body cap 4MiB, manifest+config bytes verified against digest (header must match computed; pin = hashed digest). Decompressed-layer residual documented in code. Tests updated/added in test_registry/test_image_watch/test_non_root. 459 passed/60 skipped. Uncommitted.
+- 2026-10-20 [backend-dev] DONE: auth throttling (app/ratelimit.py, auth_throttle migration c9d1e3f5a7b2), security headers + CSP in app/main.py, DOMAIN_SUFFIX removed (APP_DOMAIN), tests/test_auth_throttle_and_headers.py. 470 passed. Uncommitted; migration needs alembic upgrade head on deploy.
+- 2026-10-20 [scm-security] START: commit+push registry hardening and auth hardening

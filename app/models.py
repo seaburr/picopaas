@@ -249,3 +249,14 @@ class AuditLog(Base):
     target_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # Short, secret-free note. Never passwords, keys or env values.
     detail: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class AuthThrottle(Base):
+    """Fixed-window counters for login/register throttling, shared by all replicas (app/ratelimit.py).
+    `key` is a hash, so no email address or IP is stored in the clear."""
+
+    __tablename__ = "auth_throttle"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
