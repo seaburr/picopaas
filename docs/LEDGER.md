@@ -492,3 +492,9 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [backend-dev] DONE: API key name (String(64), trimmed/printable, optional body) + last_used_at in list, throttled 5 min in dependencies.py; migration c5d8e2f9a3b7 (single head); docs/API.md; tests in test_api_keys.py. 434 passed/60 skipped. Uncommitted.
 - 2026-10-20 [scm-security] START: commit API key names + db-servers features fix
 - 2026-10-20 [backend-dev] DONE: features.databases means a new DB can be placed (active server with a free slot); 'Full' status hidden as legacy (same as draining); drain help corrected
+- 2026-10-20 [backend-dev] START: kill over-cap DB sessions as the app's own user first (doadmin gets 1095)
+- 2026-10-20 [backend-dev] DONE: over-cap DB sessions are killed as the app's own user first (MySQLAdminClient._kill_as_app_user; set_read_only gets app_password, result has 'path'), then admin kill, then pod roll. quota.py passes the decrypted password; tests added. QUESTIONS to-do resolved. Uncommitted.
+- 2026-10-20 [infra-ops] START: docs update: actual cost (ARCHITECTURE §1, OPERATIONS §8, QUESTIONS to-do) + README rewrite with architecture diagrams
+- 2026-10-20 [infra-ops] DONE: ARCHITECTURE §1 rewritten (baseline ~$60.15, worst ~$88.15; node $28 unverified from DO), OPERATIONS §8 points to it, QUESTIONS to-do for CLAUDE.md budget rule, README rewritten (Mermaid arch + deploy sequence, stack table). Uncommitted.
+- 2026-10-20 [scm-security] START: commit app-user session kill (backend) + README/cost docs as two commits; push
+- 2026-10-20 [scm-security] DONE: committed both; pushing

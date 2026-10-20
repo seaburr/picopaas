@@ -11,6 +11,9 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
+- [ ] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
+      second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.
+
 - [ ] **Add GitHub secrets `E2E_USER_TOKEN` and `E2E_ADMIN_TOKEN` so the weekly quota test can run.**
 
       *What it is.* `.github/workflows/quota-e2e.yml` runs every Monday (and on demand from the Actions tab). It logs in to the
@@ -41,11 +44,11 @@ background on each item if you want it.
       4. Optional: **Actions → quota-e2e → Run workflow** to see it pass once.
 
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
-- [ ] After the next deploy, check the platform log for `quota: app N db sessions: killed ...` the first time an app goes over its DB cap.
       If it says `failed` > 0 or `listing failed`, the DB admin (`doadmin`) cannot kill other users' sessions; the platform then rolls
       the app's pod as a fallback (see the 2026-10-19 ledger entry), but tell Claude so it can look for a better mechanism.
 
 ## Resolved
+- 2026-10-20: Worker node `s-2vcpu-4gb-amd` costs $28/mo (Chas, from the DO bill).
 - 2026-10-20: bootstrap.md caps updated by Chas (DB 50MB, bucket 100MB, CPU 100m, RAM 384MB, image 256MB, scratch disk 250MB);
   matches `app/config.py`.
 - 2026-10-19: **Own the platform encryption keys.** FERNET_KEY decrypts every secret the platform stores in MySQL; losing it
@@ -80,3 +83,4 @@ background on each item if you want it.
 - 2026-10-19: Internal-team audience; arbitrary images OK with: signups inert until approved, admin
   suspend/delete for users and apps, audit log, SMTP egress blocked. `hostUsers: false` not adopted.
 - 2026-10-19: Terraform state in Terraform Cloud (org `seaburr`), like other projects.
+- [x] 2026-10-20: doadmin can't kill app sessions (MySQL 1095 'not owner of thread'); the pod-roll fallback cut a 300MB fill at ~88MB. Now the platform kills sessions as the app's own user first.

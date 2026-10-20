@@ -138,21 +138,10 @@ from `MAX_NODES` (2, set at bootstrap); the real cap is `max_nodes` in Terraform
 
 ## 8. Cost
 
-Current Terraform defaults (`infra/variables.tf`) and request 0001 (APPROVED with a LB and managed MySQL): node $28 + LB $12 + Spaces $5 + MySQL $15.15 = about $60/mo.
-
-| Item | Default | Approx. monthly |
-|---|---|---|
-| DOKS control plane | non-HA | $0 |
-| Worker node | `s-2vcpu-4gb-amd`, 1 node, autoscaler `max_nodes = 2` | about $28 (second node +about $28 while up) |
-| Managed MySQL | `db-s-1vcpu-1gb` (basic, 1 GiB) | about $15.15 |
-| Load balancer | on | $12 |
-| Spaces | subscription | $5 |
-| **Total** | | **about $60 (about $88 with the second node)** |
-
-This is about $20 above the $40 budget in CLAUDE.md, accepted by Chas (request 0001, status APPROVED). While the
-autoscaler runs a second node (`max_nodes = 2`) it is about $88. The older figures in QUESTIONS.md Resolved
-($60.30 with a $19.30 MySQL plan, etc.) are history; `infra/variables.tf` is the source of truth, so update these
-docs if you change a size. Any new paid resource needs a request in `docs/requests/`.
+Baseline about $60.15/mo (node $28 + MySQL $15.15 + LB $12 + Spaces $5), about $88.15 while the autoscaler runs the
+second node. The full table, cost drivers, per-app marginal cost, and sources are in
+[ARCHITECTURE.md §1](ARCHITECTURE.md#1-hosting-cost). `infra/variables.tf` is the source of truth; update §1 if you
+change a size. Any new paid resource needs a request in `docs/requests/`.
 
 Capacity: roughly 8 to 12 apps per node; about 25 app databases per MySQL server; Spaces has a 100 buckets per
 account limit.

@@ -1,39 +1,59 @@
 # PicoPaaS Architecture (v0 draft)
 
-Status: **proposed, needs Chas's sign-off on the hosting option** (see `docs/requests/0001-core-infra.md`).
-Pricing checked against digitalocean.com on 2026-10-18.
+Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). Sections below still describe some "lean" ideas; §1 and `docs/OPERATIONS.md` are current.
+Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
 > (was 512), CPU limit 100m (was 250m), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
 > old numbers and is pending his update. Single source of truth: `app/config.py` (env-overridable). Older figures below were updated in place.
 
-## 1. Hosting cost: what fits under $40/mo
+## 1. Hosting cost
 
-| Item | Managed option | Lean option (recommended) |
+Prices checked 2026-10-20 (list prices, USD, before tax). History: this section used to plan a "lean" ~$30/mo setup
+(no load balancer, in-cluster MySQL). Chas approved the managed variant instead (request 0001, 2026-10-19), so the
+numbers below are what actually runs. `infra/variables.tf` is the source of truth for sizes.
+
+| Item | What runs | Monthly |
 |---|---|---|
-| DOKS control plane (non-HA) | $0 | $0 |
-| Worker node | 1 × s-2vcpu-4gb, $24 | 1 × s-2vcpu-4gb, $24 |
-| Load balancer | $12 | **$0**: Traefik on hostPorts, DNS points at the node IP |
-| MySQL | Managed 1 GiB, $15.15 | **In-cluster MySQL 8** StatefulSet on a 10 GiB volume, ~$1 |
-| Spaces | $5 (250 GiB, 1 TiB egress, 100 buckets) | $5 |
-| Container registry | GHCR (free) | GHCR (free) |
-| **Total (static)** | **~$56: over budget** | **~$30** |
+| DOKS control plane | non-HA, NYC3 | $0 |
+| Worker node | 1 × `s-2vcpu-4gb-amd` (Premium AMD, 2 vCPU / 4 GB) | $28 (*) |
+| Managed MySQL | `db-s-1vcpu-1gb`, MySQL 8.4, single node, NYC3 | $15.15 |
+| Load balancer | 1 × regional DO LB (created by the Traefik Service) | $12 |
+| Spaces | 1 subscription (bucket `pico-paas-s3-a` in ATL1 plus one bucket per storage-enabled app) | $5 |
+| DNS, VPC, GHCR (public images), Terraform Cloud (state only), GitHub Actions (public repo), Let's Encrypt | | $0 |
+| **Baseline** | | **about $60.15** |
+| **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $88.15** |
 
-**Per-app marginal cost (lean):** about $0 until the node is full. Apps request 64m CPU / 128Mi
-and are capped at 100m / 384Mi, so one 4 GB node holds about 8–10 idle-ish throwaway apps
-next to the platform. After that, each extra s-2vcpu-4gb node costs $24 and holds about 12 more apps,
-which works out to roughly **$2/app/month**. Spaces and DB add nothing per app inside the caps
-(100 MB × 100 apps still fits in the 250 GiB included).
+(*) Confirmed by Chas from the DO bill (2026-10-20); DO's public pages don't list this size.
 
-The lean option leaves about $10/mo of headroom, enough for a second node or managed MySQL later.
+### What drives cost up
+| Driver | Effect |
+|---|---|
+| Second node (autoscaler, up to `max_nodes = 2`) | +$28/mo while it exists (billed per second, so less if it scales back down) |
+| Spaces storage beyond 250 GiB | +$0.02/GiB/mo. Unlikely: 100 MB × 100 buckets is about 10 GB |
+| Spaces egress beyond 1,024 GiB | +$0.01/GiB. Unlikely at these caps |
+| Spaces bucket count | Not a cost: DO's account limit is 100 buckets (see §3), so about 100 apps with storage is the wall. Raising it is a support request |
+| Bigger MySQL | Standard plans: 2 GiB $30.45, 4 GiB $60.90 (+$15.30 and +$45.75 over today). Extra disk $0.215/GiB. A second 1 GiB server adds $15.15 |
+| Load balancer | Flat $12. No bandwidth charge on regional LBs |
 
-### Trade-offs we accept with the lean option
-- **No LB:** when DOKS recycles the node, its public IP changes. A `dns-sync` CronJob (every 2 min,
-  using the DO API) repoints `*.raisehellpraisedale.xyz` at the current node IP. Expect a few minutes of downtime
-  during node upgrades. That's acceptable for throwaway apps.
-- **Self-run MySQL:** we own the backups. A nightly `mysqldump` CronJob writes to a private platform
-  Spaces bucket and keeps 7 days.
-- **Single node:** no HA. This is a hobby/throwaway tier and we say so in the UI.
+### Per-app marginal cost
+About $0 until the node is full. An app requests 64m CPU / 128Mi and is capped at 100m / 384Mi, so one 4 GB node holds
+roughly 8 to 12 apps next to the platform. After that each extra node ($28) holds about 8 to 12 more, which is
+**about $2.50 to $3.50 per app per month**. A database adds nothing (about 25 app DBs fit one MySQL server). A bucket
+adds nothing inside the Spaces allowance.
+
+### Sources
+- Load balancer $12: https://docs.digitalocean.com/products/networking/load-balancers/details/pricing/ and https://www.digitalocean.com/pricing/kubernetes (2026-10-20).
+- Spaces $5, 250 GiB, 1,024 GiB egress, $0.02/GiB and $0.01/GiB overage: https://docs.digitalocean.com/products/spaces/details/pricing/ (2026-10-20).
+- MySQL 1 GiB $15.15, 2 GiB $30.45, 4 GiB $60.90: https://www.digitalocean.com/pricing/managed-databases (2026-10-20). DO's docs page
+  (https://docs.digitalocean.com/products/databases/mysql/details/pricing/) says "from $15.00"; we use the pricing page.
+  Neither page prices the exact slug `db-s-1vcpu-1gb` separately, so treat $15.15 as the Regular 1 GiB plan.
+- DOKS control plane free (HA $40): https://www.digitalocean.com/pricing/kubernetes (2026-10-20).
+- Node $28: confirmed by Chas from the DO bill (2026-10-20). DO's public pages don't list Premium AMD 2 vCPU / 4 GB; the
+  same-size Regular Droplet is $24 (https://www.digitalocean.com/pricing/droplets).
+- Droplet transfer allowance for the node is not counted; app egress is small at these caps.
+
+CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60, tracked in `docs/QUESTIONS.md`.
 
 ## 2. Components
 
