@@ -1,13 +1,13 @@
 # Ghost on PicoPaaS
 
 A real, mainstream CMS (Ghost 5) running on PicoPaaS within the platform's constraints — proof that the
-platform can host a genuine app, not just toy test images. Live demo: deployed as `ghost-demo`.
+platform can host a genuine app, not just toy test images. Live demo: deployed as app `ghost-blog`.
 
 ## What works
 - **Ghost serves**: homepage, `/ghost/` admin, and `/rss/` all return 200.
 - **Persistent**: all content lives in the PicoPaaS **MySQL** database, so it survives restarts/redeploys
   (verified: restarted the app — pod replaced, ephemeral disk wiped — and the site + data were intact).
-- **Fits the caps**: image **168 MiB** (< 512 MB image cap), boots and runs within **384 MB RAM** (0 restarts),
+- **Fits the caps**: image ~**185 MiB** (< 512 MB image cap), boots and runs within **384 MB RAM** (0 restarts),
   schema uses ~3 MB of the 50 MB DB.
 
 ## Why a custom image (not the stock `ghost` image)
@@ -26,23 +26,27 @@ images and forces a non-root numeric UID (10001). So this image:
 ## Deploy it
 1. Build: push to `examples/ghost/**` → the `examples` workflow publishes
    `ghcr.io/seaburr/picopaas-example-ghost:<sha>` (make the GHCR package **public** — PicoPaaS pulls anonymously).
-2. Create an app with a **database** (`want_db: true`), port **2368**, image the tag above, and these env refs:
+2. Create an app with a **database** and a **storage bucket**, port **2368**, image
+   `ghcr.io/seaburr/picopaas-example-ghost:latest`, and these env refs:
    `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_NAME=${{ db.name }}`, `DB_USER=${{ db.user }}`,
-   `DB_PASSWORD=${{ db.password }}`, `DB_CA_CERT=${{ db.ca_cert }}`.
-3. **Two-step URL**: Ghost needs its public URL, but the subdomain is generated at create and there is no
-   `${{ app.url }}` ref. So the first boot crash-loops (the entrypoint exits if `SITE_URL` is unset); read the
-   generated hostname, then PATCH env to add `SITE_URL=https://<hostname>` and it boots.
+   `DB_PASSWORD=${{ db.password }}`, `DB_CA_CERT=${{ db.ca_cert }}`, `S3_ENDPOINT=${{ storage.endpoint }}`,
+   `S3_REGION=${{ storage.region }}`, `S3_BUCKET=${{ storage.bucket }}`, `S3_ACCESS_KEY=${{ storage.access_key }}`,
+   `S3_SECRET_KEY=${{ storage.secret_key }}`, `SITE_URL=${{ app.url }}`.
+3. **Single step**: `${{ app.url }}` gives Ghost its public URL at deploy time, so there is no second deploy.
 4. Finish setup at `/ghost/`.
 
 ## Uploaded images
 The published image (built by `.github/workflows/examples.yml` with `WITH_S3=1`) includes the
-`ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS bucket when you enable a storage bucket
-and provide the `S3_*` env vars (from `${{ storage.* }}`). The image is ~**297 MiB**, under the 512 MB cap.
-A plain local `docker build` defaults to `WITH_S3=0` (lean, ~168 MiB; uploads on ephemeral disk and lost on restart).
-Use `${{ app.url }}` for Ghost's `url` setting, so no second deploy is needed.
+`ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS bucket. The entrypoint sets the adapter's
+`assetHost` to the public Spaces URL (`https://<bucket>.<region>.digitaloceanspaces.com`) so image links resolve
+(the adapter default is AWS-style). A plain local `docker build` defaults to `WITH_S3=0` (uploads on ephemeral disk).
+
+## Staff device verification
+The entrypoint sets `security__staffDeviceVerification=false`. PicoPaaS blocks outbound SMTP, so the sign-in
+verification email can't be delivered and would lock the admin out. Trade-off: this also drops optional email 2FA.
 
 ## Platform findings (what hosting a real CMS surfaced)
-- Image cap is on **compressed** layers; the S3 variant (~297 MiB) fits the 512 MB cap.
+- Image cap is on **compressed** layers; the S3 variant (~185 MiB) fits the 512 MB cap.
 - Non-root enforcement + forced UID 10001 means stock images with root entrypoints need a wrapper.
 - `os.userInfo()`/`getpass.getuser()` crash for passwdless UIDs on modern bases (Python 3.13, Node) — set a
   passwd entry and `USER`/`HOME`.

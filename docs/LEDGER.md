@@ -559,3 +559,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: fd8497a pushed; examples workflow success; ghost image :fd8497a (WITH_S3=1). Not deployed.
 - 2026-10-20 [scm-security] START: commit+push Ghost staffDeviceVerification=false (no SMTP lockout).
 - 2026-10-20 [scm-security] DONE: c8d075e pushed; examples workflow success; ghost image :c8d075e (WITH_S3=1). Not deployed.
+- 2026-10-20 [frontend] START: Recipes tab (docs/RECIPES.md, Ghost + BYO image lessons) in /guide; refresh examples/ghost/README.md.
+- 2026-10-20 [frontend] DONE: Recipes tab added (GuideView, route regex, RECIPES.md, USER_GUIDE pointer, ghost README refreshed); typecheck+build pass; RECIPES in GuideView chunk. Uncommitted. Note: examples/ghost/docker-entrypoint.sh header comment still says no app.url / SITE_URL two-step; outside my scope.
+- 2026-10-20 [scm-security] START: commit+push Recipes tab docs; watch ci/image/deploy/examples.

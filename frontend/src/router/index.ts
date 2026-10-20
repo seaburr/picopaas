@@ -9,7 +9,7 @@ const router = createRouter({
   },
   routes: [
     { path: '/guide', redirect: '/guide/user' },
-    { path: '/guide/:doc(user|api|cli)', component: () => import('../views/GuideView.vue'), meta: { title: 'Docs' } }, // public, no auth
+    { path: '/guide/:doc(user|api|cli|recipes)', component: () => import('../views/GuideView.vue'), meta: { title: 'Docs' } }, // public, no auth
     { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true, title: 'Account status' } },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in' } },
     { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { title: 'Request access' } },

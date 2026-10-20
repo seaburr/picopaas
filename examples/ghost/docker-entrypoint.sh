@@ -9,10 +9,10 @@ export server__host="0.0.0.0"
 export server__port="$PORT"
 export NODE_ENV="production"
 
-# Public site URL. There is no ${{ app.url }} ref, so the operator sets SITE_URL to the app's generated
-# https URL after the first deploy (see README). Ghost refuses to start without a url.
+# Public site URL. Set SITE_URL to the PicoPaaS app-url ref: SITE_URL=${{ app.url }} (resolves to the app's
+# generated https URL at deploy time, so this is a single-step deploy). Ghost refuses to start without a url.
 if [ -z "$SITE_URL" ]; then
-  echo "ghost-entrypoint: SITE_URL is not set. Set it to this app's https URL (e.g. https://<name>.raisehellpraisedale.xyz) and redeploy." >&2
+  echo "ghost-entrypoint: SITE_URL is not set. Set it to SITE_URL=\${{ app.url }} (or the app's https URL) and redeploy." >&2
   exit 1
 fi
 export url="$SITE_URL"

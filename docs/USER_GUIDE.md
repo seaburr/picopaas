@@ -467,3 +467,5 @@ port: 8080
 ```
 
 The default limit is one app per account, so delete a test app before you deploy the next one.
+
+See [Recipes](RECIPES.md) for a worked example: deploying Ghost.

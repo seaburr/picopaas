@@ -6,12 +6,14 @@ import { Marked } from 'marked'
 import userMd from '@docs/USER_GUIDE.md?raw'
 import apiMd from '@docs/API.md?raw'
 import cliMd from '@docs/CLI.md?raw'
+import recipesMd from '@docs/RECIPES.md?raw'
 import NavBar from '../components/NavBar.vue'
 
 const DOCS = {
   user: { title: 'User guide', md: userMd },
   api: { title: 'API', md: apiMd },
   cli: { title: 'CLI', md: cliMd },
+  recipes: { title: 'Recipes', md: recipesMd },
 } as const
 type DocKey = keyof typeof DOCS
 
@@ -26,6 +28,7 @@ const LINKS: Record<string, string> = {
   'USER_GUIDE.md': '/guide/user',
   'API.md': '/guide/api',
   'CLI.md': '/guide/cli',
+  'RECIPES.md': '/guide/recipes',
 }
 
 interface Toc { level: number; text: string; id: string }
