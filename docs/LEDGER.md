@@ -461,3 +461,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [backend-dev] START: fix quota sizing to use existing pods' limits (prod app 48 stuck: template already new, old pod bigger)
 - 2026-10-19 [backend-dev] DONE: quota = max(2*new, sum(existing non-terminal pod limits)+new); KubeProvider.get_live_limits replaced by get_used_limits (kube/base/fake; fake uses `used_limits[ns]`); reconciler widens from it, drift-hash no-flap kept, shrinks to 2x once old pod gone; retryable error/quota apps recover via the existing retry sweep (regression test in tests/test_rollout_recovery.py). 390 passed/58 skipped. Uncommitted.
 - 2026-10-19 [scm-security] START: commit quota-sizing fix, push, watch ci/image/deploy
+- 2026-10-19 [scm-security] DONE: pushed ff6136f (quota sizing from existing pods); ci/image/deploy green
+- 2026-10-19 [scm-security] DONE: SPA catch-all 404 route (unknown paths rendered a blank shell)

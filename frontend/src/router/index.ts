@@ -44,6 +44,8 @@ const router = createRouter({
       component: () => import('../views/HealthView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true, title: 'Health' },
     },
+    // Unknown paths (public, no auth): a 404 page instead of an empty shell.
+    { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { title: 'Page not found' } },
   ],
 })
 
