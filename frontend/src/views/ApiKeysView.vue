@@ -129,7 +129,7 @@ const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
       <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
         <div class="sm:w-72">
           <label :for="nameId" class="label">Name <span class="font-normal text-zinc-400">(optional)</span></label>
-          <input :id="nameId" v-model="newName" maxlength="60" placeholder="e.g. github-actions" class="input" autocomplete="off" />
+          <input :id="nameId" v-model="newName" maxlength="64" placeholder="e.g. github-actions" class="input" autocomplete="off" />
         </div>
         <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create key' }}</button>
       </form>

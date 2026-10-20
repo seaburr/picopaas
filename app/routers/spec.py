@@ -61,7 +61,7 @@ def deploy_spec(
     )
     created = app is None
     if app is not None and app.status == "suspended":
-        raise HTTPException(status_code=403, detail="This app is suspended by an admin, so it can't be changed. Contact an admin to get it restored.")
+        raise HTTPException(status_code=403, detail="This app is suspended by an administrator, so it can't be changed. Contact an administrator to get it restored.")
 
     existing_secrets: Dict[str, str] = {}
     if app is not None:

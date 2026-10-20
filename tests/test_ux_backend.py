@@ -73,7 +73,7 @@ def test_auth_error_copy(client, admin, make_client):
 
 
 def test_admin_required_copy(user):
-    assert user.get("/admin/users").json()["detail"] == "This needs admin access."
+    assert user.get("/admin/users").json()["detail"] == "This needs administrator access."
 
 
 def test_not_found_and_limit_copy(user):
@@ -83,7 +83,7 @@ def test_not_found_and_limit_copy(user):
     assert r.status_code == 201
     r = user.post("/apps", json={"name": "b", "image": "x/y:1", "port": 80})
     assert r.status_code == 403
-    assert r.json()["detail"] == "You've reached your limit of 1 app. Delete one, or ask an admin to raise your limit."
+    assert r.json()["detail"] == "You've reached your limit of 1 app. Delete one, or ask an administrator to raise your limit."
 
 
 def test_duplicate_env_and_root_image_copy(user, admin):
@@ -106,7 +106,7 @@ def test_admin_conflict_copy(admin, user):
     assert r.status_code == 409 and r.json()["detail"] == "This user was already approved. Refresh the list."
     r = admin.post(f"/admin/users/{uid}/unsuspend")
     assert r.json()["detail"] == "This user isn't suspended. Refresh the list."
-    assert admin.post("/admin/users/1/suspend").json()["detail"] == "The main admin account can't be suspended or deleted."
+    assert admin.post("/admin/users/1/suspend").json()["detail"] == "The main administrator account can't be suspended or deleted."
     assert "can't find that user" in admin.post("/admin/users/999/approve").json()["detail"]
 
 

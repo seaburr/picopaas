@@ -28,7 +28,7 @@ async function onSubmit() {
     if (auth.user) auth.user.must_change_password = false
     toast.success('Password changed.')
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) error.value = "Changing your password isn't available on this server yet. Ask the administrator to reset it."
+    if (e instanceof ApiError && e.status === 404) error.value = "Couldn't change your password here. Ask the administrator to reset it."
     else error.value = e instanceof ApiError ? e.message : "Couldn't change your password. Try again."
   } finally {
     loading.value = false

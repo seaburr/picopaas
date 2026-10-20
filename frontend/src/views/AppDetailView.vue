@@ -76,7 +76,7 @@ async function loadLogs() {
   } catch (e) {
     logsError.value =
       e instanceof ApiError && (e.status === 404 || e.status === 405)
-        ? "Logs aren't available on this platform version yet."
+        ? "Couldn't find logs for this app. It may have been deleted."
         : e instanceof ApiError
           ? e.message
           : "Couldn't load logs."
@@ -113,7 +113,7 @@ async function restart() {
   } catch (e) {
     toast.error(
       e instanceof ApiError && e.status === 404
-        ? "Restart isn't available on this platform version yet."
+        ? "Couldn't restart: this app no longer exists. Reload the page."
         : `Couldn't restart: ${e instanceof ApiError ? e.message : 'unknown error'}`,
     )
   } finally {

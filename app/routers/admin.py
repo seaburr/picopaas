@@ -141,7 +141,7 @@ def _get_user_or_404(db: Session, user_id: int) -> models.User:
 
 def _protect_uberadmin(user: models.User) -> None:
     if user.is_uberadmin:
-        raise HTTPException(status_code=400, detail="The main admin account can't be suspended or deleted.")
+        raise HTTPException(status_code=400, detail="The main administrator account can't be suspended or deleted.")
 
 
 def _live_apps(db: Session, owner_id: int) -> list:

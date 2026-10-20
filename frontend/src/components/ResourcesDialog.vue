@@ -80,7 +80,7 @@ function reset() {
       </div>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers only.</p>
       <p v-if="exceeds" class="alert-warn mt-3 text-xs" role="status">
-        Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }}Mi memory). The scheduler may not fit this app.
+        Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }}Mi memory). The cluster may not have room to run this app.
       </p>
       <p v-if="error" class="alert-error mt-3 text-xs" role="alert">{{ error }}</p>
       <div class="mt-5 flex flex-wrap items-center justify-between gap-2">

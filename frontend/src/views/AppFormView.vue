@@ -336,7 +336,7 @@ async function onSubmit() {
                 <p id="hc-enabled-help" class="help">
                   Off: traffic is sent once the port accepts connections. On: the platform calls this path; non-2xx/3xx responses
                   take the app out of rotation and restart it if they persist.
-                  <RouterLink to="/guide/user#8-health-checks" target="_blank" class="link">Docs</RouterLink>
+                  <RouterLink to="/guide/user#8-health-checks" target="_blank" class="link">Health check docs</RouterLink>
                 </p>
               </div>
               <div>

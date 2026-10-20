@@ -118,7 +118,7 @@ const problems = computed<Problem[]>(() => {
   // Names, so a pod that is just starting during a platform deploy is recognisable as such.
   if (notReady.length) out.push({ text: `Platform pod${notReady.length > 1 ? 's' : ''} not ready: ${notReady.map((p) => p.name).join(', ')}`, target: 'sec-platform' })
   const full = d.db_servers.filter((s) => s.warn)
-  if (full.length) out.push({ text: `${full.length} DB server${full.length > 1 ? 's' : ''} above 80%`, target: 'sec-db' })
+  if (full.length) out.push({ text: `${full.length} database server${full.length > 1 ? 's' : ''} above 80%`, target: 'sec-db' })
   if (!d.metrics_available && !out.some((p) => /Kubernetes/.test(p.text))) out.push({ text: 'Metrics unavailable', target: 'sec-summary' })
   return out
 })
@@ -153,7 +153,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         >
           <template v-if="!problems.length">
             <strong>All systems normal</strong>
-            <span v-if="!pendingN" class="text-xs opacity-80">Nodes ready, no failed apps, DB capacity fine.</span>
+            <span v-if="!pendingN" class="text-xs opacity-80">Nodes ready, no failed apps, database capacity fine.</span>
           </template>
           <template v-else>
             <strong>{{ problems.length }} {{ problems.length === 1 ? 'problem' : 'problems' }}:</strong>
@@ -188,7 +188,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
                 :class="st === 'error' && (data.workloads.by_status[st] ?? 0) > 0 ? 'font-semibold text-status-error' : ''"
               >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</span>
             </div>
-            <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with DB · {{ data.workloads.with_storage }} with storage</div>
+            <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with storage</div>
           </div>
         </section>
 
@@ -360,7 +360,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         </section>
 
         <section id="sec-db" class="scroll-mt-4">
-          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">DB servers</h2>
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Database servers</h2>
           <div class="card overflow-x-auto">
             <table class="tbl min-w-[36rem]">
               <colgroup><col class="w-32" /><col /><col class="w-48" /><col class="w-24" /></colgroup>
@@ -374,7 +374,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
                   <td><DbCapacityBar :server="s" /></td>
                   <td>{{ s.status }}</td>
                 </tr>
-                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="text-zinc-400">No DB servers.</td></tr>
+                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="text-zinc-400">No database servers.</td></tr>
               </tbody>
             </table>
           </div>

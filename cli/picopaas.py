@@ -73,7 +73,7 @@ def _http_error(resp: httpx.Response) -> str:
         msg = (f"Not logged in. Your PICOPAAS_TOKEN is missing, wrong or revoked. "
                f"Create a new key at {_base_url()}/keys.")
     elif code >= 500:
-        msg = f"PicoPaaS had a problem ({code}): {detail} Try again; if it keeps happening, tell an admin."
+        msg = f"PicoPaaS had a problem ({code}): {detail} Try again; if it keeps happening, tell an administrator."
     else:
         msg = detail  # 4xx details are written to be read as-is (what happened, why, what to do)
     return f"{code}: {msg}" if _VERBOSE and code != 401 else msg

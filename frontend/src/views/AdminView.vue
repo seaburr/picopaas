@@ -168,7 +168,7 @@ async function saveLimit(u: AdminUser) {
   }
 }
 
-// ---- DB servers ----
+// ---- Database servers ----
 async function patch(s: DbServer, payload: { status?: string; max_databases?: number }) {
   error.value = ''
   try {
@@ -176,7 +176,7 @@ async function patch(s: DbServer, payload: { status?: string; max_databases?: nu
     servers.value = servers.value.map((x) => (x.id === s.id ? updated : x))
     toast.success(`${s.name} set to ${updated.status}.`)
   } catch (e) {
-    error.value = `Couldn't update the DB server: ${msg(e, 'try again')}`
+    error.value = `Couldn't update the database server: ${msg(e, 'try again')}`
     await load()
   }
 }
@@ -199,10 +199,10 @@ async function addServer() {
     await createDbServer({ ...form })
     Object.assign(form, emptyForm()) // clears the password
     addOpen.value = false
-    toast.success('DB server added. Apps can now request a MySQL database.')
+    toast.success('Database server added. Apps can now request a MySQL database.')
     await load()
   } catch (e) {
-    addError.value = msg(e, "Couldn't add the DB server. Check the host and credentials.")
+    addError.value = msg(e, "Couldn't add the database server. Check the host and credentials.")
   } finally {
     saving.value = false
   }
@@ -243,8 +243,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
 
       <div v-if="warnServers.length" class="alert-warn flex flex-wrap items-center justify-between gap-2" role="status">
-        <span>DB capacity is above 80% on {{ warnServers.map((s) => s.name).join(', ') }}. Add a DB server or raise the limit.</span>
-        <button type="button" class="btn-secondary btn-sm" @click="setTab('servers')">Go to DB servers</button>
+        <span>Database capacity is above 80% on {{ warnServers.map((s) => s.name).join(', ') }}. Add a database server or raise the limit.</span>
+        <button type="button" class="btn-secondary btn-sm" @click="setTab('servers')">Go to database servers</button>
       </div>
 
       <section v-if="loaded && servers.length === 0" class="card card-pad border-accent/40" aria-labelledby="setup-title">
@@ -253,8 +253,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <ol class="mt-3 space-y-2 text-sm text-zinc-200">
           <li class="flex flex-wrap items-center gap-2">
             <span class="badge-warn">To do</span>
-            <span>Add a MySQL DB server. Until then the Database option is hidden from users.</span>
-            <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add DB server</button>
+            <span>Add a MySQL database server. Until then the Database option is hidden from users.</span>
+            <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add database server</button>
           </li>
           <li class="flex flex-wrap items-center gap-2">
             <span :class="pendingCount ? 'badge-warn' : 'badge-neutral'">{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
@@ -270,7 +270,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
       <div role="tablist" aria-label="Admin sections" class="flex gap-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
         <button
-          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'DB servers', n: servers.length }, { id: 'audit', label: 'Audit', n: null }] as const"
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
           :key="t.id"
           type="button"
@@ -302,7 +302,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:items-center md:justify-between md:gap-3']">
                 <div class="min-w-0">
                   <div class="truncate font-medium text-white" :title="u.email">{{ u.email }}</div>
-                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · gets {{ u.app_limit }} apps</div>
+                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · app limit {{ u.app_limit }}</div>
                 </div>
                 <div class="flex shrink-0 gap-1">
                   <IconButton :icon="Check" :label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)" />
@@ -410,7 +410,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 </select>
               </li>
               <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
-                <p class="text-sm text-zinc-300">No DB servers yet. Users can't create apps with a database until you add one.</p>
+                <p class="text-sm text-zinc-300">No database servers yet. Users can't create apps with a database until you add one.</p>
                 <button type="button" class="btn-primary mt-3" @click="openAdd">Add server</button>
               </li>
             </ul>
@@ -442,7 +442,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
     </main>
 
-    <!-- Add DB server -->
+    <!-- Add database server -->
     <dialog
       ref="addDlg"
       :aria-labelledby="`${uid}-add-title`"
@@ -451,7 +451,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       @click="addModal.onBackdrop"
     >
       <form v-if="addOpen" class="space-y-3 p-4" @submit.prevent="addServer">
-        <h2 :id="`${uid}-add-title`" class="section-title">Add DB server</h2>
+        <h2 :id="`${uid}-add-title`" class="section-title">Add database server</h2>
         <div>
           <label :for="`${uid}-n`" class="label">Name</label>
           <input :id="`${uid}-n`" v-model="form.name" required placeholder="primary" class="input" data-autofocus />
@@ -487,7 +487,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <div v-if="addError" class="alert-error" role="alert">{{ addError }}</div>
         <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" class="btn-secondary" :disabled="saving" @click="addOpen = false">Cancel</button>
-          <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Adding…' : 'Add DB server' }}</button>
+          <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Adding…' : 'Add database server' }}</button>
         </div>
       </form>
     </dialog>

@@ -29,11 +29,11 @@ router = APIRouter(prefix="/apps", tags=["apps"])
 DOMAIN_SUFFIX = "raisehellpraisedale.xyz"
 
 
-_ROTATE_FAILED = "Couldn't rotate the credentials, so the old ones still work. Try again; if it keeps failing, ask an admin."
+_ROTATE_FAILED = "Couldn't rotate the credentials, so the old ones still work. Try again; if it keeps failing, ask an administrator."
 
 
 def app_limit_message(limit: int) -> str:
-    return f"You've reached your limit of {limit} app{'' if limit == 1 else 's'}. Delete one, or ask an admin to raise your limit."
+    return f"You've reached your limit of {limit} app{'' if limit == 1 else 's'}. Delete one, or ask an administrator to raise your limit."
 
 
 def _check_image_cap(registry: Registry, image: str) -> tuple[Optional[int], Optional[str]]:
@@ -113,7 +113,7 @@ def _get_owned_app_or_404(db: Session, app_id: int, owner_id: int) -> models.App
 
 def _forbid_if_suspended(app: models.App) -> None:
     if app.status == "suspended":
-        raise HTTPException(status_code=403, detail="This app is suspended by an admin, so it can't be changed. Contact an admin to get it restored.")
+        raise HTTPException(status_code=403, detail="This app is suspended by an administrator, so it can't be changed. Contact an administrator to get it restored.")
 
 
 def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool) -> None:

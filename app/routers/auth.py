@@ -116,7 +116,7 @@ def login(payload: schemas.UserLogin, response: Response, db: Session = Depends(
                      "invalid credentials", actor_email=payload.email.lower()[:255])
         raise HTTPException(
             status_code=401,
-            detail="Email or password is wrong. Try again, or ask an admin to reset your password.",
+            detail="Email or password is wrong. Try again, or ask an administrator to reset your password.",
         )
     _set_session_cookie(response, user.id)
     return user

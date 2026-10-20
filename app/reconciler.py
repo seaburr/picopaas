@@ -110,7 +110,7 @@ def _private_storage_ips(endpoint: str) -> list[str]:
     return ips
 
 
-UNREADABLE_DETAIL = "stored secrets unreadable (platform key changed); re-enter secrets or rotate credentials"
+UNREADABLE_DETAIL = "Your saved secrets can't be read because the platform's encryption key changed. Open Edit, re-enter your secret values and save, or rotate the credentials."
 SUSPENDED_APPLIED = "scaled to zero"
 
 # Rollout that isn't ready after this long fails (retryable) instead of sitting in "deploying" forever.
@@ -121,7 +121,7 @@ DEPLOY_TIMEOUT = timedelta(minutes=config.DEPLOY_TIMEOUT_MINUTES)
 STATUS_MESSAGES = {
     "image_pull": "Can't pull the image. Check the name and tag, and that it's public.",
     "crash_loop": "Your app starts and then exits. Check the logs, that it listens on port {port}, and that required env vars are set.",
-    "oom": "Your app ran out of memory (limit {mem}Mi).",
+    "oom": "Your app ran out of memory (limit {mem}Mi). Check the logs and reduce its memory use.",
     "disk": "Your app used more than {disk} MB of local disk (files, /tmp or logs) and was restarted. Store files in the storage bucket instead.",
     "not_ready": "Port {port} isn't answering. Is that the port your app listens on?",
     "not_ready_health": "Your app is running, but its health check on {path} isn't returning 2xx/3xx. Fix the path or turn the check off.",

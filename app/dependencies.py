@@ -86,9 +86,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
 def get_active_user(current_user: models.User = Depends(get_current_user)) -> models.User:
     """Shared gate for /apps*, /api/keys* and spec endpoints (cookie and API key alike)."""
     if current_user.status == "pending":
-        raise HTTPException(status_code=403, detail="Your account is waiting for admin approval. You'll be able to deploy once it's approved.")
+        raise HTTPException(status_code=403, detail="Your account is waiting for administrator approval. You'll be able to deploy once it's approved.")
     if current_user.status != "active":
-        raise HTTPException(status_code=403, detail="Your account is suspended and your apps are stopped. Contact an admin to restore it.")
+        raise HTTPException(status_code=403, detail="Your account is suspended and your apps are stopped. Contact an administrator to restore it.")
     return current_user
 
 
@@ -101,5 +101,5 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Option
 
 def require_uberadmin(current_user: models.User = Depends(get_current_user)) -> models.User:
     if not current_user.is_uberadmin:
-        raise HTTPException(status_code=403, detail="This needs admin access.")
+        raise HTTPException(status_code=403, detail="This needs administrator access.")
     return current_user

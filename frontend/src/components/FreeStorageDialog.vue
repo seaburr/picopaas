@@ -24,7 +24,7 @@ function confirm() {
 <template>
   <ConfirmDialog
     :open="open"
-    title="Free up storage"
+    title="Free up space"
     message="Deleted objects can't be recovered. Write access comes back as soon as the bucket is under its cap, and the app restarts to pick up the new keys."
     confirm-label="Delete objects"
     busy-label="Deleting…"

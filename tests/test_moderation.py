@@ -34,7 +34,7 @@ def test_pending_blocked_cookie_and_approve_flips(make_client):
     for resp in (user.get("/apps"), user.post("/apps", json=APP), user.get("/api/keys"),
                  user.post("/api/keys"), user.post("/apps/spec", json={"spec": "x"})):
         assert resp.status_code == 403
-        assert resp.json()["detail"] .startswith("Your account is waiting for admin approval")
+        assert resp.json()["detail"] .startswith("Your account is waiting for administrator approval")
     assert admin.post(f"/admin/users/{uid}/approve").status_code == 200
     assert user.get("/apps").status_code == 200
     assert user.post("/apps", json=APP).status_code == 201
