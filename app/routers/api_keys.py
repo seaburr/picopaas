@@ -8,7 +8,9 @@ these keys authenticate requests.
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import audit, models, schemas
@@ -32,6 +34,7 @@ def _get_owned_key_or_404(db: Session, key_id: int, owner_id: int) -> models.Api
 
 @router.post("", response_model=schemas.ApiKeyCreateOut, status_code=201)
 def create_api_key(
+    payload: Optional[schemas.ApiKeyCreate] = Body(default=None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_active_user),
 ):
@@ -40,6 +43,7 @@ def create_api_key(
         user_id=current_user.id,
         hashed=hash_api_key(raw_key),
         prefix=api_key_prefix_for_display(raw_key),
+        name=payload.name if payload else None,
     )
     db.add(api_key)
     db.commit()
@@ -49,6 +53,7 @@ def create_api_key(
         id=api_key.id,
         key=raw_key,
         prefix=api_key.prefix,
+        name=api_key.name,
         created_at=api_key.created_at,
     )
 

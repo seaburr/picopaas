@@ -55,6 +55,7 @@ class ApiKey(Base):
     # Non-secret display prefix, e.g. "pp_sk_ab12cd34", so a user can tell
     # their keys apart without re-revealing the secret.
     prefix: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

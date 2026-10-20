@@ -74,8 +74,8 @@ reset and informational only (the server does not block other calls); the UI sho
 
 | Method | Path | Response |
 |---|---|---|
-| POST | `/api/keys` | 201 `{id, key, prefix, created_at}`. The raw `key` is shown **once**. No body. |
-| GET | `/api/keys` | List of `{id, prefix, created_at, revoked_at}` for your keys, newest first. |
+| POST | `/api/keys` | Optional body `{"name": "..."}` (trimmed, printable characters only, max 64; blank = unnamed; unknown fields rejected). 201 `{id, key, prefix, name, created_at}`. The raw `key` is shown **once**. A body-less POST still works. |
+| GET | `/api/keys` | List of `{id, prefix, name, created_at, last_used_at, revoked_at}` for your keys, newest first. `last_used_at` is updated at most every 5 minutes. |
 | DELETE | `/api/keys/{key_id}` | 204. Revokes (idempotent). 404 if not yours. |
 
 ## Apps (`/apps`, active; scoped to the caller's own apps)

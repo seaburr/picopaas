@@ -46,12 +46,35 @@ class TemporaryPasswordOut(BaseModel):
     temporary_password: str
 
 
+API_KEY_NAME_MAX = 64
+
+
+class ApiKeyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, v):
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > API_KEY_NAME_MAX:
+            raise ValueError(f"Name must be {API_KEY_NAME_MAX} characters or fewer.")
+        if not v.isprintable():
+            raise ValueError("Name can only contain printable characters.")
+        return v
+
+
 class ApiKeyCreateOut(BaseModel):
     """Returned only once, at creation time — the raw key is never stored or shown again."""
 
     id: int
     key: str
     prefix: str
+    name: Optional[str] = None
     created_at: datetime
 
 
@@ -60,7 +83,9 @@ class ApiKeyOut(BaseModel):
 
     id: int
     prefix: str
+    name: Optional[str] = None
     created_at: datetime
+    last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
 
 

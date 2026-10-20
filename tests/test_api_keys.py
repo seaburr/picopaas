@@ -23,7 +23,7 @@ def test_list_shows_prefix_and_created_revoked_only(client):
     rows = listed.json()
     assert len(rows) == 1
     row = rows[0]
-    assert set(row) == {"id", "prefix", "created_at", "revoked_at"}
+    assert set(row) == {"id", "prefix", "name", "created_at", "last_used_at", "revoked_at"}
     assert row["revoked_at"] is None
     assert raw_key not in listed.text
 
@@ -72,3 +72,58 @@ def test_revoked_key_cannot_authenticate(make_client):
 
     denied = bearer_client.get("/auth/me", headers={"Authorization": f"Bearer {raw_key}"})
     assert denied.status_code == 401
+
+
+def test_name_round_trips_and_is_trimmed(client):
+    register_and_login(client, "named@example.com")
+    resp = client.post("/api/keys", json={"name": "  github-actions  "})
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "github-actions"
+    assert client.get("/api/keys").json()[0]["name"] == "github-actions"
+
+
+def test_bodyless_create_has_null_name(client):
+    register_and_login(client, "noname@example.com")
+    assert client.post("/api/keys").json()["name"] is None
+    assert client.post("/api/keys", json={"name": "   "}).json()["name"] is None
+
+
+def test_bad_names_rejected(client):
+    register_and_login(client, "badname@example.com")
+    assert client.post("/api/keys", json={"name": "a" * 65}).status_code == 422
+    assert client.post("/api/keys", json={"name": "bad\nname"}).status_code == 422
+    assert client.post("/api/keys", json={"name": "x", "extra": 1}).status_code == 422
+
+
+def test_last_used_at_set_and_throttled(client):
+    from datetime import datetime, timedelta, timezone
+
+    from app import models
+    from app.db import get_db
+    from app.main import app
+
+    register_and_login(client, "used@example.com")
+    raw = client.post("/api/keys").json()["key"]
+    assert client.get("/api/keys").json()[0]["last_used_at"] is None
+    client.cookies.clear()
+    hdr = {"Authorization": f"Bearer {raw}"}
+
+    assert client.get("/auth/me", headers=hdr).status_code == 200
+    db = next(app.dependency_overrides[get_db]())
+    try:
+        row = db.query(models.ApiKey).one()
+        first = row.last_used_at
+        assert first is not None
+        # Within the throttle window: no further write.
+        assert client.get("/auth/me", headers=hdr).status_code == 200
+        db.refresh(row)
+        assert row.last_used_at == first
+        # Older than the window: updated.
+        row.last_used_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        db.commit()
+        old = row.last_used_at
+        assert client.get("/auth/me", headers=hdr).status_code == 200
+        db.refresh(row)
+        assert row.last_used_at > old
+    finally:
+        db.close()

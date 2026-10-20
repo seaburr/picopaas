@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
@@ -15,6 +15,9 @@ from app.security import decode_access_token, hash_api_key
 # Overridden in tests via `app.dependency_overrides[get_registry]` with a
 # `app.providers.fake.FakeRegistry`.
 _registry_client = RegistryClient()
+
+# Only write last_used_at when it is older than this, so busy keys don't write per request.
+API_KEY_LAST_USED_THROTTLE = timedelta(minutes=5)
 
 
 _kube_client = None
@@ -58,8 +61,13 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             .first()
         )
         if api_key is not None:
-            api_key.last_used_at = datetime.now(timezone.utc)
-            db.commit()
+            now = datetime.now(timezone.utc)
+            last = api_key.last_used_at
+            if last is not None and last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            if last is None or now - last > API_KEY_LAST_USED_THROTTLE:
+                api_key.last_used_at = now
+                db.commit()
             request.state.auth_via = "api_key"
             user = db.get(models.User, api_key.user_id)
             if user is not None and user.status != "deleted":
