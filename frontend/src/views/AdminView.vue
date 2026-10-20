@@ -24,7 +24,7 @@ const toast = useToastStore()
 const SERVER_STATUS_HELP: Record<string, string> = {
   active: 'Active: new databases can be placed on this server.',
   draining: 'Draining: no new databases go here; existing ones keep working. Use it before retiring a server.',
-  full: 'Full: no new databases go here (set automatically at max databases); existing ones keep working.',
+  full: 'Full: same as Draining (legacy status). A server at its max databases is skipped automatically anyway.',
 }
 const uid = useId()
 
@@ -406,7 +406,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 >
                   <option value="active">Active</option>
                   <option value="draining">Draining</option>
-                  <option value="full">Full</option>
+                  <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
                 </select>
               </li>
               <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
@@ -416,9 +416,10 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
             </ul>
           </div>
           <p v-if="servers.length" class="help mt-2">
-            <strong class="text-zinc-200">Status</strong> controls where new databases go. <em>Active</em> takes new
-            databases. <em>Draining</em> and <em>Full</em> take none, but existing databases keep working. Drain a server
-            before retiring it.
+            <strong class="text-zinc-200">Status</strong> controls where <em>new</em> app databases go. <em>Active</em>
+            servers take them (the one with the most free slots wins; a server at its max is skipped automatically).
+            <em>Draining</em> takes none; databases already on it keep working and are never moved. Drain a server
+            before retiring it. If no server can take a new database, users can't tick Database on new apps.
           </p>
         </template>
 

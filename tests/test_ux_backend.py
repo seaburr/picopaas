@@ -201,6 +201,20 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True}
 
 
+def test_me_databases_false_when_no_server_can_take_one(admin, db_session):
+    """Draining (or a server at its max) means no new database can be placed, so the form must not offer one."""
+    srv = models.DbServer(name="primary", host="h", admin_user="u", admin_password_encrypted="x", status="draining")
+    db_session.add(srv)
+    db_session.commit()
+    assert admin.get("/auth/me").json()["features"]["databases"] is False
+    srv.status, srv.max_databases = "active", 0
+    db_session.commit()
+    assert admin.get("/auth/me").json()["features"]["databases"] is False
+    srv.max_databases = 5
+    db_session.commit()
+    assert admin.get("/auth/me").json()["features"]["databases"] is True
+
+
 # --- Password reset / change ---
 
 def test_admin_reset_password_flow(admin, user, make_client, db_session):

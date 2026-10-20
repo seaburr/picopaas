@@ -132,13 +132,24 @@ def _spaces_configured() -> bool:
     return all(os.environ.get(k) for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"))
 
 
+def _db_placement_available(db: Session) -> bool:
+    """True when a new app database could be placed now: an 'active' DbServer with a free slot (draining/full don't count)."""
+    from app.db_placement import NoDbCapacity, choose_server
+
+    try:
+        choose_server(db)
+        return True
+    except NoDbCapacity:
+        return False
+
+
 @router.get("/me", response_model=schemas.MeOut)
 def me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     out = schemas.UserOut.model_validate(current_user).model_dump()
     return schemas.MeOut(
         **out,
         features=schemas.Features(
-            databases=db.query(models.DbServer.id).first() is not None,
+            databases=_db_placement_available(db),
             storage=_spaces_configured(),
         ),
         limits=schemas.Limits(
