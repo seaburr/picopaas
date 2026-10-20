@@ -146,7 +146,77 @@ def h_s3_fill(q):
         return 500, {"ok": False, "written_mb": written, "error": err(e)}
 
 
-ROUTES = {"/db": h_db, "/s3": h_s3, "/db/fill": h_db_fill, "/s3/fill": h_s3_fill}
+def h_db_read(_q):
+    conn = db()
+    try:
+        with conn.cursor() as c:
+            c.execute("SELECT COUNT(*) FROM probe")
+            return 200, {"ok": True, "rows": c.fetchone()[0]}
+    except Exception as e:
+        return 500, {"ok": False, "error": err(e)}
+    finally:
+        conn.close()
+
+
+def h_db_size(_q):
+    conn = db()
+    try:
+        with conn.cursor() as c:
+            c.execute("SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables "
+                      "WHERE table_schema = DATABASE()")
+            return 200, {"ok": True, "mb": round(int(c.fetchone()[0]) / 1048576, 1)}
+    except Exception as e:
+        return 500, {"ok": False, "error": err(e)}
+    finally:
+        conn.close()
+
+
+def h_db_clear(q):
+    """mode=delete (DELETE FROM), truncate (TRUNCATE TABLE) or drop (DROP TABLE): the ways an app might try to
+    get back under its cap."""
+    mode = q.get("mode", ["delete"])[0]
+    sql = {"delete": "DELETE FROM probe", "truncate": "TRUNCATE TABLE probe", "drop": "DROP TABLE probe"}.get(mode)
+    if not sql:
+        return 400, {"ok": False, "error": "mode must be delete, truncate or drop"}
+    conn = db()
+    try:
+        with conn.cursor() as c:
+            c.execute(sql)
+        conn.commit()
+        return 200, {"ok": True, "mode": mode}
+    except Exception as e:
+        return 500, {"ok": False, "mode": mode, "error": err(e)}
+    finally:
+        conn.close()
+
+
+def h_s3_read(_q):
+    try:
+        cl, b = s3(), E("S3_BUCKET")
+        n = len(cl.list_objects_v2(Bucket=b).get("Contents", []))
+        return 200, {"ok": True, "objects": n}
+    except Exception as e:
+        return 500, {"ok": False, "error": err(e)}
+
+
+def h_s3_clear(_q):
+    """Delete every object (what an over-cap app would do to get back under its cap)."""
+    deleted = 0
+    try:
+        cl, b = s3(), E("S3_BUCKET")
+        while True:
+            objs = cl.list_objects_v2(Bucket=b).get("Contents", [])
+            if not objs:
+                return 200, {"ok": True, "deleted": deleted}
+            for o in objs:
+                cl.delete_object(Bucket=b, Key=o["Key"])
+                deleted += 1
+    except Exception as e:
+        return 500, {"ok": False, "deleted": deleted, "error": err(e)}
+
+
+ROUTES = {"/db": h_db, "/s3": h_s3, "/db/fill": h_db_fill, "/s3/fill": h_s3_fill, "/db/read": h_db_read,
+          "/db/size": h_db_size, "/db/clear": h_db_clear, "/s3/read": h_s3_read, "/s3/clear": h_s3_clear}
 
 
 class H(BaseHTTPRequestHandler):
