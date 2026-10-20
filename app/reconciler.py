@@ -370,6 +370,13 @@ def reconcile_app(
         session.flush()
         app.database = db_row
 
+    elif sweep and app.want_db and app.database is not None:
+        # Self-heal: re-apply the per-user connection cap (picks up a raised MAX_DB_USER_CONNECTIONS).
+        try:
+            mysql_admin_factory(app.database.server).set_user_connection_limit(app.id)
+        except Exception as exc:  # noqa: BLE001 - never break the sweep
+            log.warning("app %s: set db connection limit failed: %s", app.id, _provider_error_summary(exc))
+
     # 2. Storage.
     if app.want_storage and app.storage is None:
         try:

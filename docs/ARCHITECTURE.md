@@ -98,7 +98,7 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
   `USER` line example. A named non-root user (kubelet can't verify it) is accepted and forced to
   `runAsUser`/`runAsGroup` = `NAMED_USER_RUN_AS_UID` (10001, `apps.run_as_uid`). Every app namespace also
   carries Pod Security Admission `enforce: restricted` (+ `enforce-version: latest`) as a backstop.
-- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `MAX_USER_CONNECTIONS 5`,
+- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `MAX_USER_CONNECTIONS` = `MAX_DB_USER_CONNECTIONS` (default 10, app/config.py; re-applied to every existing app user by `ALTER USER` on each reconciler sweep, so raising it self-heals),
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
   `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE/ALTER (leaving SELECT/DELETE/TRUNCATE/DROP so the
   user can clean up) and flags the app in the UI. DB is polled every 60s (`DB_QUOTA_POLL_SECONDS`) and
@@ -191,7 +191,7 @@ server that has room.
 | Resource | Unit we add | Capacity per unit | Ceiling signal |
 |---|---|---|---|
 | Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 100m/384Mi) | Pending pods / node allocatable |
-| MySQL | +1 DB server (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
+| MySQL | +1 DB server (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 76 max ÷ ~10 per app user (cap is a ceiling, not a reservation), oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
 | Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
 
 ### Compute

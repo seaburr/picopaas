@@ -258,6 +258,8 @@ mysql CLI (save the PEM to `ca.pem`). The database is only reachable from inside
 mysql --ssl-mode=VERIFY_CA --ssl-ca=ca.pem -h HOST -P PORT -u USER -p DBNAME
 ```
 
+**Connection limit.** Your database user is capped at 10 simultaneous connections (platform setting `MAX_DB_USER_CONNECTIONS`). If your app uses a connection pool, keep its maximum size at or below this, otherwise MySQL returns `exceeded the 'max_user_connections' resource`. For example, set Knex/Ghost `pool.max` to 10 or less.
+
 ## 7. Connecting to the storage bucket (S3-compatible)
 
 ```yaml
@@ -404,6 +406,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 | Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Click **Free up space** (or run `picopaas storage-delete`). Your app's own key is read-only and can't delete. |
 | The app restarts with "used more than 250 MB of local disk" | The app wrote too much to the container filesystem, `/tmp` or logs. Store files in the storage bucket and log less. |
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
+| `User ... has exceeded the 'max_user_connections' resource` | Your pool is bigger than the per-app MySQL connection cap (10). Lower the pool's max size. |
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |
 

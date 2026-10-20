@@ -103,7 +103,14 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.kill_result: dict[str, Any] = {"listed": 1, "killed": 1, "failed": 0, "list_error": False}
         self.passwords_seen: list[Optional[str]] = []  # app_password passed to each set_read_only call
         self.app_user_kill_ok = False  # True: the app-user kill path succeeds when a password is supplied
+        self.conn_limits: dict[int, int] = {}
         self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
+
+    def set_user_connection_limit(self, app_id: int) -> None:
+        from app import config
+        if getattr(self, "limit_error", None):
+            raise MySQLAdminError(self.limit_error)
+        self.conn_limits[app_id] = config.MAX_DB_USER_CONNECTIONS
 
     def server_health(self) -> dict[str, Any]:
         if getattr(self, "health_error", None):

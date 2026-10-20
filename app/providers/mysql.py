@@ -4,7 +4,7 @@ Constructed per `DbServer` (host/port/admin creds come from the model row,
 chosen via `app/db_placement.py::choose_server` — never passed per call, see
 `app/providers/base.py::MySQLAdmin`). Manages one database + user per app:
 `CREATE DATABASE app_<id>`, `CREATE USER 'app_<id>'@'%'` with a random
-32-char password and `MAX_USER_CONNECTIONS 5`, `GRANT ALL` scoped to that
+32-char password and `MAX_USER_CONNECTIONS` (config.MAX_DB_USER_CONNECTIONS), `GRANT ALL` scoped to that
 one database. `set_read_only` revokes/restores INSERT/UPDATE/CREATE/ALTER
 only — SELECT/DELETE/DROP always stay granted so a user can read and clean
 up their own data even once their quota's enforced as read-only.
@@ -40,7 +40,6 @@ log = logging.getLogger(__name__)
 # can't be bound as query parameters.
 _IDENT_RE = re.compile(r"^app_[0-9]+$")
 
-_MAX_USER_CONNECTIONS = 5
 _PASSWORD_LENGTH = 32
 _PASSWORD_ALPHABET = string.ascii_letters + string.digits
 
@@ -118,7 +117,7 @@ class MySQLAdminClient(MySQLAdmin):
                     cur.execute(f"DROP USER IF EXISTS '{db_user}'@'%'")
                     cur.execute(
                         f"CREATE USER '{db_user}'@'%%' IDENTIFIED BY %s "
-                        f"WITH MAX_USER_CONNECTIONS {_MAX_USER_CONNECTIONS}",
+                        f"WITH MAX_USER_CONNECTIONS {int(config.MAX_DB_USER_CONNECTIONS)}",
                         (password,),
                     )
                     cur.execute(f"GRANT ALL ON `{db_name}`.* TO '{db_user}'@'%'")
@@ -129,6 +128,24 @@ class MySQLAdminClient(MySQLAdmin):
             raise MySQLAdminError(f"create_db_user({app_id}) failed: {exc}") from exc
 
         return self._creds(app_id, password)
+
+    def set_user_connection_limit(self, app_id: int) -> None:
+        """Idempotent ALTER USER ... WITH MAX_USER_CONNECTIONS <config value> so existing app users pick up a raised
+        cap. No-op in procedure mode (the proc set the limit at provision time)."""
+        db_user = _validate_identifier(_db_user(app_id))
+        if self._use_procs:
+            return
+        try:
+            conn = self._connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"ALTER USER '{db_user}'@'%' WITH MAX_USER_CONNECTIONS {int(config.MAX_DB_USER_CONNECTIONS)}"
+                    )
+            finally:
+                conn.close()
+        except pymysql.MySQLError as exc:
+            raise MySQLAdminError(f"set_user_connection_limit({app_id}) failed: {exc}") from exc
 
     def _creds(self, app_id: int, password: str) -> dict[str, Any]:
         db_name = _db_name(app_id)

@@ -113,6 +113,10 @@ class MySQLAdmin(ABC):
         """Drop the app's database and user."""
         raise NotImplementedError
 
+    def set_user_connection_limit(self, app_id: int) -> None:
+        """Re-apply config.MAX_DB_USER_CONNECTIONS to the app's existing db user (idempotent). Optional."""
+        return None
+
     def server_health(self) -> dict[str, Any]:
         """Server-wide connection counts + total data size (admin Health page). Optional."""
         raise NotImplementedError

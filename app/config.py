@@ -94,6 +94,11 @@ NAMED_USER_RUN_AS_UID = 10001
 IMAGE_WATCH_MINUTES = int(os.environ.get("IMAGE_WATCH_MINUTES", 10))
 MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 512 * 1024 * 1024))
 
+# Per-app MySQL user MAX_USER_CONNECTIONS (guards the shared DB server; managed max_connections is ~76 total).
+# Applied at CREATE USER and re-applied (ALTER USER) to existing app users on each reconcile sweep.
+# Apps with a connection pool must keep their pool size at or below this.
+MAX_DB_USER_CONNECTIONS = int(os.environ.get("MAX_DB_USER_CONNECTIONS", "10"))
+
 # Hard ceiling on active apps per account, INCLUDING platform admins (Chas, 2026-10-20). A user's app_limit can be
 # lower, never higher (see resources.effective_app_limit).
 MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))

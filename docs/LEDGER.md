@@ -574,3 +574,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: host metrics pushed (94762f4); ci/image/deploy green; live host_metrics=null, error='metrics endpoint unreachable (ConnectError)'.
 - 2026-10-20 [scm-security] START: commit+push host-metrics scrape off by default (#12); watch ci/image/deploy.
 - 2026-10-20 [scm-security] DONE: fc37efb pushed; ci/image/deploy green; healthz ok; db_servers connections+data_size ok, host_metrics=null.
+- 2026-10-20 [frontend] START: Download logs button on app detail Logs panel.
+- 2026-10-20 [frontend] DONE: Download logs icon button (tail 1000, ANSI stripped, header line, <name>-<id>-logs.txt) in AppDetailView; typecheck+build pass. Uncommitted.
+- 2026-10-20 [backend-dev] START: raise per-app MySQL MAX_USER_CONNECTIONS (Ghost app_93 hit the cap of 5).
+- 2026-10-20 [backend-dev] DONE: config.MAX_DB_USER_CONNECTIONS (env, default 10); mysql.py CREATE USER uses it; new MySQLAdmin.set_user_connection_limit (ALTER USER, no-op in proc mode) called from reconcile_app on the running-app sweep so existing apps (app_93) are raised next sweep; errors logged, not fatal. deploy/mysql proc updated 5->10 (hardcoded). NOTE: production uses managed MySQL via the non-proc path, so the proc change only affects the in-cluster MySQL option and ships on a fresh data volume only. Docs: ARCHITECTURE, USER_GUIDE (pool size <= limit). tests/test_db_conn_limit.py. Uncommitted.

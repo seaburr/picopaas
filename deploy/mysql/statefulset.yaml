@@ -77,7 +77,7 @@ data:
       SET v = CONCAT('app_', p_id);
       CALL picopaas_ops._exec(CONCAT('CREATE DATABASE IF NOT EXISTS `', v, '`'));
       CALL picopaas_ops._exec(CONCAT('DROP USER IF EXISTS ''', v, '''@''%'''));
-      CALL picopaas_ops._exec(CONCAT('CREATE USER ''', v, '''@''%'' IDENTIFIED BY ', QUOTE(p_password), ' WITH MAX_USER_CONNECTIONS 5'));
+      CALL picopaas_ops._exec(CONCAT('CREATE USER ''', v, '''@''%'' IDENTIFIED BY ', QUOTE(p_password), ' WITH MAX_USER_CONNECTIONS 10'));
       CALL picopaas_ops._exec(CONCAT('GRANT ALL ON `', v, '`.* TO ''', v, '''@''%'''));
     END$$
     DROP PROCEDURE IF EXISTS picopaas_ops.drop_app$$
