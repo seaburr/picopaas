@@ -12,7 +12,7 @@ MySQL DB (50MB) and Spaces bucket (100MB). Caps: 100m CPU, 384MB RAM, 256MB imag
 - `docs/requests/`: infra requests to Chas (what / why / monthly cost). Never provision without an approved request.
 
 ## Hard rules
-- Budget: under $40/mo total. Any new paid resource needs a request in `docs/requests/`.
+- Budget: approx. $60/mo total. Any new paid resource needs a request in `docs/requests/`.
 - Tokens are scarce (Claude Pro). Work in small chunks, add a ledger line at the START and END of each chunk,
   and prefer `sonnet` subagents for implementation.
 - **Only the `scm-security` agent commits and pushes.** Other agents leave changes in the working tree and
