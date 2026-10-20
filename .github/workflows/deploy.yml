@@ -81,6 +81,8 @@ jobs:
           IMAGE: ghcr.io/seaburr/picopaas:${{ steps.tag.outputs.short }}
         run: |
           kubectl apply -f deploy/platform/rbac.yaml
+          # PriorityClass must exist before the Deployment that references it (else admission rejects the pod).
+          kubectl apply -f deploy/platform/priorityclass.yaml
           envsum=$(kubectl -n picopaas-system get secret picopaas-env -o json | jq -S -c .data | sha256sum | cut -d' ' -f1)
           sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" \
               -e "s#picopaas.io/env-checksum: .*#picopaas.io/env-checksum: \"$envsum\"#" \

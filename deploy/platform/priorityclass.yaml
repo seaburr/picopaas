@@ -1,0 +1,13 @@
+# Priority for the PicoPaaS control plane so it outranks tenant apps (which have no PriorityClass => priority 0)
+# for scheduling, and is evicted LAST under node memory/disk pressure.
+# preemptionPolicy: Never — the platform gets queue priority and eviction protection, but never actively
+# evicts a tenant pod to place itself. That avoids the one path where hardening could push a displaced tenant
+# Pending and trigger an autoscaler scale-up. value is well below system-cluster-critical (2000000000).
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: picopaas-platform
+value: 1000000
+globalDefault: false
+preemptionPolicy: Never
+description: "PicoPaaS control plane: scheduling priority and last-to-evict over tenant apps; no preemption."

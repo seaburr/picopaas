@@ -547,3 +547,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: 62fb596 pushed; examples build (ghost, WITH_S3=0) succeeded; ghcr.io/seaburr/picopaas-example-ghost:62fb596 anonymously pullable; compressed amd64 168.0 MiB (176.2 MB), UNDER 256 cap. CLAUDE.md left unstaged.
 - 2026-10-20 [scm-security] START: commit+push ghost content.orig seeding fix; watching examples build.
 - 2026-10-20 [scm-security] DONE: Ghost CMS live on PicoPaaS (app ghost-demo), content persists in MySQL across restart; S3-image variant over cap, follow-up. README at examples/ghost/README.md committed.
+- 2026-10-20 [scm-security] START: commit+push platform PriorityClass (preemptionPolicy Never); verify deploy, 1 node, pods Running, healthz.

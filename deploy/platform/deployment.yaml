@@ -39,6 +39,8 @@ spec:
           labelSelector:
             matchLabels:
               app: picopaas
+      # Control plane outranks tenant apps for scheduling / is evicted last (see priorityclass.yaml).
+      priorityClassName: picopaas-platform
       serviceAccountName: picopaas
       automountServiceAccountToken: true # the reconciler needs the k8s API; app pods disable this (ARCHITECTURE.md)
       securityContext:
