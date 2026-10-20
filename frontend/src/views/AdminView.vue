@@ -21,6 +21,11 @@ import IconButton from '../components/IconButton.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
+const SERVER_STATUS_HELP: Record<string, string> = {
+  active: 'Active: new databases can be placed on this server.',
+  draining: 'Draining: no new databases go here; existing ones keep working. Use it before retiring a server.',
+  full: 'Full: no new databases go here (set automatically at max databases); existing ones keep working.',
+}
 const uid = useId()
 
 const users = ref<AdminUser[]>([])
@@ -392,10 +397,16 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <div class="truncate font-medium text-white" :title="s.name">{{ s.name }}</div>
                 <div class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</div>
                 <DbCapacityBar :server="s" />
-                <select :value="s.status" :aria-label="`Status of ${s.name}`" class="input !min-h-[28px] w-28 !px-2 !py-0.5" @change="patch(s, { status: ($event.target as HTMLSelectElement).value })">
-                  <option>active</option>
-                  <option>draining</option>
-                  <option>full</option>
+                <select
+                  :value="s.status"
+                  :aria-label="`Status of ${s.name}`"
+                  :title="SERVER_STATUS_HELP[s.status] ?? ''"
+                  class="input !min-h-[28px] w-32 !py-0.5 !pl-2"
+                  @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
+                >
+                  <option value="active">Active</option>
+                  <option value="draining">Draining</option>
+                  <option value="full">Full</option>
                 </select>
               </li>
               <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
@@ -404,6 +415,11 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               </li>
             </ul>
           </div>
+          <p v-if="servers.length" class="help mt-2">
+            <strong class="text-zinc-200">Status</strong> controls where new databases go. <em>Active</em> takes new
+            databases. <em>Draining</em> and <em>Full</em> take none, but existing databases keep working. Drain a server
+            before retiring it.
+          </p>
         </template>
 
         <!-- AUDIT -->

@@ -469,3 +469,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-19 [scm-security] DONE: pushed 7c95ed4 (probe read/size/clear endpoints); testapps+ci green
 - 2026-10-19 [frontend-dev] DONE: UI polish: 32px buttons/inputs, IconButton (lucide-vue-next 1.0.0), fixed-width grids/tables (admin, keys, health), .mono shared class, tighter spacing. Uncommitted. Shots: scratchpad/uxreview/polish/{before,after}
 - 2026-10-19 [scm-security] START: commit UI polish pass
+- 2026-10-19 [scm-security] DONE: pushed 66e4d40 (UI polish); ci/image/deploy green
+- 2026-10-19 [scm-security] DONE: select chevron spacing; DB server status options labelled + explained (drain)
