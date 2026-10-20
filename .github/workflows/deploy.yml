@@ -20,8 +20,13 @@ concurrency:
 
 jobs:
   deploy:
-    # For workflow_run, only deploy when the image build succeeded.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # For workflow_run, only deploy when the image build succeeded AND came from a push to THIS repo (not a fork
+    # branch that happens to be named main), since this job has secrets in scope.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
@@ -54,19 +59,19 @@ jobs:
           fi
           echo "short=$(echo "$full" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
-      - uses: digitalocean/action-doctl@v2.5.1
+      - uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2.5.1
         if: steps.gate.outputs.run == 'true'
         with:
           token: ${{ secrets.DIGITALOCEAN_TOKEN }}
 
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
         if: steps.gate.outputs.run == 'true'
 
       - name: Save kubeconfig
         if: steps.gate.outputs.run == 'true'
         run: doctl kubernetes cluster kubeconfig save picopaas-nyc3
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: steps.gate.outputs.run == 'true'
 
       # Apply the platform manifests too (not just the image), so changes like replicas/RBAC ship with every deploy.

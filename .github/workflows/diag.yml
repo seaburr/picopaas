@@ -26,10 +26,10 @@ jobs:
       SELECTOR: ${{ inputs.selector }}
       TAIL: ${{ inputs.tail }}
     steps:
-      - uses: digitalocean/action-doctl@v2.5.1
+      - uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2.5.1
         with:
           token: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
       - name: Kubeconfig
         run: doctl kubernetes cluster kubeconfig save picopaas-nyc3 >/dev/null
       - name: Validate inputs
@@ -51,27 +51,47 @@ jobs:
                 true
               done
       - name: Nodes
-        run: kubectl get nodes -o wide && kubectl top nodes 2>/dev/null || true
+        run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
+          kubectl get nodes -o wide && kubectl top nodes 2>/dev/null || true
       - name: Pods and events
         run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
           kubectl -n "$NS" get pods -o wide
           kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -40
       - name: Describe non-ready pods
         run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
           for p in $(kubectl -n "$NS" get pods -o json | jq -r '.items[] | select(([.status.containerStatuses[]?.ready] | all) | not) | .metadata.name'); do
             echo "=== $p"; kubectl -n "$NS" describe pod "$p" | sed -n '/^Containers:/,$p' | grep -v -iE 'password|secret_key|token' || true
           done
       - name: Logs
         run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
           sel=${SELECTOR:+-l $SELECTOR}
           for p in $(kubectl -n "$NS" get pods $sel -o jsonpath='{.items[*].metadata.name}'); do
             echo "=== $p (current)"; kubectl -n "$NS" logs "$p" --all-containers --tail="$TAIL" 2>&1 || true
             echo "=== $p (previous)"; kubectl -n "$NS" logs "$p" --all-containers --previous --tail="$TAIL" 2>&1 || true
           done
+      - name: RBAC and quotas (no secrets)
+        run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
+          kubectl -n "$NS" get rolebinding,role -o wide
+          kubectl -n "$NS" get resourcequota -o yaml | grep -vE '^\s*(uid|resourceVersion|creationTimestamp|generation):' || true
       - name: Network policies (no secrets)
-        run: kubectl -n "$NS" get networkpolicy -o yaml | grep -vE '^\s*(uid|resourceVersion|creationTimestamp|generation):' || true
+        run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
+          kubectl -n "$NS" get networkpolicy -o yaml | grep -vE '^\s*(uid|resourceVersion|creationTimestamp|generation):' || true
       - name: Managed DB firewall and node IPs
         run: |
+          tok=$(uuidgen); echo "::stop-commands::$tok"
+          trap 'echo "::$tok::"' EXIT
           db_id=$(doctl databases list -o json | jq -r '.[] | select(.name == "picopaas-mysql-nyc3") | .id')
           echo "db firewall rules:"; doctl databases firewalls list "$db_id" -o json | jq -c '.[] | {type, value}'
           echo "db private IP:"; getent hosts "$(doctl databases connection "$db_id" --private -o json | jq -r 'if type=="array" then .[0] else . end | .host')" || echo "(not resolvable from runner)"

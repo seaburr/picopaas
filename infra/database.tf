@@ -13,6 +13,10 @@ resource "digitalocean_database_cluster" "mysql" {
   private_network_uuid = digitalocean_vpc.main.id
 
   tags = ["picopaas"]
+
+  lifecycle {
+    prevent_destroy = true # holds all tenant data
+  }
 }
 
 # Trust the k8s cluster's VPC so app pods can reach managed MySQL on 3306. DO database firewalls

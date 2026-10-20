@@ -15,4 +15,8 @@ resource "digitalocean_spaces_bucket" "platform" {
   acl    = "private"
 
   force_destroy = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
