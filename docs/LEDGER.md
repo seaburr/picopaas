@@ -568,3 +568,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push DB health metrics; watch ci/image/deploy, verify /admin/health db_servers.
 - 2026-10-20 [scm-security] DONE: DB health metrics pushed (21ebfe4); ci/image/deploy green; live db_servers metrics verified, error=null.
 - 2026-10-20 [scm-security] START: commit+push table overflow pass / app-cap hiding; watch ci/image/deploy.
+- 2026-10-20 [scm-security] DONE: table overflow/app-cap fix pushed (93f2313); ci/image/deploy green; healthz ok, / 200.
