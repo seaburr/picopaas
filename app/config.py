@@ -156,8 +156,11 @@ MANAGED_DB_DISK_MB = int(os.environ["MANAGED_DB_DISK_MB"]) if os.environ.get("MA
 
 # Managed-DB host metrics (cpu/mem/disk %) from DigitalOcean's scrapable-metrics endpoint
 # (https://<db-host>:9273/metrics, basic auth from GET /v2/databases/metrics/credentials, uses DIGITALOCEAN_TOKEN).
-# No extra cost. DB_METRICS_ENABLED=0 turns it off; it is also skipped silently when no token is set.
-DB_METRICS_ENABLED = os.environ.get("DB_METRICS_ENABLED", "1") != "0"
+# Scrape of DO's managed-DB Prometheus endpoint (host cpu/mem/disk). OFF by default: DO managed MySQL does not
+# serve external scraping (documented limitation; use the control-panel Insights tab), so the scrape only
+# ConnectErrors for us. Left behind the flag in case we change DB engine or DO adds support. Set
+# DB_METRICS_ENABLED=1 to re-enable. No extra cost; also skipped when no token is set.
+DB_METRICS_ENABLED = os.environ.get("DB_METRICS_ENABLED", "0") != "0"
 DB_METRICS_PORT = int(os.environ.get("DB_METRICS_PORT", "9273"))
 # Optional CA bundle for the metrics TLS cert; empty = reuse MYSQL_SSL_CA (same DO cluster CA), else system CAs.
 DB_METRICS_CA = os.environ.get("DB_METRICS_CA", "")

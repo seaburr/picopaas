@@ -394,14 +394,13 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
                       {{ mb(s.data_size_bytes) }} MB<template v-if="s.disk_mb"> / {{ s.disk_mb }} MB ({{ Math.round((s.data_size_bytes / 1048576 / s.disk_mb) * 100) }}%)</template>
                     </template>
                     <span v-else class="text-zinc-500">n/a</span>
-                    <div class="text-xs" :title="s.host_metrics_error ?? ''">
-                      <template v-if="s.host_metrics">
-                        <template v-for="(k, i) in HOST_KEYS" :key="k.key">
-                          <span v-if="i" class="text-zinc-600"> · </span>
-                          <span class="text-zinc-500">{{ k.label }} </span><span :class="hostHigh(s.host_metrics[k.key]) ? 'text-amber-400' : ''">{{ hostPct(s.host_metrics[k.key]) }}</span>
-                        </template>
+                    <!-- Host cpu/mem/disk only render when present. DO managed MySQL doesn't serve the scrapable
+                         metrics endpoint, so this stays hidden rather than showing a permanent n/a. -->
+                    <div v-if="s.host_metrics" class="text-xs">
+                      <template v-for="(k, i) in HOST_KEYS" :key="k.key">
+                        <span v-if="i" class="text-zinc-600"> · </span>
+                        <span class="text-zinc-500">{{ k.label }} </span><span :class="hostHigh(s.host_metrics[k.key]) ? 'text-amber-400' : ''">{{ hostPct(s.host_metrics[k.key]) }}</span>
                       </template>
-                      <span v-else class="text-zinc-500">host cpu/mem/disk n/a</span>
                     </div>
                   </td>
                   <td>{{ s.status }}</td>

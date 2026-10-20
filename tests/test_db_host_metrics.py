@@ -58,9 +58,16 @@ def test_fetch_errors_scrubbed():
 
 
 def test_health_wrapper_fallbacks(monkeypatch):
+    from app import config
     health.reset_cache()
+    # Disabled by default (DO MySQL doesn't serve scraping) and when no token is set → None/None either way.
+    monkeypatch.setattr(config, "DB_METRICS_ENABLED", False)
+    monkeypatch.setenv("DIGITALOCEAN_TOKEN", "x")
+    assert health._host_metrics(1, "h") == {"host_metrics": None, "host_metrics_error": None}
     monkeypatch.delenv("DIGITALOCEAN_TOKEN", raising=False)
     assert health._host_metrics(1, "h") == {"host_metrics": None, "host_metrics_error": None}
+    # Enable to exercise the fetch/fallback path.
+    monkeypatch.setattr(config, "DB_METRICS_ENABLED", True)
     monkeypatch.setenv("DIGITALOCEAN_TOKEN", "x")
 
     def bad(host):

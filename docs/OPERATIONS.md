@@ -148,9 +148,13 @@ from `MAX_NODES` (2, set at bootstrap); the real cap is `max_nodes` in Terraform
 DB server metrics: each server row also shows live connections (`used / max`, peak since restart; amber above 80%)
 and total data size (all schemas), read over the existing admin MySQL connection (`SHOW GLOBAL STATUS`,
 `SHOW VARIABLES`, `information_schema.tables`) and cached 15 s per server. An unreachable server shows `n/a` with
-a scrubbed reason in the tooltip. Set `MANAGED_DB_DISK_MB` to also show data / disk %. CPU, memory and host disk
-are a planned follow-up through DO's managed-database metrics endpoint (no extra cost, just wiring); that is also
-where the true disk capacity will come from.
+a scrubbed reason in the tooltip. Set `MANAGED_DB_DISK_MB` to also show data / disk %.
+
+Host CPU, memory and disk% are NOT shown: DigitalOcean managed MySQL does not support external Prometheus
+scraping (documented limitation — view host CPU/memory/disk in the DO control panel's **Insights** tab). The
+scrape code exists behind `DB_METRICS_ENABLED` (default **off**; a live scrape just ConnectErrors for MySQL) in
+case we change DB engine or DO adds support. Pursuing reachability is tracked as a tabled feature request (see
+the GitHub issue). True disk capacity would come from that same source.
 
 ## 8. Cost
 
