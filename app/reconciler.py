@@ -110,7 +110,7 @@ def _private_storage_ips(endpoint: str) -> list[str]:
     return ips
 
 
-UNREADABLE_DETAIL = "Your saved secrets can't be read because the platform's encryption key changed. Open Edit, re-enter your secret values and save, or rotate the credentials."
+UNREADABLE_DETAIL = "Your saved secrets can't be read because the platform's encryption key changed. Rotate the credentials to fix the database and storage ones; for secret env vars, open Edit, type their values again and save."
 SUSPENDED_APPLIED = "scaled to zero"
 
 # Rollout that isn't ready after this long fails (retryable) instead of sitting in "deploying" forever.

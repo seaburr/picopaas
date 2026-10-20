@@ -14,7 +14,7 @@ Platform URL: `https://platform.raisehellpraisedale.xyz` (the CLI default).
    waiting for administrator approval...") until an administrator approves you. The UI shows a waiting page and
    checks every 20 seconds, so you land on your apps as soon as you're approved.
 3. Once approved (`active`) you can create apps and API keys. The first account registered on a fresh platform becomes
-   the administrator (role `uberadmin`) and is active immediately.
+   the platform admin (role `platform_admin`) and is active immediately.
 
 If you request access with an email that already has an account, you see the same response as a new request, so
 nobody can use the form to check who has an account. Log in instead.
@@ -37,7 +37,7 @@ administrator restores the account.
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. An administrator can raise it. Over the limit gives `403` ("You've reached your limit of N apps..."). Administrators are exempt. |
 | Database | Optional MySQL database, 50 MB. |
-| Storage | Optional storage bucket, 100 MB. |
+| Storage | Optional storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
 
@@ -257,7 +257,7 @@ mysql CLI (save the PEM to `ca.pem`). The database is only reachable from inside
 mysql --ssl-mode=VERIFY_CA --ssl-ca=ca.pem -h HOST -P PORT -u USER -p DBNAME
 ```
 
-## 7. Connecting to the storage bucket (S3)
+## 7. Connecting to the storage bucket (S3-compatible)
 
 ```yaml
 resources: { storage: true }
@@ -322,7 +322,8 @@ Rotation can fail in two ways:
 - `502` ("Couldn't rotate the credentials, so the old ones still work..."): the provider call failed. Your old
   credentials are kept.
 
-Rotation also repairs an app that shows "Your saved secrets can't be read".
+If an app shows "Your saved secrets can't be read", rotating fixes the database and storage credentials. Secret env vars
+marked "can't be read" are not fixed by rotation: open **Edit**, type their values again and save.
 
 ## 10. Quotas
 
