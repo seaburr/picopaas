@@ -7,6 +7,7 @@ import NavBar from '../components/NavBar.vue'
 import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
+import { listTemplates } from '../api/templates'
 import { SAMPLE_APP } from '../composables/appUi'
 import { envKeyError } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
@@ -86,6 +87,23 @@ onMounted(async () => {
     form.name = SAMPLE_APP.name
     form.image = SAMPLE_APP.image
     form.port = SAMPLE_APP.port
+  } else if (typeof route.query.template === 'string') {
+    try {
+      const t = (await listTemplates()).find((x) => x.id === route.query.template)
+      if (t) {
+        form.name = t.id
+        form.image = t.image
+        form.port = t.port
+        form.want_db = t.wants_db && !dbOff.value
+        form.want_storage = t.wants_storage && !storageOff.value
+        env.value = Object.entries(t.env).map(([key, value]) => ({ key, value, is_secret: false }))
+        if (t.notes) toast.success(`Prefilled from template: ${t.name}. ${t.notes}`)
+      } else {
+        error.value = `Unknown template "${route.query.template}".`
+      }
+    } catch {
+      error.value = "Couldn't load the template."
+    }
   }
 })
 
@@ -201,7 +219,10 @@ async function onSubmit() {
           <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
         </div>
         <HostLink v-if="loadedApp" :hostname="loadedApp.hostname" class="mt-1" />
-        <p v-if="!isEdit" class="help">Deploy a public Docker image. You'll get an https URL as soon as the app is created.</p>
+        <p v-if="!isEdit" class="help">
+          Deploy a public Docker image. You'll get an https URL as soon as the app is created.
+          <RouterLink to="/templates" class="link">Browse templates</RouterLink>
+        </p>
       </div>
 
       <div v-if="!isEdit" class="mb-3 flex gap-1 border-b border-pico-border" role="tablist">

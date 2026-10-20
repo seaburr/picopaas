@@ -33,6 +33,7 @@ const router = createRouter({
       meta: { requiresAuth: true, title: 'Edit app' },
       props: true,
     },
+    { path: '/templates', component: () => import('../views/TemplatesView.vue'), meta: { requiresAuth: true, title: 'Templates' } },
     { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true, title: 'API keys' } },
     {
       path: '/admin',

@@ -410,7 +410,11 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |
 
-## 14. Test apps
+## 14. Templates
+
+The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, a static nginx site and the podinfo sample API. **Deploy** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons and env vars, so you can adjust before creating. See [Recipes](/guide/recipes) for the Ghost walkthrough.
+
+## 15. Test apps
 
 Public images built from `testapps/` that you can deploy to try the platform.
 
