@@ -53,26 +53,64 @@ PicoPaaS env keys must match `^[A-Z_][A-Z0-9_]*$`, but Ghost wants lowercase, `_
 
 ### Deploy on PicoPaaS
 
-Create an app with a database and a storage bucket, container port `2368`, image
-`ghcr.io/seaburr/picopaas-example-ghost:latest`, and these env refs:
+Deploy from the dashboard (**New app**, filling in the fields below), or from the CLI / `curl` with a YAML spec.
+The spec is the whole app: `name`, `image`, `port`, `resources` (database + bucket), and `env` — where you map
+the platform refs onto the names Ghost's entrypoint expects.
 
-| Key | Value |
-|---|---|
-| `DB_HOST` | `${{ db.host }}` |
-| `DB_PORT` | `${{ db.port }}` |
-| `DB_NAME` | `${{ db.name }}` |
-| `DB_USER` | `${{ db.user }}` |
-| `DB_PASSWORD` | `${{ db.password }}` |
-| `DB_CA_CERT` | `${{ db.ca_cert }}` |
-| `S3_ENDPOINT` | `${{ storage.endpoint }}` |
-| `S3_REGION` | `${{ storage.region }}` |
-| `S3_BUCKET` | `${{ storage.bucket }}` |
-| `S3_ACCESS_KEY` | `${{ storage.access_key }}` |
-| `S3_SECRET_KEY` | `${{ storage.secret_key }}` |
-| `SITE_URL` | `${{ app.url }}` |
+**`ghost-blog.yaml`**
 
-Because of `${{ app.url }}` it deploys in one step; there is no URL to set afterward. When it's up, finish setup
-at `/ghost/`.
+```yaml
+apiVersion: picopaas/v1
+name: ghost-blog
+image: ghcr.io/seaburr/picopaas-example-ghost:latest
+port: 2368
+resources:
+  db: true
+  storage: true
+env:
+  DB_HOST: "${{ db.host }}"
+  DB_PORT: "${{ db.port }}"
+  DB_NAME: "${{ db.name }}"
+  DB_USER: "${{ db.user }}"
+  DB_PASSWORD: "${{ db.password }}"
+  DB_CA_CERT: "${{ db.ca_cert }}"
+  S3_ENDPOINT: "${{ storage.endpoint }}"
+  S3_REGION: "${{ storage.region }}"
+  S3_BUCKET: "${{ storage.bucket }}"
+  S3_ACCESS_KEY: "${{ storage.access_key }}"
+  S3_SECRET_KEY: "${{ storage.secret_key }}"
+  SITE_URL: "${{ app.url }}"
+```
+
+Quote the `${{ ... }}` values — the braces aren't valid unquoted YAML. No `secrets:` block is needed here:
+every value is a platform ref, not a literal secret. (`${{ app.url }}` resolves to this app's own generated URL,
+so there's no second step to set it; `${{ db.* }}` / `${{ storage.* }}` are injected from the database and bucket
+you requested under `resources`.)
+
+Get an API key from the **API keys** page and export it:
+
+```bash
+export PICOPAAS_TOKEN=pp_sk_...
+```
+
+**CLI:**
+
+```bash
+picopaas apply -f ghost-blog.yaml
+```
+
+**curl** (the `/apps/spec` endpoint takes `{"spec": "<yaml>"}`; `jq -Rs` wraps the file for you):
+
+```bash
+curl -fsS -X POST https://platform.raisehellpraisedale.xyz/apps/spec \
+  -H "Authorization: Bearer $PICOPAAS_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "$(jq -Rs '{spec: .}' ghost-blog.yaml)"
+```
+
+Both return the created app with its generated `https://<name>.raisehellpraisedale.xyz` hostname. It deploys in
+one step (no URL to set afterward); open `/ghost/` there to finish setup. Re-running `apply` with the same `name`
+updates the app in place.
 
 Posts and settings live in MySQL and uploaded images in the bucket, so both survive restarts.
 
