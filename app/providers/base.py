@@ -113,6 +113,10 @@ class MySQLAdmin(ABC):
         """Drop the app's database and user."""
         raise NotImplementedError
 
+    def server_health(self) -> dict[str, Any]:
+        """Server-wide connection counts + total data size (admin Health page). Optional."""
+        raise NotImplementedError
+
     @abstractmethod
     def db_size_bytes(self, app_id: int) -> int:
         """Sum of the app database's table sizes, for the DB quota check."""

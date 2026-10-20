@@ -105,6 +105,14 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.app_user_kill_ok = False  # True: the app-user kill path succeeds when a password is supplied
         self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
 
+    def server_health(self) -> dict[str, Any]:
+        if getattr(self, "health_error", None):
+            raise MySQLAdminError(self.health_error)
+        return getattr(self, "health", None) or {
+            "threads_connected": 4, "threads_running": 1, "max_used_connections": 9,
+            "max_connections": 25, "data_size_bytes": 12 * 1024 * 1024, "uptime_seconds": 3600,
+        }
+
     def create_db_user(self, app_id: int) -> dict[str, Any]:
         creds = {
             "host": "mysql.picopaas-data.svc.cluster.local",

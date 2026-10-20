@@ -26,8 +26,37 @@ _lock = threading.Lock()
 _background = False  # True once start_background() ran: requests then never block on k8s
 
 
+# Per-DbServer SQL metrics, keyed by server id: {id: (monotonic_at, metrics_dict)}. Same TTL as the k8s cache,
+# so rapid Health refreshes don't hit the DB servers (errors are cached too, to avoid hammering a down server).
+_db_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+
+
+def _server_metrics(db: Session, server_id: int, factory) -> dict[str, Any]:
+    now = time.monotonic()
+    with _lock:
+        hit = _db_cache.get(server_id)
+    if hit and now - hit[0] < CACHE_TTL_S:
+        return hit[1]
+    out: dict[str, Any] = {"connections": None, "data_size_bytes": None, "uptime_seconds": None, "error": None}
+    try:
+        server = db.get(models.DbServer, server_id)
+        h = factory(server).server_health()
+        out["connections"] = {"used": h["threads_connected"], "running": h["threads_running"],
+                              "max": h["max_connections"], "max_used": h["max_used_connections"]}
+        out["data_size_bytes"] = h["data_size_bytes"]
+        out["uptime_seconds"] = h.get("uptime_seconds")
+    except Exception as exc:  # noqa: BLE001 - scrubbed: only the type and (for MySQLAdminError) its code-only text
+        from app.providers.base import MySQLAdminError
+        out["error"] = str(exc)[:120] if isinstance(exc, MySQLAdminError) and "mysql error" in str(exc) \
+            else f"unreachable or query failed ({type(exc).__name__})"
+    with _lock:
+        _db_cache[server_id] = (now, out)
+    return out
+
+
 def reset_cache() -> None:
     global _background
+    _db_cache.clear()
     _cache["at"] = _cache["value"] = None
     _background = False
 
@@ -79,7 +108,12 @@ def _sum(vals: list) -> Any:
     return sum(known) if known else None
 
 
-def build(db: Session, kube: KubeProvider, server_outs: list[dict]) -> dict[str, Any]:
+def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factory=None) -> dict[str, Any]:
+    if mysql_factory is not None:
+        for so in server_outs:
+            so.update(_server_metrics(db, so["id"], mysql_factory))
+        for so in server_outs:
+            so["disk_mb"] = config.MANAGED_DB_DISK_MB
     cached = _get_snapshot(kube)
     warming = cached is None
     if warming:

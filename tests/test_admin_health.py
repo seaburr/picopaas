@@ -173,3 +173,71 @@ def test_start_background_warms_in_thread(kube):
             break
         _t.sleep(0.05)
     assert kube.snapshot_calls == 1 and health._cache["value"] is not None
+
+
+# --- DB server SQL metrics ---------------------------------------------------
+
+def _add_server(admin, name="primary"):
+    r = admin.post("/admin/db-servers", json={
+        "name": name, "host": "db.example", "port": 3306, "admin_user": "admin-user",
+        "admin_password": "not-the-password", "max_databases": 10})
+    assert r.status_code == 201, r.text
+
+
+def test_db_server_metrics_and_cache(make_client, kube):
+    from app.providers.fake import FakeMySQLAdmin
+    fake = FakeMySQLAdmin()
+    calls = []
+    fake_factory = lambda s: (calls.append(s.id), fake)[1]
+    from app.routers.apps import get_mysql_admin_factory
+    app.dependency_overrides[get_mysql_admin_factory] = lambda: fake_factory
+    admin = _admin(make_client)
+    _add_server(admin)
+    s = admin.get("/admin/health").json()["db_servers"][0]
+    assert s["connections"] == {"used": 4, "running": 1, "max": 25, "max_used": 9}
+    assert s["data_size_bytes"] == 12 * 1024 * 1024 and s["error"] is None and s["disk_mb"] is None
+    admin.get("/admin/health")
+    assert len(calls) == 1  # cached
+
+
+def test_db_server_unreachable_yields_null_metrics(make_client, kube):
+    from app.providers.fake import FakeMySQLAdmin
+    from app.routers.apps import get_mysql_admin_factory
+    fake = FakeMySQLAdmin()
+    fake.health_error = "server_health failed (mysql error 2003)"
+    app.dependency_overrides[get_mysql_admin_factory] = lambda: (lambda s: fake)
+    admin = _admin(make_client)
+    _add_server(admin)
+    r = admin.get("/admin/health")
+    assert r.status_code == 200
+    s = r.json()["db_servers"][0]
+    assert s["connections"] is None and s["data_size_bytes"] is None
+    assert "2003" in s["error"] and "db.example" not in s["error"]
+
+
+def test_server_health_parses_queries(monkeypatch):
+    from types import SimpleNamespace
+    from app.crypto import encrypt
+    from app.providers.mysql import MySQLAdminClient
+
+    class Cur:
+        def __init__(self): self.q = ""
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, q, *a): self.q = q
+        def fetchall(self):
+            return [("Threads_connected", "7"), ("Threads_running", "2"), ("Max_used_connections", "11"),
+                    ("Uptime", "999")]
+        def fetchone(self):
+            return ("max_connections", "75") if "max_connections" in self.q else (2048,)
+
+    class Conn:
+        def cursor(self): return Cur()
+        def close(self): pass
+
+    srv = SimpleNamespace(host="h", port=3306, admin_user="u", admin_password_encrypted=encrypt("not-the-password"))
+    c = MySQLAdminClient(srv)
+    monkeypatch.setattr(c, "_connect", lambda: Conn())
+    assert c.server_health() == {
+        "threads_connected": 7, "threads_running": 2, "max_used_connections": 11,
+        "max_connections": 75, "data_size_bytes": 2048, "uptime_seconds": 999}

@@ -149,3 +149,7 @@ LOGIN_IP_MAX_FAILS = 100         # per client IP (shared LB address today) — a
 LOGIN_WINDOW_SECONDS = 15 * 60
 REGISTER_IP_MAX = 40             # signups per IP per window (shared LB address today); approval still gates every account
 REGISTER_WINDOW_SECONDS = 60 * 60
+
+# Optional managed-DB disk size (MB) so the Health page can show data/disk %. Unset = show data size only.
+# The true disk capacity comes from DO's managed-DB metrics API (planned follow-up); do not guess it.
+MANAGED_DB_DISK_MB = int(os.environ["MANAGED_DB_DISK_MB"]) if os.environ.get("MANAGED_DB_DISK_MB", "").isdigit() else None

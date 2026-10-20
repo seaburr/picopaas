@@ -145,6 +145,13 @@ per-app pod readiness, restarts and CPU/memory against the 100m/384Mi limits, pl
 by bootstrap); without it usage cells show a dash and `metrics_available` is false. The node ceiling shown comes
 from `MAX_NODES` (2, set at bootstrap); the real cap is `max_nodes` in Terraform.
 
+DB server metrics: each server row also shows live connections (`used / max`, peak since restart; amber above 80%)
+and total data size (all schemas), read over the existing admin MySQL connection (`SHOW GLOBAL STATUS`,
+`SHOW VARIABLES`, `information_schema.tables`) and cached 15 s per server. An unreachable server shows `n/a` with
+a scrubbed reason in the tooltip. Set `MANAGED_DB_DISK_MB` to also show data / disk %. CPU, memory and host disk
+are a planned follow-up through DO's managed-database metrics endpoint (no extra cost, just wiring); that is also
+where the true disk capacity will come from.
+
 ## 8. Cost
 
 Baseline about $60.15/mo (node $28 + MySQL $15.15 + LB $12 + Spaces $5), about $88.15 while the autoscaler runs the

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { DbServer } from '../types'
+const connHigh = (s: DbServer) => !!s.connections && s.connections.max > 0 && s.connections.used / s.connections.max > 0.8
+const mb = (b: number) => (b / 1048576).toFixed(1)
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, RefreshCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
@@ -336,7 +339,7 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-platform" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Platform components</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[36rem]">
+            <table class="tbl min-w-[56rem]">
               <colgroup><col /><col class="w-40" /><col class="w-24" /><col class="w-20" /><col class="w-24" /><col class="w-24" /></colgroup>
               <thead>
                 <tr>
@@ -362,19 +365,32 @@ const card = 'rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-db" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Database servers</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[36rem]">
-              <colgroup><col class="w-32" /><col /><col class="w-48" /><col class="w-24" /></colgroup>
+            <table class="tbl min-w-[56rem]">
+              <colgroup><col class="w-32" /><col /><col class="w-48" /><col class="w-40" /><col class="w-48" /><col class="w-24" /></colgroup>
               <thead>
-                <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Capacity</th><th scope="col">Status</th></tr>
+                <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Capacity</th><th scope="col">Connections</th><th scope="col">Data</th><th scope="col">Status</th></tr>
               </thead>
               <tbody class="text-zinc-300">
                 <tr v-for="s in data.db_servers" :key="s.id">
                   <td class="truncate" :title="s.name">{{ s.name }}</td>
                   <td class="mono truncate" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</td>
                   <td><DbCapacityBar :server="s" /></td>
+                  <td class="mono whitespace-nowrap" :title="s.error ?? ''">
+                    <template v-if="s.connections">
+                      <span :class="connHigh(s) ? 'text-amber-400' : ''">{{ s.connections.used }} / {{ s.connections.max }}</span>
+                      <span class="text-zinc-500"> (peak {{ s.connections.max_used }})</span>
+                    </template>
+                    <span v-else class="text-zinc-500">n/a</span>
+                  </td>
+                  <td class="mono whitespace-nowrap" :title="s.error ?? ''">
+                    <template v-if="s.data_size_bytes != null">
+                      {{ mb(s.data_size_bytes) }} MB<template v-if="s.disk_mb"> / {{ s.disk_mb }} MB ({{ Math.round((s.data_size_bytes / 1048576 / s.disk_mb) * 100) }}%)</template>
+                    </template>
+                    <span v-else class="text-zinc-500">n/a</span>
+                  </td>
                   <td>{{ s.status }}</td>
                 </tr>
-                <tr v-if="data.db_servers.length === 0"><td colspan="4" class="text-zinc-400">No database servers.</td></tr>
+                <tr v-if="data.db_servers.length === 0"><td colspan="6" class="text-zinc-400">No database servers.</td></tr>
               </tbody>
             </table>
           </div>

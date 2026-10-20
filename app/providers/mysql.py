@@ -185,6 +185,45 @@ class MySQLAdminClient(MySQLAdmin):
         except pymysql.MySQLError as exc:
             raise MySQLAdminError(f"db_size_bytes({app_id}) failed: {exc}") from exc
 
+    def server_health(self) -> dict[str, Any]:
+        """Server-wide, SQL-derived health over the admin connection (3 cheap queries). Never includes
+        credentials; failures raise MySQLAdminError carrying only the MySQL error code."""
+        try:
+            conn = self._connect()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SHOW GLOBAL STATUS WHERE Variable_name IN "
+                        "('Threads_connected','Threads_running','Max_used_connections','Uptime')"
+                    )
+                    status = {str(k).lower(): v for k, v in cur.fetchall()}
+                    cur.execute("SHOW VARIABLES LIKE 'max_connections'")
+                    row = cur.fetchone()
+                    max_conn = int(row[1]) if row else None
+                    # information_schema sizes are cached 24h on MySQL 8; force fresh stats.
+                    cur.execute("SET SESSION information_schema_stats_expiry = 0")
+                    cur.execute(
+                        "SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables"
+                    )
+                    (total,) = cur.fetchone()
+            finally:
+                conn.close()
+        except pymysql.MySQLError as exc:
+            code = exc.args[0] if exc.args and isinstance(exc.args[0], int) else None
+            raise MySQLAdminError(f"server_health failed (mysql error {code})" if code else "server_health failed") from exc
+
+        def _i(key: str) -> int | None:
+            return int(status[key]) if key in status else None
+
+        return {
+            "threads_connected": _i("threads_connected"),
+            "threads_running": _i("threads_running"),
+            "max_used_connections": _i("max_used_connections"),
+            "max_connections": max_conn,
+            "data_size_bytes": int(total),
+            "uptime_seconds": _i("uptime"),
+        }
+
     def set_read_only(
         self, app_id: int, read_only: bool, app_password: str | None = None
     ) -> dict[str, Any] | None:

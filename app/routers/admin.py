@@ -14,6 +14,7 @@ from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_kube, require_platform_admin
 from app.schemas import ResourcesOut
+from app.routers.apps import get_mysql_admin_factory
 from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
@@ -348,9 +349,10 @@ def list_db_servers(db: Session = Depends(get_db)):
 
 
 @router.get("/health")
-def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube)):
+def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube),
+                 mysql_admin_factory=Depends(get_mysql_admin_factory)):
     servers = [_server_out(db, s).model_dump() for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
-    return {**health.build(db, kube, servers), **health.db_counts(db)}
+    return {**health.build(db, kube, servers, mysql_admin_factory), **health.db_counts(db)}
 
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)

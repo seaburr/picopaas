@@ -180,6 +180,12 @@ export interface DbServer {
   used: number
   pct: number
   warn: boolean
+  // Live SQL metrics (admin health only); null when the server was unreachable.
+  connections?: { used: number; running: number; max: number; max_used: number } | null
+  data_size_bytes?: number | null
+  uptime_seconds?: number | null
+  error?: string | null
+  disk_mb?: number | null
 }
 
 export interface DbServerCreate {
