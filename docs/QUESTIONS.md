@@ -11,16 +11,43 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] Weekly live quota test (`.github/workflows/quota-e2e.yml`): add repo secrets `E2E_USER_TOKEN` (a `pp_sk_` API key of an approved,
-      non-admin test user) and `E2E_ADMIN_TOKEN` (a `pp_sk_` key of the uberadmin). Until they exist the workflow skips itself with a
-      notice. It creates and deletes real test apps (DB + bucket) and runs up to ~1h. Details: `tests/e2e/README.md`.
+- [ ] **Add GitHub secrets `E2E_USER_TOKEN` and `E2E_ADMIN_TOKEN` so the weekly quota test can run.**
+
+      *What it is.* `.github/workflows/quota-e2e.yml` runs every Monday (and on demand from the Actions tab). It logs in to the
+      live platform as a test customer, deploys throwaway "probe" apps with a database and a bucket, fills them past the
+      50 MB / 100 MB caps, and checks that: writes get blocked, reads keep working, one long-running connection can't blow far
+      past the cap, and the user can recover (empty the table / "Free up space") and get write access back. Then it deletes the
+      apps. It takes up to about an hour (the DB check runs every minute, the bucket check every 5).
+
+      *Why.* On 2026-10-19 a live run found a DB could reach 6x its cap and a full bucket could never recover; both were fixed.
+      Nothing else would notice if a later change broke enforcement again. This turns "the caps work" into something
+      re-proven every week.
+
+      *What the two secrets are.* Both are PicoPaaS API keys (`pp_sk_…`, made on the **API keys** page), not GitHub tokens:
+      - `E2E_USER_TOKEN`: a key for an ordinary approved, non-admin test account (today: `jimmy@gmail.com`). The test acts as
+        this customer.
+      - `E2E_ADMIN_TOKEN`: a key for your admin account. The test uses it to raise the test user's app limit during the run,
+        restore it afterwards, and delete the test apps even if something fails halfway.
+
+      *Security note.* The admin key can do anything an admin can, and any workflow on `main` could read it. Make a
+      **dedicated** key for this (name it `ci-quota-e2e`), not one you use yourself, so you can revoke it on its own. If you'd
+      rather not keep an admin key in GitHub at all, say so and Claude can narrow what the test needs.
+
+      *How (about 5 minutes).*
+      1. Log in as the test user, open **API keys**, click **Create key**, name it `ci-quota-e2e`, and copy it.
+      2. Log in as yourself (admin) and do the same.
+      3. In GitHub, go to repo **Settings → Secrets and variables → Actions → New repository secret** and add `E2E_USER_TOKEN`
+         and `E2E_ADMIN_TOKEN` with those values. Or from a terminal: `gh secret set E2E_USER_TOKEN` (it prompts; paste the key).
+      4. Optional: **Actions → quota-e2e → Run workflow** to see it pass once.
+
+      Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 - [ ] After the next deploy, check the platform log for `quota: app N db sessions: killed ...` the first time an app goes over its DB cap.
       If it says `failed` > 0 or `listing failed`, the DB admin (`doadmin`) cannot kill other users' sessions; the platform then rolls
       the app's pod as a fallback (see the 2026-10-19 ledger entry), but tell Claude so it can look for a better mechanism.
 
-- [ ] Add the 250 MB scratch-disk cap to bootstrap.md alongside the other caps (per-app ephemeral storage; `EPHEMERAL_LIMIT_MI` in `app/config.py`).
-
 ## Resolved
+- 2026-10-20: bootstrap.md caps updated by Chas (DB 50MB, bucket 100MB, CPU 100m, RAM 384MB, image 256MB, scratch disk 250MB);
+  matches `app/config.py`.
 - 2026-10-19: **Own the platform encryption keys.** FERNET_KEY decrypts every secret the platform stores in MySQL; losing it
       loses that data (it happened in the 2026-10-19 cluster rebuild, harmless then). Claude put generated keys in
       repo secrets `PICOPAAS_SECRET_KEY` / `PICOPAAS_FERNET_KEY`, but GitHub secrets are write-only, so nobody has a

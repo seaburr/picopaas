@@ -215,8 +215,25 @@ def h_s3_clear(_q):
         return 500, {"ok": False, "deleted": deleted, "error": err(e)}
 
 
+def h_disk_fill(q):
+    """Write `mb` of random data to local scratch disk (/tmp) to exercise the per-app ephemeral-storage cap."""
+    mb = mb_arg(q)
+    written = 0
+    chunk = os.urandom(1024 * 1024)
+    try:
+        with open(f"/tmp/fill-{uuid.uuid4().hex[:8]}", "wb") as f:
+            while written < mb:
+                f.write(chunk)
+                f.flush()
+                written += 1
+        return 200, {"ok": True, "written_mb": written}
+    except Exception as e:
+        return 500, {"ok": False, "written_mb": written, "error": err(e)}
+
+
 ROUTES = {"/db": h_db, "/s3": h_s3, "/db/fill": h_db_fill, "/s3/fill": h_s3_fill, "/db/read": h_db_read,
-          "/db/size": h_db_size, "/db/clear": h_db_clear, "/s3/read": h_s3_read, "/s3/clear": h_s3_clear}
+          "/db/size": h_db_size, "/db/clear": h_db_clear, "/s3/read": h_s3_read, "/s3/clear": h_s3_clear,
+          "/disk/fill": h_disk_fill}
 
 
 class H(BaseHTTPRequestHandler):

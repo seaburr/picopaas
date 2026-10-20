@@ -1,0 +1,51 @@
+name: floating-tag-test
+
+# Points ghcr.io/seaburr/picopaas-testapp-hello:floating at a different image, to test that the platform's image
+# watcher (app/image_check.py) redeploys apps on a floating tag, and rejects a re-push that breaks the image rules.
+# Manual only. Uses the already-public hello package, so no new package visibility to manage.
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "What :floating should point at"
+        type: choice
+        options: [hello, probe, oversized]
+        default: hello
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: ghcr.io/seaburr/picopaas-testapp-hello:floating
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point the tag at an existing test image
+        if: inputs.source != 'oversized'
+        run: docker buildx imagetools create -t "$TARGET" "ghcr.io/seaburr/picopaas-testapp-${{ inputs.source }}:latest"
+
+      # hello plus ~300MB of incompressible data: over the 256MB image cap, otherwise a valid non-root image.
+      - name: Build an oversized image onto the tag
+        if: inputs.source == 'oversized'
+        run: |
+          mkdir big && cd big
+          cat > Dockerfile <<'EOF'
+          FROM ghcr.io/seaburr/picopaas-testapp-hello:latest
+          USER root
+          RUN head -c 314572800 /dev/urandom > /padding.bin
+          USER 10001
+          EOF
+          docker buildx build --platform linux/amd64 --push -t "$TARGET" .
+
+      - name: Show the digest the tag now points at
+        run: docker buildx imagetools inspect "$TARGET" | head -5
