@@ -73,8 +73,15 @@ export interface AppQuota {
 
 export interface AppEvent {
   at: string
-  kind: 'disk' | 'evicted' | 'oom' | 'crashed' | string
+  kind: 'disk' | 'evicted' | 'oom' | 'crashed' | 'rollback' | string
   message: string
+}
+
+export interface ImageVersion {
+  digest: string
+  image_ref: string
+  created_at: string
+  current: boolean
 }
 
 export interface App {

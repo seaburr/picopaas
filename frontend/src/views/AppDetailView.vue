@@ -11,7 +11,7 @@ import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppEvents, getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
+import { deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, rotateCredentials, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
 import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
@@ -19,7 +19,7 @@ import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
-import { DB_REFS, STORAGE_REFS, type App, type AppEvent } from '../types'
+import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion } from '../types'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -41,6 +41,7 @@ async function loadApp(quiet = false) {
       document.title = `${app.value.name} · PicoPaaS`
     }
     loadError.value = ''
+    loadVersions()
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound.value = true
     else if (!quiet || !app.value) loadError.value = e instanceof ApiError ? e.message : "Couldn't load this app."
@@ -66,6 +67,33 @@ async function loadEvents() {
     events.value = await getAppEvents(Number(props.id))
   } catch {
     events.value = [] // older backend or a transient error: the section just stays empty
+  }
+}
+
+// Recent versions (image history) + rollback
+const versions = ref<ImageVersion[]>([])
+async function loadVersions() {
+  try {
+    versions.value = await getImageHistory(Number(props.id))
+  } catch {
+    versions.value = [] // older backend or a transient error: the section just stays empty
+  }
+}
+const rollbackTarget = ref<ImageVersion | null>(null)
+const rollingBack = ref(false)
+async function confirmRollback() {
+  if (!app.value || !rollbackTarget.value) return
+  rollingBack.value = true
+  try {
+    app.value = (await store.rollback(app.value.id, rollbackTarget.value.digest)) ?? app.value
+    toast.success('Rolling back. This takes about a minute.')
+    rollbackTarget.value = null
+    syncPoll()
+    loadVersions()
+  } catch (e) {
+    toast.error(`Couldn't roll back: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    rollingBack.value = false
   }
 }
 
@@ -323,6 +351,18 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <p v-if="app.last_event" class="alert-info mt-2">{{ eventNote(app.last_event, now) }}</p>
           </section>
 
+          <section v-if="versions.length" class="card card-pad" aria-labelledby="h-versions">
+            <h2 id="h-versions" class="section-title mb-2">Recent versions</h2>
+            <ul class="space-y-1 text-sm">
+              <li v-for="v in versions" :key="v.digest" class="flex items-center gap-3">
+                <span class="mono">{{ shortDigest(v.digest) }}</span>
+                <span class="meta" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</span>
+                <span v-if="v.current" class="meta">current</span>
+                <button v-else type="button" class="btn-secondary ml-auto" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
+              </li>
+            </ul>
+          </section>
+
           <section v-if="events.length" class="card card-pad" aria-labelledby="h-events">
             <h2 id="h-events" class="section-title mb-2">Recent events</h2>
             <ul class="space-y-1 text-sm">
@@ -471,6 +511,16 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
       :busy="rotateBusy"
       @confirm="confirmRotate"
       @cancel="rotating = null"
+    />
+    <ConfirmDialog
+      :open="rollbackTarget !== null"
+      title="Roll back to this version"
+      :message="`Redeploy ${shortDigest(rollbackTarget?.digest)} and stop updating from the tag until a newer image is pushed. The app restarts.`"
+      confirm-label="Roll back"
+      busy-label="Rolling back…"
+      :busy="rollingBack"
+      @confirm="confirmRollback"
+      @cancel="rollbackTarget = null"
     />
     <FreeStorageDialog :open="freeOpen" :busy="freeBusy" @confirm="confirmFree" @cancel="freeOpen = false" />
     <DeleteAppDialog :app="deleteOpen ? app : null" :busy="deleting" @confirm="confirmDelete" @cancel="deleteOpen = false" />

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { checkImage as checkImageApi, createApp, deleteApp, getApp, listApps, restartApp, updateApp } from '../api/apps'
+import { checkImage as checkImageApi, createApp, deleteApp, getApp, listApps, restartApp, rollbackApp, updateApp } from '../api/apps'
 import type { App, AppCreatePayload, AppUpdatePayload } from '../types'
 
 export const useAppsStore = defineStore('apps', () => {
@@ -45,11 +45,17 @@ export const useAppsStore = defineStore('apps', () => {
     return app
   }
 
+  async function rollback(id: number, digest: string) {
+    const app = await rollbackApp(id, digest)
+    if (app) upsert(app)
+    return app
+  }
+
   async function checkImage(id: number) {
     const app = await checkImageApi(id)
     if (app) upsert(app)
     return app
   }
 
-  return { apps, loaded, load, fetchOne, create, update, remove, restart, checkImage, upsert }
+  return { apps, loaded, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
 })

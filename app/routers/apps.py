@@ -233,6 +233,7 @@ def update_app(
         app.run_as_uid = run_as_uid
         app.image_digest = digest
         app.image_update_error = None
+        app.rejected_digest = None  # an explicit deploy overrides an earlier rejection
         if digest:
             app.image_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
     if payload.auto_update is not None:

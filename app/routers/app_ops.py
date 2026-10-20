@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import audit, image_check, k8s_manifests, models, schemas
+from app import audit, image_check, image_history, k8s_manifests, models, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_kube, get_registry
 from app.providers.base import KubeProvider, Registry
@@ -111,5 +111,39 @@ def check_image(
     outcome = image_check.refresh_app_image(db, app, registry, actor=user)
     if outcome == "error":
         raise HTTPException(status_code=502, detail="Couldn't reach the registry to check the image. Try again in a moment.")
+    db.refresh(app)
+    return _app_out(app)
+
+
+@router.get("/{app_id}/image-history", response_model=List[schemas.ImageVersionOut])
+def image_history_list(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Recent image versions that ran successfully, newest first (at most 5)."""
+    app = _get_app_or_404(db, app_id, user)
+    return [
+        schemas.ImageVersionOut(digest=h.digest, image_ref=h.image_ref, created_at=h.created_at,
+                                current=h.digest == app.image_digest)
+        for h in app.image_history
+    ]
+
+
+@router.post("/{app_id}/rollback", response_model=schemas.AppOut)
+def rollback_app(
+    app_id: int,
+    payload: schemas.RollbackRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Redeploy a previous image version from this app's history."""
+    app = _get_app_or_404(db, app_id, user)
+    if app.status == "suspended":
+        raise HTTPException(status_code=409, detail="This app is suspended, so it can't be rolled back.")
+    entry = next((h for h in app.image_history if h.digest == payload.digest), None)
+    if entry is None:
+        raise HTTPException(status_code=400, detail="That version isn't in this app's recent history.")
+    image_history.manual_rollback(db, app, entry, user)
     db.refresh(app)
     return _app_out(app)

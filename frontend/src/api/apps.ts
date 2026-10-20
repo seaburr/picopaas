@@ -1,4 +1,4 @@
-import type { App, AppEvent, AppCreatePayload, AppUpdatePayload, AppWithCreated } from '../types'
+import type { App, AppEvent, ImageVersion, AppCreatePayload, AppUpdatePayload, AppWithCreated } from '../types'
 import { apiFetch } from './client'
 
 // Matches app/routers/apps.py exactly (prefix "/apps").
@@ -57,3 +57,8 @@ export interface StorageDeleteResult {
 // Deletes with the platform's credentials (an over-cap app only holds a read-only key).
 export const deleteStorageObjects = (id: number, body: { prefix: string } | { all: true }) =>
   apiFetch<StorageDeleteResult>(`/apps/${id}/storage/delete`, { method: 'POST', body: JSON.stringify(body) })
+
+export const getImageHistory = (id: number) => apiFetch<ImageVersion[]>(`/apps/${id}/image-history`)
+
+export const rollbackApp = (id: number, digest: string) =>
+  apiFetch<App>(`/apps/${id}/rollback`, { method: 'POST', body: JSON.stringify({ digest }) })

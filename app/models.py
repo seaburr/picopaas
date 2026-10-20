@@ -78,6 +78,8 @@ class App(Base):
     auto_update: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     image_checked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # last successful registry resolve
     image_update_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Digest that failed to start (auto-rollback) or was rolled away from (manual rollback): the watcher won't redeploy it.
+    rejected_digest: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     port: Mapped[int] = mapped_column(nullable=False)
     want_db: Mapped[bool] = mapped_column(default=False, nullable=False)
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
@@ -129,9 +131,25 @@ class App(Base):
     storage: Mapped[Optional["AppStorage"]] = relationship(
         back_populates="app", cascade="all, delete-orphan"
     )
+    image_history: Mapped[List["AppImageHistory"]] = relationship(
+        order_by="desc(AppImageHistory.created_at), desc(AppImageHistory.id)",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
     events: Mapped[List["AppEvent"]] = relationship(
         order_by="desc(AppEvent.at), desc(AppEvent.id)", cascade="all, delete-orphan", passive_deletes=True
     )
+
+
+class AppImageHistory(Base):
+    """A digest the app successfully ran (reached 'running') on. Newest 5 per app are kept; used for rollback."""
+    __tablename__ = "app_image_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True, nullable=False)
+    digest: Mapped[str] = mapped_column(String(80), nullable=False)
+    image_ref: Mapped[str] = mapped_column(String(512), nullable=False)
+    run_as_uid: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
 
 class AppEvent(Base):

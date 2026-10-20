@@ -98,6 +98,11 @@ def refresh_app_image(db: Session, app: models.App, registry: Registry, actor: O
     except RegistryError as exc:
         log.warning("app %s: image resolve failed: %s", app.id, exc)
         return "error"
+    if digest == app.rejected_digest and digest != app.image_digest:
+        # Failed to start (auto-rollback) or was rolled back by the user: don't redeploy it until a newer digest appears.
+        app.image_checked_at = _utcnow()
+        db.commit()
+        return "unchanged"
     if digest == app.image_digest:
         app.image_checked_at = _utcnow()
         app.image_update_error = None
@@ -124,6 +129,7 @@ def refresh_app_image(db: Session, app: models.App, registry: Registry, actor: O
         return "rejected"
     old = app.image_digest
     app.image_digest = digest
+    app.rejected_digest = None
     app.image_checked_at = _utcnow()
     app.image_update_error = None
     if old is None:

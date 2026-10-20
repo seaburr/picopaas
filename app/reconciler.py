@@ -27,7 +27,7 @@ from typing import Any, Callable, Optional
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app import config, crypto, env_refs, image_check, k8s_manifests, models, resources
+from app import config, crypto, env_refs, image_check, image_history, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
@@ -480,7 +480,8 @@ def reconcile_app(
         if app.status != "deploying":
             app.deploying_since = _naive(now) if now else _utcnow()
         app.status = "deploying"
-        app.status_detail = None
+        if app.status_detail != image_history.ROLLBACK_MESSAGE:
+            app.status_detail = None
         app.status_reason = None
         session.commit()
 
@@ -505,6 +506,8 @@ def reconcile_app(
     elif status.startswith("error:"):
         code = status[len("error:"):].strip() or "unknown"
         key = code if code in STATUS_MESSAGES else "replica_failure"
+        if image_history.maybe_auto_rollback(session, app):
+            return
         app.status = "error"
         app.status_detail = status_message(key, app)
         app.status_reason = _REASON_OF.get(key, key)
@@ -512,7 +515,8 @@ def reconcile_app(
         _record_failure(app, True, now)
     elif status == "deploying" and not _deploy_timed_out(app, now):
         app.status = status
-        app.status_detail = None
+        if app.status_detail != image_history.ROLLBACK_MESSAGE:
+            app.status_detail = None
         app.status_reason = None
         if app.deploying_since is None:
             app.deploying_since = _naive(now) if now else _utcnow()
@@ -523,6 +527,8 @@ def reconcile_app(
         except Exception:
             hint = "none"
         session.commit()  # keep rendered_hash
+        if image_history.maybe_auto_rollback(session, app):
+            return
         key = f"timeout_{hint if hint in ('not_ready', 'waiting') else 'none'}"
         if key == "timeout_not_ready" and app.health_check_enabled:
             key += "_health"
@@ -535,6 +541,8 @@ def reconcile_app(
         app.deploying_since = None
         app.reset_retry()
     session.commit()
+    if app.status == "running":
+        image_history.record_running(session, app)
 
 
 def _deploy_timed_out(app: models.App, now: Optional[datetime]) -> bool:
@@ -693,6 +701,8 @@ def reconcile_all(
             # DR: namespace gone (cluster rebuilt) -> re-apply even though the hash still matches.
             force=existing_ns is not None and k8s_manifests.namespace_name(app.id) not in existing_ns,
         )
+        if app.status == "running":
+            image_history.record_running(session, app)
 
     if running:
         try:

@@ -223,6 +223,17 @@ class AppEventOut(BaseModel):
     message: str
 
 
+class ImageVersionOut(BaseModel):
+    digest: str
+    image_ref: str
+    created_at: datetime
+    current: bool = False
+
+
+class RollbackRequest(BaseModel):
+    digest: str = Field(min_length=1, max_length=80)
+
+
 class AppOut(BaseModel):
     id: int
     owner_id: int
