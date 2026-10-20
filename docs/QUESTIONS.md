@@ -14,13 +14,6 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] **PENTEST #19 step 2 (second deploy, do NOT merge with the first).** After the deploy that adds per-namespace
-      RoleBindings has run and the reconciler swept once (`kubectl get rolebindings -A | grep picopaas-platform` shows
-      every `app-*` namespace), ask Claude to remove the cluster-wide `secrets/resourcequotas/limitranges/services`
-      rule from ClusterRole `picopaas-reconciler` in deploy/platform/rbac.yaml and deploy again. Removing it earlier
-      would break secret rotation on any namespace not yet bound. Caveat: the SA keeps `bind` on `picopaas-app-ns`, so a
-      compromised platform pod could still bind itself in another namespace; this narrows, not eliminates, the blast radius.
-
 - [ ] **Security hardening before trial users (from the 2026-10-20 pentest pass; full notes in the scratchpad, not committed since the repo is public).**
       The code-side findings Claude is fixing separately; these four only you can do:
   - [ ] **Make the repo private.** Biggest single mitigation: a public repo exposes the full design, and the read-only diag
@@ -70,6 +63,7 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-20: PENTEST #19 step 2 done in deploy/platform/rbac.yaml (pending deploy): cluster-wide secrets/resourcequotas/limitranges/services removed from ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual: the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
 - 2026-10-20: GitHub issue #9 (vague status_detail) closed (Chas).
 - 2026-10-20: Signup wording chosen: "Sign up, and if your account is approved, a PicoPaaS platform admin will reach out." Applied to landing, privacy, dev banner, register, login and pending views.
 - 2026-10-20: Role `uberadmin` renamed to `platform_admin` (breaking API change, approved by Chas); UI label "Platform admin"; migration `b4c8e2f6a1d3`.

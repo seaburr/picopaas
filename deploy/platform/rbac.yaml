@@ -3,20 +3,11 @@
 # (roles/rolebindings/clusterroles/clusterrolebindings), no escalate/bind/impersonate, no
 # node writes, no exec/attach/portforward, no access to Secrets outside what's listed below.
 #
-# MIGRATION (PENTEST #19), step 1 of 2 (this file): the reconciler now creates a per-namespace RoleBinding
-# (app-<id>/picopaas-platform -> ClusterRole picopaas-app-ns, below) in every app namespace on its next sweep. The
-# broad cluster-wide secrets/resourcequotas/limitranges/services grant in picopaas-reconciler is DELIBERATELY still
-# here. Step 2 (SEPARATE later deploy, only after the reconciler has swept once post-deploy): delete that rule
-# block from picopaas-reconciler. See docs/QUESTIONS.md.
-#
-# WARNING (flag for scm-security, see deploy/README.md "Known RBAC exposure"): `secrets` get/
-# list/watch/create/update/patch/delete is granted at CLUSTER scope (no per-namespace Role is
-# possible here because the reconciler must touch an arbitrary, dynamically-created namespace
-# per app). That means a compromised platform pod can read every Secret in every app namespace
-# cluster-wide — not just its own. There's no RBAC primitive to say "any namespace, but only
-# Secrets this controller itself created." Mitigations to consider later: namespace-scoped
-# Roles created per app namespace instead of one ClusterRole (more moving parts), or splitting
-# a narrower "cert/env Secrets only" controller from anything higher-privilege.
+# PENTEST #19 step 2 of 2 (done): secrets/resourcequotas/limitranges/services are NO LONGER granted cluster-wide. The
+# platform SA gets them only through RoleBindings to ClusterRole picopaas-app-ns, created per app-<id> namespace by the
+# reconciler (applied right after the Namespace, before any Secret/Service) and in picopaas-system (below). Residual:
+# the SA keeps `bind` on picopaas-app-ns (resourceNames-limited, no `escalate`), so a compromised platform pod could
+# bind itself into another namespace; this narrows, not eliminates, the blast radius. Accepted/documented.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -33,11 +24,6 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["create", "delete", "get", "list", "patch"]
-
-  # Per-app-namespace objects the reconciler manages (quota, env/cred secrets, Service).
-  - apiGroups: [""]
-    resources: ["resourcequotas", "limitranges", "secrets", "services"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # Per-namespace RoleBindings (see picopaas-app-ns). `bind` is limited to that one ClusterRole by resourceNames, and
   # there is no `escalate`, so this can't be used to hand out any other permission. Server-side apply = patch.

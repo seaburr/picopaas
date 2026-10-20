@@ -5,7 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
-- **FOLLOW-UP DEPLOY (PENTEST #19 step 2):** after this change is deployed and the reconciler has swept once (every app-<id> has RoleBinding `picopaas-platform`; check `kubectl get rolebindings -A | grep picopaas-platform`), delete the `resourcequotas/limitranges/secrets/services` rule from ClusterRole `picopaas-reconciler` in deploy/platform/rbac.yaml. Not before: it would break secret rotation on namespaces not yet bound.
+- **PENTEST #19 step 2 DONE in rbac.yaml (uncommitted/undeployed):** after deploy, verify secret rotation + a new app deploy still work (diag RBAC step).
 ### Next (2026-10-20)
 - Re-run live quota tests against the fixed code (E2E_SLOW=1 pytest tests/e2e -k quota). Check the first over-cap WARNING log for whether doadmin can see/kill app sessions.
 - Live check of Health's node disk conditions. Verify on prod that a scratch-disk eviction now produces a "Recent events" entry (kind `disk`) within a sweep.
@@ -527,3 +527,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [infra-ops] DONE: deploy.yml job `if:` requires same-repo push + success for workflow_run (INF-5; deploy is the only workflow_run consumer); diag.yml steps printing cluster text wrapped in ::stop-commands:: (trap resumes) + new RBAC/quota step (INF-9); toolbox gets cryptography==43.0.3; all third-party actions SHA-pinned with version comments (INF-6); prevent_destroy on DOKS, managed MySQL, Spaces bucket (INF-7; terraform validate ok, not applied). Report-only: MYSQL_EGRESS_CIDR /32 narrowing, mysql:8.4 / gitleaks:latest tags. Uncommitted.
 - 2026-10-20 [scm-security] START: commit+push CI/infra hardening; watch ci/image/deploy/testapps; verify RoleBinding app-48/app-60
 - 2026-10-20 [scm-security] DONE: 6a60d2b pushed; ci/image/testapps/deploy success (deploy ran via workflow_run, not blocked by guard); picopaas-platform RoleBinding verified present in app-48 and app-60; healthz ok
+- 2026-10-20 [infra-ops] START: PENTEST #19 step 2 (drop cluster-wide secrets/quotas/limitranges/services from picopaas-reconciler).
+- 2026-10-20 [infra-ops] DONE: verified kube.py only touches those via apply() of app-<id> manifests (namespace, then RoleBinding, then rest); no cluster-wide/other-ns access (only cluster-wide ops: pods list, nodes, metrics, namespaces). Removed the rule from rbac.yaml; kept namespaces, rolebindings, bind, pods, pods/log, nodes, metrics, deployments, networkpolicies/ingresses. Uncommitted, not applied.
