@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -54,9 +55,36 @@ def _server_metrics(db: Session, server_id: int, factory) -> dict[str, Any]:
     return out
 
 
+# DO host metrics (cpu/mem/disk %): separate, slower cache so a DO failure never affects the SQL metrics.
+HOST_METRICS_TTL_S = 45
+_host_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+
+
+def _host_metrics(server_id: int, host: str) -> dict[str, Any]:
+    """{"host_metrics": {...}|None, "host_metrics_error": str|None}. Never raises."""
+    from app import db_host_metrics as hm
+    if not config.DB_METRICS_ENABLED or not os.environ.get("DIGITALOCEAN_TOKEN"):
+        return {"host_metrics": None, "host_metrics_error": None}
+    now = time.monotonic()
+    with _lock:
+        hit = _host_cache.get(server_id)
+    if hit and now - hit[0] < HOST_METRICS_TTL_S:
+        return hit[1]
+    try:
+        out = {"host_metrics": hm.fetch_host_metrics(host), "host_metrics_error": None}
+    except hm.HostMetricsError as exc:
+        out = {"host_metrics": None, "host_metrics_error": str(exc)[:120]}
+    except Exception as exc:  # noqa: BLE001
+        out = {"host_metrics": None, "host_metrics_error": f"metrics failed ({type(exc).__name__})"}
+    with _lock:
+        _host_cache[server_id] = (now, out)
+    return out
+
+
 def reset_cache() -> None:
     global _background
     _db_cache.clear()
+    _host_cache.clear()
     _cache["at"] = _cache["value"] = None
     _background = False
 
@@ -112,6 +140,7 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factor
     if mysql_factory is not None:
         for so in server_outs:
             so.update(_server_metrics(db, so["id"], mysql_factory))
+            so.update(_host_metrics(so["id"], so.get("host", "")))
         for so in server_outs:
             so["disk_mb"] = config.MANAGED_DB_DISK_MB
     cached = _get_snapshot(kube)

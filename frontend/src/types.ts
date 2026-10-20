@@ -186,6 +186,9 @@ export interface DbServer {
   uptime_seconds?: number | null
   error?: string | null
   disk_mb?: number | null
+  // DO managed-DB host metrics; null when unavailable (host_metrics_error says why, null if simply not configured).
+  host_metrics?: { cpu_pct: number | null; mem_pct: number | null; disk_pct: number | null } | null
+  host_metrics_error?: string | null
 }
 
 export interface DbServerCreate {

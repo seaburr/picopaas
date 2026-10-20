@@ -2,6 +2,13 @@
 import type { DbServer } from '../types'
 const connHigh = (s: DbServer) => !!s.connections && s.connections.max > 0 && s.connections.used / s.connections.max > 0.8
 const mb = (b: number) => (b / 1048576).toFixed(1)
+const HOST_KEYS = [
+  { key: 'cpu_pct', label: 'cpu' },
+  { key: 'mem_pct', label: 'mem' },
+  { key: 'disk_pct', label: 'disk' },
+] as const
+const hostPct = (v: number | null | undefined) => (v == null ? 'n/a' : `${Math.round(v)}%`)
+const hostHigh = (v: number | null | undefined) => v != null && v > 80
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, RefreshCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
@@ -387,6 +394,15 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
                       {{ mb(s.data_size_bytes) }} MB<template v-if="s.disk_mb"> / {{ s.disk_mb }} MB ({{ Math.round((s.data_size_bytes / 1048576 / s.disk_mb) * 100) }}%)</template>
                     </template>
                     <span v-else class="text-zinc-500">n/a</span>
+                    <div class="text-xs" :title="s.host_metrics_error ?? ''">
+                      <template v-if="s.host_metrics">
+                        <template v-for="(k, i) in HOST_KEYS" :key="k.key">
+                          <span v-if="i" class="text-zinc-600"> · </span>
+                          <span class="text-zinc-500">{{ k.label }} </span><span :class="hostHigh(s.host_metrics[k.key]) ? 'text-amber-400' : ''">{{ hostPct(s.host_metrics[k.key]) }}</span>
+                        </template>
+                      </template>
+                      <span v-else class="text-zinc-500">host cpu/mem/disk n/a</span>
+                    </div>
                   </td>
                   <td>{{ s.status }}</td>
                 </tr>

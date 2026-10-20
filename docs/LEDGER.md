@@ -14,6 +14,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - Open: #11 hairpin (CoreDNS rewrite, test off prod), PENTEST #19 (SA cluster-wide Secret read), #10 API under /api.
 - Chas to-dos are in docs/QUESTIONS.md: bootstrap.md caps incl. 250MB scratch disk, E2E secrets, delete PICOPAAS_SECRET_KEY, Porkbun abuse@ forwarding.
 
+- 2026-10-20 [infra-ops] START+DONE: DB host cpu/mem/disk % on Health DB card via DO scrapable metrics (app/db_host_metrics.py, health._host_metrics 45s cache, DB_METRICS_ENABLED/PORT/CA, HealthView line, tests/test_db_host_metrics.py). No netpol change (picopaas-system has no egress policy). Live scrape unverified until deploy. Uncommitted.
 - 2026-10-20 [frontend-dev] START+DONE: table overflow re-audit (Admin/Health/Apps/Keys/Guide/Detail at 1440+390, Playwright) + app cap no longer revealed (removed 'of N max'/'platform max' UI, PATCH 422 text now number-free). Fixes: AdminView users grid cols/nowrap, HealthView node cards min-w-0+wrap and DB/apps col widths, HostLink sr-only span caused 390px page overflow on Apps list. Uncommitted.
 - 2026-10-20 [backend-dev] START+DONE: hard per-account app cap MAX_APPS_PER_USER (default 5) for everyone incl. admins; effective_app_limit in app/resources.py; admin PATCH clamp (422); /auth/me max_apps + app_limit_effective; admin list app_limit_effective; AdminView/AppsListView use effective; e2e harness requests 5; tests + docs. Uncommitted.
 - 2026-10-19 [backend-dev] DONE: platform caps lowered (bucket 100MB, DB 50MB, image 256MB, CPU 100m, RAM 384Mi) via single source app/config.py; code, tests, docs, e2e sizes updated. Uncommitted. bootstrap.md pending Chas.
@@ -569,3 +570,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: DB health metrics pushed (21ebfe4); ci/image/deploy green; live db_servers metrics verified, error=null.
 - 2026-10-20 [scm-security] START: commit+push table overflow pass / app-cap hiding; watch ci/image/deploy.
 - 2026-10-20 [scm-security] DONE: table overflow/app-cap fix pushed (93f2313); ci/image/deploy green; healthz ok, / 200.
+- 2026-10-20 [scm-security] START: commit+push DB host cpu/mem/disk metrics; watch ci/image/deploy, diagnose live host_metrics.

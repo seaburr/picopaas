@@ -153,3 +153,11 @@ REGISTER_WINDOW_SECONDS = 60 * 60
 # Optional managed-DB disk size (MB) so the Health page can show data/disk %. Unset = show data size only.
 # The true disk capacity comes from DO's managed-DB metrics API (planned follow-up); do not guess it.
 MANAGED_DB_DISK_MB = int(os.environ["MANAGED_DB_DISK_MB"]) if os.environ.get("MANAGED_DB_DISK_MB", "").isdigit() else None
+
+# Managed-DB host metrics (cpu/mem/disk %) from DigitalOcean's scrapable-metrics endpoint
+# (https://<db-host>:9273/metrics, basic auth from GET /v2/databases/metrics/credentials, uses DIGITALOCEAN_TOKEN).
+# No extra cost. DB_METRICS_ENABLED=0 turns it off; it is also skipped silently when no token is set.
+DB_METRICS_ENABLED = os.environ.get("DB_METRICS_ENABLED", "1") != "0"
+DB_METRICS_PORT = int(os.environ.get("DB_METRICS_PORT", "9273"))
+# Optional CA bundle for the metrics TLS cert; empty = reuse MYSQL_SSL_CA (same DO cluster CA), else system CAs.
+DB_METRICS_CA = os.environ.get("DB_METRICS_CA", "")
