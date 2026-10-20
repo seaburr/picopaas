@@ -176,6 +176,7 @@ def test_render_app_manifests_includes_everything():
     rendered = _rendered()
     assert set(rendered) == {
         "namespace",
+        "role_binding",
         "resource_quota",
         "limit_range",
         "network_policies",
@@ -190,14 +191,22 @@ def test_render_app_manifests_includes_everything():
 def test_flatten_manifests_order_and_count():
     flat = k8s.flatten_manifests(_rendered())
     assert flat[0]["kind"] == "Namespace"
-    assert flat[1]["kind"] == "ResourceQuota"
-    assert flat[2]["kind"] == "LimitRange"
-    assert [m["kind"] for m in flat[3:8]] == ["NetworkPolicy"] * 5
-    assert flat[8]["kind"] == "Secret"
-    assert flat[9]["kind"] == "Deployment"
-    assert flat[10]["kind"] == "Service"
-    assert flat[11]["kind"] == "Ingress"
-    assert len(flat) == 12
+    assert flat[1]["kind"] == "RoleBinding"
+    assert flat[2]["kind"] == "ResourceQuota"
+    assert flat[3]["kind"] == "LimitRange"
+    assert [m["kind"] for m in flat[4:9]] == ["NetworkPolicy"] * 5
+    assert flat[9]["kind"] == "Secret"
+    assert flat[10]["kind"] == "Deployment"
+    assert flat[11]["kind"] == "Service"
+    assert flat[12]["kind"] == "Ingress"
+    assert len(flat) == 13
+
+
+def test_role_binding_is_namespaced_to_platform_sa_and_app_ns_clusterrole():
+    rb = k8s.role_binding_manifest(7)
+    assert rb["metadata"]["namespace"] == "app-7"
+    assert rb["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "picopaas-app-ns"}
+    assert rb["subjects"] == [{"kind": "ServiceAccount", "name": "picopaas", "namespace": "picopaas-system"}]
 
 
 def test_env_change_rolls_pod_via_checksum_annotation():

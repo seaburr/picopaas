@@ -455,6 +455,7 @@ def reconcile_app(
         (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > 2 * eff["cpu_limit_m"]
         or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > 2 * eff["mem_limit_mi"]
         or (used.get("ephemeral_limit_mi") or 0) + config.EPHEMERAL_LIMIT_MI > 2 * config.EPHEMERAL_LIMIT_MI
+        or (used.get("pods") or 0) + 1 > int(k8s_manifests.QUOTA_PODS)
     ):
         flat = k8s_manifests.flatten_manifests(
             k8s_manifests.render_app_manifests(**render_kwargs, used_limits=used)

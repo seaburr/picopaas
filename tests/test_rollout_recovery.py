@@ -108,7 +108,7 @@ def _pod(cpu, mem, phase="Running"):
 
 def test_used_limits_sum_existing_pods():
     prov = KubeClientProvider(tk._dyn(pods=[_pod("250m", "512Mi"), _pod("100m", "384Mi"), _pod("900m", "1Gi", "Succeeded")]))
-    assert prov.get_used_limits("n") == {"cpu_limit_m": 350, "mem_limit_mi": 896, "ephemeral_limit_mi": 0}
+    assert prov.get_used_limits("n") == {"cpu_limit_m": 350, "mem_limit_mi": 896, "ephemeral_limit_mi": 0, "pods": 2}  # Succeeded pod excluded
     assert KubeClientProvider(tk._dyn()).get_used_limits("n") is None
 
 
@@ -319,3 +319,30 @@ def test_status_reason_only_shown_for_errors(make_client, db_session):
     row.status = "pending"
     db_session.commit()
     assert c.get(f"/apps/{app_id}").json()["status_reason"] is None
+
+
+def test_pods_quota_widens_when_old_pod_still_terminating(session):
+    """Storage key-swap roll (status pending) while a Terminating pod + the current pod still count: the surge pod needs
+    existing+1 slots in every dimension, including the pod count (a fixed 2 rejected it live)."""
+    assert k8s_manifests.resource_quota_manifest(1)["spec"]["hard"]["pods"] == "2"
+    app = _make_app(session, want_storage=True)
+    kube = FakeKubeProvider()
+    ns = k8s_manifests.namespace_name(app.id)
+    d, m, e = config.DEFAULT_CPU_LIMIT_M, config.DEFAULT_MEM_LIMIT_MI, config.EPHEMERAL_LIMIT_MI
+    _rec(session, kube, app=app)
+    assert _quota(kube, ns)["pods"] == "2"  # steady state
+    app.status = "running"
+    session.commit()
+
+    # steady-state quota, one running pod + one still-terminating pod from the previous roll
+    kube.used_limits[ns] = {"cpu_limit_m": 2 * d, "mem_limit_mi": 2 * m, "ephemeral_limit_mi": 2 * e, "pods": 2}
+    app.status = "pending"  # what quota._bounce_app does
+    app.restart_nonce = "storage-roll"
+    session.commit()
+    _rec(session, kube, app=app)
+    hard = _quota(kube, ns)
+    assert int(hard["pods"]) >= 2 + 1
+    for dim, per in (("cpu", d), ("memory", m), ("ephemeral-storage", e)):
+        unit = "m" if dim == "cpu" else "Mi"
+        assert int(hard[f"limits.{dim}"].removesuffix(unit)) >= 3 * per
+        assert int(hard[f"requests.{dim}"].removesuffix(unit)) >= 3 * per

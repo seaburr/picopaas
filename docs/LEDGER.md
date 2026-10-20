@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- **FOLLOW-UP DEPLOY (PENTEST #19 step 2):** after this change is deployed and the reconciler has swept once (every app-<id> has RoleBinding `picopaas-platform`; check `kubectl get rolebindings -A | grep picopaas-platform`), delete the `resourcequotas/limitranges/secrets/services` rule from ClusterRole `picopaas-reconciler` in deploy/platform/rbac.yaml. Not before: it would break secret rotation on namespaces not yet bound.
 ### Next (2026-10-20)
 - Re-run live quota tests against the fixed code (E2E_SLOW=1 pytest tests/e2e -k quota). Check the first over-cap WARNING log for whether doadmin can see/kill app sessions.
 - Live check of Health's node disk conditions. Verify on prod that a scratch-disk eviction now produces a "Recent events" entry (kind `disk`) within a sweep.
@@ -518,3 +519,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [backend-dev] DONE: auth throttling (app/ratelimit.py, auth_throttle migration c9d1e3f5a7b2), security headers + CSP in app/main.py, DOMAIN_SUFFIX removed (APP_DOMAIN), tests/test_auth_throttle_and_headers.py. 470 passed. Uncommitted; migration needs alembic upgrade head on deploy.
 - 2026-10-20 [scm-security] START: commit+push registry hardening and auth hardening
 - 2026-10-20 [scm-security] DONE: b9b8dee + ed32c68 pushed; ci/image/deploy success (auth_throttle migration deployed); /auth/me 200 with HSTS/CSP/nosniff/frame headers, healthz ok
+- 2026-10-20 [infra-ops] START: PENTEST #19 step 1 (per-namespace RoleBinding for platform SA) + quota pod-count/surge fix.
+- 2026-10-20 [infra-ops] DONE: reconciler now applies RoleBinding app-<id>/picopaas-platform -> ClusterRole picopaas-app-ns (rbac.yaml; `bind` limited by resourceNames, plus rolebindings get/list/create/patch); broad cluster-wide grant KEPT (step 2 is a separate later deploy, see Now/Next). Quota: found live cause of test_09 failure = ResourceQuota `pods` was fixed at 2 so a roll while the old pod still Terminating (storage key swap then recovery roll) was rejected; get_used_limits now returns `pods`, quota pods = max(2, existing+1), reconciler widens on that too. Files: app/k8s_manifests.py, app/reconciler.py, app/providers/kube.py, deploy/platform/rbac.yaml, tests. Uncommitted.
+- 2026-10-20 [scm-security] START: commit+push RBAC step1 + quota fix; watch ci/image/deploy; verify RoleBinding on app-48

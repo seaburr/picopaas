@@ -216,11 +216,13 @@ class KubeClientProvider(KubeProvider):
         """Sum of container limits of the pods that count against the ResourceQuota (non-terminal pods): exactly
         what the quota admission compares against. None when there are none."""
         pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
-        cpu = mem = eph = 0
+        cpu = mem = eph = npods = 0
         found = False
         for pod in pods:
             if (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
                 continue
+            npods += 1  # Terminating pods still count against the `pods` quota until they are gone
+            found = True
             for c in (pod.get("spec") or {}).get("containers") or []:
                 lim = (c.get("resources") or {}).get("limits") or {}
                 if lim.get("cpu"):
@@ -232,7 +234,7 @@ class KubeClientProvider(KubeProvider):
                 if lim.get("ephemeral-storage"):
                     eph += parse_mem_mi(lim["ephemeral-storage"])
                     found = True
-        return {"cpu_limit_m": cpu, "mem_limit_mi": mem, "ephemeral_limit_mi": eph} if found else None
+        return {"cpu_limit_m": cpu, "mem_limit_mi": mem, "ephemeral_limit_mi": eph, "pods": npods} if found else None
 
     def app_pod_events(self) -> dict[str, list[dict[str, Any]]]:
         """One cluster-wide pod list per call; only app namespaces are looked at."""

@@ -97,6 +97,25 @@ def namespace_manifest(app_id: int) -> dict[str, Any]:
     }
 
 
+# Namespaced grant for the platform ServiceAccount (deploy/platform/rbac.yaml defines the ClusterRole
+# `picopaas-app-ns`: secrets/resourcequotas/limitranges/services). Bound per app namespace with a RoleBinding so the
+# grant is only valid inside app-<id>; the SA needs `bind` on exactly that ClusterRole (no `escalate`, so it can
+# create this binding even once it no longer holds cluster-wide Secret access).
+PLATFORM_SA_NAME = "picopaas"
+PLATFORM_SA_NAMESPACE = "picopaas-system"
+APP_NS_CLUSTERROLE = "picopaas-app-ns"
+
+
+def role_binding_manifest(app_id: int) -> dict[str, Any]:
+    return {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "RoleBinding",
+        "metadata": {"name": "picopaas-platform", "namespace": namespace_name(app_id)},
+        "subjects": [{"kind": "ServiceAccount", "name": PLATFORM_SA_NAME, "namespace": PLATFORM_SA_NAMESPACE}],
+        "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": APP_NS_CLUSTERROLE},
+    }
+
+
 def _res(resources: dict[str, int] | None) -> dict[str, int]:
     from app import resources as r
 
@@ -108,12 +127,15 @@ def resource_quota_manifest(
 ) -> dict[str, Any]:
     """Quota = max(2 x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
-    ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi"}, summed over the pods in the cluster) is None when there are no pods."""
+    ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi", "pods"}, summed over the pods in the cluster) is None when there are no pods."""
     e = _res(resources)
     used = used_limits or {}
     cpu_total = max(2 * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
     mem_total = max(2 * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
     eph_total = max(2 * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
+    # Pod count too: a Terminating old pod still counts, so back-to-back rollouts (e.g. storage key swap then
+    # recovery roll) need (existing + 1) slots, not a fixed 2.
+    pods_total = max(int(QUOTA_PODS), (used.get("pods") or 0) + 1)
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
@@ -126,7 +148,7 @@ def resource_quota_manifest(
                 "requests.memory": f"{mem_total}Mi",
                 "limits.ephemeral-storage": f"{eph_total}Mi",
                 "requests.ephemeral-storage": f"{eph_total}Mi",
-                "pods": QUOTA_PODS,
+                "pods": str(pods_total),
                 "services": QUOTA_SERVICES,
                 # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
                 # (ARCHITECTURE.md's no-LB lean option).
@@ -526,6 +548,7 @@ def render_app_manifests(
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
     return {
         "namespace": namespace_manifest(app_id),
+        "role_binding": role_binding_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id, resources, used_limits),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
@@ -545,6 +568,7 @@ def flatten_manifests(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten `render_app_manifests`'s output into one list, in apply order."""
     flat = [
         rendered["namespace"],
+        rendered["role_binding"],
         rendered["resource_quota"],
         rendered["limit_range"],
         *rendered["network_policies"],
