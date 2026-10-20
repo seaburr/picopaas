@@ -186,7 +186,7 @@ def test_restore_does_not_kill():
 def test_kill_result_counts():
     cur = _Cur()
     res = _client(cur).set_read_only(5, True)
-    assert res == {"listed": 2, "killed": 2, "failed": 0, "list_error": False}
+    assert res == {"listed": 2, "killed": 2, "failed": 0, "list_error": False, "path": "admin"}
     assert _client(_Cur()).set_read_only(5, False) is None
     assert _client(_Cur(fail_kill=True)).set_read_only(5, True)["failed"] == 2
     assert _client(_Cur(fail_list=True)).set_read_only(5, True)["list_error"] is True
@@ -218,3 +218,50 @@ def test_poll_logs_revoke_restore_failure_and_summary(db_session, caplog):
     admin.set_read_only = boom
     poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store)
     assert "db check/enforcement failed" in caplog.text and "hunter2" not in caplog.text
+
+
+class _AppCur(_Cur):
+    def __init__(self, own=99, others=(7, 8, 99)):
+        super().__init__()
+        self.own, self.others, self.killed = own, others, []
+
+    def execute(self, q, params=None):
+        self.sql.append(q)
+        if q.startswith("KILL"):
+            self.killed.append(params[0])
+
+    def fetchone(self):
+        return (self.own,)
+
+    def fetchall(self):
+        return [(i, "app_5", "h", "db", "Sleep") for i in self.others]
+
+
+def test_app_user_kill_never_kills_own_connection(monkeypatch, caplog):
+    cur = _AppCur()
+    conn = type("C", (), {"cursor": lambda self: cur, "close": lambda self: None})()
+    seen = {}
+
+    def fake_connect(**kw):
+        seen.update(kw)
+        return conn
+
+    monkeypatch.setattr("app.providers.mysql.pymysql.connect", fake_connect)
+    c = _client(_Cur())
+    c._host, c._port, c._ssl_ca = "h", 3306, None
+    res = c.set_read_only(5, True, "not-the-password")
+    assert res == {"listed": 2, "killed": 2, "failed": 0, "list_error": False, "path": "app-user"}
+    assert cur.killed == [7, 8] and seen["user"] == "app_5"
+    assert "not-the-password" not in caplog.text
+
+
+def test_app_user_connect_refused_falls_back_to_admin(monkeypatch):
+    def refuse(**kw):
+        raise pymysql.err.OperationalError(1226, "max_user_connections")
+
+    monkeypatch.setattr("app.providers.mysql.pymysql.connect", refuse)
+    c = _client(_Cur())
+    c._host, c._port, c._ssl_ca = "h", 3306, None
+    res = c.set_read_only(5, True, "not-the-password")
+    assert res["path"] == "admin" and res["killed"] == 2
+    assert _client(_Cur()).set_read_only(5, True, None)["path"] == "admin"

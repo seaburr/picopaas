@@ -233,3 +233,24 @@ def test_cli_status_shows_usage_and_storage_delete(monkeypatch, capsys):
     assert json.loads(seen[-1].content) == {"all": True}
     with pytest.raises(SystemExit):
         picopaas.build_parser().parse_args(["storage-delete", "demo"])
+
+
+def test_app_user_kill_path_is_preferred_and_verified(db_session, caplog):
+    caplog.set_level(logging.WARNING)
+    _, (app,) = _setup(db_session)
+    admin = FakeMySQLAdmin()
+    admin.app_user_kill_ok = True
+    admin.kill_result = {"listed": 0, "killed": 0, "failed": 1, "list_error": False}  # admin path would roll
+    admin.sizes[app.id] = DB_QUOTA_BYTES + 1
+    _poll(db_session, admin, FakeObjectStore())
+    assert admin.passwords_seen[0] == crypto.decrypt(app.database.password_encrypted)
+    assert app.status == "running" and "via app-user" in caplog.text
+
+
+def test_app_user_failure_falls_back_to_pod_roll(db_session):
+    _, (app,) = _setup(db_session)
+    admin = FakeMySQLAdmin()
+    admin.kill_result = {"listed": 2, "killed": 0, "failed": 2, "list_error": False}
+    admin.sizes[app.id] = DB_QUOTA_BYTES + 1
+    _poll(db_session, admin, FakeObjectStore())
+    assert app.status == "pending"

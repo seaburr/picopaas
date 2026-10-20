@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -252,8 +252,9 @@ def start_scheduler() -> BackgroundScheduler:
                   id="quota_db", next_run_time=now)
     sched.add_job(storage_quota_job, "interval", seconds=config.STORAGE_QUOTA_POLL_SECONDS, max_instances=1,
                   coalesce=True, id="quota_storage", next_run_time=now)
+    # Same reason; a minute after start so a deploy's pod churn and leader hand-over settle first.
     sched.add_job(image_watch_job, "interval", minutes=config.IMAGE_WATCH_MINUTES, max_instances=1, coalesce=True,
-                  id="image_watch")
+                  id="image_watch", next_run_time=now + timedelta(minutes=1))
     # Health snapshot refresh runs on EVERY replica (each has its own in-memory cache), not just the leader.
     from app import health
     from app.dependencies import get_kube

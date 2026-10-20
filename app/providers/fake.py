@@ -95,6 +95,8 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.read_only: dict[int, bool] = {}
         self.calls: list[tuple[int, bool]] = []  # set_read_only calls, in order
         self.kill_result: dict[str, Any] = {"listed": 1, "killed": 1, "failed": 0, "list_error": False}
+        self.passwords_seen: list[Optional[str]] = []  # app_password passed to each set_read_only call
+        self.app_user_kill_ok = False  # True: the app-user kill path succeeds when a password is supplied
         self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
 
     def create_db_user(self, app_id: int) -> dict[str, Any]:
@@ -121,11 +123,16 @@ class FakeMySQLAdmin(MySQLAdmin):
     def db_size_bytes(self, app_id: int) -> int:
         return self.sizes.get(app_id, 0)
 
-    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
+    def set_read_only(
+        self, app_id: int, read_only: bool, app_password: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         self.read_only[app_id] = read_only
         self.calls.append((app_id, read_only))
+        self.passwords_seen.append(app_password)
         if not read_only:
             return None
+        if app_password and self.app_user_kill_ok:
+            return {"listed": 1, "killed": 1, "failed": 0, "list_error": False, "path": "app-user"}
         return dict(self.kill_result)
 
     def set_password(self, app_id: int, password: str) -> dict[str, Any]:

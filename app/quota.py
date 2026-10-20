@@ -52,25 +52,32 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bo
     failed earlier. If the sessions could not be killed (no privilege, or invisible to the admin account),
     the app's pod is rolled once, on the flip, which closes its connections."""
     size = admin.db_size_bytes(row.app_id)
+    try:
+        app_password: str | None = crypto.decrypt(row.password_encrypted)
+    except Exception:  # unreadable: the provider falls back to the admin kill, then the pod roll
+        app_password = None
     over = size > DB_QUOTA_BYTES
     result: dict | None = None
     flipped = over != row.over_quota
     if flipped:
-        result = admin.set_read_only(row.app_id, over)
+        result = admin.set_read_only(row.app_id, over, app_password)
         row.over_quota = over
         log.warning(
             "quota: app %s db write access %s (%s, limit %d MB)",
             row.app_id, "REVOKED" if over else "restored", _mb(size), DB_QUOTA_BYTES // 1024 // 1024,
         )
     elif over:
-        result = admin.set_read_only(row.app_id, True)
+        result = admin.set_read_only(row.app_id, True, app_password)
     if over and result is not None:
         killed, failed = result.get("killed", 0), result.get("failed", 0)
-        unverified = bool(result.get("list_error")) or (result.get("listed", 0) == 0)
+        path = result.get("path", "admin")
+        # Via the app user the list is authoritative (0 listed = no other sessions); via admin, 0 listed may mean
+        # the account can't see the app's threads, so it is unverified.
+        unverified = bool(result.get("list_error")) or (result.get("listed", 0) == 0 and path != "app-user")
         if flipped or killed or failed:
             log.warning(
-                "quota: app %s db sessions: killed %d, failed %d%s",
-                row.app_id, killed, failed, ", listing failed" if result.get("list_error") else "",
+                "quota: app %s db sessions: killed %d, failed %d%s (via %s)",
+                row.app_id, killed, failed, ", listing failed" if result.get("list_error") else "", path,
             )
         if flipped and (failed or unverified):
             log.warning("quota: app %s: could not confirm open db sessions were killed; rolling the app", row.app_id)

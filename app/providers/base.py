@@ -113,9 +113,12 @@ class MySQLAdmin(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
+    def set_read_only(
+        self, app_id: int, read_only: bool, app_password: Optional[str] = None
+    ) -> Optional[dict[str, Any]]:
         """Revoke/restore INSERT/UPDATE/CREATE once the app exceeds its DB quota. When revoking, also kills the
-        app user's open sessions and returns {"listed", "killed", "failed", "list_error"} (None when restoring)."""
+        app user's open sessions (first as the app user itself via `app_password`, then via admin) and returns
+        {"listed", "killed", "failed", "list_error", "path"} (None when restoring)."""
         raise NotImplementedError
 
     @abstractmethod
