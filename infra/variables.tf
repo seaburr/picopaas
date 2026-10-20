@@ -17,7 +17,7 @@ variable "node_count" {
 }
 
 variable "max_nodes" {
-  description = "Autoscaler ceiling. Each node above node_count can add $24/mo. Equal to node_count disables autoscaling."
+  description = "Autoscaler ceiling. Each node above node_count can add $28/mo. Equal to node_count disables autoscaling."
   type        = number
   default     = 2
 }

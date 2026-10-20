@@ -1,6 +1,6 @@
-# PicoPaaS Architecture (v0 draft)
+# PicoPaaS Architecture
 
-Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). Sections below still describe some "lean" ideas; §1 and `docs/OPERATIONS.md` are current.
+Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). This is a design record: §1 and `docs/OPERATIONS.md` have the current numbers.
 Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
@@ -58,9 +58,9 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
 ## 2. Components
 
 ```
-               *.raisehellpraisedale.xyz (wildcard A → node IP, kept fresh by dns-sync)
+               *.raisehellpraisedale.xyz (wildcard A → DigitalOcean load balancer)
                                 │
-                     Traefik (hostPort 80/443)
+                     Traefik (behind the load balancer, ports 80/443)
               default cert (TLSStore) = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
                 ┌───────────────┴──────────────────┐
      platform.raisehellpraisedale.xyz                 <pet>-<7char>.raisehellpraisedale.xyz
@@ -82,8 +82,8 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
 - Vue 3 + Vite + Pinia + Tailwind, built into the same image (same layout as tribal).
 - Tests use pytest with the real login flow and no auth mocks. K8s, MySQL-admin, and Spaces clients sit
   behind thin interfaces with fake implementations for unit tests. CI also runs a MySQL integration job.
-- A single replica handles the API and also runs an in-process reconcile loop (APScheduler), with no
-  separate operator. Desired state lives in the platform DB, and the loop converges k8s, MySQL, and Spaces toward it.
+- Two replicas serve the API; the one holding a MySQL `GET_LOCK` also runs the in-process reconcile
+  loop (APScheduler), with no separate operator. Desired state lives in the platform DB, and the loop converges k8s, MySQL, and Spaces toward it.
 
 ### Tenancy and isolation
 - **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=200m, limits.memory=768Mi (2x the 100m/384Mi per-pod limits), pods=2
@@ -98,9 +98,9 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
   `USER` line example. A named non-root user (kubelet can't verify it) is accepted and forced to
   `runAsUser`/`runAsGroup` = `NAMED_USER_RUN_AS_UID` (10001, `apps.run_as_uid`). Every app namespace also
   carries Pod Security Admission `enforce: restricted` (+ `enforce-version: latest`) as a backstop.
-- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `max_user_connections=10`,
+- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `MAX_USER_CONNECTIONS 5`,
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
-  `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE (leaving SELECT/DELETE so the
+  `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE/ALTER (leaving SELECT/DELETE/TRUNCATE/DROP so the
   user can clean up) and flags the app in the UI. DB is polled every 60s (`DB_QUOTA_POLL_SECONDS`) and
   re-enforced on every poll while over, because REVOKE does not touch open sessions: the provider also KILLs the
   user's sessions (in-cluster MySQL: `picopaas_ops.kill_app_sessions`), and if that can't be confirmed the app's pod
@@ -124,7 +124,7 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
   bucket policies, which DO doesn't support with per-bucket keys, *and* a static egress IP (a DO NAT gateway,
   extra monthly cost). Revisit if DO ships VPC-only Spaces access. Credential theft is out of scope
   (request 0002, option A), and there's a credential-rotation action in the UI.
-- **Nodes:** no inbound except 80/443 (no LB) or from the LB only.
+- **Nodes:** no inbound except 80/443, which come through the load balancer.
 - Pentest items 8 and 10 (use of stolen creds) are informational, not blockers.
 
 ### Abuse & moderation (Chas, 2026-10-19)
@@ -138,7 +138,7 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 ### Reference variables
 If an app requests a DB or storage, the platform exposes reference variables the user maps onto their
 own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
-- `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`
+- `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`, `db.ca_cert`, `db.tls`
 - `storage.endpoint`, `storage.region`, `storage.bucket`, `storage.access_key`, `storage.secret_key` (`storage.endpoint` is a full URL, e.g. `https://atl1.digitaloceanspaces.com`)
 
 User secrets and resolved refs go into the app namespace's k8s Secret. In the platform DB they are
@@ -160,8 +160,7 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 
 ### Users and roles
 - The first registered user becomes `uberadmin`. Everyone after that is `user`.
-- `user.app_limit` defaults to 1. The uberadmin can raise it per user later (the column exists from day one,
-  but the admin UI for it is deferred).
+- `user.app_limit` defaults to 1. The uberadmin can raise it per user in the admin UI.
 
 ### DNS and TLS
 - Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
@@ -190,8 +189,8 @@ server that has room.
 
 | Resource | Unit we add | Capacity per unit | Ceiling signal |
 |---|---|---|---|
-| Compute | +1 node (s-2vcpu-4gb, $24) | ~12 apps (requests 64m/128Mi, limits 100m/384Mi) | Pending pods / node allocatable |
-| MySQL | +1 DB server (managed 1 GiB, ~$15–20) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
+| Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 100m/384Mi) | Pending pods / node allocatable |
+| MySQL | +1 DB server (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 75 max ÷ 5 per app user, oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
 | Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
 
 ### Compute
@@ -201,7 +200,7 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
 
 ### Database: many servers, one placement table
 - `db_servers` table: each registered MySQL server (host, port, encrypted admin creds, `max_databases`,
-  status `active | draining | full`). The first server comes from Terraform. More are added by the
+  status `active | draining`; `full` is a legacy value that behaves like `draining`). The first server comes from Terraform. More are added by the
   uberadmin in the admin UI after a request is approved, or by Terraform outputs.
 - `app_databases` table: which server each app's DB lives on (`db_server_id`), plus its size and quota flag.
   The reconciler builds the reference variables (`db.host`, `db.url`, …) from that row, so apps on different
@@ -214,7 +213,7 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
   (what / why / cost) to send to Chas.
 - **Draining:** setting a server to `draining` stops new placements. Moving existing DBs between servers
   (dump → restore → swap secret → restart app) is a later admin action, not v1.
-- Every server is the same kind of thing to the platform. In-cluster MySQL (lean option) and managed MySQL
+- Every server is the same kind of thing to the platform. In-cluster MySQL (the earlier, cheaper option) and managed MySQL
   can coexist, so mixing them later costs nothing.
 
 ### Spaces
@@ -223,17 +222,20 @@ support for a higher limit (free), or switch to one shared bucket with per-app p
 through platform-signed URLs. The `ObjectStore` interface hides which one is in use, so apps don't change.
 
 ### Platform itself
-One replica is enough at this size. The reconciler uses a DB lock row so a second replica could be added
-later without two loops fighting each other.
+Two replicas run (HA, 2026-10-19), so deploys and node drains don't take the API down. The reconciler uses a MySQL
+`GET_LOCK`, so only one replica runs the loops.
 
-## 4. Open questions for Chas
-1. Approve the lean option (~$30/mo)? Or managed MySQL/LB once there's budget?
-2. ~~Wildcard~~ → OK. Domain is now the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
-3. ~~Region~~ → NYC3 for compute/MySQL (ATL1 had no DOKS capacity, 2026-10-19); Spaces stays in ATL1. Smallest SKUs for launch (Chas, 2026-10-19): s-1vcpu-2gb node, basic 1 GiB MySQL; scale later.
-4. Autoscaler `max_nodes`, the compute spending ceiling. Proposed: 2 (worst case +$24/mo over static).
+## 4. Decisions on earlier open questions
+New questions go in `docs/QUESTIONS.md`. Decided so far:
+1. Hosting variant: managed MySQL and a load balancer (approved 2026-10-19), not the in-cluster "lean" setup.
+2. Domain: the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
+3. Region: NYC3 for compute and MySQL (ATL1 had no DOKS capacity, 2026-10-19); Spaces stays in ATL1. The node is
+   `s-2vcpu-4gb-amd` ($28/mo, confirmed from the DO bill 2026-10-20).
+4. Autoscaler `max_nodes = 2` (approved), so the worst case is +$28/mo over the static setup.
 
 ## Key management (2026-10-19)
 `FERNET_KEY` encrypts every secret stored in MySQL (env-var secrets, app DB passwords, storage keys, DB server admin
-passwords). `SECRET_KEY` signs sessions. Both live in GitHub repo secrets `PICOPAAS_FERNET_KEY` / `PICOPAAS_SECRET_KEY`
-(with Chas's offline copy); `bootstrap.yml` writes them into `picopaas-env`. They must never be generated per cluster: a
-cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is TODO.
+passwords). The session signing key is derived from it unless `SECRET_KEY` is set. The key lives in the GitHub repo
+secret `PICOPAAS_FERNET_KEY`; `bootstrap.yml` writes it into `picopaas-env`. It must never be generated per cluster:
+a cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is
+implemented; see `docs/OPERATIONS.md` §3.

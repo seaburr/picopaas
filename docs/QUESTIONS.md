@@ -7,7 +7,16 @@ background on each item if you want it.
 
 ## Open questions
 
-- (none right now)
+- **Docs review (2026-10-20), decisions for you.**
+  1. GitHub issue #9 ("status_detail 'deployment failed' is too vague") looks fixed: `STATUS_MESSAGES` in `app/reconciler.py`
+     now give a reason and a next step for every failure. Close it? (I couldn't confirm it against live behaviour.)
+  2. The landing, privacy and dev-banner text said "Sign-up is open". I reworded it to "An administrator approves every
+     account by hand" so it matches the **Request access** flow. The privacy page date is now 2026-10-20. Confirm the wording
+     is what you want to publish.
+  3. The user docs and UI say "administrator". The API still returns the role value `uberadmin` and `docs/API.md` documents it.
+     Keep the role value as is, or rename it (a breaking API change)?
+  4. Not verified against a live run: the Python 3.13 `VERIFY_X509_STRICT` workaround in the User Guide for DigitalOcean's
+     CA, and the claim that credential rotation repairs an app whose stored secrets are unreadable. Please spot-check once.
 
 ## To-dos (only you can do these)
 
@@ -63,7 +72,7 @@ background on each item if you want it.
   sizes at all; RIC1 lists only -intel. Node → `s-1vcpu-2gb-amd` in NYC3 (~$14). The terraform workflow now fails early if the
   size isn't listed. No DO ticket needed.
 - 2026-10-19: NYC3 also refused s-2vcpu-4gb → Chas: smallest SKUs everywhere (node `s-1vcpu-2gb` $12, MySQL `db-s-1vcpu-1gb` $15.15); ≈ $44.15/mo. Scale later.
-- 2026-10-19: ATL1 refused DOKS at every size (incl. 2 GB) → compute + MySQL move to **NYC3**, back to `s-2vcpu-4gb` ($24); total ≈ $60.30/mo. Spaces buckets stay in ATL1.
+- 2026-10-19: ATL1 refused DOKS at every size (incl. 2 GB) → compute + MySQL move to **NYC3**, back to `s-2vcpu-4gb` (later confirmed as `s-2vcpu-4gb-amd` at $28; see ARCHITECTURE §1); total ≈ $60.30/mo at the time. Spaces buckets stay in ATL1.
 - 2026-10-19: ATL1 also out of -amd and -intel 4 GB nodes → Chas chose `s-2vcpu-2gb` ($18) in ATL1; total ≈ $54.30/mo.
 - 2026-10-19: ATL1 out of s-2vcpu-4gb capacity → node `s-2vcpu-4gb-amd` (~$28, total ≈ $64.30/mo). MySQL version 8.4 (only one DO offers).
 - 2026-10-19: Credentials come from GitHub secrets, not TFC vars: the workflow sets the TFC workspace to local execution (TFC = state only).

@@ -498,3 +498,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [infra-ops] DONE: ARCHITECTURE §1 rewritten (baseline ~$60.15, worst ~$88.15; node $28 unverified from DO), OPERATIONS §8 points to it, QUESTIONS to-do for CLAUDE.md budget rule, README rewritten (Mermaid arch + deploy sequence, stack table). Uncommitted.
 - 2026-10-20 [scm-security] START: commit app-user session kill (backend) + README/cost docs as two commits; push
 - 2026-10-20 [scm-security] DONE: committed both; pushing
+- 2026-10-20 [tech-writer] START: docs + in-app text review (README, guides, API, CLI, ops, frontend strings, backend messages, CLI output)
+- 2026-10-20 [tech-writer] DONE: docs + in-app text review. Fixed stale facts in USER_GUIDE/API/CLI/OPERATIONS/ARCHITECTURE/README (retries, logs, resources, db-server CA, audit actions, replicas, $28 node); 'admin' -> 'administrator' in API messages (tests updated); UI/landing/privacy copy; secrets-unreadable and OOM status messages; README Mermaid reordered; variables.tf max_nodes text. Open questions added to QUESTIONS.md. Pytest, typecheck, build pass. Uncommitted.
+- 2026-10-20 [scm-security] START: commit docs pass + copy pass as two commits; push; watch CI

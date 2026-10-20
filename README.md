@@ -1,10 +1,10 @@
 # PicoPaaS
 
-A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker image, wire up env vars and secrets,
-and optionally get a MySQL database (50 MB) and S3-compatible storage (100 MB). Each app gets its own HTTPS subdomain.
-It runs on DigitalOcean Kubernetes for about $60/mo.
+A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker image, add env vars and secrets,
+and optionally get a MySQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
+subdomain. It runs on DigitalOcean Kubernetes for about $60/mo.
 
-Live: https://platform.raisehellpraisedale.xyz (signups need admin approval)
+Live: https://platform.raisehellpraisedale.xyz (an administrator approves every new account)
 
 Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Operations](docs/OPERATIONS.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
 
@@ -12,13 +12,13 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
-- Optional MySQL database and Spaces bucket per app, each with its own credentials.
+- Optional MySQL database and storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.raisehellpraisedale.xyz`) from a wildcard certificate.
 - Logs, restart, and live status in the UI.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
   auto-redeployed when they move.
 - Quotas on CPU, memory, scratch disk, image size, database size and bucket size.
-- Admin approval for signups, user and app suspend or delete, and an audit log.
+- Administrator approval for new accounts, user and app suspend or delete, and an audit log.
 - API keys, a CLI, and a YAML app spec.
 
 ## Caps
@@ -33,56 +33,53 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Image size | 256 MB compressed |
 | MySQL database | 50 MB (writes revoked over it) |
 | Storage bucket | 100 MB (key goes read-only over it) |
-| Apps per user | 1 by default (admin can raise it) |
+| Apps per user | 1 by default (an administrator can raise it) |
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-  user["Browser"]
-  cli["CLI / API key / YAML spec"]
+  user["Browser, CLI or API key"]
   dns["DNS: *.raisehellpraisedale.xyz"]
-  lb["DigitalOcean Load Balancer"]
-
-  user --> dns
-  cli --> dns
-  dns --> lb
+  lb["DigitalOcean load balancer"]
+  user --> dns --> lb
 
   subgraph doks["DOKS cluster picopaas-nyc3 (NYC3)"]
-    traefik["Traefik ingress<br/>wildcard TLS cert"]
-    cm["cert-manager<br/>Let's Encrypt, DNS-01"]
-    ms["metrics-server"]
-
-    subgraph sys["ns picopaas-system"]
-      plat["Platform Deployment, 2 replicas<br/>FastAPI API + Vue SPA<br/>reconciler + quota + image watcher<br/>(leader-elected)"]
-    end
-
-    subgraph appns["ns app-ID, one per app"]
-      app["Deployment, Service, Ingress<br/>NetworkPolicies, ResourceQuota<br/>PSA restricted"]
-    end
+    traefik["Traefik ingress<br/>wildcard TLS certificate"]
+    plat["Platform, 2 replicas (ns picopaas-system)<br/>FastAPI API + Vue SPA<br/>reconciler, quota polls, image watcher<br/>(one leader runs the loops)"]
+    app["App, one namespace each (ns app-ID)<br/>Deployment, Service, Ingress<br/>NetworkPolicies, ResourceQuota"]
+    cm["cert-manager"]
   end
-
-  mysql[("DO Managed MySQL 8.4<br/>platform DB + one DB per app")]
-  spaces[("DO Spaces<br/>one bucket + key per app")]
-  ghcr["GHCR and other registries"]
-  le["Let's Encrypt"]
 
   lb --> traefik
   traefik --> plat
   traefik --> app
-  plat -- "Kubernetes API" --> appns
+  plat -- "Kubernetes API" --> app
+
+  subgraph data["Data (DigitalOcean)"]
+    mysql[("Managed MySQL 8.4<br/>platform DB + one DB per app")]
+    spaces[("Spaces<br/>one bucket + key per app")]
+  end
+
   plat -- "VPC, TLS" --> mysql
   plat -- "DO API + S3 API" --> spaces
-  plat -- "image manifest check" --> ghcr
-  app -- "VPC, own DB user" --> mysql
+  app -- "own DB user" --> mysql
   app -- "own bucket key" --> spaces
-  appns -- "pull by digest" --> ghcr
-  cm --> le
+
+  subgraph ext["External services"]
+    ghcr["GHCR and other registries"]
+    le["Let's Encrypt"]
+  end
+
+  plat -- "check image manifest" --> ghcr
+  app -- "pull image by digest" --> ghcr
+  cm -- "DNS-01 wildcard cert" --> le
 
   subgraph ci["GitHub"]
-    gha["Actions: ci, image, deploy,<br/>bootstrap, terraform, diag"]
+    gha["Actions: ci, image, deploy, bootstrap, terraform"]
     tfc["Terraform Cloud<br/>state only"]
   end
+
   gha -- "helm, kubectl" --> doks
   gha -- "terraform" --> tfc
   gha -- "push image" --> ghcr
@@ -98,11 +95,11 @@ sequenceDiagram
   participant D as Platform DB
   participant C as Reconciler (leader)
   participant K as Kubernetes
-  U->>A: create or update app (image, env, resources)
+  U->>A: create or update app (image, env, health check)
   A->>R: read manifest (size, root user check, digest)
   R-->>A: digest and size
   A->>D: save desired state (pinned digest, encrypted secrets)
-  A-->>U: 202, status pending
+  A-->>U: saved, status pending
   loop every 15 seconds
     C->>D: apps that need work, plus a drift sweep
   end
