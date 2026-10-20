@@ -41,6 +41,10 @@ if [ -n "$S3_BUCKET" ]; then
   export storage__s3__region="${S3_REGION:-us-east-1}"
   export storage__s3__endpoint="$S3_ENDPOINT"
   export storage__s3__forcePathStyle="true"
+  # The adapter's default public URL is AWS-style (s3-<region>.amazonaws.com), which is wrong for DO Spaces.
+  # Point assetHost at the PUBLIC Spaces URL for this bucket so Ghost emits working <img> links. (Uploads use
+  # the possibly-VPC-private S3_ENDPOINT above; the public asset host is derived from the bucket + region.)
+  export storage__s3__assetHost="https://${S3_BUCKET}.${S3_REGION}.digitaloceanspaces.com"
 fi
 
 export logging__transports='["stdout"]'
