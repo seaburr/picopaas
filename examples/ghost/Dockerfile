@@ -28,6 +28,9 @@ RUN set -eux; \
       find "$A" -name '*.d.ts' -delete; \
       find "$A" -name '*.md' -delete; \
     fi; \
+    # The stock entrypoint seeds content/ (default themes incl. the active "source" theme) from content.orig
+    # on first run; we bypass it, and content/ is ephemeral anyway, so bake the defaults into the image.
+    cp -a content.orig/. content/; \
     # Only content/ must be writable by the runtime UID. chown of the WHOLE tree would duplicate all of
     # Ghost into a second image layer (~+100 MB); the code dirs stay root-owned and world-readable.
     chown -R 10001:10001 /var/lib/ghost/content

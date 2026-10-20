@@ -545,3 +545,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: 997a705 pushed; examples build (ghost, WITH_S3=0) succeeded; image ghcr.io/seaburr/picopaas-example-ghost:997a705, anonymously pullable. BUT measured compressed amd64 size 268.1 MiB (281.1 MB) STILL EXCEEDS 256 cap (base is not ~168 MB as assumed). Owner: examples/ghost. CLAUDE.md left unstaged.
 - 2026-10-20 [scm-security] START: commit+push ghost chown-only-content/HOME=/tmp size fix; watching examples build.
 - 2026-10-20 [scm-security] DONE: 62fb596 pushed; examples build (ghost, WITH_S3=0) succeeded; ghcr.io/seaburr/picopaas-example-ghost:62fb596 anonymously pullable; compressed amd64 168.0 MiB (176.2 MB), UNDER 256 cap. CLAUDE.md left unstaged.
+- 2026-10-20 [scm-security] START: commit+push ghost content.orig seeding fix; watching examples build.
