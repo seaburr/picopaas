@@ -7,6 +7,10 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+# Numeric UID with no passwd entry: Python 3.13 getpass.getuser() raises OSError, and pymysql calls it at import.
+os.environ.setdefault("USER", "app")
+os.environ.setdefault("HOME", "/tmp")
+
 E = os.environ.get
 
 
