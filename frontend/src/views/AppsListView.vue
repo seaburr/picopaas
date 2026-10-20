@@ -9,7 +9,7 @@ import IconButton from '../components/IconButton.vue'
 import { Pencil, RotateCw, ScrollText, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
-import { SAMPLE_APP } from '../composables/appUi'
+import { eventNote, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -17,6 +17,7 @@ import type { App } from '../types'
 
 const store = useAppsStore()
 const auth = useAuthStore()
+const now = useNow()
 const toast = useToastStore()
 const router = useRouter()
 const loading = ref(true)
@@ -185,6 +186,7 @@ function meta(app: App) {
               <IconButton :icon="Trash2" label="Delete" danger @click="pendingDelete = app" />
             </div>
           </div>
+          <p v-if="app.last_event" class="alert-info mt-2">{{ eventNote(app.last_event, now) }}</p>
           <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-2 border-t border-pico-border pt-2">
             <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="restart(app)" />
           </div>

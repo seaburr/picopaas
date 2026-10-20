@@ -126,6 +126,21 @@ def _retry_text(retry_at: Optional[str]) -> Optional[str]:
     return f"in about {mins} min" if mins > 1 else "in under a minute"
 
 
+def _ago_text(iso: str) -> str:
+    try:
+        when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return iso
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    secs = max(0, int((datetime.now(timezone.utc) - when).total_seconds()))
+    if secs < 60:
+        return "just now"
+    if secs < 3600:
+        return f"{secs // 60} min ago"
+    return f"{secs // 3600} h ago"
+
+
 def cmd_apply(c, args) -> None:
     try:
         with open(args.file, encoding="utf-8") as f:
@@ -169,6 +184,9 @@ def cmd_status(c, args) -> None:
     retry = _retry_text(a.get("retry_at"))
     if retry:
         lines.append(("retry", retry))
+    ev = a.get("last_event")
+    if ev:
+        lines.append(("event", f"{_ago_text(ev['at'])}: {ev['message']}"))
     lines += [("image", a["image"]), ("health", health or "off")]
     for label, key, name in (("database", "db", "Database"), ("storage", "storage", "Storage")):
         u = (a.get("quota") or {}).get(key)

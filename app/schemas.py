@@ -213,6 +213,14 @@ class AppQuotaOut(BaseModel):
     storage: Optional[UsageOut] = None
 
 
+class AppEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    at: datetime
+    kind: str  # disk | evicted | oom | crashed
+    message: str
+
+
 class AppOut(BaseModel):
     id: int
     owner_id: int
@@ -233,6 +241,7 @@ class AppOut(BaseModel):
     status_reason: Optional[str] = None  # machine code for status=error (image_pull, crash_loop, oom, not_ready, quota, ...)
     retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)
     created_at: datetime
+    last_event: Optional[AppEventOut] = None  # newest restart event, only if under 24h old
     resources: Optional[ResourcesOut] = None
     quota: AppQuotaOut = Field(default_factory=AppQuotaOut)
     env: List[EnvVarOut] = Field(default_factory=list)

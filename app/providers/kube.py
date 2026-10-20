@@ -7,6 +7,7 @@ the dynamic client so any kind (incl. CRDs) works with no per-kind code.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.providers.base import KubeProvider, PodLogs
@@ -67,6 +68,46 @@ def _sum_requests(pod: dict[str, Any]) -> tuple[int, int]:
         if req.get("memory"):
             mem += parse_mem_mi(req["memory"])
     return cpu, mem
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def pod_events(pod: dict[str, Any]) -> list[dict[str, Any]]:
+    """What a pod tells us about restarts: an eviction, an OOM-killed or a crashed (non-zero exit) container.
+    Keys are stable across sweeps (pod uid + restartCount/finishedAt), so a consumer can dedupe on them."""
+    meta = pod.get("metadata") or {}
+    st = pod.get("status") or {}
+    uid = meta.get("uid") or meta.get("name") or "?"
+    events: list[dict[str, Any]] = []
+    if st.get("reason") == "Evicted":
+        at = None
+        for cond in st.get("conditions") or []:
+            if cond.get("type") == "DisruptionTarget":
+                at = _parse_ts(cond.get("lastTransitionTime"))
+        at = at or _parse_ts(st.get("startTime")) or _parse_ts(meta.get("creationTimestamp")) or datetime.utcnow()
+        kind = "disk" if "ephemeral" in (st.get("message") or "").lower() else "evicted"
+        return [{"key": f"{uid}:evicted", "at": at, "kind": kind, "exit_code": None}]
+    for cs in st.get("containerStatuses") or []:
+        term = (cs.get("lastState") or {}).get("terminated") or {}
+        if not term:
+            continue
+        code = term.get("exitCode")
+        finished = term.get("finishedAt")
+        at = _parse_ts(finished) or datetime.utcnow()
+        key = f"{uid}:{cs.get('restartCount') or 0}:{finished or ''}"
+        if term.get("reason") == "OOMKilled":
+            events.append({"key": f"{key}:oom", "at": at, "kind": "oom", "exit_code": code})
+        elif code not in (None, 0):
+            events.append({"key": f"{key}:crashed", "at": at, "kind": "crashed", "exit_code": code})
+    return events
 
 
 def _as_dict(obj: Any) -> dict[str, Any]:
@@ -192,6 +233,16 @@ class KubeClientProvider(KubeProvider):
                     eph += parse_mem_mi(lim["ephemeral-storage"])
                     found = True
         return {"cpu_limit_m": cpu, "mem_limit_mi": mem, "ephemeral_limit_mi": eph} if found else None
+
+    def app_pod_events(self) -> dict[str, list[dict[str, Any]]]:
+        """One cluster-wide pod list per call; only app namespaces are looked at."""
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get()).get("items", [])
+        out: dict[str, list[dict[str, Any]]] = {}
+        for pod in pods:
+            ns = (pod.get("metadata") or {}).get("namespace") or ""
+            if ns.startswith("app-"):
+                out.setdefault(ns, []).extend(pod_events(pod))
+        return out
 
     def pending_hint(self, namespace: str) -> str:
         pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])

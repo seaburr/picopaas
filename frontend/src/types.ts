@@ -69,6 +69,12 @@ export interface AppQuota {
   storage: UsageStat | null
 }
 
+export interface AppEvent {
+  at: string
+  kind: 'disk' | 'evicted' | 'oom' | 'crashed' | string
+  message: string
+}
+
 export interface App {
   id: number
   owner_id: number
@@ -91,6 +97,7 @@ export interface App {
   health_check_path: string
   env: EnvVar[]
   retry_at?: string | null
+  last_event?: AppEvent | null // newest restart event, only if under 24h old
   resources?: AppResources
   quota?: AppQuota
 }

@@ -94,6 +94,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         status_reason=app.status_reason if app.status == "error" else None,
         retry_at=reconciler.retry_at(app),
         created_at=app.created_at,
+        last_event=reconciler.last_event(app),
         resources=resources.describe(app),
         quota=_quota_out(app),
         env=[_env_var_out(e) for e in app.env_vars],

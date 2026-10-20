@@ -60,6 +60,12 @@ class KubeProvider(ABC):
         'not_ready' (a pod is running but fails readiness), 'waiting' (pod exists, not running), 'none' (no pod)."""
         raise NotImplementedError
 
+    def app_pod_events(self) -> dict[str, list[dict[str, Any]]]:
+        """Restart/eviction occurrences of the pods in every APP namespace, in one call: {namespace: [event]},
+        event = {"key": str (stable per occurrence: pod uid + restartCount/finishedAt), "at": naive-UTC datetime,
+        "kind": "disk" | "evicted" | "oom" | "crashed", "exit_code": int | None}."""
+        return {}
+
     @abstractmethod
     def pod_logs(self, namespace: str, tail: int) -> "PodLogs":
         """Logs of the app container of the newest pod in an APP namespace (never the platform namespace).

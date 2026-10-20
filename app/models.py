@@ -129,6 +129,23 @@ class App(Base):
     storage: Mapped[Optional["AppStorage"]] = relationship(
         back_populates="app", cascade="all, delete-orphan"
     )
+    events: Mapped[List["AppEvent"]] = relationship(
+        order_by="desc(AppEvent.at), desc(AppEvent.id)", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class AppEvent(Base):
+    """Something that happened to a running app (restart for disk/OOM/crash). Last 20 per app are kept."""
+    __tablename__ = "app_events"
+    __table_args__ = (UniqueConstraint("app_id", "dedupe_key", name="uq_app_events_dedupe"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True, nullable=False)
+    at: Mapped[datetime] = mapped_column(nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # disk | evicted | oom | crashed
+    message: Mapped[str] = mapped_column(String(255), nullable=False)
+    # pod uid + restartCount/finishedAt: the same occurrence seen on many sweeps is stored once.
+    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
 
 
 class AppEnvVar(Base):

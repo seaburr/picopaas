@@ -31,6 +31,8 @@ class FakeKubeProvider(KubeProvider):
         self.logs: dict[str, PodLogs] = {}  # ns -> canned logs
         self.log_calls: list[tuple[str, int]] = []
         self.used_limits: dict[str, Optional[dict[str, int]]] = {}
+        self.pod_events: dict[str, list[dict[str, Any]]] = {}  # ns -> events (shape: KubeProvider.app_pod_events)
+        self.pod_event_calls = 0
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -75,6 +77,10 @@ class FakeKubeProvider(KubeProvider):
     def get_used_limits(self, namespace: str) -> Optional[dict[str, int]]:
         """Limits consumed by existing pods. Tests set `used_limits[ns]` to simulate pods; otherwise none."""
         return self.used_limits.get(namespace)
+
+    def app_pod_events(self) -> dict[str, list[dict[str, Any]]]:
+        self.pod_event_calls += 1
+        return {ns: list(evs) for ns, evs in self.pod_events.items()}
 
     def pending_hint(self, namespace: str) -> str:
         return self.hints.get(namespace, "none")

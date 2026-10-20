@@ -154,6 +154,68 @@ def status_message(key: str, app: models.App) -> str:
     )[:255]
 
 
+# AppEvent.kind -> human message (what happened, what it cost, what to do).
+EVENT_MESSAGES = {
+    "disk": "Restarted: your app used more than {disk} MB of local disk (files, /tmp or logs). Files on local disk were lost. Store files in the storage bucket instead.",
+    "evicted": "Restarted: the cluster moved your app to make room (its pod was evicted). Files on local disk were lost.",
+    "oom": "Restarted: your app ran out of memory (limit {mem} MB).",
+    "crashed": "Restarted: your app exited with code {code}. Check the logs.",
+}
+EVENTS_KEPT = 20
+LAST_EVENT_MAX_AGE = timedelta(hours=24)
+
+
+def event_message(kind: str, app: models.App, exit_code: Any = None) -> str:
+    eff = resources.effective(app)
+    return EVENT_MESSAGES[kind].format(disk=config.EPHEMERAL_LIMIT_MI, mem=eff["mem_limit_mi"], code=exit_code)[:255]
+
+
+def record_app_events(session: Session, apps: list[models.App], by_ns: dict[str, list[dict[str, Any]]]) -> int:
+    """Store each not-yet-seen restart occurrence once (dedupe on app + pod uid/restartCount key); keep the newest 20."""
+    added = 0
+    for app in apps:
+        seen = by_ns.get(k8s_manifests.namespace_name(app.id)) or []
+        if not seen:
+            continue
+        rows = session.execute(
+            select(models.AppEvent.dedupe_key, models.AppEvent.at).where(models.AppEvent.app_id == app.id)
+        ).all()
+        have = {k for k, _ in rows}
+        # Full: anything not newer than the oldest kept event would just be pruned again (and re-added next sweep).
+        floor = min((_naive(a) for _, a in rows), default=None) if len(rows) >= EVENTS_KEPT else None
+        changed = False
+        for ev in sorted(seen, key=lambda e: e["at"]):
+            if ev["key"][:160] in have or ev["kind"] not in EVENT_MESSAGES:
+                continue
+            if floor is not None and _naive(ev["at"]) <= floor:
+                continue
+            have.add(ev["key"][:160])
+            session.add(models.AppEvent(
+                app_id=app.id, at=_naive(ev["at"]), kind=ev["kind"], dedupe_key=ev["key"][:160],
+                message=event_message(ev["kind"], app, ev.get("exit_code")),
+            ))
+            added += 1
+            changed = True
+        if changed:
+            session.flush()
+            old = session.execute(
+                select(models.AppEvent.id).where(models.AppEvent.app_id == app.id)
+                .order_by(models.AppEvent.at.desc(), models.AppEvent.id.desc()).offset(EVENTS_KEPT)
+            ).scalars().all()
+            if old:
+                session.query(models.AppEvent).filter(models.AppEvent.id.in_(old)).delete(synchronize_session=False)
+            session.commit()
+    return added
+
+
+def last_event(app: models.App, now: Optional[datetime] = None) -> Optional[models.AppEvent]:
+    """Newest event, only if it's under 24h old."""
+    if not app.events:
+        return None
+    ev = app.events[0]
+    return ev if (_naive(now) if now else _utcnow()) - _naive(ev.at) < LAST_EVENT_MAX_AGE else None
+
+
 def _kube_error_summary(exc: Exception) -> str:
     """`ApiException` -> "422 Unprocessable Entity: <k8s Status message>" (truncated); else the exception type."""
     status = getattr(exc, "status", None)
@@ -618,6 +680,13 @@ def reconcile_all(
             # DR: namespace gone (cluster rebuilt) -> re-apply even though the hash still matches.
             force=existing_ns is not None and k8s_manifests.namespace_name(app.id) not in existing_ns,
         )
+
+    if running:
+        try:
+            record_app_events(session, list(running), kube.app_pod_events())  # one pod list per tick
+        except Exception as exc:  # noqa: BLE001 - events are informational; never break the sweep
+            session.rollback()
+            log.warning("recording app events failed: %s", _kube_error_summary(exc))
 
     not_cleaned_up = (
         session.execute(

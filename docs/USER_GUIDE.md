@@ -335,7 +335,7 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 | Database | 50 MB | Writes that add data are blocked (INSERT, UPDATE, CREATE and ALTER are revoked) and your open database connections are closed, so your app reconnects read-only. SELECT, DELETE, TRUNCATE and DROP keep working so you can clean up. Writes come back automatically within about a minute of usage dropping under 50 MB. See "Recovering from an over-cap resource" below. |
 | Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it, so reads keep working but writes fail and **your app cannot delete objects itself**. Free space through the platform (see "Recovering from an over-cap resource" below). The read-write key comes back right away once you are under 100 MB. |
 | Image | 256 MB | Deploy is rejected. |
-| Scratch disk | 250 MB | The pod is evicted and restarted. The app shows **Failed** with reason `disk` and is retried automatically. Files on the container filesystem or in `/tmp` are lost on restart. |
+| Scratch disk | 250 MB | The pod is evicted and restarted. Kubernetes starts a replacement pod within seconds, so the app usually stays **Running**; a "Restarted" notice appears on the app page (see "Recent events"). Files on the container filesystem or in `/tmp` are lost on restart. |
 
 ### Recovering from an over-cap resource
 
@@ -396,6 +396,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 | 502 or 503 from your hostname | The app isn't ready yet, the `port` is wrong, or the app isn't listening on all interfaces. Bind to `0.0.0.0`. |
 | Stuck in **Deploying** | Readiness isn't passing. Check the health check path, the port, and that the app starts within a few seconds. After 10 minutes the app moves to **Failed** with the reason. |
 | **Failed** with a message | Read the message and the logs on the app page. The platform retries automatically (see section 12). To retry now, click **Restart** or save the app. |
+| "My app restarted" (a **Restarted ...** notice on the app page, or a gap in the logs) | Open **Recent events** on the app page (or `GET /apps/{id}/events`, or `picopaas status`). It says why: more than 250 MB of local disk (files, `/tmp`, logs; local files are lost, so keep files in the storage bucket), out of memory (384 MB limit; reduce memory use), or the app exited with a code (check the logs; the previous container's last lines are shown above the current ones). The notice stays on the app page for 24 hours; the last 20 events are kept. |
 | TLS error from MySQL | Use the CA certificate from `${{ db.ca_cert }}`. See the strict-flag note in section 6. |
 | Database writes fail with a read-only or permission error | You hit the 50 MB cap. The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
 | Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Click **Free up space** (or run `picopaas storage-delete`). Your app's own key is read-only and can't delete. |

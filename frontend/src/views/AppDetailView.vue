@@ -11,14 +11,15 @@ import { PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
+import { deleteStorageObjects, getAppEvents, getAppLogs, rotateCredentials, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
-import { fullTime, relTime, useNow } from '../composables/appUi'
+import { stamp } from '../utils/format'
+import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
-import { DB_REFS, STORAGE_REFS, type App } from '../types'
+import { DB_REFS, STORAGE_REFS, type App, type AppEvent } from '../types'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -58,6 +59,16 @@ function syncPoll() {
 }
 watch(app, syncPoll)
 
+// Recent events (restarts for disk / memory / crash)
+const events = ref<AppEvent[]>([])
+async function loadEvents() {
+  try {
+    events.value = await getAppEvents(Number(props.id))
+  } catch {
+    events.value = [] // older backend or a transient error: the section just stays empty
+  }
+}
+
 // Logs
 const logs = ref<AppLogs | null>(null)
 const logsError = ref('')
@@ -93,6 +104,7 @@ onMounted(async () => {
   await loadApp()
   syncPoll()
   if (app.value && app.value.status !== 'suspended') await loadLogs()
+  await loadEvents()
   if (route.hash === '#logs') document.getElementById('logs')?.scrollIntoView()
 })
 onBeforeUnmount(() => {
@@ -276,6 +288,17 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </p>
             <AppStatusNote :app="app" :restarting="restarting" @restart="restart" />
             <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2">{{ app.image_update_error }}</p>
+            <p v-if="app.last_event" class="alert-info mt-2">{{ eventNote(app.last_event, now) }}</p>
+          </section>
+
+          <section v-if="events.length" class="card card-pad" aria-labelledby="h-events">
+            <h2 id="h-events" class="section-title mb-2">Recent events</h2>
+            <ul class="space-y-1 text-sm">
+              <li v-for="ev in events" :key="ev.at + ev.kind" class="flex gap-3">
+                <span class="meta mono shrink-0" :title="fullTime(ev.at) + ' (' + relTime(ev.at, now) + ')'">{{ stamp(parseTs(ev.at).toISOString()) }}</span>
+                <span class="text-zinc-200">{{ ev.message }}</span>
+              </li>
+            </ul>
           </section>
 
           <section v-if="app.quota?.db || app.quota?.storage" class="card card-pad" aria-labelledby="h-usage">

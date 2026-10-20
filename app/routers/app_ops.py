@@ -56,6 +56,17 @@ def app_logs(
     return LogsOut(lines=result.lines, pod=result.pod, note=result.note)
 
 
+@router.get("/{app_id}/events", response_model=List[schemas.AppEventOut])
+def app_events(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Recent restart events (disk, out of memory, crash), newest first; at most the last 20."""
+    app = _get_app_or_404(db, app_id, user)
+    return list(app.events)
+
+
 @router.post("/{app_id}/restart", response_model=schemas.AppOut)
 def restart_app(
     app_id: int,

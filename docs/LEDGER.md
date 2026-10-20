@@ -7,7 +7,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 ## Now / Next
 ### Next (2026-10-20)
 - Re-run live quota tests against the fixed code (E2E_SLOW=1 pytest tests/e2e -k quota). Check the first over-cap WARNING log for whether doadmin can see/kill app sessions.
-- Live check of the 250MB scratch-disk limit (eviction -> status_reason=disk) and of Health's node disk conditions.
+- Live check of Health's node disk conditions. Verify on prod that a scratch-disk eviction now produces a "Recent events" entry (kind `disk`) within a sweep.
 - Floating-tag test: a GH Actions job that retags a test image (good, then oversized) and confirms auto-redeploy and rejection.
 - npm audit: dev-only postcss-selector-parser bump.
 - Open: #11 hairpin (CoreDNS rewrite, test off prod), PENTEST #19 (SA cluster-wide Secret read), #10 API under /api.
@@ -501,3 +501,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [tech-writer] START: docs + in-app text review (README, guides, API, CLI, ops, frontend strings, backend messages, CLI output)
 - 2026-10-20 [tech-writer] DONE: docs + in-app text review. Fixed stale facts in USER_GUIDE/API/CLI/OPERATIONS/ARCHITECTURE/README (retries, logs, resources, db-server CA, audit actions, replicas, $28 node); 'admin' -> 'administrator' in API messages (tests updated); UI/landing/privacy copy; secrets-unreadable and OOM status messages; README Mermaid reordered; variables.tf max_nodes text. Open questions added to QUESTIONS.md. Pytest, typecheck, build pass. Uncommitted.
 - 2026-10-20 [scm-security] START: commit docs pass + copy pass as two commits; push; watch CI
+- 2026-10-20 [backend-dev] START: app recent events (app_events table, detect evicted/OOM/crash, GET /apps/{id}/events, AppOut.last_event, UI, CLI, docs, tests)
+- 2026-10-20 [backend-dev] DONE: recent events. `app_events` table (migration a3f7c1d9e5b2), `KubeProvider.app_pod_events()` (one cluster-wide pod list per sweep; fake: `pod_events`), `reconciler.record_app_events` (dedupe on pod uid + restartCount/finishedAt, keep 20), `GET /apps/{id}/events`, `AppOut.last_event` (<24h), UI (detail list + alert-info on detail and list), CLI status, USER_GUIDE/API docs, tests/test_app_events.py. Uncommitted.
+- 2026-10-20 [scm-security] START: commit app events feature; push; watch CI/image/deploy
