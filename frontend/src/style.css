@@ -18,6 +18,10 @@
   html,
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
+    /* Belt-and-suspenders against stray page-level horizontal overflow on small screens
+       (e.g. a non-shrinking flex child). `clip` doesn't create a scroll container, so
+       inner overflow-x-auto tables and position: sticky keep working. */
+    overflow-x: clip;
   }
   * {
     @apply border-pico-border;
