@@ -45,7 +45,7 @@ def test_admin_authz(admin, user, client):
 
 
 def test_app_limit_change_takes_effect(admin, user):
-    body = {"name": "a", "image": "x/y:1", "port": 80}
+    body = {"name": "a", "image": "x/y:1", "port": 8080}
     assert user.post("/apps", json=body).status_code == 201
     assert user.post("/apps", json={**body, "name": "b"}).status_code == 403
     uid = [u for u in admin.get("/admin/users").json() if u["role"] == "user"][0]["id"]
@@ -150,7 +150,7 @@ def test_cli_parsing_and_flow(tmp_path, monkeypatch, capsys):
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(req)
         if req.url.path == "/apps/spec":
-            return httpx.Response(200, json={"created": True, "name": "demo", "hostname": "a-b-12345.raisehellpraisedale.xyz", "status": "pending"})
+            return httpx.Response(200, json={"created": True, "name": "demo", "hostname": "a-b-12345.picopaas.xyz", "status": "pending"})
         if req.url.path == "/apps":
             return httpx.Response(200, json=[{"id": 7, "name": "demo", "hostname": "h", "status": "running", "image": "i"}])
         return httpx.Response(422, json={"detail": "nope"})

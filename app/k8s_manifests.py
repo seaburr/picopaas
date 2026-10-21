@@ -534,9 +534,10 @@ def service_manifest(app_id: int, port: int) -> dict[str, Any]:
     }
 
 
-def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
+def ingress_manifest(app_id: int, hostname: str, port: int, platform_subdomain: str | None = None) -> dict[str, Any]:
     name = _resource_name(app_id)
     full_host = _full_hostname(hostname)
+    hosts = [full_host] + ([_full_hostname(platform_subdomain)] if platform_subdomain else [])
     return {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "Ingress",
@@ -544,13 +545,13 @@ def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
         "spec": {
             "ingressClassName": INGRESS_CLASS,
             # No `tls[].secretName`: Traefik's default certificate (TLSStore `default`)
-            # (the *.raisehellpraisedale.xyz wildcard, cert-manager/DNS-01 — ARCHITECTURE.md "DNS
+            # (the *.picopaas.xyz wildcard, cert-manager/DNS-01 — ARCHITECTURE.md "DNS
             # and TLS") serves every host automatically, so there's nothing per-app
             # to issue or copy into this namespace.
-            "tls": [{"hosts": [full_host]}],
+            "tls": [{"hosts": hosts}],
             "rules": [
                 {
-                    "host": full_host,
+                    "host": h,
                     "http": {
                         "paths": [
                             {
@@ -563,6 +564,7 @@ def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
                         ]
                     },
                 }
+                for h in hosts
             ],
         },
     }
@@ -629,6 +631,7 @@ def render_app_manifests(
     used_limits: dict[str, int] | None = None,
     image_ref: str | None = None,
     custom_host: str | None = None,
+    platform_subdomain: str | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
@@ -646,7 +649,7 @@ def render_app_manifests(
                                        resources=resources, run_as_uid=run_as_uid,
                                        restart_nonce=restart_nonce, image_ref=image_ref),
         "service": service_manifest(app_id, port),
-        "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
+        "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain) if include_ingress else None,
         "custom_ingress": (
             custom_domain_ingress_manifest(app_id, custom_host, port)
             if include_ingress and custom_host else None

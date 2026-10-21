@@ -121,14 +121,14 @@ def test_read_key_can_read_but_not_write(make_client):
     assert reader.get("/auth/me", headers=rhdr).status_code == 200
     assert reader.get("/apps", headers=rhdr).status_code == 200
     # Writes are refused (403), with a message pointing at a full key.
-    denied = reader.post("/apps", headers=rhdr, json={"name": "x", "image": "nginx:alpine", "port": 80})
+    denied = reader.post("/apps", headers=rhdr, json={"name": "x", "image": "nginx:alpine", "port": 8080})
     assert denied.status_code == 403
     assert "read-only" in denied.json()["detail"].lower()
 
     # A full key from the same account can write.
     writer = make_client()
     fhdr = {"Authorization": f"Bearer {full_key}"}
-    assert writer.post("/apps", headers=fhdr, json={"name": "fw", "image": "nginx:alpine", "port": 80}).status_code in (200, 201)
+    assert writer.post("/apps", headers=fhdr, json={"name": "fw", "image": "nginx:alpine", "port": 8080}).status_code in (200, 201)
 
 
 def test_api_key_cannot_manage_keys(make_client):

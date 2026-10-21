@@ -4,7 +4,14 @@ import pytest
 from app import config, main
 from app.naming import RESERVED_HOSTNAMES, generate_unique_hostname
 
-PLATFORM, APEX, LEGACY = config.PLATFORM_HOST, config.APEX_HOST, config.LEGACY_HOSTS[0]
+PLATFORM, APEX = config.PLATFORM_HOST, config.APEX_HOST
+# LEGACY_HOSTS defaults to empty (old domain retired); the redirect mechanism is still exercised via this fixture.
+LEGACY = f"old.{config.APP_DOMAIN}"
+
+
+@pytest.fixture(autouse=True)
+def _legacy_hosts(monkeypatch):
+    monkeypatch.setattr(config, "LEGACY_HOSTS", (LEGACY,))
 
 
 @pytest.fixture

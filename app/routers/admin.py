@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, health, models, resources, schemas
+from app import audit, crypto, health, models, naming, resources, schemas
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_kube, require_platform_admin
@@ -268,6 +268,58 @@ def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User
     db.commit()
     audit.record(db, admin, "app.unsuspend", "app", a.id)
     return _app_admin_out(a)
+
+
+class PlatformHostSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subdomain: str = Field(min_length=1, max_length=63)
+
+
+def _requeue(a: models.App) -> None:
+    """Re-render the app's Ingress on the next reconcile (suspended apps stay suspended; they have no Ingress)."""
+    if a.status != "suspended":
+        a.status = "pending"
+        a.reset_retry()
+
+
+@router.put("/apps/{app_id}/platform-host", response_model=schemas.AppOut)
+def set_platform_host(app_id: int, payload: PlatformHostSet, db: Session = Depends(get_db),
+                      admin: models.User = Depends(require_platform_admin)):
+    """Give an app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one. Covered by the wildcard
+    cert, so only an extra Ingress rule is needed (no per-host cert)."""
+    a = _get_app_or_404(db, app_id)
+    try:
+        label = naming.normalize_platform_subdomain(payload.subdomain)
+    except naming.PlatformSubdomainError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    taken = db.query(models.App.id).filter(models.App.platform_subdomain == label, models.App.id != a.id,
+                models.App.deleted_at.is_(None)).first()
+    if taken is not None:
+        raise HTTPException(status_code=409, detail="That subdomain is already assigned to another app.")
+    a.platform_subdomain = label
+    _requeue(a)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That subdomain is already assigned to another app.")
+    audit.record(db, admin, "app.platform_host.set", "app", a.id, f"label={label}")
+    from app.routers.apps import _app_out
+    return _app_out(a)
+
+
+@router.delete("/apps/{app_id}/platform-host", response_model=schemas.AppOut)
+def clear_platform_host(app_id: int, db: Session = Depends(get_db),
+                        admin: models.User = Depends(require_platform_admin)):
+    a = _get_app_or_404(db, app_id)
+    if a.platform_subdomain:
+        label = a.platform_subdomain
+        a.platform_subdomain = None
+        _requeue(a)
+        db.commit()
+        audit.record(db, admin, "app.platform_host.clear", "app", a.id, f"label={label}")
+    from app.routers.apps import _app_out
+    return _app_out(a)
 
 
 class AppResourcesPatch(BaseModel):

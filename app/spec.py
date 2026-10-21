@@ -40,7 +40,7 @@ class AppSpec(BaseModel):
     apiVersion: Literal["picopaas/v1"]
     name: StrictStr = Field(min_length=1, max_length=255)
     image: StrictStr = Field(min_length=1, max_length=512)
-    port: StrictInt = Field(gt=0, le=65535)
+    port: StrictInt = Field(ge=1024, le=65535)
     resources: _Resources = Field(default_factory=_Resources)
     healthCheck: _HealthCheck = Field(default_factory=_HealthCheck)
     env: Dict[StrictStr, StrictStr] = Field(default_factory=dict)
@@ -71,7 +71,9 @@ def _plain_msg(err) -> str:
         return "has the wrong type"
     if t == "value_error":
         return msg.removeprefix("Value error, ")
-    if t in ("greater_than", "less_than_equal", "string_too_short", "string_too_long"):
+    if t in ("greater_than_equal", "less_than_equal") and err.get("loc", ())[-1:] == ("port",):
+        return "must be 1024-65535 (non-root containers can't bind privileged ports)"
+    if t in ("greater_than", "greater_than_equal", "less_than_equal", "string_too_short", "string_too_long"):
         return "is out of range" if t.startswith(("greater", "less")) else ("can't be empty" if t == "string_too_short" else "is too long")
     return msg
 

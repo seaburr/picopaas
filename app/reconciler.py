@@ -441,6 +441,7 @@ def reconcile_app(
         run_as_uid=app.run_as_uid,
         include_ingress=not suspended,
         restart_nonce=app.restart_nonce,
+        platform_subdomain=app.platform_subdomain,
         custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
     )
 
@@ -574,12 +575,14 @@ def delete_app(
     fully succeeds).
     """
     namespace = k8s_manifests.namespace_name(app.id)
+    failed = False
     try:
         kube.delete_namespace(namespace)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Keep the row (and its host claims) until the namespace/Ingress is really gone.
+        failed = True
+        log.warning("app %s: namespace delete failed (will retry): %s", app.id, _provider_error_summary(exc))
 
-    failed = False
     if app.database is not None:
         try:
             mysql_admin_factory(app.database.server).drop(app.id)
@@ -609,6 +612,9 @@ def delete_app(
         session.commit()
         return
 
+    # Cluster resources are gone: only now free the unique host claims (platform_subdomain, custom_domain),
+    # so a label can't be reassigned while the old namespace still holds an exact-host Ingress rule.
+    models.release_unique_hosts(app)
     app.status = "deleted"
     app.status_detail = None
     session.commit()

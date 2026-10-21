@@ -2,9 +2,9 @@
 
 This guide is for app owners. You deploy one Docker image, give it env vars and secrets, and optionally add a MySQL
 database and an S3-compatible storage bucket. PicoPaaS serves your app over HTTPS at a generated hostname such as
-`clever-robin-a1b2c3d.raisehellpraisedale.xyz`.
+`clever-robin-a1b2c3d.picopaas.xyz`.
 
-Platform URL: `https://platform.raisehellpraisedale.xyz` (the CLI default).
+Platform URL: `https://platform.picopaas.xyz` (the CLI default).
 
 ## 1. Getting an account
 
@@ -76,7 +76,7 @@ enter secret values under **Secret values**. Applying a name you already use upd
 Create an API key under **API keys** in the UI. The key starts with `pp_sk_` and is shown once.
 
 ```bash
-export PP=https://platform.raisehellpraisedale.xyz
+export PP=https://platform.picopaas.xyz
 export TOKEN=pp_sk_...
 
 # Deploy (create or update, matched on spec name) from a YAML file
@@ -119,7 +119,7 @@ back with `"value": "********"` and `"is_secret": true`. Unknown fields are reje
 `cli/picopaas.py` needs `httpx`. See [CLI.md](CLI.md).
 
 ```bash
-export PICOPAAS_TOKEN=pp_sk_...     # PICOPAAS_URL defaults to https://platform.raisehellpraisedale.xyz
+export PICOPAAS_TOKEN=pp_sk_...     # PICOPAAS_URL defaults to https://platform.picopaas.xyz
 python cli/picopaas.py apply -f app.yaml --secret API_TOKEN=s3cret
 python cli/picopaas.py apps
 python cli/picopaas.py status my-app
@@ -376,14 +376,18 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 
 ## 11a. Custom domains
 
-Your app is always reachable at its generated `*.raisehellpraisedale.xyz` hostname. You can also attach your own
+Your app is always reachable at its generated `*.picopaas.xyz` hostname. You can also attach your own
 domain and we'll issue a free TLS certificate for it automatically.
+
+**Attach, verify and remove custom domains only through the PicoPaaS UI or its REST API** (`PUT`, `POST .../verify`
+and `DELETE /apps/{id}/domain`; same effect either way). Don't hand-edit cluster Ingress or manifests: the reconciler
+owns them and will revert manual changes.
 
 1. On the app's page, open **Custom domain**, enter a subdomain you control (e.g. `blog.example.com`) and click
    **Add domain**. Apex domains (bare `example.com`) can't be used unless your DNS provider supports CNAME
    flattening/ALIAS — use a subdomain.
 2. Create the **two DNS records** shown:
-   - a **CNAME** from your host to the platform load balancer (`lb.raisehellpraisedale.xyz`), and
+   - a **CNAME** from your host to the platform load balancer (`lb.picopaas.xyz`), and
    - a **TXT** at `_picopaas-challenge.<your-host>` with the token shown (this proves you own the domain).
 3. Click **Verify DNS**. Once both records are visible (DNS can take a few minutes), the domain goes **active**, a
    certificate is issued, and your app is served on it over HTTPS alongside the generated subdomain.

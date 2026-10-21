@@ -70,7 +70,7 @@ def test_update_marks_pending_for_reconcile(client, db_session):
     assert db_session.get(models.App, app_id).status == "pending"
 
 
-SPEC = "apiVersion: picopaas/v1\nname: x\nimage: i\nport: 80\n"
+SPEC = "apiVersion: picopaas/v1\nname: x\nimage: i\nport: 8080\n"
 
 
 def test_spec_parsing():

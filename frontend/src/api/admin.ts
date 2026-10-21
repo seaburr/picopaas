@@ -1,4 +1,4 @@
-import type { AdminApp, AppResources, ResourcesPatch, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
+import type { App, AdminApp, AppResources, ResourcesPatch, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
 import { apiFetch } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -35,3 +35,9 @@ export const patchAppResources = (id: number, body: ResourcesPatch) =>
 // Backend: POST /admin/users/{id}/reset-password -> { temporary_password } (shown once).
 export const resetUserPassword = (id: number) =>
   apiFetch<{ temporary_password: string }>(`/admin/users/${id}/reset-password`, { method: 'POST' })
+
+// Admin-only reserved <label>.<APP_DOMAIN> host. 422 bad/reserved label, 409 taken.
+export const setPlatformHost = (id: number, subdomain: string) =>
+  apiFetch<App>(`/admin/apps/${id}/platform-host`, { method: 'PUT', body: JSON.stringify({ subdomain }) })
+export const clearPlatformHost = (id: number) =>
+  apiFetch<App>(`/admin/apps/${id}/platform-host`, { method: 'DELETE' })

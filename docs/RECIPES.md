@@ -102,13 +102,13 @@ picopaas apply -f ghost-blog.yaml
 **curl** (the `/apps/spec` endpoint takes `{"spec": "<yaml>"}`; `jq -Rs` wraps the file for you):
 
 ```bash
-curl -fsS -X POST https://platform.raisehellpraisedale.xyz/apps/spec \
+curl -fsS -X POST https://platform.picopaas.xyz/apps/spec \
   -H "Authorization: Bearer $PICOPAAS_TOKEN" \
   -H "Content-Type: application/json" \
   --data "$(jq -Rs '{spec: .}' ghost-blog.yaml)"
 ```
 
-Both return the created app with its generated `https://<name>.raisehellpraisedale.xyz` hostname. It deploys in
+Both return the created app with its generated `https://<name>.picopaas.xyz` hostname. It deploys in
 one step (no URL to set afterward); open `/ghost/` there to finish setup. Re-running `apply` with the same `name`
 updates the app in place.
 

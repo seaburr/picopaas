@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PicoPaaS CLI. Env: PICOPAAS_URL (default https://platform.raisehellpraisedale.xyz), PICOPAAS_TOKEN (pp_sk_ API key)."""
+"""PicoPaaS CLI. Env: PICOPAAS_URL (default https://platform.picopaas.xyz), PICOPAAS_TOKEN (pp_sk_ API key)."""
 import argparse
 import os
 import sys
@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import httpx
 
-DEFAULT_URL = "https://platform.raisehellpraisedale.xyz"
+DEFAULT_URL = "https://platform.picopaas.xyz"
 
 
 class CliError(Exception):

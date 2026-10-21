@@ -1,9 +1,10 @@
 """Generates `<adjective>-<animal>-<7 char suffix>` hostnames, e.g. clever-robin-a1b2c3d.
 
-Matches ARCHITECTURE.md: "<adjective>-<animal>-<7 chars of [a-z0-9]>.raisehellpraisedale.xyz", with a
+Matches ARCHITECTURE.md: "<adjective>-<animal>-<7 chars of [a-z0-9]>.picopaas.xyz", with a
 uniqueness check in the DB. This module only builds the label; the caller (apps router)
 appends the domain and checks the `apps.hostname` column for collisions.
 """
+import re
 import secrets
 import string
 
@@ -74,3 +75,32 @@ def generate_unique_hostname(db: Session) -> str:
         if candidate not in RESERVED_HOSTNAMES and not exists:
             return candidate
     raise RuntimeError("could not generate a unique hostname after many attempts")
+
+
+# Labels an admin may never assign as a fixed platform subdomain.
+RESERVED_PLATFORM_LABELS = frozenset(RESERVED_HOSTNAMES | {"app", "apps", "admin", "*", "mail", "smtp", "ns", "ns1", "ns2"})
+_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+class PlatformSubdomainError(ValueError):
+    """User-facing, secret-free message."""
+
+
+def normalize_platform_subdomain(raw: str) -> str:
+    """Validate a fixed platform subdomain: ONE lowercase DNS label, not reserved, not a platform/apex/legacy host.
+    Case is not folded: input must already be lowercase (so 'Blog' is rejected rather than silently changed)."""
+    from app import config  # local import: keep this module's import graph light
+
+    label = (raw or "").strip()
+    if not _LABEL_RE.match(label):
+        raise PlatformSubdomainError(
+            "Use a single lowercase label (letters, digits, hyphens; 1-63 chars; no leading/trailing hyphen), e.g. blog."
+        )
+    if label.startswith("xn--"):
+        raise PlatformSubdomainError("Punycode (xn--) labels are not allowed.")
+    if label in RESERVED_PLATFORM_LABELS:
+        raise PlatformSubdomainError(f"'{label}' is reserved.")
+    full = f"{label}.{config.APP_DOMAIN.lower()}"
+    if full in {config.PLATFORM_HOST, config.APEX_HOST, config.CUSTOM_DOMAIN_CNAME_TARGET.lower(), *config.LEGACY_HOSTS}:
+        raise PlatformSubdomainError(f"'{label}' collides with a platform hostname.")
+    return label

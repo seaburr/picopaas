@@ -99,6 +99,8 @@ export interface App {
   owner_id: number
   name: string
   hostname: string
+  platform_subdomain: string | null
+  platform_host: string | null
   image: string
   image_digest?: string | null
   auto_update?: boolean

@@ -72,7 +72,7 @@ DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 
 # Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
-APP_DOMAIN = os.environ.get("APP_DOMAIN", "raisehellpraisedale.xyz")
+APP_DOMAIN = os.environ.get("APP_DOMAIN", "picopaas.xyz")
 
 # --- Custom domains (user-attached domains + per-host auto-TLS; app/custom_domains.py + reconciler). Opt-in per app. ---
 CUSTOM_DOMAINS_ENABLED = os.environ.get("CUSTOM_DOMAINS_ENABLED", "1") != "0"
@@ -87,12 +87,12 @@ CUSTOM_DOMAIN_CHALLENGE_LABEL = os.environ.get("CUSTOM_DOMAIN_CHALLENGE_LABEL", 
 CUSTOM_DOMAIN_ISSUER = os.environ.get("CUSTOM_DOMAIN_ISSUER", "letsencrypt-http01-prod")
 
 # Host routing (app/main.py): the platform lives at PLATFORM_HOST, the apex serves the landing page, and
-# LEGACY_HOSTS (comma-separated) 301 to PLATFORM_HOST.
-PLATFORM_HOST = os.environ.get("PLATFORM_HOST", "platform.raisehellpraisedale.xyz").lower()
-APEX_HOST = os.environ.get("APEX_HOST", "raisehellpraisedale.xyz").lower()
+# LEGACY_HOSTS (comma-separated, default none) 301 to PLATFORM_HOST.
+PLATFORM_HOST = os.environ.get("PLATFORM_HOST", "platform.picopaas.xyz").lower()
+APEX_HOST = os.environ.get("APEX_HOST", "picopaas.xyz").lower()
 LEGACY_HOSTS = tuple(
     h.strip().lower()
-    for h in os.environ.get("LEGACY_HOSTS", "picopaas.raisehellpraisedale.xyz").split(",")
+    for h in os.environ.get("LEGACY_HOSTS", "").split(",")
     if h.strip()
 )
 

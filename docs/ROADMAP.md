@@ -14,7 +14,7 @@ all fixed (commit c2494cd): solver Service forced `ClusterIP` (tenant quota forb
 +1 Service / +1 Pod of headroom only when a custom domain is attached; a narrow `allow-acme-solver` NetworkPolicy
 lets Traefik reach the solver pod on 8089.
 Users attach their own domain (e.g. `blog.example.com`) to an app, in addition to the generated
-`*.raisehellpraisedale.xyz` subdomain. **Shipped shape:** `App.custom_domain*` fields + migration
+`*.picopaas.xyz` subdomain. **Shipped shape:** `App.custom_domain*` fields + migration
 `f3b8d6c4a1e9`; `app/custom_domains.py` (ownership-TXT + CNAME→LB verification via `dnspython`, behind a `Lookup`
 interface); owner endpoints `PUT/POST verify/DELETE /apps/{id}/domain`; reconciler renders a second Ingress
 (`app-<id>-custom`) annotated for cert-manager + tears it down when detached; a new **HTTP-01 ClusterIssuer**

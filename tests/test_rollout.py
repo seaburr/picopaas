@@ -58,7 +58,7 @@ def test_secret_change_sets_pending(client, db_session):
 
 def test_spec_reapply_pending_only_when_changed(client, db_session):
     register_and_login(client, "o@example.com")
-    spec = "apiVersion: picopaas/v1\nname: x\nimage: example/demo:1\nport: 80\nenv:\n  A: '1'\n"
+    spec = "apiVersion: picopaas/v1\nname: x\nimage: example/demo:1\nport: 8080\nenv:\n  A: '1'\n"
     assert client.post("/apps/spec", json={"spec": spec}).status_code == 200
     app_id = client.get("/apps").json()[0]["id"]
     _set_running(db_session, app_id)

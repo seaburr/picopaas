@@ -166,7 +166,7 @@ def test_service_is_cluster_ip_on_app_port():
 def test_ingress_uses_traefik_class_and_wildcard_host():
     ing = k8s.ingress_manifest(APP_ID, HOSTNAME, PORT)
     assert ing["spec"]["ingressClassName"] == "traefik"
-    full_host = f"{HOSTNAME}.raisehellpraisedale.xyz"
+    full_host = f"{HOSTNAME}.picopaas.xyz"
     assert ing["spec"]["rules"][0]["host"] == full_host
     assert ing["spec"]["tls"] == [{"hosts": [full_host]}]
     backend = ing["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]

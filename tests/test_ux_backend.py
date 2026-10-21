@@ -79,18 +79,18 @@ def test_admin_required_copy(user):
 def test_not_found_and_limit_copy(user):
     assert user.delete("/apps/999").json()["detail"] == "We can't find that app. It may have been deleted."
     assert user.delete("/apps/api-keys/999").status_code in (404, 405)
-    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 80})
+    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 8080})
     assert r.status_code == 201
-    r = user.post("/apps", json={"name": "b", "image": "x/y:1", "port": 80})
+    r = user.post("/apps", json={"name": "b", "image": "x/y:1", "port": 8080})
     assert r.status_code == 403
     assert r.json()["detail"] == "You've reached your limit of 1 app. Delete one, or ask an administrator to raise your limit."
 
 
 def test_duplicate_env_and_root_image_copy(user, admin):
     env = [{"key": "FOO", "value": "1"}, {"key": "FOO", "value": "2"}]
-    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 80, "env": env})
+    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 8080, "env": env})
     assert r.json()["detail"] == "FOO is listed twice. Env var names must be unique."
-    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 80,
+    r = user.post("/apps", json={"name": "a", "image": "x/y:1", "port": 8080,
                                  "env": [{"key": "bad-key", "value": "1"}]})
     assert r.status_code == 422 and "UPPER_SNAKE_CASE" in r.text
 

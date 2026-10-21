@@ -7,6 +7,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from sqlalchemy import or_
+
 from app import config
 from app import models
 from app.db import Base, engine, get_db
@@ -159,7 +161,7 @@ def _is_suspended_host(host: str) -> bool:
     try:
         row = (
             db.query(models.App.status)
-            .filter(models.App.hostname == label, models.App.deleted_at.is_(None))
+            .filter(or_(models.App.hostname == label, models.App.platform_subdomain == label), models.App.deleted_at.is_(None))
             .first()
         )
         result = row is not None and row[0] == "suspended"

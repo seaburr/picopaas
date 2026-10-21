@@ -116,6 +116,9 @@ class App(Base):
     # *.APP_DOMAIN subdomain. custom_domain_status: 'pending' (DNS not yet verified) -> 'active' (verified, served with
     # its own cert) -> or 'error'. custom_domain_token is OUR ownership-TXT value (not the ACME challenge).
     custom_domain: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    # Admin-assigned fixed label under APP_DOMAIN (e.g. "blog" -> blog.<APP_DOMAIN>), served IN ADDITION to the
+    # generated hostname on the same wildcard cert. Single DNS label; unique. See app/naming.py.
+    platform_subdomain: Mapped[Optional[str]] = mapped_column(String(63), unique=True, nullable=True)
     custom_domain_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     custom_domain_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     custom_domain_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -302,3 +305,14 @@ class AuthThrottle(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     window_start: Mapped[datetime] = mapped_column(nullable=False, index=True)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+def release_unique_hosts(app: "App") -> None:
+    """Free the unique host claims (platform_subdomain, custom_domain). Called by the reconciler once teardown
+    has completed (NOT at soft-delete), so a host is never reassigned while its old Ingress still exists."""
+    app.platform_subdomain = None
+    app.custom_domain = None
+    app.custom_domain_token = None
+    app.custom_domain_status = None
+    app.custom_domain_error = None
+    app.custom_domain_verified_at = None

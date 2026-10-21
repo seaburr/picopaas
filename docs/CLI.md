@@ -3,7 +3,7 @@
 `cli/picopaas.py` deploys and manages apps from your terminal. It needs Python 3 and `httpx` (`pip install httpx`). Create a `pp_sk_` API key on the **API keys** page, then:
 
 ```bash
-export PICOPAAS_TOKEN=pp_sk_...            # PICOPAAS_URL defaults to https://platform.raisehellpraisedale.xyz
+export PICOPAAS_TOKEN=pp_sk_...            # PICOPAAS_URL defaults to https://platform.picopaas.xyz
 python cli/picopaas.py apply -f app.yaml --secret API_TOKEN=s3cret
 python cli/picopaas.py apps
 python cli/picopaas.py status my-app
@@ -24,7 +24,7 @@ should check the exit code (0 ok, 1 error), not the wording.
 | `storage-delete NAME --prefix PREFIX` or `--all` | Delete objects from the app's storage bucket. Use it to free an over-cap bucket. |
 | `-v` (before the command) | Show HTTP status codes in error messages. |
 
-`PICOPAAS_TOKEN` (required) is your API key. `PICOPAAS_URL` is optional and defaults to `https://platform.raisehellpraisedale.xyz`.
+`PICOPAAS_TOKEN` (required) is your API key. `PICOPAAS_URL` is optional and defaults to `https://platform.picopaas.xyz`.
 
 Example `app.yaml` (max 64KB, no YAML anchors/aliases, unknown keys rejected):
 

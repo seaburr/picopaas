@@ -146,12 +146,7 @@ function meta(app: App) {
 
       <div v-else-if="!error && store.apps.length === 0" class="card card-pad">
         <h2 class="section-title">Deploy your first app</h2>
-        <p class="mt-1 text-sm text-zinc-300">Three things and you're live:</p>
-        <ol class="mt-3 list-decimal space-y-1 pl-5 text-sm text-zinc-300">
-          <li>A public Docker image that runs as a non-root user.</li>
-          <li>The port it listens on.</li>
-          <li>We give you an https URL.</li>
-        </ol>
+        <p class="mt-1 text-sm text-zinc-300">Point us at a public Docker image and the port it listens on. You'll have a live https URL in about a minute.</p>
         <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <RouterLink to="/apps/new" class="btn-primary">Create app</RouterLink>
           <button type="button" class="btn-secondary" @click="trySample">Try a sample app</button>

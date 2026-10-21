@@ -9,6 +9,9 @@ from app.env_refs import EnvValidationError, validate_env_key
 
 MASKED_VALUE = "********"
 
+# Containers run non-root with all capabilities dropped, so they can't bind privileged ports (<1024).
+PORT_DESC = "Container port, 1024-65535 (non-root containers can't bind privileged ports below 1024)."
+
 # One password policy for register, change-password and admin reset.
 PASSWORD_MIN = 8
 PASSWORD_MAX = 256
@@ -171,7 +174,7 @@ class AppCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: str = Field(min_length=1, max_length=255)
     image: str = Field(min_length=1, max_length=512)
-    port: int = Field(gt=0, le=65535)
+    port: int = Field(ge=1024, le=65535, description=PORT_DESC)
     want_db: bool = False
     want_storage: bool = False
     env: List[EnvVarIn] = Field(default_factory=list)
@@ -189,7 +192,7 @@ class AppUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     image: Optional[str] = Field(default=None, min_length=1, max_length=512)
-    port: Optional[int] = Field(default=None, gt=0, le=65535)
+    port: Optional[int] = Field(default=None, ge=1024, le=65535, description=PORT_DESC)
     env: Optional[List[EnvVarIn]] = None
     health_check_enabled: Optional[bool] = None
     health_check_path: Optional[str] = Field(default=None, max_length=255)
@@ -282,4 +285,6 @@ class AppOut(BaseModel):
     resources: Optional[ResourcesOut] = None
     quota: AppQuotaOut = Field(default_factory=AppQuotaOut)
     custom_domain: Optional[CustomDomainOut] = None
+    platform_subdomain: Optional[str] = None  # admin-assigned fixed label under the platform domain
+    platform_host: Optional[str] = None  # ...and its full host, e.g. blog.<APP_DOMAIN>
     env: List[EnvVarOut] = Field(default_factory=list)

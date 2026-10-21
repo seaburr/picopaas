@@ -112,6 +112,8 @@ def _app_out(app: models.App) -> schemas.AppOut:
         resources=resources.describe(app),
         quota=_quota_out(app),
         custom_domain=_custom_domain_out(app),
+        platform_subdomain=app.platform_subdomain,
+        platform_host=f"{app.platform_subdomain}.{APP_DOMAIN}" if app.platform_subdomain else None,
         env=[_env_var_out(e) for e in app.env_vars],
     )
 

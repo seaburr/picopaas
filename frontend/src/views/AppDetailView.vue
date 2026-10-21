@@ -7,14 +7,16 @@ import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
+import CopyButton from '../components/CopyButton.vue'
 import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { clearCustomDomain, deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, getMetricsHistory, rotateCredentials, setCustomDomain, verifyCustomDomain, type AppLogs } from '../api/apps'
+import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
-import { copyText, stamp } from '../utils/format'
+import { stamp } from '../utils/format'
 import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
@@ -182,6 +184,7 @@ onMounted(async () => {
   if (route.hash === '#logs') document.getElementById('logs')?.scrollIntoView()
 })
 onBeforeUnmount(() => {
+  stopDomainPoll()
   if (poll) clearInterval(poll)
   if (metricsTimer) clearInterval(metricsTimer)
   if (logTimer) clearInterval(logTimer)
@@ -247,6 +250,45 @@ async function confirmRotate() {
   }
 }
 
+// Reserved platform subdomain (admin only)
+const isAdmin = computed(() => auth.user?.role === 'platform_admin')
+const subInput = ref('')
+const subBusy = ref(false)
+const subError = ref('')
+watch(() => app.value?.platform_subdomain, (v) => { subInput.value = v ?? '' }, { immediate: true })
+function subMsg(e: unknown) {
+  if (e instanceof ApiError && e.status === 409) return 'That subdomain is taken.'
+  return e instanceof ApiError ? e.message : 'unknown error'
+}
+async function saveSub() {
+  if (!app.value || !subInput.value.trim()) return
+  subBusy.value = true
+  subError.value = ''
+  try {
+    app.value = await setPlatformHost(app.value.id, subInput.value.trim().toLowerCase())
+    store.upsert(app.value)
+    toast.success(`Now also served at ${app.value.platform_host}.`)
+  } catch (e) {
+    subError.value = subMsg(e)
+  } finally {
+    subBusy.value = false
+  }
+}
+async function clearSub() {
+  if (!app.value) return
+  subBusy.value = true
+  subError.value = ''
+  try {
+    app.value = await clearPlatformHost(app.value.id)
+    store.upsert(app.value)
+    toast.success('Short address removed.')
+  } catch (e) {
+    subError.value = subMsg(e)
+  } finally {
+    subBusy.value = false
+  }
+}
+
 // Custom domain
 const cdom = computed(() => app.value?.custom_domain ?? null)
 const newDomain = ref('')
@@ -266,22 +308,58 @@ async function saveDomain() {
     domainBusy.value = false
   }
 }
-async function verifyDomain() {
+async function verifyDomain(auto = false) {
   if (!app.value) return
-  verifyBusy.value = true
+  if (!auto) verifyBusy.value = true
   try {
     app.value = await verifyCustomDomain(app.value.id)
-    if (app.value.custom_domain?.status === 'active') toast.success('Verified — issuing the certificate and serving your domain.')
-    else toast.error(app.value.custom_domain?.error || 'Not verified yet. Check the DNS records and try again.')
+    if (app.value.custom_domain?.status === 'active') {
+      if (!auto) toast.success('Verified. Issuing the certificate and serving your domain.')
+      else toast.success(`${app.value.custom_domain.host} is verified. Your certificate is on its way.`)
+    } else if (!auto) toast.error(app.value.custom_domain?.error || 'Not verified yet. Check the DNS records and try again.')
   } catch (e) {
-    toast.error(`Verify failed: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+    if (!auto) toast.error(`Verify failed: ${e instanceof ApiError ? e.message : 'unknown error'}`)
   } finally {
-    verifyBusy.value = false
+    if (!auto) verifyBusy.value = false
   }
 }
+
+// Bounded auto-verify: every 20s, up to 15 attempts (~5 min), while the domain is pending. Silent on failure.
+const DOMAIN_POLL_MS = 20000
+const DOMAIN_POLL_MAX = 15
+let domainTimer: ReturnType<typeof setInterval> | null = null
+let domainTries = 0
+const domainPolling = ref(false)
+function stopDomainPoll() {
+  if (domainTimer) clearInterval(domainTimer)
+  domainTimer = null
+  domainPolling.value = false
+}
+async function domainTick() {
+  if (cdom.value?.status !== 'pending') return stopDomainPoll()
+  // Hidden-tab and in-flight ticks don't count toward the budget; only real checks do.
+  if (verifyBusy.value || document.hidden) return
+  if (++domainTries > DOMAIN_POLL_MAX) return stopDomainPoll()
+  await verifyDomain(true)
+}
+watch(
+  () => [cdom.value?.host, cdom.value?.status] as const,
+  ([host, status]) => {
+    stopDomainPoll()
+    if (host && status === 'pending') {
+      domainTries = 0
+      domainPolling.value = true
+      domainTimer = setInterval(domainTick, DOMAIN_POLL_MS)
+    }
+  },
+  { immediate: true },
+)
+
+const removeDomainOpen = ref(false)
 async function removeDomain() {
   if (!app.value) return
   clearingDomain.value = true
+  stopDomainPoll()
   try {
     app.value = await clearCustomDomain(app.value.id)
     toast.success('Custom domain removed.')
@@ -289,10 +367,8 @@ async function removeDomain() {
     toast.error(`Couldn't remove the domain: ${e instanceof ApiError ? e.message : 'unknown error'}`)
   } finally {
     clearingDomain.value = false
+    removeDomainOpen.value = false
   }
-}
-async function copyRecord(text: string) {
-  if (await copyText(text)) toast.success('Copied.', 1500)
 }
 
 // Usage / over-cap recovery
@@ -393,6 +469,8 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <StatusBadge :status="app.status" />
             </div>
             <HostLink :hostname="app.hostname" class="mt-1" />
+            <HostLink v-if="app.platform_host" :hostname="app.platform_host" class="mt-0.5" />
+            <p v-if="app.platform_host" class="help mt-0.5">Both addresses serve this app.</p>
           </div>
           <div class="flex items-center gap-2">
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
@@ -547,6 +625,24 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </details>
           </section>
 
+          <section v-if="isAdmin" class="card card-pad" aria-labelledby="h-sub">
+            <h2 id="h-sub" class="section-title mb-1">Short address <span class="badge-info ml-1 align-middle">Admin</span></h2>
+            <p class="help">
+              Also serve this app at a short address on the platform domain, covered by the platform certificate.
+            </p>
+            <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="saveSub">
+              <label for="sub-input" class="sr-only">Short address subdomain</label>
+              <input id="sub-input" v-model="subInput" placeholder="blog" class="input sm:max-w-xs" autocomplete="off" autocapitalize="none" spellcheck="false"
+                :aria-invalid="subError ? 'true' : 'false'" :aria-describedby="subError ? 'sub-err' : undefined" :disabled="subBusy" @input="subError = ''" />
+              <div class="flex gap-2">
+                <button type="submit" class="btn-secondary" :disabled="subBusy || !subInput.trim() || subInput.trim().toLowerCase() === app.platform_subdomain">{{ subBusy ? 'Saving…' : 'Save' }}</button>
+                <button v-if="app.platform_subdomain" type="button" class="btn-secondary" :disabled="subBusy" @click="clearSub">Clear</button>
+              </div>
+            </form>
+            <p v-if="app.platform_host" class="help mt-2 break-all">Currently <span class="mono">{{ app.platform_host }}</span></p>
+            <p v-if="subError" id="sub-err" role="alert" class="field-error mt-2 break-words">{{ subError }}</p>
+          </section>
+
           <section class="card card-pad" aria-labelledby="h-domain">
             <h2 id="h-domain" class="section-title mb-1">Custom domain</h2>
             <p class="help">
@@ -556,7 +652,8 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
 
             <!-- None set -->
             <form v-if="!cdom" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="saveDomain">
-              <input v-model="newDomain" placeholder="blog.example.com" class="input sm:max-w-xs" autocomplete="off" :disabled="suspended" />
+              <label for="domain-input" class="sr-only">Custom domain</label>
+              <input id="domain-input" v-model="newDomain" placeholder="blog.example.com" class="input sm:max-w-xs" autocomplete="off" :disabled="suspended" />
               <button type="submit" class="btn-secondary" :disabled="domainBusy || suspended || !newDomain.trim()">{{ domainBusy ? 'Adding…' : 'Add domain' }}</button>
             </form>
 
@@ -572,29 +669,40 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
 
               <div v-if="cdom.status !== 'active'" class="rounded-md border border-pico-border bg-pico-card p-3 text-sm">
                 <p class="mb-2 text-zinc-300">Create these two DNS records at your domain provider, then verify:</p>
-                <ol class="space-y-2">
-                  <li>
-                    <span class="meta">1. CNAME</span>
-                    <div class="mt-0.5 flex items-stretch gap-2">
-                      <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-bg px-2 py-1 text-zinc-200">{{ cdom.host }} → {{ cdom.cname_target }}</code>
-                      <button type="button" class="btn-ghost text-xs" @click="copyRecord(cdom.cname_target)">Copy</button>
-                    </div>
-                  </li>
-                  <li>
-                    <span class="meta">2. TXT (ownership)</span>
-                    <div class="mt-0.5 flex items-stretch gap-2">
-                      <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-bg px-2 py-1 text-zinc-200">{{ cdom.challenge_host }} = {{ cdom.challenge_token }}</code>
-                      <button type="button" class="btn-ghost text-xs" @click="copyRecord(cdom.challenge_token)">Copy</button>
-                    </div>
-                  </li>
-                </ol>
-                <p v-if="cdom.error" class="mt-2 text-amber-300">{{ cdom.error }}</p>
-                <p class="mt-1 text-xs text-zinc-400">DNS changes can take a few minutes to propagate.</p>
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-[32rem] text-left text-xs">
+                    <caption class="sr-only">DNS records to create</caption>
+                    <thead class="meta">
+                      <tr>
+                        <th class="py-1 pr-3 font-medium">Record Type</th>
+                        <th class="py-1 pr-3 font-medium">Host Name</th>
+                        <th class="py-1 font-medium">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-pico-border align-top">
+                      <tr>
+                        <td class="py-2 pr-3 mono text-zinc-200">CNAME</td>
+                        <td class="py-2 pr-3 mono break-all text-zinc-200">{{ cdom.host }}</td>
+                        <td class="py-2"><div class="flex items-start gap-1"><span class="mono break-all text-zinc-200">{{ cdom.cname_target }}</span><CopyButton :text="cdom.cname_target" sm label="Copy CNAME value" /></div></td>
+                      </tr>
+                      <tr>
+                        <td class="py-2 pr-3 mono text-zinc-200">TXT</td>
+                        <td class="py-2 pr-3 mono break-all text-zinc-200">{{ cdom.challenge_host }}</td>
+                        <td class="py-2"><div class="flex items-start gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_token }}</span><CopyButton :text="cdom.challenge_token" sm label="Copy TXT value" /></div></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-if="cdom.error" role="alert" class="mt-2 break-words text-amber-300">{{ cdom.error }}</p>
+                <p class="mt-2 text-xs text-zinc-400">
+                  We re-check every 20 seconds for a few minutes. DNS changes usually land within minutes but can take up to 48 hours,
+                  so if it doesn't verify yet, come back and click Verify DNS.
+                </p>
               </div>
 
               <div class="flex flex-wrap gap-2">
-                <button v-if="cdom.status !== 'active'" type="button" class="btn-secondary" :disabled="verifyBusy" @click="verifyDomain">{{ verifyBusy ? 'Checking…' : 'Verify DNS' }}</button>
-                <button type="button" class="btn-ghost text-danger-light" :disabled="clearingDomain" @click="removeDomain">Remove domain</button>
+                <button v-if="cdom.status !== 'active'" type="button" class="btn-secondary" :disabled="verifyBusy" @click="verifyDomain()">{{ verifyBusy ? 'Checking…' : 'Verify DNS' }}</button>
+                <span v-if="cdom.status !== 'active' && domainPolling" class="meta self-center" role="status">Re-checking every 20s…</span>
               </div>
             </div>
           </section>
@@ -618,6 +726,12 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 Delete this app{{ hasAddons ? ', its database and storage bucket' : '' }}. This can't be undone.
               </p>
               <button type="button" class="btn-danger shrink-0" @click="deleteOpen = true">Delete app…</button>
+            </div>
+            <div v-if="cdom" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <p class="min-w-0 text-sm text-zinc-300">
+                Remove <span class="mono break-all">{{ cdom.host }}</span>. Its certificate is dropped and the app stays at {{ app.hostname }}.
+              </p>
+              <button type="button" class="btn-danger shrink-0" :disabled="clearingDomain" @click="removeDomainOpen = true">Remove domain…</button>
             </div>
           </section>
         </div>
@@ -644,6 +758,18 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
       :busy="rollingBack"
       @confirm="confirmRollback"
       @cancel="rollbackTarget = null"
+    />
+    <ConfirmDialog
+      :open="removeDomainOpen && !!cdom"
+      title="Remove custom domain"
+      message="The domain stops serving this app and its certificate is removed. Your DNS records stay as they are."
+      confirm-label="Remove domain"
+      busy-label="Removing…"
+      danger
+      :busy="clearingDomain"
+      :require-text="cdom?.host"
+      @confirm="removeDomain"
+      @cancel="removeDomainOpen = false"
     />
     <FreeStorageDialog :open="freeOpen" :busy="freeBusy" @confirm="confirmFree" @cancel="freeOpen = false" />
     <DeleteAppDialog :app="deleteOpen ? app : null" :busy="deleting" @confirm="confirmDelete" @cancel="deleteOpen = false" />

@@ -142,9 +142,23 @@ async function showError() {
 
 const busyLabel = computed(() => (!isEdit.value || form.image !== originalImage.value ? 'Checking image…' : 'Saving…'))
 
+// Pods run non-root with all capabilities dropped, so privileged ports (<1024) can never be bound.
+function portError(): string {
+  const n = Number(form.port)
+  if (form.port === '' || !Number.isInteger(n) || n < 1024 || n > 65535)
+    return "Use a port from 1024 to 65535."
+  return ''
+}
+
 async function onSubmit() {
   error.value = ''
   fieldErrors.value = {}
+  const portErr = portError()
+  if (portErr) {
+    fieldErrors.value = { port: portErr }
+    error.value = 'Some fields need attention.'
+    return showError()
+  }
   if (pathError.value) return
   if (envInvalid.value) {
     error.value = 'Fix the highlighted environment variable names.'
@@ -315,15 +329,15 @@ async function onSubmit() {
               v-model="form.port"
               type="number"
               required
-              min="1"
-              max="65535"
+              inputmode="numeric"
               aria-describedby="f-port-help"
               :aria-invalid="!!fieldErrors.port || undefined"
               class="input mono !w-32"
               @input="onField('port')"
+              @blur="fieldErrors = { ...fieldErrors, port: portError() }"
             />
             <p v-if="fieldErrors.port" class="field-error" role="alert">{{ fieldErrors.port }}</p>
-            <p id="f-port-help" class="help">The port your app listens on inside the container (often 8080, or 80 for nginx).</p>
+            <p id="f-port-help" class="help">The port your app listens on inside the container, 1024-65535 (8080 is common). Running nginx? Use <code class="mono">nginxinc/nginx-unprivileged</code>, which listens on 8080.</p>
           </div>
 
           <fieldset>
