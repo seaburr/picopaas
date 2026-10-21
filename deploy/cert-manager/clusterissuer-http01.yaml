@@ -29,6 +29,9 @@ spec:
       - http01:
           ingress:
             class: traefik
+            # ClusterIP, not the default NodePort: tenant namespaces forbid NodePort services (quota
+            # services.nodeports=0), and Traefik routes the challenge via the solver's temporary Ingress anyway.
+            serviceType: ClusterIP
             podTemplate:
               spec:
                 securityContext:
@@ -51,6 +54,7 @@ spec:
       - http01:
           ingress:
             class: traefik
+            serviceType: ClusterIP  # see staging issuer above
             podTemplate:
               spec:
                 securityContext:

@@ -83,6 +83,31 @@ def test_custom_ingress_manifest_shape():
     assert m["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]["name"] == "app-42"
 
 
+def test_netpol_allows_acme_solver_only_with_custom_domain():
+    base = k8s.network_policies(1, 8080, None)
+    assert not any(p["metadata"]["name"] == "allow-acme-solver" for p in base)
+    cdp = k8s.network_policies(1, 8080, None, custom_domain=True)
+    solver = next(p for p in cdp if p["metadata"]["name"] == "allow-acme-solver")
+    assert solver["spec"]["podSelector"]["matchLabels"] == {"acme.cert-manager.io/http01-solver": "true"}
+    assert solver["spec"]["ingress"][0]["ports"] == [{"protocol": "TCP", "port": 8089}]
+    # Rendering with a custom host wires it through.
+    pols = k8s.render_app_manifests(1, "h", "img", 80, {}, None, custom_host="blog.example.com")["network_policies"]
+    assert any(p["metadata"]["name"] == "allow-acme-solver" for p in pols)
+
+
+def test_quota_gives_solver_headroom_only_with_custom_domain():
+    # Default: one service, two pods, no nodeports.
+    base = k8s.resource_quota_manifest(1)["spec"]["hard"]
+    assert base["services"] == "1" and base["pods"] == "2" and base["services.nodeports"] == "0"
+    # Custom domain: +1 service and +1 pod for the ACME HTTP-01 solver; still no nodeports/loadbalancers.
+    cdq = k8s.resource_quota_manifest(1, custom_domain=True)["spec"]["hard"]
+    assert cdq["services"] == "2" and cdq["pods"] == "3"
+    assert cdq["services.nodeports"] == "0" and cdq["services.loadbalancers"] == "0"
+    # Rendering with a custom host wires it through.
+    rq = k8s.render_app_manifests(1, "h", "img", 80, {}, None, custom_host="blog.example.com")["resource_quota"]
+    assert rq["spec"]["hard"]["services"] == "2"
+
+
 def test_render_includes_custom_ingress_only_when_host_and_served():
     base = dict(app_id=1, hostname="h", image="img", port=80, env={}, mysql_cidr=None)
     assert k8s.render_app_manifests(**base)["custom_ingress"] is None

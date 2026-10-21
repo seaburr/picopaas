@@ -124,19 +124,26 @@ def _res(resources: dict[str, int] | None) -> dict[str, int]:
 
 
 def resource_quota_manifest(
-    app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None
+    app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None,
+    custom_domain: bool = False,
 ) -> dict[str, Any]:
     """Quota = max(2 x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
-    ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi", "pods"}, summed over the pods in the cluster) is None when there are no pods."""
+    ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi", "pods"}, summed over the pods in the cluster) is None when there are no pods.
+
+    `custom_domain` gives one extra Service and one extra Pod of headroom: cert-manager's HTTP-01 solver creates a
+    temporary (ClusterIP) Service + Pod in this namespace while issuing/renewing the custom-domain cert, which would
+    otherwise be rejected by the services=1 / pods=2 caps. NodePort/LoadBalancer services stay forbidden."""
     e = _res(resources)
     used = used_limits or {}
     cpu_total = max(2 * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
     mem_total = max(2 * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
     eph_total = max(2 * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
     # Pod count too: a Terminating old pod still counts, so back-to-back rollouts (e.g. storage key swap then
-    # recovery roll) need (existing + 1) slots, not a fixed 2.
-    pods_total = max(int(QUOTA_PODS), (used.get("pods") or 0) + 1)
+    # recovery roll) need (existing + 1) slots, not a fixed 2. +1 more when a custom domain may run an ACME solver pod.
+    solver_headroom = 1 if custom_domain else 0
+    pods_total = max(int(QUOTA_PODS) + solver_headroom, (used.get("pods") or 0) + 1 + solver_headroom)
+    services_total = int(QUOTA_SERVICES) + solver_headroom
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
@@ -150,9 +157,9 @@ def resource_quota_manifest(
                 "limits.ephemeral-storage": f"{eph_total}Mi",
                 "requests.ephemeral-storage": f"{eph_total}Mi",
                 "pods": str(pods_total),
-                "services": QUOTA_SERVICES,
-                # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point
-                # (ARCHITECTURE.md's no-LB lean option).
+                "services": str(services_total),
+                # No LoadBalancer/NodePort services — the ingress controller (Traefik) is the only entry point, and
+                # the ACME solver uses a ClusterIP service (ARCHITECTURE.md's no-LB lean option).
                 "services.loadbalancers": "0",
                 "services.nodeports": "0",
             }
@@ -199,12 +206,19 @@ def _internet_egress_ports() -> list[dict[str, Any]]:
     return ports
 
 
+# cert-manager's ACME HTTP-01 solver pod listens on this port (its --listen-port default) and is labelled
+# acme.cert-manager.io/http01-solver=true. Traefik must reach it there to serve the challenge.
+ACME_SOLVER_PORT = 8089
+ACME_SOLVER_LABEL = {"acme.cert-manager.io/http01-solver": "true"}
+
+
 def network_policies(
     app_id: int,
     app_port: int,
     mysql_cidr: str | None,
     mysql_port: int | None = None,
     storage_ips: list[str] | None = None,
+    custom_domain: bool = False,
 ) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
@@ -336,6 +350,27 @@ def network_policies(
         allow_egress_internet,
         allow_egress_mysql,
     ]
+    if custom_domain:
+        # Let Traefik reach the ACME HTTP-01 solver pod (port 8089). Scoped to the solver pods by label, so the
+        # app's own pods still only accept traffic on app_port. Transient — the solver exists only during
+        # issuance/renewal of the custom-domain cert.
+        policies.append({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": "allow-acme-solver", "namespace": namespace},
+            "spec": {
+                "podSelector": {"matchLabels": dict(ACME_SOLVER_LABEL)},
+                "policyTypes": ["Ingress"],
+                "ingress": [
+                    {
+                        "from": [
+                            {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": INGRESS_NAMESPACE}}}
+                        ],
+                        "ports": [{"protocol": "TCP", "port": ACME_SOLVER_PORT}],
+                    }
+                ],
+            },
+        })
     if storage_ips:
         # Spaces resolves to a private VPC IP inside DO; the internet rule excludes PRIVATE_CIDRS,
         # so allow exactly those /32s on 443 (never the whole VPC range).
@@ -599,9 +634,10 @@ def render_app_manifests(
     return {
         "namespace": namespace_manifest(app_id),
         "role_binding": role_binding_manifest(app_id),
-        "resource_quota": resource_quota_manifest(app_id, resources, used_limits),
+        "resource_quota": resource_quota_manifest(app_id, resources, used_limits, custom_domain=bool(custom_host)),
         "limit_range": limit_range_manifest(app_id, resources),
-        "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips),
+        "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips,
+                                              custom_domain=bool(custom_host)),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,
