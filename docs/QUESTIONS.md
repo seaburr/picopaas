@@ -15,6 +15,31 @@ background on each item if you want it.
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
 
+- **API key scopes — worth adding? (raised by Chas 2026-10-20).** Today an API key authenticates as the **whole
+  account**: `app/dependencies.py` loads the key's user and gives it everything a browser session has — create/delete
+  apps, rotate DB/Spaces creds, read env secrets, and (if the account is an admin) every admin action. There is no
+  read-only vs read/write distinction and no per-resource limiting (`ApiKey` has no `scope` column). This becomes more
+  pressing with two things on the roadmap: a Terraform provider and CI deploy tokens, where you want a key that can
+  deploy without being able to, say, delete every app or change the password. Proposed minimum: a `scope` on `ApiKey`
+  (`read` | `deploy` | `admin`), default `deploy`, enforced in the auth dependency; show/choose it on the API-keys
+  page; never let a key mint a key or escalate scope. **Do you want this, and with what scope set?** (Small, API-only,
+  no infra.) — _your answer:_ Yes and I think read-only and admin are enough here. Why? What good is an API key you can deploy an app with if you cannot edit it (unless deploy includes this). A user who can deploy is a user who can delete. KISS and do 2 tiers of acces.
+  → **DONE 2026-10-20 (uncommitted).** Implemented two tiers: `read` (read-only — safe HTTP methods only) and `full`
+  (everything the account can do; the default, so your existing keys keep working). I named the full tier `full`
+  rather than `admin` so it doesn't read as the platform-admin *role* — same model you described; rename if you'd
+  rather. Also hardened per the proposal: an API key (any tier) can't create or revoke keys — that's browser-session
+  only, so a leaked key can't mint more or change scope. Pick the tier on the API-keys page. See `docs/API.md`.
+
+- **Release blog (dogfooding) — provide a Ghost Admin API key so the `release-blogger` agent can post.** New agent
+  `.claude/agents/release-blogger.md` writes one short devlog post per shipped feature to the **Ghost blog
+  self-hosted on PicoPaaS** (the platform blogging its own releases in real time). It's built but can't run until:
+  1. the `ghost-blog` app is claimed/owned and reachable (your existing to-do), and
+  2. you create a **Custom Integration** in Ghost Admin (Settings → Integrations → Add custom integration), copy its
+     **Admin API key** (`<id>:<secret>`) and the blog URL, and provide them as `GHOST_ADMIN_API_KEY` + `GHOST_API_URL`
+     (GitHub secrets if we schedule it, or local env for manual runs). **Never commit the key.**
+  Two decisions I need (asked separately): **draft-for-review vs auto-publish**, and the **voice/tone**. Defaults
+  until you say: drafts (you hit publish) + a first-person devlog voice. — _your answer:_
+
 ## To-dos (only you can do these)
 
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the

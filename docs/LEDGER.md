@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-20 [claude] DONE (uncommitted): **pod hardening** `enableServiceLinks:false` (k8s_manifests + test); **CPU default 100m→200m** (config + frontend fallbacks + all docs + test fixtures); **ticket triage** (#11 refreshed; #10/#12 kept); **DNS-verification research + Terraform provider** → ROADMAP; **release-blogger agent** created (auto-publish, devlog voice; needs Chas's Ghost Admin key); **API-key scopes** read|full (model + migration e7c1a9b3d2f8 + dependencies enforcement + api_keys router session-only + schemas + ApiKeysView + API.md + tests). Suite 507 passed/60 skipped.
+- **NEXT: custom domains + auto-TLS** (Chas: build it; e2e test against a seaburr.io subdomain). Needs a new HTTP-01 ClusterIssuer (DNS-01 is DO-zone-only), App model fields + migration, DNS ownership-TXT + CNAME verify (dnspython), reconciler Ingress+cert, UI, and 2 DNS records Chas adds on the test host.
 - **PENTEST #19 step 2 DONE in rbac.yaml (uncommitted/undeployed):** after deploy, verify secret rotation + a new app deploy still work (diag RBAC step).
 ### Next (2026-10-20)
 - Re-run live quota tests against the fixed code (E2E_SLOW=1 pytest tests/e2e -k quota). Check the first over-cap WARNING log for whether doadmin can see/kill app sessions.
@@ -588,3 +590,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: committed UI/UX pass (frontend views only). Pushed; see CI/deploy results.
 - 2026-10-20 [scm-security] START: commit RollbackRequest extra=forbid fix and landing/README/user-guide updates; push; verify deploy + landing content.
 - 2026-10-20 [scm-security] DONE: committed as two commits (security fix; docs). Tests 503 passed, typecheck+build ok. Pushed; see CI/deploy results.
+- 2026-10-20 [scm-security] START: commit 4 chunks (enableServiceLinks, CPU 200m, API key scopes, release-blogger/docs); push; watch CI.
+- 2026-10-20 [scm-security] DONE: committed 4 chunks; pushing, see CI.
