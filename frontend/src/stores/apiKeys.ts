@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { createApiKey, listApiKeys, revokeApiKey } from '../api/keys'
-import type { ApiKey } from '../types'
+import type { ApiKey, ApiKeyScope } from '../types'
 
 export const useApiKeysStore = defineStore('apiKeys', () => {
   const keys = ref<ApiKey[]>([])
@@ -14,10 +14,10 @@ export const useApiKeysStore = defineStore('apiKeys', () => {
 
   // Returns the full create response (including the one-time plaintext key)
   // to the caller; only the non-secret fields go into the list.
-  async function create(name?: string) {
-    const created = await createApiKey(name)
+  async function create(name?: string, scope?: ApiKeyScope) {
+    const created = await createApiKey(name, scope)
     keys.value = [
-      { id: created.id, prefix: created.prefix, created_at: created.created_at, revoked_at: null, name: created.name ?? name ?? null },
+      { id: created.id, prefix: created.prefix, created_at: created.created_at, revoked_at: null, name: created.name ?? name ?? null, scope: created.scope ?? scope ?? 'full' },
       ...keys.value,
     ]
     return created

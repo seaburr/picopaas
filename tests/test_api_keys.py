@@ -23,7 +23,7 @@ def test_list_shows_prefix_and_created_revoked_only(client):
     rows = listed.json()
     assert len(rows) == 1
     row = rows[0]
-    assert set(row) == {"id", "prefix", "name", "created_at", "last_used_at", "revoked_at"}
+    assert set(row) == {"id", "prefix", "name", "scope", "created_at", "last_used_at", "revoked_at"}
     assert row["revoked_at"] is None
     assert raw_key not in listed.text
 
@@ -93,6 +93,61 @@ def test_bad_names_rejected(client):
     assert client.post("/api/keys", json={"name": "a" * 65}).status_code == 422
     assert client.post("/api/keys", json={"name": "bad\nname"}).status_code == 422
     assert client.post("/api/keys", json={"name": "x", "extra": 1}).status_code == 422
+
+
+def test_scope_defaults_to_full_and_round_trips(client):
+    register_and_login(client, "scopedefault@example.com")
+    assert client.post("/api/keys").json()["scope"] == "full"
+    assert client.post("/api/keys", json={"scope": "read"}).json()["scope"] == "read"
+    scopes = {r["scope"] for r in client.get("/api/keys").json()}
+    assert scopes == {"full", "read"}
+
+
+def test_invalid_scope_rejected(client):
+    register_and_login(client, "scopebad@example.com")
+    assert client.post("/api/keys", json={"scope": "admin"}).status_code == 422
+    assert client.post("/api/keys", json={"scope": "deploy"}).status_code == 422
+
+
+def test_read_key_can_read_but_not_write(make_client):
+    owner = make_client()
+    register_and_login(owner, "readkey@example.com")
+    read_key = owner.post("/api/keys", json={"scope": "read"}).json()["key"]
+    full_key = owner.post("/api/keys", json={"scope": "full"}).json()["key"]
+
+    reader = make_client()
+    rhdr = {"Authorization": f"Bearer {read_key}"}
+    # Reads work.
+    assert reader.get("/auth/me", headers=rhdr).status_code == 200
+    assert reader.get("/apps", headers=rhdr).status_code == 200
+    # Writes are refused (403), with a message pointing at a full key.
+    denied = reader.post("/apps", headers=rhdr, json={"name": "x", "image": "nginx:alpine", "port": 80})
+    assert denied.status_code == 403
+    assert "read-only" in denied.json()["detail"].lower()
+
+    # A full key from the same account can write.
+    writer = make_client()
+    fhdr = {"Authorization": f"Bearer {full_key}"}
+    assert writer.post("/apps", headers=fhdr, json={"name": "fw", "image": "nginx:alpine", "port": 80}).status_code in (200, 201)
+
+
+def test_api_key_cannot_manage_keys(make_client):
+    """A key (any scope) can never mint or revoke keys — that's browser-session only (leaked-key containment)."""
+    owner = make_client()
+    register_and_login(owner, "nomintkey@example.com")
+    full_key = owner.post("/api/keys", json={"scope": "full"}).json()["key"]
+    existing_id = owner.get("/api/keys").json()[0]["id"]
+
+    bearer = make_client()
+    hdr = {"Authorization": f"Bearer {full_key}"}
+    # Full scope passes the read/write gate, but key management still requires a session.
+    minted = bearer.post("/api/keys", headers=hdr, json={"scope": "full"})
+    assert minted.status_code == 403
+    assert "web ui" in minted.json()["detail"].lower()
+    # ...and can't revoke either.
+    assert bearer.delete(f"/api/keys/{existing_id}", headers=hdr).status_code == 403
+    # Listing (a read) is still fine.
+    assert bearer.get("/api/keys", headers=hdr).status_code == 200
 
 
 def test_last_used_at_set_and_throttled(client):

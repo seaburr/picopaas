@@ -19,6 +19,9 @@ _registry_client = RegistryClient()
 # Only write last_used_at when it is older than this, so busy keys don't write per request.
 API_KEY_LAST_USED_THROTTLE = timedelta(minutes=5)
 
+# A read-only API key may only make non-mutating requests. Session (cookie) auth is always full access.
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 
 _kube_client = None
 
@@ -49,6 +52,7 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             user = db.get(models.User, user_id)
             if user is not None and user.status != "deleted":
                 request.state.auth_via = "cookie"
+                request.state.api_scope = "full"  # a browser session always has full access
                 return user
 
     auth_header = request.headers.get("Authorization", "")
@@ -69,6 +73,7 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
                 api_key.last_used_at = now
                 db.commit()
             request.state.auth_via = "api_key"
+            request.state.api_scope = api_key.scope or "full"
             user = db.get(models.User, api_key.user_id)
             if user is not None and user.status != "deleted":
                 return user
@@ -80,6 +85,13 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
     user = _user_from_request(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="You're logged out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked.")
+    # Read-only keys can authenticate anywhere but may only make non-mutating requests. Enforced at this single
+    # choke point so it covers app, admin and spec routes alike (every authenticated route depends on this).
+    if getattr(request.state, "api_scope", "full") == "read" and request.method not in SAFE_METHODS:
+        raise HTTPException(
+            status_code=403,
+            detail="This API key is read-only. Create a full-access key to make changes.",
+        )
     return user
 
 
@@ -89,6 +101,17 @@ def get_active_user(current_user: models.User = Depends(get_current_user)) -> mo
         raise HTTPException(status_code=403, detail="Your account is waiting for administrator approval. You'll be able to deploy once it's approved.")
     if current_user.status != "active":
         raise HTTPException(status_code=403, detail="Your account is suspended and your apps are stopped. Contact an administrator to restore it.")
+    return current_user
+
+
+def require_session_auth(request: Request, current_user: models.User = Depends(get_active_user)) -> models.User:
+    """Guards actions an API key must never perform even at full scope — currently key management, so a leaked
+    key can neither mint another key nor change a key's scope (Chas, 2026-10-20). Browser session only."""
+    if getattr(request.state, "auth_via", None) != "cookie":
+        raise HTTPException(
+            status_code=403,
+            detail="API keys are managed from the web UI only; an API key can't create or revoke keys.",
+        )
     return current_user
 
 

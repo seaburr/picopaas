@@ -8,7 +8,7 @@ Base URL: `https://platform.raisehellpraisedale.xyz`. JSON in, JSON out. FastAPI
 | Method | How |
 |---|---|
 | Session cookie | `POST /auth/login` or `/auth/register` sets an HttpOnly `session` cookie (JWT, 7 days, `SameSite=Lax`, `Secure` outside dev). The UI uses this. |
-| API key | `Authorization: Bearer pp_sk_...` (create one with `POST /api/keys` or on the **API keys** page). Works on every endpoint that accepts a user. The cookie is checked first. |
+| API key | `Authorization: Bearer pp_sk_...` (created on the **API keys** page — browser only). A `full` key works on every endpoint that accepts a user; a `read` key is limited to safe methods (see API keys below). The cookie is checked first. |
 
 Auth levels used below:
 
@@ -80,11 +80,16 @@ reset and informational only (the server does not block other calls); the UI sho
 
 ## API keys (`/api/keys`, active)
 
+Keys have one of two access tiers (`scope`): **`full`** (default — everything your account can do) or **`read`**
+(read-only: only safe methods `GET`/`HEAD`/`OPTIONS`; a mutating request returns **403**). Key management itself is
+**browser-session only** — an API key, at any scope, cannot create or revoke keys (so a leaked key can't mint more or
+change a scope). Pre-existing keys are `full`.
+
 | Method | Path | Response |
 |---|---|---|
-| POST | `/api/keys` | Optional body `{"name": "..."}` (trimmed, printable characters only, max 64; blank = unnamed; unknown fields rejected). 201 `{id, key, prefix, name, created_at}`. The raw `key` is shown **once**. A body-less POST still works. |
-| GET | `/api/keys` | List of `{id, prefix, name, created_at, last_used_at, revoked_at}` for your keys, newest first. `last_used_at` is updated at most every 5 minutes. |
-| DELETE | `/api/keys/{key_id}` | 204. Revokes (idempotent). 404 if not yours. |
+| POST | `/api/keys` | Optional body `{"name": "...", "scope": "read"\|"full"}` (name trimmed, printable, max 64, blank = unnamed; scope defaults `full`; unknown fields and other scope values rejected 422). 201 `{id, key, prefix, name, scope, created_at}`. The raw `key` is shown **once**. **Session only** (403 if called with an API key). |
+| GET | `/api/keys` | List of `{id, prefix, name, scope, created_at, last_used_at, revoked_at}` for your keys, newest first. `last_used_at` is updated at most every 5 minutes. |
+| DELETE | `/api/keys/{key_id}` | 204. Revokes (idempotent). **Session only** (403 if called with an API key). 404 if not yours. |
 
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 

@@ -10,14 +10,17 @@ import type { ApiKey } from '../types'
 import { Ban, Copy } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import { copyText, stamp, stampTitle } from '../utils/format'
+import type { ApiKeyScope } from '../types'
 
 const store = useApiKeysStore()
 const toast = useToastStore()
 const nameId = useId()
+const scopeId = useId()
 const loading = ref(true)
 const error = ref('')
 const creating = ref(false)
 const newName = ref('')
+const newScope = ref<ApiKeyScope>('full')
 const showRevoked = ref(false)
 
 // Set only right after a successful create: the raw key is never returned by the API again, so once the
@@ -72,9 +75,10 @@ async function onCreate() {
   creating.value = true
   copied.value = false
   try {
-    const created = await store.create(newName.value.trim() || undefined)
+    const created = await store.create(newName.value.trim() || undefined, newScope.value)
     justCreatedKey.value = created.key
     newName.value = ''
+    newScope.value = 'full'
     tab.value = 'env'
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Couldn't create the API key. Try again."
@@ -110,7 +114,8 @@ async function confirmRevoke() {
 }
 
 // Header and rows share one fixed template (md+); stacked below md.
-const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
+const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_5rem_8.5rem_12rem_2rem] md:gap-3'
+const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
 </script>
 
 <template>
@@ -123,13 +128,22 @@ const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
         API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for
         you (<RouterLink to="/guide/api" class="link">API reference</RouterLink>). Set
         <code class="mono">PICOPAAS_TOKEN</code> to a key and run
-        <code class="mono">picopaas apply -f app.yaml</code>. A key has the same access as your account.
+        <code class="mono">picopaas apply -f app.yaml</code>. Choose <strong>Full</strong> (deploy and manage apps, like
+        your account) or <strong>Read-only</strong> (list and inspect only — safe for dashboards and CI status checks).
+        API keys can't create or revoke keys; do that here.
       </p>
 
       <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
-        <div class="sm:w-72">
+        <div class="sm:w-60">
           <label :for="nameId" class="label">Name <span class="font-normal text-zinc-400">(optional)</span></label>
           <input :id="nameId" v-model="newName" maxlength="64" placeholder="e.g. github-actions" class="input" autocomplete="off" />
+        </div>
+        <div class="sm:w-40">
+          <label :for="scopeId" class="label">Access</label>
+          <select :id="scopeId" v-model="newScope" class="input">
+            <option value="full">Full</option>
+            <option value="read">Read-only</option>
+          </select>
         </div>
         <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create key' }}</button>
       </form>
@@ -173,12 +187,13 @@ const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
         <p v-if="active.length === 0" class="mt-2 text-sm text-zinc-400">No active keys.</p>
         <div v-else class="card mt-2 overflow-hidden">
           <div :class="[keyGrid, 'table-th row-pad hidden border-b border-pico-border md:grid']">
-            <span>Name</span><span>Key</span><span>Created</span><span>Last used</span><span class="sr-only">Actions</span>
+            <span>Name</span><span>Key</span><span>Access</span><span>Created</span><span>Last used</span><span class="sr-only">Actions</span>
           </div>
           <ul class="divide-y divide-pico-border">
             <li v-for="key in active" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
               <span class="truncate font-medium text-white" :title="key.name || undefined"><span v-if="key.name">{{ key.name }}</span><span v-else class="text-zinc-400">(unnamed)</span></span>
               <code class="mono truncate text-zinc-200" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
+              <span><span class="meta md:hidden">Access </span><span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="key.scope === 'read' ? 'bg-pico-card text-zinc-300' : 'bg-accent-light/15 text-accent-light'">{{ scopeLabel(key.scope) }}</span></span>
               <span class="mono text-zinc-300" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
               <span class="mono text-zinc-300" :title="key.last_used_at ? stampTitle(key.last_used_at) : undefined"><span class="meta md:hidden">Last used </span>{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</span>
               <span class="flex justify-end"><IconButton :icon="Ban" label="Revoke key" danger @click="pendingRevoke = key" /></span>
@@ -195,6 +210,7 @@ const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_8.5rem_12rem_2rem] md:gap-3'
               <li v-for="key in revoked" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
                 <span class="truncate" :title="key.name || undefined">{{ key.name || '(unnamed)' }}</span>
                 <code class="mono truncate" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
+                <span><span class="meta md:hidden">Access </span>{{ scopeLabel(key.scope) }}</span>
                 <span class="mono" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
                 <span class="mono" :title="stampTitle(key.revoked_at!)">Revoked {{ stamp(key.revoked_at!) }}</span>
                 <span />

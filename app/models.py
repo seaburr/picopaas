@@ -56,6 +56,11 @@ class ApiKey(Base):
     # their keys apart without re-revealing the secret.
     prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Access tier (Chas, 2026-10-20, KISS two-tier): 'read' = read-only (safe HTTP methods only),
+    # 'full' = everything the owning account can do (what every key did before scopes existed; the default,
+    # so pre-scope keys keep working). A key can never create or modify keys regardless of scope
+    # (key management requires a browser session) — see app/dependencies.py and app/routers/api_keys.py.
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, default="full", server_default="full")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

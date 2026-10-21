@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -49,9 +49,14 @@ class TemporaryPasswordOut(BaseModel):
 API_KEY_NAME_MAX = 64
 
 
+API_KEY_SCOPES = ("read", "full")
+
+
 class ApiKeyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Optional[str] = None
+    # 'full' (default) = everything the account can do; 'read' = read-only (safe methods only). Two tiers (Chas).
+    scope: Literal["read", "full"] = "full"
 
     @field_validator("name")
     @classmethod
@@ -75,6 +80,7 @@ class ApiKeyCreateOut(BaseModel):
     key: str
     prefix: str
     name: Optional[str] = None
+    scope: str = "full"
     created_at: datetime
 
 
@@ -84,6 +90,7 @@ class ApiKeyOut(BaseModel):
     id: int
     prefix: str
     name: Optional[str] = None
+    scope: str = "full"
     created_at: datetime
     last_used_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None

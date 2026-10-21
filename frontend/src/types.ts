@@ -41,12 +41,15 @@ export interface EnvVar {
   is_secret: boolean
 }
 
+export type ApiKeyScope = 'read' | 'full'
+
 export interface ApiKey {
   id: number
   prefix: string
   created_at: string
   revoked_at: string | null
   name?: string | null
+  scope?: ApiKeyScope
   last_used_at?: string | null
 }
 
@@ -58,6 +61,7 @@ export interface ApiKeyCreated {
   prefix: string
   created_at: string
   name?: string | null
+  scope?: ApiKeyScope
 }
 
 export interface UsageStat {
