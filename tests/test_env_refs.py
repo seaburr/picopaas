@@ -85,3 +85,23 @@ def test_app_url_ref_allowed_and_resolves():
     url = _app_url(models.App(hostname="myapp-ab12cd"))
     assert url == f"https://myapp-ab12cd.{config.APP_DOMAIN}"
     assert env_refs.resolve({"SITE_URL": "${{ app.url }}"}, {"app.url": url}) == {"SITE_URL": url}
+
+
+def test_app_url_prefers_reserved_subdomain_then_active_custom_domain():
+    """${{ app.url }} resolves to an app's nicest host: active custom domain > reserved subdomain > generated."""
+    from app import config, models
+    from app.reconciler import _app_url
+
+    base = dict(hostname="myapp-ab12cd")
+    # No nicer host set -> generated host.
+    assert _app_url(models.App(**base)) == f"https://myapp-ab12cd.{config.APP_DOMAIN}"
+    # Reserved platform subdomain wins over the generated host.
+    assert _app_url(models.App(**base, platform_subdomain="blog")) == f"https://blog.{config.APP_DOMAIN}"
+    # A PENDING custom domain does not win (it isn't being served yet) -> falls back to the subdomain.
+    assert _app_url(models.App(**base, platform_subdomain="blog",
+                               custom_domain="www.example.com", custom_domain_status="pending")) \
+        == f"https://blog.{config.APP_DOMAIN}"
+    # An ACTIVE custom domain is the most-preferred host.
+    assert _app_url(models.App(**base, platform_subdomain="blog",
+                               custom_domain="www.example.com", custom_domain_status="active")) \
+        == "https://www.example.com"

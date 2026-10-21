@@ -627,3 +627,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [scm-security] START: commit blog CSS second pass + ledger sweep; push; watch CI.
 - 2026-10-21 [scm-security] DONE: blog CSS second pass pushed earlier (b191caf). Blog restyle v2 + members/url settings applied live via Admin API; landing footer now links the blog.
 - 2026-10-21 [scm-security] START: commit landing footer Blog link + ledger; push; watch CI.
+- 2026-10-21 [scm-security] START: commit ${{ app.url }} preferred-host change; push; watch CI.
+- 2026-10-21 [backend-dev] DONE: ${{ app.url }} resolves to preferred host (custom domain > reserved subdomain > generated); tests 665 passed/60 skipped; docs updated.

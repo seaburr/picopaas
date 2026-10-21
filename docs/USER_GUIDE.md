@@ -205,7 +205,7 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 | `${{ storage.bucket }}` | Your bucket name |
 | `${{ storage.access_key }}` | Bucket access key |
 | `${{ storage.secret_key }}` | Bucket secret key |
-| `${{ app.url }}` | Your app's own public URL, for example `https://myapp-ab12cd.example.com` (always available, no database or bucket needed) |
+| `${{ app.url }}` | Your app's own public URL — a custom domain or reserved subdomain if one is set, otherwise the generated host like `https://myapp-ab12cd.example.com` (always available, no database or bucket needed) |
 
 You pick your own variable names. The platform does not inject `DATABASE_URL` and friends by itself.
 

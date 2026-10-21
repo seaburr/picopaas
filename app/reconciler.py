@@ -69,7 +69,13 @@ def _db_refs(app: models.App) -> dict[str, str]:
 
 
 def _app_url(app: models.App) -> str:
-    """Public URL of the app (every app has a hostname): https://<hostname>.<APP_DOMAIN>."""
+    """Public URL of the app, preferring a nicer host when one is set:
+    an active custom domain > an admin-reserved platform subdomain > the generated <hostname>.<APP_DOMAIN>.
+    Every app always has the generated host as a fallback, so this never returns empty."""
+    if app.custom_domain and app.custom_domain_status == "active":
+        return f"https://{app.custom_domain}"
+    if app.platform_subdomain:
+        return f"https://{app.platform_subdomain}.{config.APP_DOMAIN}"
     return f"https://{app.hostname}.{config.APP_DOMAIN}"
 
 

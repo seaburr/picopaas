@@ -83,7 +83,7 @@ env:
 ```
 
 Quote the `${{ ... }}` values — the braces aren't valid unquoted YAML. No `secrets:` block is needed here:
-every value is a platform ref, not a literal secret. (`${{ app.url }}` resolves to this app's own generated URL,
+every value is a platform ref, not a literal secret. (`${{ app.url }}` resolves to this app's own public URL — a custom domain or reserved subdomain if one is set, otherwise the generated host,
 so there's no second step to set it; `${{ db.* }}` / `${{ storage.* }}` are injected from the database and bucket
 you requested under `resources`.)
 
