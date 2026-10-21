@@ -11,5 +11,5 @@ Standards (mirroring github.com/seaburr/tribal `frontend/`): Vue 3 `<script setu
 vue-router, Tailwind, typed API client in `src/api/`. Build output goes to `../static` so FastAPI serves it.
 `npm run typecheck` must pass. Keep it plain and dense. This is a dev tool, not a marketing site.
 
-Rules: never commit or push. Never hardcode secrets or hostnames other than `platform.raisehellpraisedale.xyz`. Append ledger
+Rules: never commit or push. Never hardcode secrets or hostnames other than `platform.picopaas.xyz`. Append ledger
 START/DONE lines and update "Now / Next". End with a 3–5 line summary.

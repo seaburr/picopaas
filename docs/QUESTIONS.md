@@ -30,16 +30,6 @@ background on each item if you want it.
   rather. Also hardened per the proposal: an API key (any tier) can't create or revoke keys — that's browser-session
   only, so a leaked key can't mint more or change scope. Pick the tier on the API-keys page. See `docs/API.md`.
 
-- **Release blog (dogfooding) — provide a Ghost Admin API key so the `release-blogger` agent can post.** New agent
-  `.claude/agents/release-blogger.md` writes one short devlog post per shipped feature to the **Ghost blog
-  self-hosted on PicoPaaS** (the platform blogging its own releases in real time). It's built but can't run until:
-  1. the `ghost-blog` app is claimed/owned and reachable (your existing to-do), and
-  2. you create a **Custom Integration** in Ghost Admin (Settings → Integrations → Add custom integration), copy its
-     **Admin API key** (`<id>:<secret>`) and the blog URL, and provide them as `GHOST_ADMIN_API_KEY` + `GHOST_API_URL`
-     (GitHub secrets if we schedule it, or local env for manual runs). **Never commit the key.**
-  Two decisions I need (asked separately): **draft-for-review vs auto-publish**, and the **voice/tone**. Defaults
-  until you say: drafts (you hit publish) + a first-person devlog voice. — _your answer:_
-
 ## To-dos (only you can do these)
 
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
@@ -77,6 +67,11 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-21: **Release-blogger API key (answered).** The key needed is a Ghost **Admin API** credential (`<id>:<secret>`);
+  a Custom Integration Admin API key or a **Staff Access Token** both work (JWT signed with the secret, `kid`=id, audience
+  `/admin/`). Chas will provide it as GitHub secret **`PICOPAAS_GHOST_BLOGGER_TOKEN`**; `.claude/agents/release-blogger.md`
+  now reads that name (plus `GHOST_API_URL` for the blog base URL). **Never print or commit the token.** Still open: the
+  blog app (`picopaas-ghost-blog`) must be claimed and `GHOST_API_URL` set (see To-dos).
 - 2026-10-20: Pentest-pass follow-ups (Chas): repo made **private**; `/docs`/`/redoc`/`/openapi.json` stay **public** for now;
   `main` left unprotected for now (private repo); DO/Spaces credential scoping **deferred to production** (tracked under Open →
   "Production hardening"). Docs review item 4 (TLS workaround + rotation-repair) verified by Claude: TLS probe shipped on the
@@ -123,6 +118,7 @@ background on each item if you want it.
 - 2026-10-18: Request 0002: credential theft out of scope (option A); DB server + Spaces kept off the public
   internet where possible; k8s API may stay public.
 - 2026-10-19: Apps + platform on `raisehellpraisedale.xyz`; seaburr.io no longer used by the platform.
+  (Superseded 2026-10-21: migrated to `picopaas.xyz` — see `docs/requests/0004-picopaas-domain.md`.)
 - 2026-10-19: Internal-team audience; arbitrary images OK with: signups inert until approved, admin
   suspend/delete for users and apps, audit log, SMTP egress blocked. `hostUsers: false` not adopted.
 - 2026-10-19: Terraform state in Terraform Cloud (org `seaburr`), like other projects.
