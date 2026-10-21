@@ -98,3 +98,15 @@ export function failureInfo(app: App, memLimitMi = 384): Failure {
 }
 
 export const SAMPLE_APP = { name: 'podinfo', image: 'ghcr.io/stefanprodan/podinfo:6.15.0', port: 9898 }
+
+// Hosts the app answers on, best first: active custom domain, reserved platform subdomain, generated host.
+// A pending/error custom domain isn't serving, so it is never listed here.
+export function servedHosts(app: Pick<App, 'hostname' | 'platform_host' | 'custom_domain'>): string[] {
+  const cd = app.custom_domain
+  const all = [cd && cd.status === 'active' ? cd.host : null, app.platform_host, app.hostname]
+  return all.filter((h, i): h is string => !!h && all.indexOf(h) === i)
+}
+
+export function primaryHost(app: Pick<App, 'hostname' | 'platform_host' | 'custom_domain'>): string {
+  return servedHosts(app)[0] ?? app.hostname
+}

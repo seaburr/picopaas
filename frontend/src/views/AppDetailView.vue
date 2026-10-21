@@ -17,7 +17,7 @@ import { clearCustomDomain, deleteStorageObjects, getAppEvents, getAppLogs, getI
 import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
-import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
+import { eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
@@ -468,9 +468,16 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <h1 class="page-title break-all">{{ app.name }}</h1>
               <StatusBadge :status="app.status" />
             </div>
-            <HostLink :hostname="app.hostname" class="mt-1" />
-            <HostLink v-if="app.platform_host" :hostname="app.platform_host" class="mt-0.5" />
-            <p v-if="app.platform_host" class="help mt-0.5">Both addresses serve this app.</p>
+            <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2">
+              <HostLink :hostname="primaryHost(app)" class="text-base font-medium" />
+              <span v-if="servedHosts(app).length > 1" class="badge-info shrink-0">primary</span>
+            </div>
+            <div v-if="servedHosts(app).length > 1" class="mt-1">
+              <p class="help">Also served at</p>
+              <ul class="min-w-0 text-sm text-zinc-400">
+                <li v-for="h in servedHosts(app).slice(1)" :key="h" class="min-w-0"><HostLink :hostname="h" /></li>
+              </ul>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />

@@ -9,7 +9,7 @@ import IconButton from '../components/IconButton.vue'
 import { Pencil, RotateCw, ScrollText, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
-import { eventNote, SAMPLE_APP, useNow } from '../composables/appUi'
+import { eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -164,7 +164,10 @@ function meta(app: App) {
                 <StatusBadge :status="app.status" />
                 <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="badge-warn" :title="overCapTip(app)">over cap</span>
               </div>
-              <div class="mt-0.5"><HostLink :hostname="app.hostname" /></div>
+              <div class="mt-0.5"><HostLink :hostname="primaryHost(app)" /></div>
+              <p v-if="primaryHost(app) !== app.hostname" class="mono truncate text-xs text-zinc-500" :title="app.hostname">
+                <span class="sr-only">Also served at </span>{{ app.hostname }}
+              </p>
               <p class="meta mono truncate" :title="meta(app).join(' · ')">
                 <template v-for="(b, i) in meta(app)" :key="i"><span v-if="i" aria-hidden="true"> · </span>{{ b }}</template>
               </p>
