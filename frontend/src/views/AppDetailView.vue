@@ -297,7 +297,7 @@ const limits = computed(() => auth.user?.limits)
 const res = computed(() => {
   const r = app.value?.resources
   return {
-    cpu: r?.cpu_limit_m ?? limits.value?.cpu_limit_m ?? 100,
+    cpu: r?.cpu_limit_m ?? limits.value?.cpu_limit_m ?? 200,
     mem: r?.mem_limit_mi ?? limits.value?.mem_limit_mi ?? 384,
     custom: !!r?.overridden,
   }

@@ -8,7 +8,7 @@ from app.providers.fake import FakeKubeProvider
 from tests.conftest import register_and_login
 
 APP = {"name": "demo", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
-DEFAULTS = {"cpu_request_m": 64, "cpu_limit_m": 100, "mem_request_mi": 128, "mem_limit_mi": 384,
+DEFAULTS = {"cpu_request_m": 64, "cpu_limit_m": 200, "mem_request_mi": 128, "mem_limit_mi": 384,
             "overridden": False, "exceeds_platform_caps": False}
 
 
@@ -48,7 +48,7 @@ def test_within_caps_not_flagged(admin, aid):
 def test_reset_to_default(admin, aid):
     admin.patch(f"/admin/apps/{aid}/resources", json={"cpu_limit_m": 500, "mem_request_mi": 256})
     r = admin.patch(f"/admin/apps/{aid}/resources", json={"cpu_limit_m": None})
-    assert r.json()["resources"]["cpu_limit_m"] == 100 and r.json()["resources"]["mem_request_mi"] == 256  # omitted = kept
+    assert r.json()["resources"]["cpu_limit_m"] == 200 and r.json()["resources"]["mem_request_mi"] == 256  # omitted = kept
     r = admin.patch(f"/admin/apps/{aid}/resources",
                     json={"cpu_request_m": None, "cpu_limit_m": None, "mem_request_mi": None, "mem_limit_mi": None})
     assert r.json()["resources"] == DEFAULTS
@@ -56,7 +56,7 @@ def test_reset_to_default(admin, aid):
 
 @pytest.mark.parametrize("body", [
     {"cpu_limit_m": 9}, {"cpu_limit_m": 1001}, {"cpu_request_m": 5}, {"mem_limit_mi": 31}, {"mem_limit_mi": 2049},
-    {"mem_request_mi": 31}, {"cpu_request_m": 300}, {"cpu_request_m": 200, "cpu_limit_m": 100}, {"cpu_request_m": 101},
+    {"mem_request_mi": 31}, {"cpu_request_m": 300}, {"cpu_request_m": 200, "cpu_limit_m": 100}, {"cpu_request_m": 201},
     {"mem_request_mi": 600}, {"mem_request_mi": 600, "mem_limit_mi": 512}, {"mem_request_mi": 385}, {"bogus": 1}, {"cpu_limit_m": "x"},
 ])
 def test_validation_rejected(admin, aid, body):
@@ -91,11 +91,11 @@ def test_audit(admin, aid):
 
 def test_manifests_default_unchanged():
     q = k8s.resource_quota_manifest(1)["spec"]["hard"]
-    assert (q["limits.cpu"], q["limits.memory"], q["requests.cpu"], q["requests.memory"]) == ("200m", "768Mi", "200m", "768Mi")
+    assert (q["limits.cpu"], q["limits.memory"], q["requests.cpu"], q["requests.memory"]) == ("400m", "768Mi", "400m", "768Mi")
     lr = k8s.limit_range_manifest(1)["spec"]["limits"][0]
-    assert lr["max"] == {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
+    assert lr["max"] == {"cpu": "200m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
     c = k8s.deployment_manifest(1, "img", 80)["spec"]["template"]["spec"]["containers"][0]
-    assert c["resources"] == {"requests": {"cpu": "64m", "memory": "128Mi", "ephemeral-storage": "64Mi"}, "limits": {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}}
+    assert c["resources"] == {"requests": {"cpu": "64m", "memory": "128Mi", "ephemeral-storage": "64Mi"}, "limits": {"cpu": "200m", "memory": "384Mi", "ephemeral-storage": "250Mi"}}
 
 
 def test_manifests_scale_with_overrides():

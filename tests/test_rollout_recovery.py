@@ -57,7 +57,7 @@ def test_lowered_caps_widen_quota_then_shrink_without_flapping(session):
     kube.used_limits[ns] = {"cpu_limit_m": 250, "mem_limit_mi": 512}  # old pod, pre-lowering
     _rec(session, kube, app=app)
     hard = _quota(kube, ns)
-    assert hard["limits.cpu"] == f"{config.DEFAULT_CPU_LIMIT_M + 250}m"  # old 250m + new 100m fits
+    assert hard["limits.cpu"] == f"{config.DEFAULT_CPU_LIMIT_M + 250}m"  # old 250m + new default fits
     assert hard["limits.memory"] == f"{config.DEFAULT_MEM_LIMIT_MI + 512}Mi"
     wide_hash = app.rendered_hash
 

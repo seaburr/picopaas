@@ -140,7 +140,7 @@ Open **Admin**, then **Database servers**, or use the API (`/admin/db-servers`).
 ## 7. Health dashboard
 
 `/admin/health` in the UI (the administrator can reach it from the nav bar), backed by `GET /admin/health` (cached 15 s). It shows nodes,
-per-app pod readiness, restarts and CPU/memory against the 100m/384Mi limits, platform pods
+per-app pod readiness, restarts and CPU/memory against the 200m/384Mi limits, platform pods
 (`picopaas-system`, `traefik`, `cert-manager`), and DB server capacity. CPU/memory need metrics-server (installed
 by bootstrap); without it usage cells show a dash and `metrics_available` is false. The node ceiling shown comes
 from `MAX_NODES` (2, set at bootstrap); the real cap is `max_nodes` in Terraform.
@@ -198,7 +198,7 @@ the host falls through to the same catch-all. The platform looks the hostname up
 
 ## Platform caps (changed 2026-10-19)
 Caps are defined once in `app/config.py` (env overrides: `DB_QUOTA_BYTES`, `STORAGE_QUOTA_BYTES`, `MAX_IMAGE_SIZE_BYTES`,
-`DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`): DB 50 MB, bucket 100 MB, image 256 MB, CPU 100m, RAM 384Mi. Existing apps pick up
+`DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`): DB 50 MB, bucket 100 MB, image 256 MB, CPU 200m, RAM 384Mi. Existing apps pick up
 the new container limits, LimitRange and ResourceQuota through the rendered-hash sweep on the next reconcile (pods restart once).
 Existing databases over 50 MB are made read-only at the next quota poll (within a minute) and buckets over 100 MB within 5 minutes. Owners must
 free space to get writes back (see the User Guide, section 10). Existing images over 256 MB keep running but cannot be redeployed or updated until shrunk.

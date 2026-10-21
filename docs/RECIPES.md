@@ -128,4 +128,4 @@ Posts and settings live in MySQL and uploaded images in the bucket, so both surv
 - **No persistent filesystem.** The 250 MB scratch disk is wiped on restart. Keep state in the MySQL database and
   uploads in the storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
 - **No outbound SMTP.** Disable features that send email, or they will error.
-- **Fit the caps:** 512 MB image, 100m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
+- **Fit the caps:** 512 MB image, 200m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.

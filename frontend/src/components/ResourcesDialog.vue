@@ -13,10 +13,10 @@ const dlg = ref<HTMLDialogElement | null>(null)
 const m = useModal(dlg, () => !!props.app, () => emit('cancel'))
 // Caps come from /auth/me limits when the backend provides them; fallback matches app/config.py.
 const CAPS = computed(() => ({
-  cpu: auth.user?.limits?.cpu_limit_m ?? 100,
+  cpu: auth.user?.limits?.cpu_limit_m ?? 200,
   mem: auth.user?.limits?.mem_limit_mi ?? 384,
 }))
-const DEFAULTS = { cpu_request_m: 64, cpu_limit_m: 100, mem_request_mi: 128, mem_limit_mi: 384 }
+const DEFAULTS = { cpu_request_m: 64, cpu_limit_m: 200, mem_request_mi: 128, mem_limit_mi: 384 }
 type Key = keyof typeof DEFAULTS
 const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limit_mi']
 const fields: { key: Key; label: string; unit: string }[] = [

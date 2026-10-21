@@ -4,7 +4,7 @@ Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md
 Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
-> (was 512; later restored to 512 MB so a persistent-uploads Ghost fits), CPU limit 100m (was 250m), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
+> (was 512; later restored to 512 MB so a persistent-uploads Ghost fits), CPU limit 200m (was 250m, briefly 100m — raised back to 200m 2026-10-20 after the Ghost load test showed Node SSR is CPU-bound), RAM limit 384Mi (was 512Mi); default requests stay 64m/128Mi. `bootstrap.md` still shows the
 > old numbers and is pending his update. Single source of truth: `app/config.py` (env-overridable). Older figures below were updated in place.
 
 ## 1. Hosting cost
@@ -37,7 +37,7 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 | Load balancer | Flat $12. No bandwidth charge on regional LBs |
 
 ### Per-app marginal cost
-About $0 until the node is full. An app requests 64m CPU / 128Mi and is capped at 100m / 384Mi, so one 4 GB node holds
+About $0 until the node is full. An app requests 64m CPU / 128Mi and is capped at 200m / 384Mi, so one 4 GB node holds
 roughly 8 to 12 apps next to the platform. After that each extra node ($28) holds about 8 to 12 more, which is
 **about $2.50 to $3.50 per app per month**. A database adds nothing (about 25 app DBs fit one MySQL server). A bucket
 adds nothing inside the Spaces allowance.
@@ -86,7 +86,7 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
   loop (APScheduler), with no separate operator. Desired state lives in the platform DB, and the loop converges k8s, MySQL, and Spaces toward it.
 
 ### Tenancy and isolation
-- **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=200m, limits.memory=768Mi (2x the 100m/384Mi per-pod limits), pods=2
+- **Compute:** one namespace per app with a `ResourceQuota` (limits.cpu=400m, limits.memory=768Mi (2x the 200m/384Mi per-pod limits), pods=2
   to allow rolling updates; also `ephemeral-storage` requests/limits.ephemeral-storage at 2x the per-pod **250 MB scratch-disk** cap
   (`EPHEMERAL_LIMIT_MI`, request 64Mi; a pod over it is evicted -> `status_reason=disk`, retryable)). A `LimitRange` sets defaults. PodSecurity `restricted` is enforced.
   `automountServiceAccountToken: false`. Default-deny NetworkPolicy: ingress only from the Traefik namespace, egress
@@ -190,7 +190,7 @@ server that has room.
 
 | Resource | Unit we add | Capacity per unit | Ceiling signal |
 |---|---|---|---|
-| Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 100m/384Mi) | Pending pods / node allocatable |
+| Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 200m/384Mi) | Pending pods / node allocatable |
 | MySQL | +1 DB server (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 76 max ÷ ~10 per app user (cap is a ceiling, not a reservation), oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
 | Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
 

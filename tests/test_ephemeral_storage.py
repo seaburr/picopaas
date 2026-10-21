@@ -25,7 +25,7 @@ def test_quota_has_ephemeral_keys_with_surge_room():
 
 def test_used_limits_sums_ephemeral_and_ignores_evicted():
     live = {"status": {"phase": "Running"},
-            "spec": {"containers": [{"resources": {"limits": {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}}}]}}
+            "spec": {"containers": [{"resources": {"limits": {"cpu": "200m", "memory": "384Mi", "ephemeral-storage": "250Mi"}}}]}}
     used = KubeClientProvider(tk._dyn(pods=[live, _evicted()])).get_used_limits("n")
     assert used["ephemeral_limit_mi"] == 250
 

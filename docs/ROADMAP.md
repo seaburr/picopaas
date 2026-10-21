@@ -20,6 +20,58 @@ Let a user attach their own domain (e.g. `blog.example.com`) to an app, in addit
   must treat a verified custom domain as "known."
 - No new infra/cost. Watch Let's Encrypt rate limits and cert-issuance failures.
 
+#### DNS verification + not mis-issuing a TLS cert (security/network review, 2026-10-20)
+Chas's question: the "special TXT record" other platforms (Vercel `_vercel`, Netlify, GitHub Pages, Cloudflare for
+SaaS) ask you to add. There are **two different TXT records** people conflate, and we want to be clear which we use:
+
+1. **Ownership pre-verification TXT** — *our* check, not the CA's. We tell the user to add
+   `_picopaas-challenge.<their-host> TXT <random-token-we-generated-and-stored>`, then poll public DNS until it
+   appears. This proves the user controls the zone **before** we create any routing or attempt issuance. This is the
+   record most "add this TXT to verify your domain" flows are. It is independent of ACME.
+2. **ACME DNS-01 TXT** — the *CA's* proof of control: `_acme-challenge.<host> TXT <per-issuance-token>`. Only needed
+   if we issue via DNS-01 (required for wildcards; lets you issue before traffic cuts over). Changes every
+   issuance/renewal.
+
+**What actually prevents a bad/mis-issued cert, in order of importance:**
+- **The ACME challenge is the real gate, not our TXT check.** With **HTTP-01** (our tabled choice) a cert can only be
+  issued once the user's CNAME already points at our LB and Traefik serves the `/.well-known/acme-challenge/...`
+  token — i.e. control is *implicit*. An attacker who doesn't route the domain to us cannot get us to mint a cert for
+  it. So HTTP-01 alone already stops cross-tenant cert mis-issuance.
+- **Add the ownership TXT (#1) anyway, as a gate on creating the route.** HTTP-01 proves routing, but we still don't
+  want to create an Ingress / mark a host "known" for a domain the user merely typed. Verify TXT ownership first, then
+  provision. This also stops a tenant from pre-claiming a host they don't yet control (first-claim hijack) and is our
+  hook for **dangling-CNAME / subdomain-takeover** hygiene: re-verify periodically and tear the Ingress + Certificate
+  down when the CNAME stops resolving to us or the app is deleted, so we never keep serving (or holding a cert for) a
+  domain that has moved on.
+- **CAA records:** the user's zone may publish a `CAA` that forbids Let's Encrypt — issuance will then fail no matter
+  what. Surface this in the UI pre-flight ("add `0 issue \"letsencrypt.org\"` or remove the blocking CAA") instead of
+  a silent cert-pending hang.
+- **Apex domains can't CNAME** (RFC) — require a subdomain, or an ALIAS/flattening provider; don't try to issue for a
+  bare apex pointed by A-record unless the user accepts they must re-point on LB-IP change.
+- **Rate limits:** Let's Encrypt caps certs/registered-domain/week and has a failed-validation limit. A verify-before-
+  issue flow (don't fire ACME until TXT + CNAME both resolve) keeps us well under the failure cap; use the LE
+  **staging** environment while building.
+- **If we ever need wildcards or issue-before-cutover**, switch that path to **DNS-01 with CNAME delegation**: the
+  user CNAMEs `_acme-challenge.<host>` to a zone we control, so we never hold the user's DNS credentials and never
+  need a full-access DNS API token (scoped-token principle). Not needed for the HTTP-01 per-host plan above.
+
+Net for PicoPaaS: **ownership TXT (#1) to gate provisioning + HTTP-01 for issuance + periodic re-verification for
+takeover hygiene + a CAA pre-flight.** No new infra. Sources:
+[ACME challenge deep dive](https://www.namesilo.com/blog/en/domain-security/acme-challenges-deep-dive-http-01-vs-dns-01-vs-tls-alpn-01),
+[BYO-domain auto-SSL / DNS-01 at scale](https://www.dchost.com/blog/en/bring-your-own-domain-get-auto-ssl-how-dns-01-acme-scales-multi-tenant-saas-without-drama/),
+[custom domains for multi-tenant SaaS](https://www.dchost.com/blog/en/custom-domains-and-subdomains-for-multi-tenant-saas/).
+
+### Terraform provider (`terraform-provider-picopaas`) — future, 2026-10-20
+Chas: "we've done it before for Tribal, so the whole thing is understood." A provider wrapping the existing REST API
+(`terraform-provider-picopaas`) would let users declare apps/env/DB/storage as HCL — the IaC story PaaS users expect.
+- Resources: `picopaas_app` (image, port, env/secrets, want_db, want_storage, health check, auto_update),
+  data sources for templates and app status; auth via an API key (ties into API scopes, below — a CI token should be
+  able to deploy without full account control).
+- Build model copies Tribal's: Go + terraform-plugin-framework, acceptance tests against a throwaway account, released
+  to the Terraform Registry. Pure API client, **no new platform infra or cost.**
+- Prereq worth doing first: a documented, versioned API surface (and the `/api/` prefix, issue #10) so the provider
+  isn't pinned to SPA-shared paths.
+
 ## Shipped (2026-10-20 round)
 2. App templates / one-click catalog (`/templates`: Ghost, nginx static site, podinfo) — DONE.
 3. Instant rollback to a previous image digest (last 5 per app) — DONE.
@@ -43,10 +95,12 @@ Let a user attach their own domain (e.g. `blog.example.com`) to an app, in addit
   opt-in + quota-bounded, not strictly free.
 
 ## Notes from the 2026-10-20 Ghost load test
-On the default **100m CPU / 384 MB**, Ghost (Node SSR) is **CPU-bound**: a single concurrent reader already
-pins the 100m cap (~1 req/s, ~640 ms p50); ~5 concurrent starts timing out. Memory stayed ~150 MB of 384.
-Implications:
-- The useful lever for CMS-class apps is **CPU**, via the existing per-app resource override (up to 1000m).
-- The default caps are unbalanced for Node SSR (generous RAM, tight CPU); consider rebalancing or documenting
-  "bump CPU for sustained traffic."
-- A cache/CDN in front would raise effective reader count far more than RAM.
+On the old **100m CPU / 384 MB**, Ghost (Node SSR) was **CPU-bound**: a single concurrent reader already
+pinned the 100m cap (~1 req/s, ~640 ms p50); ~5 concurrent started timing out. Memory stayed ~150 MB of 384.
+Actions taken:
+- **Default CPU limit raised 100m → 200m (Chas, 2026-10-20)** to rebalance for Node SSR; request stays 64m so
+  scheduling density is unchanged. Per-app override still goes up to 1000m for sustained traffic.
+- Documented "bump CPU for sustained traffic" (templates note, USER_GUIDE).
+- **Caching not added (deferred).** A user who wants it can run their own DNS through Cloudflare and get CDN/edge
+  caching in front of their app — no platform work needed. A built-in cache would be the bigger lever but is a
+  separate feature.

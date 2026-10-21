@@ -115,7 +115,7 @@ STORAGE_QUOTA_POLL_SECONDS = int(os.environ.get("STORAGE_QUOTA_POLL_SECONDS", 30
 METRICS_SAMPLE_SECONDS = int(os.environ.get("METRICS_SAMPLE_SECONDS", 60))
 METRICS_RETENTION_POINTS = int(os.environ.get("METRICS_RETENTION_POINTS", 180))
 DEFAULT_CPU_REQUEST_M = 64
-DEFAULT_CPU_LIMIT_M = int(os.environ.get("DEFAULT_CPU_LIMIT_M", 100))
+DEFAULT_CPU_LIMIT_M = int(os.environ.get("DEFAULT_CPU_LIMIT_M", 200))
 DEFAULT_MEM_REQUEST_MI = 128
 DEFAULT_MEM_LIMIT_MI = int(os.environ.get("DEFAULT_MEM_LIMIT_MI", 384))
 # Per-app scratch disk (container filesystem, /tmp, logs); a pod over it is evicted. Chas, 2026-10-19.

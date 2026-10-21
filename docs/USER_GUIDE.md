@@ -32,7 +32,7 @@ administrator restores the account.
 | User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
 | Image size | Summed compressed layers at most **512 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422` ("Couldn't find that image, or it's private..."). |
-| CPU / memory | Each app gets a limit of **100m CPU / 384Mi** (request 64m / 128Mi). One replica. |
+| CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi). One replica. An admin can raise CPU up to 1000m for a specific app. |
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too. Over the limit gives `403` ("You've reached your limit of N apps..."). |
@@ -398,7 +398,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 
 The app page has a **Resource usage** panel with CPU and memory sparklines: one point a minute, about the last 3 hours,
 drawn against your limits and turning amber near them. The same data is at `GET /apps/{id}/metrics-history`. Use it
-to tell a CPU-bound app (the 100m limit throttles rather than kills) from one nearing the 384 MB memory limit.
+to tell a CPU-bound app (the 200m limit throttles rather than kills) from one nearing the 384 MB memory limit.
 
 ## 13. Troubleshooting
 

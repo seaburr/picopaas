@@ -44,7 +44,7 @@ CATALOG: List[TemplateOut] = [
             "S3_SECRET_KEY": "${{ storage.secret_key }}",
             "SITE_URL": "${{ app.url }}",
         },
-        notes="CPU-bound at 100m, so the first start is slow. Needs a database and a bucket.",
+        notes="CPU-bound, so the first start is slow; bump CPU (up to 1000m) for sustained traffic. Needs a database and a bucket.",
         docs_url="/guide/recipes",
     ),
     TemplateOut(

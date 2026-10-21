@@ -25,9 +25,9 @@ def test_namespace_name_and_labels():
 def test_resource_quota_caps():
     rq = k8s.resource_quota_manifest(APP_ID)
     hard = rq["spec"]["hard"]
-    assert hard["limits.cpu"] == "200m"
+    assert hard["limits.cpu"] == "400m"
     assert hard["limits.memory"] == "768Mi"
-    assert hard["requests.cpu"] == "200m"
+    assert hard["requests.cpu"] == "400m"
     assert hard["requests.memory"] == "768Mi"
     assert hard["pods"] == "2"
     assert hard["services"] == "1"
@@ -39,7 +39,7 @@ def test_resource_quota_caps():
 def test_limit_range_defaults():
     lr = k8s.limit_range_manifest(APP_ID)
     limits = lr["spec"]["limits"][0]
-    assert limits["default"] == {"cpu": "100m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
+    assert limits["default"] == {"cpu": "200m", "memory": "384Mi", "ephemeral-storage": "250Mi"}
     assert limits["defaultRequest"] == {"cpu": "64m", "memory": "128Mi", "ephemeral-storage": "64Mi"}
 
 
@@ -140,6 +140,7 @@ def test_deployment_security_context_hardening():
     assert dep["spec"]["replicas"] == 1
     pod_spec = dep["spec"]["template"]["spec"]
     assert pod_spec["automountServiceAccountToken"] is False
+    assert pod_spec["enableServiceLinks"] is False  # no service-discovery env injected into tenant pods
     assert pod_spec["securityContext"]["runAsNonRoot"] is k8s.RUN_AS_NON_ROOT
     assert pod_spec["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}
 
