@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-21 [ui-ux] START: corrective Ghost blog restyle (Source theme; 1rem=10px root cause of tiny text).
+- 2026-10-21 [ui-ux] DONE (uncommitted): deploy/ghost/code-injection.head.html rewritten against real Source selectors; title -> 'PicoPaaS Devlog', description updated; all subscribe/portal UI hidden; applied via Admin API (200), both pages 200 w/ marker.
 - 2026-10-21 [ui-ux] START: Ghost blog branding via Code Injection CSS.
 - 2026-10-21 [ui-ux] DONE (uncommitted): deploy/ghost/{code-injection.head.html,README.md}; applied live via Admin API (PUT settings 200), marker verified on / and post page.
 - 2026-10-21 [frontend-dev] START: primary host display (active custom domain > platform_host > generated) in apps list + detail.
@@ -621,3 +623,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [scm-security] DONE: 3 commits (5e2144c, f417de8, 6167ad8) pushed; see CI/image/deploy.
 - 2026-10-21 [release-blogger] DONE: published devlog-through-oct-19, devlog-oct-20, devlog-oct-21.
 - 2026-10-21 [scm-security] START: commit preferred-URL UI, ghost branding source, ledger sweep; push; watch CI.
+- 2026-10-21 [scm-security] DONE: 893f8eb, 8f2851a, 1934b52 pushed; CI, image, deploy all green. This ledger line uncommitted.
+- 2026-10-21 [scm-security] START: commit blog CSS second pass + ledger sweep; push; watch CI.
