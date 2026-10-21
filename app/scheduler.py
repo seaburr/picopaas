@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 
 from app import config, crypto, models
 from app.db import SessionLocal, engine
+from app.providers.base import ObjectStoreError
 
 log = logging.getLogger(__name__)
 
@@ -72,8 +73,10 @@ def _object_store() -> Any | None:
         return None
     try:
         return SpacesStore.from_env()
-    except KeyError as exc:
-        log.warning("Spaces not configured (missing %s); storage reconcile/quota skipped", exc)
+    except (KeyError, ObjectStoreError) as exc:
+        # SpacesStore.from_env() raises ObjectStoreError for a missing env var. Degrade (apps without storage still
+        # reconcile); apps that DO need storage fail per-app with a clear error via _NoStorage / the reconciler.
+        log.warning("Spaces not configured (%s); storage reconcile/quota skipped", exc)
         return None
 
 

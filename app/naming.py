@@ -68,10 +68,12 @@ def _random_hostname() -> str:
 
 
 def generate_unique_hostname(db: Session) -> str:
-    """Generate a hostname label, retrying on collision against apps.hostname."""
+    """Generate a hostname label, retrying on collision against apps.hostname and reserved platform subdomains."""
     for _ in range(_MAX_ATTEMPTS):
         candidate = _random_hostname()
-        exists = db.query(models.App.id).filter(models.App.hostname == candidate).first()
+        exists = db.query(models.App.id).filter(
+            (models.App.hostname == candidate) | (models.App.platform_subdomain == candidate)
+        ).first()
         if candidate not in RESERVED_HOSTNAMES and not exists:
             return candidate
     raise RuntimeError("could not generate a unique hostname after many attempts")

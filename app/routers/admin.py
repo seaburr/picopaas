@@ -296,6 +296,12 @@ def set_platform_host(app_id: int, payload: PlatformHostSet, db: Session = Depen
                 models.App.deleted_at.is_(None)).first()
     if taken is not None:
         raise HTTPException(status_code=409, detail="That subdomain is already assigned to another app.")
+    # The label must not equal any live app's generated hostname either: two Ingresses (different namespaces)
+    # would claim the same host.
+    clash = db.query(models.App.id).filter(models.App.hostname == label, models.App.id != a.id,
+                models.App.deleted_at.is_(None)).first()
+    if clash is not None:
+        raise HTTPException(status_code=409, detail="That subdomain is already in use as another app's address.")
     a.platform_subdomain = label
     _requeue(a)
     try:

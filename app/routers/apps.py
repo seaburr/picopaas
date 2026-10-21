@@ -465,6 +465,7 @@ def verify_custom_domain(
     pending so the user can fix DNS and retry."""
     _require_custom_domains_enabled()
     app = _get_owned_app_or_404(db, app_id, user.id)
+    _forbid_if_suspended(app)  # verify requeues the app (status='pending'), which would un-suspend it
     if not app.custom_domain:
         raise HTTPException(status_code=400, detail="This app has no custom domain to verify.")
     try:
@@ -494,6 +495,7 @@ def clear_custom_domain(
     cert-manager GCs its cert). The generated *.APP_DOMAIN subdomain is unaffected."""
     _require_custom_domains_enabled()
     app = _get_owned_app_or_404(db, app_id, user.id)
+    _forbid_if_suspended(app)  # detaching a live domain requeues the app, which would un-suspend it
     if app.custom_domain:
         was_active = app.custom_domain_status == "active"
         host = app.custom_domain

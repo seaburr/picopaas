@@ -111,9 +111,11 @@ def verify(host: str, token: str, *, lookup: Optional[Lookup] = None) -> None:
     """Raise CustomDomainError (with a user message) unless both checks pass. Returns None on success."""
     lk = lookup or DnsLookup()
 
-    # 1. Ownership TXT.
+    # 1. Ownership TXT. Fail closed: a missing/blank token must never match (e.g. an empty TXT value).
+    if not token or not token.strip():
+        raise CustomDomainError("This domain has no ownership token yet. Set the domain again to get one.")
     record = challenge_record(host)
-    values = lk.txt(record)
+    values = [v for v in lk.txt(record) if v and v.strip()]
     if token not in values:
         if not values:
             raise CustomDomainError(
@@ -131,7 +133,13 @@ def verify(host: str, token: str, *, lookup: Optional[Lookup] = None) -> None:
             f"{host} doesn't resolve yet. Add a CNAME from {host} to {target} (or point it at the platform LB), "
             "then try again."
         )
-    if ours and not (ours & theirs):
+    if not ours:
+        # Fail closed: if we can't resolve our own LB we can't prove the host points at us.
+        raise CustomDomainError(
+            "We couldn't check the platform's address right now, so the domain can't be verified yet. "
+            "Try again in a minute."
+        )
+    if not (ours & theirs):
         raise CustomDomainError(
             f"{host} resolves, but not to the platform. Point it at {target} with a CNAME and try again."
         )

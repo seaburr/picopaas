@@ -104,7 +104,9 @@ def apply_storage_state(session: Session, row: models.AppStorage, store: ObjectS
             # have the reconciler re-render the Secret and roll the pod.
             row.access_key = new_creds["access_key"]
             row.secret_key_encrypted = crypto.encrypt(new_creds["secret_key"])
-            if row.app is not None and row.app.status != "error":
+            # Never flip a suspended app to pending (that would un-suspend it); unsuspend requeues and the
+            # reconciler then renders the new stored key.
+            if row.app is not None and row.app.status not in ("error", "suspended"):
                 row.app.status = "pending"
     row.size_bytes = size
     try:
