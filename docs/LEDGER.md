@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-21 [ui-ux] START: Ghost blog branding via Code Injection CSS.
+- 2026-10-21 [ui-ux] DONE (uncommitted): deploy/ghost/{code-injection.head.html,README.md}; applied live via Admin API (PUT settings 200), marker verified on / and post page.
+- 2026-10-21 [frontend-dev] START: primary host display (active custom domain > platform_host > generated) in apps list + detail.
+- 2026-10-21 [frontend-dev] DONE (uncommitted): appUi.ts servedHosts()/primaryHost(); list shows primary + muted generated line; detail header leads with primary (badge) + "Also served at" list. Typecheck clean.
 - 2026-10-21 [backend-dev] START: final pass: release host claims at teardown (not soft-delete), block xn-- labels, coverage + reliability comb.
 - 2026-10-21 [backend-dev] DONE (uncommitted): release_unique_hosts moved from the 3 delete endpoints into reconciler.delete_app (right before status='deleted'; namespace-delete failure now keeps the row + claims and retries); normalize_platform_subdomain rejects xn--; spec port upper-bound error message; tests: test_platform_subdomain.py expanded (teardown semantics for all 3 delete paths, authz, audit, manifests/reconciler, ports on create/update/spec), new tests/test_domain_safety.py.
 - 2026-10-21 [frontend-dev] START: copy + UX review pass over today's frontend changes.
@@ -614,3 +618,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] START: commit+push ACME HTTP-01 solver fix (k8s_manifests, clusterissuer, tests)
 - 2026-10-20 [scm-security] DONE: c2494cd pushed; CI, image, deploy all green (ACME solver quota/netpol fix live). Ledger line uncommitted.
 - 2026-10-21 [scm-security] START: commit today's work (platform subdomain, port validation, UX, teardown release, picopaas.xyz cutover, docs); push; watch CI.
+- 2026-10-21 [scm-security] DONE: 3 commits (5e2144c, f417de8, 6167ad8) pushed; see CI/image/deploy.
+- 2026-10-21 [release-blogger] DONE: published devlog-through-oct-19, devlog-oct-20, devlog-oct-21.
+- 2026-10-21 [scm-security] START: commit preferred-URL UI, ghost branding source, ledger sweep; push; watch CI.
