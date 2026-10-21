@@ -374,6 +374,23 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
   the cloud metadata address and other cluster services).
 - Exceptions: your own database server (its host and port) and your own bucket's address on port 443.
 
+## 11a. Custom domains
+
+Your app is always reachable at its generated `*.raisehellpraisedale.xyz` hostname. You can also attach your own
+domain and we'll issue a free TLS certificate for it automatically.
+
+1. On the app's page, open **Custom domain**, enter a subdomain you control (e.g. `blog.example.com`) and click
+   **Add domain**. Apex domains (bare `example.com`) can't be used unless your DNS provider supports CNAME
+   flattening/ALIAS — use a subdomain.
+2. Create the **two DNS records** shown:
+   - a **CNAME** from your host to the platform load balancer (`lb.raisehellpraisedale.xyz`), and
+   - a **TXT** at `_picopaas-challenge.<your-host>` with the token shown (this proves you own the domain).
+3. Click **Verify DNS**. Once both records are visible (DNS can take a few minutes), the domain goes **active**, a
+   certificate is issued, and your app is served on it over HTTPS alongside the generated subdomain.
+
+Notes: if your domain has a `CAA` record, make sure it permits `letsencrypt.org` or issuance will fail. Removing the
+domain stops serving it and cleans up its certificate; your generated subdomain is unaffected.
+
 ## 12. App statuses
 
 The UI and CLI show friendly names. The API uses the raw value in the second column.

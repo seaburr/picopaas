@@ -1,0 +1,60 @@
+# Let's Encrypt ClusterIssuers, HTTP-01 via Traefik — used ONLY for user custom domains (app/custom_domains.py,
+# reconciler custom Ingress). The platform's own *.raisehellpraisedale.xyz wildcard still comes from the DNS-01
+# issuers in clusterissuer.yaml; DNS-01 can't cover a user's domain (its zone isn't in our DO account), so custom
+# domains use HTTP-01, which proves control simply by serving the challenge once the user's CNAME points at our LB.
+#
+# How it works: cert-manager's ingress-shim sees the `cert-manager.io/cluster-issuer` annotation on the per-app
+# custom Ingress and issues a cert into app-<id>-custom-tls. The HTTP-01 solver creates a temporary Ingress on the
+# `traefik` class for /.well-known/acme-challenge/...; Traefik's global 80->443 redirect is fine because Let's
+# Encrypt follows the redirect and doesn't validate the cert on the challenge.
+#
+# PSA note: app namespaces enforce Pod Security `restricted`, and the solver Pod runs there. Recent cert-manager
+# sets the solver container's securityContext restricted-compliant by default; we also pin the pod-level
+# securityContext below. If a solver Pod is ever rejected by PSA, this podTemplate is the place to adjust.
+#
+# Switch CUSTOM_DOMAIN_ISSUER (app/config.py) to letsencrypt-http01-staging to validate end-to-end without burning
+# prod rate limits, then to letsencrypt-http01-prod.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-http01-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: yz80nomo+lepaas@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-http01-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+            podTemplate:
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  seccompProfile:
+                    type: RuntimeDefault
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-http01-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: yz80nomo+lepaas@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-http01-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+            podTemplate:
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  seccompProfile:
+                    type: RuntimeDefault

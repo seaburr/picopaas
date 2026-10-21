@@ -4,11 +4,18 @@ Where PicoPaaS sits: a strict, multi-tenant mini-PaaS (the self-hosted Dokku/Cap
 the next changes to make it more useful/flexible, chosen to use the infra we already run (DOKS, Traefik,
 cert-manager, metrics-server, MySQL, GHCR) with no new paid resources.
 
-## Tabled (approved direction, build later)
+## In progress / recently built
 
-### Custom domains + automatic TLS  — TABLED by Chas 2026-10-20
-Let a user attach their own domain (e.g. `blog.example.com`) to an app, in addition to the generated
-`*.raisehellpraisedale.xyz` subdomain. Design sketch for when we build it:
+### Custom domains + automatic TLS — BUILT 2026-10-20 (uncommitted; e2e against seaburr.io pending)
+Users attach their own domain (e.g. `blog.example.com`) to an app, in addition to the generated
+`*.raisehellpraisedale.xyz` subdomain. **Shipped shape:** `App.custom_domain*` fields + migration
+`f3b8d6c4a1e9`; `app/custom_domains.py` (ownership-TXT + CNAME→LB verification via `dnspython`, behind a `Lookup`
+interface); owner endpoints `PUT/POST verify/DELETE /apps/{id}/domain`; reconciler renders a second Ingress
+(`app-<id>-custom`) annotated for cert-manager + tears it down when detached; a new **HTTP-01 ClusterIssuer**
+(`deploy/cert-manager/clusterissuer-http01.yaml`, staging + prod) because the existing DNS-01 issuers are
+DO-zone-only; UI on the app detail page. **Remaining:** apply the HTTP-01 issuer (staging first) and verify a real
+cert issues end-to-end against a `seaburr.io` test subdomain (Chas adds the CNAME + ownership TXT). The original
+design sketch and DNS-verification research follow (kept for reference):
 - New `custom_domain` field on `App` (admin-approved, or self-serve with verification).
 - The user creates a **CNAME** from their domain to the platform LB hostname (the `lb` DNS record / LB IP
   129.212.135.231). Apex domains can't CNAME — require a subdomain or an ALIAS/flattening provider.

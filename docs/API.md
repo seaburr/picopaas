@@ -94,7 +94,8 @@ change a scope). Pre-existing keys are `full`.
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.raisehellpraisedale.xyz), image, port,
-image_digest, auto_update, image_checked_at, image_update_error, want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, status_reason, retry_at, created_at, last_event, resources, quota, env[]`. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`).
+image_digest, auto_update, image_checked_at, image_update_error, want_db, want_storage, health_check_enabled, health_check_path, status, status_detail, status_reason, retry_at, created_at, last_event, resources, quota, custom_domain, env[]`.
+`custom_domain` is null when none is attached, else `{host, status (pending|active|error), verified_at, error, challenge_host, challenge_token, cname_target}` — the last three are the DNS records the user must create. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`).
 `quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, storage every 5 min), no live calls. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, overridden, exceeds_platform_caps}`.
 Each `env` item: `{key, value, is_secret, undecryptable}`. Secret values are returned as `********`. If a stored
@@ -117,6 +118,9 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | GET | `/apps/{app_id}/logs?tail=N` | none | `{lines[], pod, note}`. `tail` is 1 or more, default 200, capped at 1000. `lines` is empty and `note` explains why when there is no pod or the logs can't be read. Owner or admin. |
 | POST | `/apps/{app_id}/restart` | none | `App`. Owner or admin. 409 if suspended. Re-resolves the image tag first ("pull latest"); a new image that fails the checks is skipped and the old one restarted (`image_update_error` is set). |
 | POST | `/apps/{app_id}/check-image` | none | `App`. Owner or admin. Re-resolves the tag now and redeploys if it changed and passes the checks. 502 if the registry can't be reached; 409 if suspended. |
+| PUT | `/apps/{app_id}/domain` | `{"host": "blog.example.com"}` | `App`. Attaches/replaces a custom domain (owner). Generates the ownership token; returns it in `custom_domain`. 422 for an invalid host or one of our own domains; 409 if the host is attached to another app; 403 if suspended; 404 if custom domains are disabled platform-wide. |
+| POST | `/apps/{app_id}/domain/verify` | none | `App`. Checks the ownership TXT and that the host resolves to the platform LB. On success `custom_domain.status` is `active` and the app requeues (cert issues, host served). On failure returns 200 with `custom_domain.error` set and status still `pending`. 400 if no domain is set. |
+| DELETE | `/apps/{app_id}/domain` | none | `App`. Detaches the custom domain (owner); if it was live the app requeues so the custom Ingress + cert are torn down. The generated subdomain is unaffected. |
 | POST | `/apps/spec` | `{spec, secrets}` | Create-or-update from YAML; see below. |
 
 `AppCreate`:

@@ -6,7 +6,8 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 
 ## Now / Next
 - 2026-10-20 [claude] DONE (uncommitted): **pod hardening** `enableServiceLinks:false` (k8s_manifests + test); **CPU default 100m→200m** (config + frontend fallbacks + all docs + test fixtures); **ticket triage** (#11 refreshed; #10/#12 kept); **DNS-verification research + Terraform provider** → ROADMAP; **release-blogger agent** created (auto-publish, devlog voice; needs Chas's Ghost Admin key); **API-key scopes** read|full (model + migration e7c1a9b3d2f8 + dependencies enforcement + api_keys router session-only + schemas + ApiKeysView + API.md + tests). Suite 507 passed/60 skipped.
-- **NEXT: custom domains + auto-TLS** (Chas: build it; e2e test against a seaburr.io subdomain). Needs a new HTTP-01 ClusterIssuer (DNS-01 is DO-zone-only), App model fields + migration, DNS ownership-TXT + CNAME verify (dnspython), reconciler Ingress+cert, UI, and 2 DNS records Chas adds on the test host.
+- 2026-10-20 [claude] DONE (uncommitted): **custom domains + auto-TLS**. App.custom_domain* + migration f3b8d6c4a1e9 (unique index); app/custom_domains.py (ownership-TXT + CNAME→LB verify via dnspython, Lookup interface for tests); PUT/POST verify/DELETE /apps/{id}/domain; reconciler renders app-<id>-custom Ingress (cert-manager annotation) + tears it down when detached; k8s_manifests.custom_domain_ingress_manifest; schemas CustomDomainSet/Out + AppOut.custom_domain; frontend (AppDetailView section, api, types); deploy/cert-manager/clusterissuer-http01.yaml (staging+prod, restricted-PSA solver podTemplate); requirements dnspython==2.7.0; docs (API/USER_GUIDE/ROADMAP). Suite 531 passed/60 skipped; typecheck clean; migration round-trips.
+- **NEXT for custom domains (needs deploy + Chas):** (1) apply the HTTP-01 issuer — staging first; (2) seaburr.io e2e — Chas adds a CNAME (<testhost> → lb.raisehellpraisedale.xyz) + ownership TXT (_picopaas-challenge.<testhost> = token from the set-domain response), then verify a real cert issues. CUSTOM_DOMAIN_ISSUER defaults to letsencrypt-http01-prod; flip to -staging for the first run.
 - **PENTEST #19 step 2 DONE in rbac.yaml (uncommitted/undeployed):** after deploy, verify secret rotation + a new app deploy still work (diag RBAC step).
 ### Next (2026-10-20)
 - Re-run live quota tests against the fixed code (E2E_SLOW=1 pytest tests/e2e -k quota). Check the first over-cap WARNING log for whether doadmin can see/kill app sessions.
@@ -592,3 +593,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-20 [scm-security] DONE: committed as two commits (security fix; docs). Tests 503 passed, typecheck+build ok. Pushed; see CI/deploy results.
 - 2026-10-20 [scm-security] START: commit 4 chunks (enableServiceLinks, CPU 200m, API key scopes, release-blogger/docs); push; watch CI.
 - 2026-10-20 [scm-security] DONE: committed 4 chunks; pushing, see CI.
+- 2026-10-20 [scm-security] START: commit custom domains + auto-TLS (3 chunks: backend, ui, infra/docs); push; watch CI/deploy.
+- 2026-10-20 [scm-security] DONE: committed custom domains (backend, ui, infra/docs); pushing, see CI.
