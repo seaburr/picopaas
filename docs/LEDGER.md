@@ -625,3 +625,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [scm-security] START: commit preferred-URL UI, ghost branding source, ledger sweep; push; watch CI.
 - 2026-10-21 [scm-security] DONE: 893f8eb, 8f2851a, 1934b52 pushed; CI, image, deploy all green. This ledger line uncommitted.
 - 2026-10-21 [scm-security] START: commit blog CSS second pass + ledger sweep; push; watch CI.
+- 2026-10-21 [scm-security] DONE: blog CSS second pass pushed earlier (b191caf). Blog restyle v2 + members/url settings applied live via Admin API; landing footer now links the blog.
+- 2026-10-21 [scm-security] START: commit landing footer Blog link + ledger; push; watch CI.
