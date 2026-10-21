@@ -6,7 +6,13 @@ cert-manager, metrics-server, MySQL, GHCR) with no new paid resources.
 
 ## In progress / recently built
 
-### Custom domains + automatic TLS — BUILT 2026-10-20 (uncommitted; e2e against seaburr.io pending)
+### Custom domains + automatic TLS — SHIPPED + e2e VERIFIED 2026-10-20
+Verified end-to-end against a real external domain: `demo.seaburr.io` CNAME'd to the LB + ownership TXT → verify →
+cert-manager issued a **trusted prod Let's Encrypt cert** (`CN=demo.seaburr.io`) first try, served over HTTPS (HTTP
+301→HTTPS). The live e2e caught three gaps in running the ACME HTTP-01 solver inside a hardened tenant namespace,
+all fixed (commit c2494cd): solver Service forced `ClusterIP` (tenant quota forbids NodePort); ResourceQuota grants
++1 Service / +1 Pod of headroom only when a custom domain is attached; a narrow `allow-acme-solver` NetworkPolicy
+lets Traefik reach the solver pod on 8089.
 Users attach their own domain (e.g. `blog.example.com`) to an app, in addition to the generated
 `*.raisehellpraisedale.xyz` subdomain. **Shipped shape:** `App.custom_domain*` fields + migration
 `f3b8d6c4a1e9`; `app/custom_domains.py` (ownership-TXT + CNAME→LB verification via `dnspython`, behind a `Lookup`
