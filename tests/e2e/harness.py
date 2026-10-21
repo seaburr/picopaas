@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 import pytest
 
-PICOPAAS_URL = os.environ.get("PICOPAAS_URL", "https://platform.raisehellpraisedale.xyz").rstrip("/")
-APP_DOMAIN = os.environ.get("APP_DOMAIN", "raisehellpraisedale.xyz")
+PICOPAAS_URL = os.environ.get("PICOPAAS_URL", "https://platform.picopaas.xyz").rstrip("/")
+APP_DOMAIN = os.environ.get("APP_DOMAIN", "picopaas.xyz")
 USER_TOKEN = os.environ.get("E2E_USER_TOKEN", "")
 ADMIN_TOKEN = os.environ.get("E2E_ADMIN_TOKEN", "")
 IMAGE_TAG = os.environ.get("E2E_IMAGE_TAG", "latest")

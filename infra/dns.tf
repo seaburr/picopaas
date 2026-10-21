@@ -1,4 +1,4 @@
-# The raisehellpraisedale.xyz domain already exists in the DO control panel and is managed by hand / by Chas.
+# The picopaas.xyz domain already exists in the DO control panel and is managed by hand / by Chas.
 # This is a DATA SOURCE ONLY — Terraform must never create or destroy the domain itself, and must
 # NEVER touch TXT records (general rule; see request 0003 and
 # ARCHITECTURE.md §3). Only the wildcard A record below is managed here, and only conditionally.

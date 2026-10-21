@@ -5,7 +5,7 @@
 #     -n cert-manager \
 #     --from-literal=access-token='<DO_API_TOKEN_PLACEHOLDER>'
 #
-# The token needs DNS read/write scope for the raisehellpraisedale.xyz domain only (DO tokens are
+# The token needs DNS read/write scope for the picopaas.xyz domain only (DO tokens are
 # account-wide, so scope what you can via a dedicated token if DO's token UI allows it).
 ---
 apiVersion: cert-manager.io/v1

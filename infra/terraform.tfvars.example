@@ -15,7 +15,7 @@ use_load_balancer = true
 # there. Check the DO control panel / `doctl databases options sizes` before applying.
 mysql_size = "db-s-1vcpu-1gb"
 
-domain = "raisehellpraisedale.xyz"
+domain = "picopaas.xyz"
 
 # Leave empty until the Traefik LoadBalancer Service exists and you've read its IP with
 # `kubectl -n traefik get svc traefik`. See the TODO in variables.tf.

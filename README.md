@@ -4,7 +4,7 @@ A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker im
 and optionally get a MySQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $60/mo.
 
-Live: https://platform.raisehellpraisedale.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
+Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
 Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Operations](docs/OPERATIONS.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
 
@@ -13,7 +13,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
 - Optional MySQL database and S3-compatible storage bucket per app, each with its own credentials.
-- HTTPS subdomain per app (`<adjective>-<animal>-<id>.raisehellpraisedale.xyz`) from a wildcard certificate.
+- HTTPS subdomain per app (`<adjective>-<animal>-<id>.picopaas.xyz`) from a wildcard certificate.
 - Logs (with download), restart, and live status in the UI.
 - One-click templates (Ghost, an nginx static site, the podinfo sample API) that prefill the new-app form.
 - Instant rollback: the last few image versions are kept, and one click redeploys an older one.
@@ -44,7 +44,7 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 ```mermaid
 flowchart TB
   user["Browser, CLI or API key"]
-  dns["DNS: *.raisehellpraisedale.xyz"]
+  dns["DNS: *.picopaas.xyz"]
   lb["DigitalOcean load balancer"]
   user --> dns --> lb
 

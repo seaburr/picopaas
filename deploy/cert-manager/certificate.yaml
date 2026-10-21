@@ -1,4 +1,4 @@
-# Wildcard cert for *.raisehellpraisedale.xyz (+ the apex), used as Traefik's default TLS cert
+# Wildcard cert for *.picopaas.xyz (+ the apex), used as Traefik's default TLS cert
 # (TLSStore `default`, see deploy/traefik/values.yaml; secret must live in ns traefik). One cert, no per-app
 # issuance, so no Let's Encrypt rate-limit risk as apps are created/deleted.
 #
@@ -7,13 +7,13 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: wildcard-raisehellpraisedale-xyz
+  name: wildcard-picopaas-xyz
   namespace: traefik
 spec:
-  secretName: wildcard-raisehellpraisedale-xyz-tls
+  secretName: wildcard-picopaas-xyz-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - "raisehellpraisedale.xyz"
-    - "*.raisehellpraisedale.xyz"
+    - "picopaas.xyz"
+    - "*.picopaas.xyz"

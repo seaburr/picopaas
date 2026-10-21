@@ -1,5 +1,5 @@
 # Let's Encrypt ClusterIssuers, HTTP-01 via Traefik — used ONLY for user custom domains (app/custom_domains.py,
-# reconciler custom Ingress). The platform's own *.raisehellpraisedale.xyz wildcard still comes from the DNS-01
+# reconciler custom Ingress). The platform's own *.picopaas.xyz wildcard still comes from the DNS-01
 # issuers in clusterissuer.yaml; DNS-01 can't cover a user's domain (its zone isn't in our DO account), so custom
 # domains use HTTP-01, which proves control simply by serving the challenge once the user's CNAME points at our LB.
 #

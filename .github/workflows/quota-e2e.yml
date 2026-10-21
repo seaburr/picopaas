@@ -27,7 +27,7 @@ jobs:
       E2E_USER_TOKEN: ${{ secrets.E2E_USER_TOKEN }}
       E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
       E2E_SLOW: "1"
-      PICOPAAS_URL: https://platform.raisehellpraisedale.xyz
+      PICOPAAS_URL: https://platform.picopaas.xyz
     steps:
       - name: Check secrets
         id: gate

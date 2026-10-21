@@ -80,24 +80,24 @@ actually ordering, and update this table once confirmed.
 | `storage.tf` | platform Spaces bucket (private) |
 | `database.tf` | optional managed MySQL cluster + DB firewall trusting the k8s cluster |
 | `firewall.tf` | DO firewall opening 80/443 to nodes, only when `use_load_balancer = false` |
-| `dns.tf` | `raisehellpraisedale.xyz` domain as a **data source only** (never created/destroyed) + conditional wildcard A record |
+| `dns.tf` | `picopaas.xyz` domain as a **data source only** (never created/destroyed) + conditional wildcard A record |
 | `outputs.tf` | cluster id/endpoint, mysql host (sensitive), bucket names |
 | `terraform.tfvars.example` | copy to `terraform.tfvars` (gitignored) |
 
 ## DNS — read this before touching anything DNS-related
 
-- The `raisehellpraisedale.xyz` domain is looked up with `data "digitalocean_domain"` only. This Terraform must
+- The `picopaas.xyz` domain is looked up with `data "digitalocean_domain"` only. This Terraform must
   never create or destroy the domain.
 - **Never manage or touch TXT records.** General rule, kept from the old domain (the Bluesky TXT on seaburr.io) —
   nothing in this directory should ever define a `digitalocean_record` of type `TXT`.
-- The wildcard `*.raisehellpraisedale.xyz` A record is only created here when `use_load_balancer = true` *and*
+- The wildcard `*.picopaas.xyz` A record is only created here when `use_load_balancer = true` *and*
   `wildcard_lb_ip` is set. That IP comes from the DO Load Balancer that Traefik's
   `Service.type: LoadBalancer` creates — which doesn't exist until `deploy/` is applied, after this
   Terraform. See the `TODO` comment on `variables.wildcard_lb_ip` in `variables.tf` for the
   two-step apply sequence.
 - When `use_load_balancer = false`, DNS for the wildcard is **not** managed by Terraform at all —
   a `dns-sync` CronJob (TODO, not yet written — see `ARCHITECTURE.md` trade-offs) is expected to
-  keep `*.raisehellpraisedale.xyz` pointed at the current node's public IP, polling every ~2 minutes via the DO
+  keep `*.picopaas.xyz` pointed at the current node's public IP, polling every ~2 minutes via the DO
   API, since node IPs change on recycle/upgrade.
 
 - **Chas adds the domain in DO** (Networking > Domains) after moving the registrar nameservers to

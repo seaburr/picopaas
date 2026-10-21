@@ -94,7 +94,7 @@ def test_05_admin_suspend_unsuspend(user, admin, hello):
 # 6 ----------------------------------------------------------------------------------------------
 def test_06_root_image_rejected(user):
     r = user.req("POST", "/apps", json={"name": rand_name(), "image": "docker.io/library/nginx:latest",
-                                        "port": 80})
+                                        "port": 8080})
     assert r.status_code == 422, r.text
     assert "root" in r.text.lower()
 

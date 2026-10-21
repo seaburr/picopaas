@@ -58,12 +58,12 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
 ## 2. Components
 
 ```
-               *.raisehellpraisedale.xyz (wildcard A → DigitalOcean load balancer)
+               *.picopaas.xyz (wildcard A → DigitalOcean load balancer)
                                 │
                      Traefik (behind the load balancer, ports 80/443)
-              default cert (TLSStore) = wildcard *.raisehellpraisedale.xyz (cert-manager, DNS-01 via DO)
+              default cert (TLSStore) = wildcard *.picopaas.xyz (cert-manager, DNS-01 via DO)
                 ┌───────────────┴──────────────────┐
-     platform.raisehellpraisedale.xyz                 <pet>-<7char>.raisehellpraisedale.xyz
+     platform.picopaas.xyz                 <pet>-<7char>.picopaas.xyz
    ns: picopaas-system                    ns: app-<id>  (one per app)
    ┌──────────────────────┐               ┌───────────────────────────┐
    │ api (FastAPI)        │──k8s API────▶ │ Deployment (1 replica)    │
@@ -132,7 +132,7 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 - Signups are inert until the platform admin approves them.
 - The platform admin can suspend or delete users and apps. An audit log records these actions.
 - SMTP egress (ports 25/465/587) is blocked by NetworkPolicy.
-- Apps and the platform live on the separate throwaway domain `raisehellpraisedale.xyz`, which protects seaburr.io's reputation.
+- Apps and the platform live on the separate throwaway domain `picopaas.xyz`, which protects seaburr.io's reputation.
 - `hostUsers: false` (user namespaces) was considered and not adopted.
 
 ### Reference variables
@@ -164,8 +164,8 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 - **Hard per-account app cap** (`MAX_APPS_PER_USER`, default 5, app/config.py) applies to EVERY account including platform admins. Effective limit = `min(app_limit, max)` for users, `max` for admins (`resources.effective_app_limit`). Enforced at create only (existing apps are never deleted); `PATCH /admin/users/{id}` rejects `app_limit` above it (422). `/auth/me` returns `max_apps` and `app_limit_effective`.
 
 ### DNS and TLS
-- Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.raisehellpraisedale.xyz`, with a uniqueness check in the DB.
-- One wildcard A record `*.raisehellpraisedale.xyz`. Explicit records that already exist still take precedence.
+- Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.picopaas.xyz`, with a uniqueness check in the DB.
+- One wildcard A record `*.picopaas.xyz`. Explicit records that already exist still take precedence.
 - One wildcard cert from cert-manager + Let's Encrypt, DNS-01 via the DO solver. It's the ingress default
   cert, so there's no per-app issuance and no LE rate-limit risk.
 
@@ -229,7 +229,7 @@ Two replicas run (HA, 2026-10-19), so deploys and node drains don't take the API
 ## 4. Decisions on earlier open questions
 New questions go in `docs/QUESTIONS.md`. Decided so far:
 1. Hosting variant: managed MySQL and a load balancer (approved 2026-10-19), not the in-cluster "lean" setup.
-2. Domain: the throwaway `raisehellpraisedale.xyz` (request 0003); never touch TXT records.
+2. Domain: the throwaway `picopaas.xyz` (request 0003); never touch TXT records.
 3. Region: NYC3 for compute and MySQL (ATL1 had no DOKS capacity, 2026-10-19); Spaces stays in ATL1. The node is
    `s-2vcpu-4gb-amd` ($28/mo, confirmed from the DO bill 2026-10-20).
 4. Autoscaler `max_nodes = 2` (approved), so the worst case is +$28/mo over the static setup.

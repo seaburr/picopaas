@@ -4,7 +4,7 @@
 - He's leaning toward the **managed** option (managed MySQL + LB) for reliability, which costs more than the lean plan. Not final yet.
 - Region: **ATL1 preferred**, with NYC3 as the fallback. ATL1 has DOKS, Spaces, LB, volumes, and DOCR, but **managed MySQL in ATL1 is
   Premium Intel only**, which costs more than the $15.15 basic 1 GiB plan. Price TBD. Check the control panel when ordering.
-- DNS: wildcards OK. Domain superseded 2026-10-19: apps and platform use `raisehellpraisedale.xyz` (see request 0003).
+- DNS: wildcards OK. Domain superseded 2026-10-19: apps and platform use `picopaas.xyz` (see request 0003).
 - Tokens arrive 2026-10-19.
 
 ### Approved managed option (current truth: node $28 + LB $12 + Spaces $5 + MySQL $15.15 ≈ $60/mo)
@@ -23,7 +23,7 @@ Nothing gets provisioned until Chas approves. Terraform for this lives in `infra
 - DOKS cluster (non-HA control plane) with 1 × `s-2vcpu-4gb` node, region `atl1` (fallback `nyc3`)
 - Spaces subscription: one private platform bucket (MySQL backups; Terraform state lives in Terraform Cloud), plus one bucket per app on demand
 - 10 GiB block volume for in-cluster MySQL
-- DNS: wildcard `*.raisehellpraisedale.xyz` A record (plus `platform.raisehellpraisedale.xyz` for the platform UI)
+- DNS: wildcard `*.picopaas.xyz` A record (plus `platform.picopaas.xyz` for the platform UI)
 - No load balancer. Ingress runs on node hostPorts.
 
 ## 2. Why

@@ -6,9 +6,9 @@ design in [ARCHITECTURE.md](ARCHITECTURE.md), the manual runbook in [../deploy/R
 ## 1. Architecture at a glance
 
 ```
-*.raisehellpraisedale.xyz (A records -> DO load balancer) -> Traefik (ns traefik, wildcard cert from cert-manager)
-   platform.raisehellpraisedale.xyz -> platform (ns picopaas-system, 2 replicas: API + UI; one leader runs the reconciler)
-   <adjective>-<animal>-<7 chars>.raisehellpraisedale.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
+*.picopaas.xyz (A records -> DO load balancer) -> Traefik (ns traefik, wildcard cert from cert-manager)
+   platform.picopaas.xyz -> platform (ns picopaas-system, 2 replicas: API + UI; one leader runs the reconciler)
+   <adjective>-<animal>-<7 chars>.picopaas.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
 Managed MySQL (DO, nyc3, private VPC): platform DB `picopaas` + one DB/user per app
 Spaces (atl1): one bucket + key per app, plus the adopted platform bucket pico-paas-s3-a
 State: Terraform Cloud (org seaburr, workspace picopaas, local execution = state only)
@@ -188,7 +188,7 @@ Other known gaps:
 
 ## Unknown app hosts and suspended apps
 
-An unknown `*.raisehellpraisedale.xyz` host matches the low-priority catch-all Ingress
+An unknown `*.picopaas.xyz` host matches the low-priority catch-all Ingress
 (`deploy/platform/ingress.yaml`, `router.priority: "1"`) and gets the platform's custom 404 page
 (`static/404.html`, `noindex`, `no-store`).
 
