@@ -119,6 +119,17 @@ export interface App {
   last_event?: AppEvent | null // newest restart event, only if under 24h old
   resources?: AppResources
   quota?: AppQuota
+  custom_domain?: CustomDomain | null
+}
+
+export interface CustomDomain {
+  host: string
+  status: 'pending' | 'active' | 'error'
+  verified_at?: string | null
+  error?: string | null
+  challenge_host: string
+  challenge_token: string
+  cname_target: string
 }
 
 export interface AppResources {

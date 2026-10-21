@@ -64,3 +64,12 @@ export const getImageHistory = (id: number) => apiFetch<ImageVersion[]>(`/apps/$
 
 export const rollbackApp = (id: number, digest: string) =>
   apiFetch<App>(`/apps/${id}/rollback`, { method: 'POST', body: JSON.stringify({ digest }) })
+
+export const setCustomDomain = (id: number, host: string) =>
+  apiFetch<App>(`/apps/${id}/domain`, { method: 'PUT', body: JSON.stringify({ host }) })
+
+export const verifyCustomDomain = (id: number) =>
+  apiFetch<App>(`/apps/${id}/domain/verify`, { method: 'POST' })
+
+export const clearCustomDomain = (id: number) =>
+  apiFetch<App>(`/apps/${id}/domain`, { method: 'DELETE' })

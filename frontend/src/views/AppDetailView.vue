@@ -12,9 +12,9 @@ import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, getMetricsHistory, rotateCredentials, type AppLogs } from '../api/apps'
+import { clearCustomDomain, deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, getMetricsHistory, rotateCredentials, setCustomDomain, verifyCustomDomain, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
-import { stamp } from '../utils/format'
+import { copyText, stamp } from '../utils/format'
 import { eventNote, fullTime, parseTs, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
@@ -245,6 +245,54 @@ async function confirmRotate() {
   } finally {
     rotateBusy.value = false
   }
+}
+
+// Custom domain
+const cdom = computed(() => app.value?.custom_domain ?? null)
+const newDomain = ref('')
+const domainBusy = ref(false)
+const verifyBusy = ref(false)
+const clearingDomain = ref(false)
+async function saveDomain() {
+  if (!app.value || !newDomain.value.trim()) return
+  domainBusy.value = true
+  try {
+    app.value = await setCustomDomain(app.value.id, newDomain.value.trim())
+    newDomain.value = ''
+    toast.success('Domain added. Create the two DNS records below, then verify.')
+  } catch (e) {
+    toast.error(`Couldn't add the domain: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    domainBusy.value = false
+  }
+}
+async function verifyDomain() {
+  if (!app.value) return
+  verifyBusy.value = true
+  try {
+    app.value = await verifyCustomDomain(app.value.id)
+    if (app.value.custom_domain?.status === 'active') toast.success('Verified — issuing the certificate and serving your domain.')
+    else toast.error(app.value.custom_domain?.error || 'Not verified yet. Check the DNS records and try again.')
+  } catch (e) {
+    toast.error(`Verify failed: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    verifyBusy.value = false
+  }
+}
+async function removeDomain() {
+  if (!app.value) return
+  clearingDomain.value = true
+  try {
+    app.value = await clearCustomDomain(app.value.id)
+    toast.success('Custom domain removed.')
+  } catch (e) {
+    toast.error(`Couldn't remove the domain: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    clearingDomain.value = false
+  }
+}
+async function copyRecord(text: string) {
+  if (await copyText(text)) toast.success('Copied.', 1500)
 }
 
 // Usage / over-cap recovery
@@ -497,6 +545,58 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 </div>
               </div>
             </details>
+          </section>
+
+          <section class="card card-pad" aria-labelledby="h-domain">
+            <h2 id="h-domain" class="section-title mb-1">Custom domain</h2>
+            <p class="help">
+              Serve this app on your own domain in addition to <span class="mono">{{ app.hostname }}</span>. We issue a
+              free TLS certificate automatically once DNS is verified.
+            </p>
+
+            <!-- None set -->
+            <form v-if="!cdom" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="saveDomain">
+              <input v-model="newDomain" placeholder="blog.example.com" class="input sm:max-w-xs" autocomplete="off" :disabled="suspended" />
+              <button type="submit" class="btn-secondary" :disabled="domainBusy || suspended || !newDomain.trim()">{{ domainBusy ? 'Adding…' : 'Add domain' }}</button>
+            </form>
+
+            <!-- Set -->
+            <div v-else class="mt-3 space-y-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="mono text-zinc-100">{{ cdom.host }}</span>
+                <span class="badge-info" :class="cdom.status === 'active' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'">
+                  {{ cdom.status === 'active' ? 'Active' : 'Pending verification' }}
+                </span>
+                <a v-if="cdom.status === 'active'" :href="`https://${cdom.host}`" target="_blank" rel="noopener" class="link text-sm">Open ↗</a>
+              </div>
+
+              <div v-if="cdom.status !== 'active'" class="rounded-md border border-pico-border bg-pico-card p-3 text-sm">
+                <p class="mb-2 text-zinc-300">Create these two DNS records at your domain provider, then verify:</p>
+                <ol class="space-y-2">
+                  <li>
+                    <span class="meta">1. CNAME</span>
+                    <div class="mt-0.5 flex items-stretch gap-2">
+                      <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-bg px-2 py-1 text-zinc-200">{{ cdom.host }} → {{ cdom.cname_target }}</code>
+                      <button type="button" class="btn-ghost text-xs" @click="copyRecord(cdom.cname_target)">Copy</button>
+                    </div>
+                  </li>
+                  <li>
+                    <span class="meta">2. TXT (ownership)</span>
+                    <div class="mt-0.5 flex items-stretch gap-2">
+                      <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-bg px-2 py-1 text-zinc-200">{{ cdom.challenge_host }} = {{ cdom.challenge_token }}</code>
+                      <button type="button" class="btn-ghost text-xs" @click="copyRecord(cdom.challenge_token)">Copy</button>
+                    </div>
+                  </li>
+                </ol>
+                <p v-if="cdom.error" class="mt-2 text-amber-300">{{ cdom.error }}</p>
+                <p class="mt-1 text-xs text-zinc-400">DNS changes can take a few minutes to propagate.</p>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button v-if="cdom.status !== 'active'" type="button" class="btn-secondary" :disabled="verifyBusy" @click="verifyDomain">{{ verifyBusy ? 'Checking…' : 'Verify DNS' }}</button>
+                <button type="button" class="btn-ghost text-danger-light" :disabled="clearingDomain" @click="removeDomain">Remove domain</button>
+              </div>
+            </div>
           </section>
 
           <section v-if="hasAddons" class="card card-pad" aria-labelledby="h-cred">
