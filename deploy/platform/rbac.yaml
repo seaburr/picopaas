@@ -1,18 +1,52 @@
 # Minimum RBAC for the picopaas reconciler (in-process APScheduler loop inside the api pod,
-# ARCHITECTURE.md §2) to manage per-app namespaces. No wildcards, no RBAC self-management
-# (roles/rolebindings/clusterroles/clusterrolebindings), no escalate/bind/impersonate, no
-# node writes, no exec/attach/portforward, no access to Secrets outside what's listed below.
+# ARCHITECTURE.md §2) to manage per-app namespaces. No wildcards, no escalate/impersonate, no node writes, no
+# exec/attach/portforward.
 #
-# PENTEST #19 step 2 of 2 (done): secrets/resourcequotas/limitranges/services are NO LONGER granted cluster-wide. The
-# platform SA gets them only through RoleBindings to ClusterRole picopaas-app-ns, created per app-<id> namespace by the
-# reconciler (applied right after the Namespace, before any Secret/Service) and in picopaas-system (below). Residual:
-# the SA keeps `bind` on picopaas-app-ns (resourceNames-limited, no `escalate`), so a compromised platform pod could
-# bind itself into another namespace; this narrows, not eliminates, the blast radius. Accepted/documented.
+# Two-tier grant (PENTEST #19 steps 1-2, then the PENTEST MEDIUM "reconciler SA has cluster-wide app-resource writes"):
+#   * ClusterRole picopaas-reconciler (bound CLUSTER-WIDE below) holds ONLY what has to exist before an app namespace does,
+#     or is inherently cross-namespace: namespaces, the per-namespace RoleBinding bootstrap (+ `bind`), and read-only
+#     pods / pod logs / nodes / metrics.
+#   * ClusterRole picopaas-app-ns holds every WRITE the reconciler makes INSIDE a namespace (secrets, services,
+#     resourcequotas, limitranges, deployments, ingresses, networkpolicies). It is bound per namespace by a RoleBinding the
+#     reconciler applies right after the Namespace (app/k8s_manifests.py flatten_manifests order: Namespace, RoleBinding, then
+#     everything else) and, for the platform's own namespace, by the RoleBinding below. A ClusterRole referenced from a
+#     RoleBinding is scoped to that RoleBinding's namespace, so the SA can NOT write Deployments / Ingresses /
+#     NetworkPolicies / Secrets in kube-system, default, cert-manager, traefik, ...
+#   * Residual ("bind anywhere"): the SA still has create/patch on rolebindings cluster-wide plus `bind` on picopaas-app-ns
+#     (resourceNames-limited, no `escalate`), so by RBAC alone it could bind itself into ANY namespace. The
+#     ValidatingAdmissionPolicy at the bottom of this file closes that: RoleBindings written by this SA are only admitted
+#     in app-* / picopaas-* namespaces.
+#
+# Apply order matters (kubectl apply -f is sequential): picopaas-app-ns is applied BEFORE picopaas-reconciler so there is
+# never a moment where the SA has lost the cluster-wide grant but not yet gained the namespaced one.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: picopaas
   namespace: picopaas-system
+---
+# Namespaced grant, only ever bound via a RoleBinding inside app-<id> / picopaas-system
+# (a ClusterRole referenced from a RoleBinding is scoped to that RoleBinding's namespace).
+# Everything here is something the reconciler writes inside an app namespace (see app/k8s_manifests.py render_app_manifests,
+# app/providers/kube.py apply/delete_ingress/get_status). Never bind this role with a ClusterRoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: picopaas-app-ns
+rules:
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges", "secrets", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # The app's Deployment (server-side apply = patch; get_status lists them).
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Default-deny + allow-* NetworkPolicies, and the primary + custom-domain Ingresses (delete_ingress on suspend / detach).
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -25,8 +59,10 @@ rules:
     resources: ["namespaces"]
     verbs: ["create", "delete", "get", "list", "patch"]
 
-  # Per-namespace RoleBindings (see picopaas-app-ns). `bind` is limited to that one ClusterRole by resourceNames, and
-  # there is no `escalate`, so this can't be used to hand out any other permission. Server-side apply = patch.
+  # Per-namespace RoleBindings (see picopaas-app-ns). Cluster-wide only because the RoleBinding is what GRANTS the
+  # namespaced access, so it has to be creatable in a brand-new namespace before the SA holds any rights there. `bind` is
+  # limited to that one ClusterRole by resourceNames, and there is no `escalate`, so this can't be used to hand out any other
+  # permission. Server-side apply = patch. Where it may be used is further restricted by the admission policy below.
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     verbs: ["get", "list", "create", "patch"]
@@ -35,7 +71,8 @@ rules:
     verbs: ["bind"]
     resourceNames: ["picopaas-app-ns"]
 
-  # Pod status only — no delete, no exec/attach/portforward subresources.
+  # Pod status only — no delete, no exec/attach/portforward subresources. Cluster-wide: app_pod_events() and the admin
+  # health snapshot list pods across all namespaces.
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list"]
@@ -52,27 +89,9 @@ rules:
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]
-
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["networkpolicies", "ingresses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
-# Namespaced grant, only ever bound via a RoleBinding inside app-<id> / picopaas-system / picopaas-data
-# (a ClusterRole referenced from a RoleBinding is scoped to that RoleBinding's namespace).
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: picopaas-app-ns
-rules:
-  - apiGroups: [""]
-    resources: ["resourcequotas", "limitranges", "secrets", "services"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
----
-# The platform's own secrets (picopaas-env etc.) and the in-cluster MySQL secrets, so step 2 doesn't break them.
+# The platform's own namespace: grants picopaas-app-ns (incl. the secrets/deployments/... it used to hold cluster-wide)
+# inside picopaas-system, so narrowing picopaas-reconciler above doesn't change what the SA can do there.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -99,3 +118,37 @@ roleRef:
   kind: ClusterRole
   name: picopaas-reconciler
   apiGroup: rbac.authorization.k8s.io
+---
+# Closes the "bind anywhere" residual: the platform ServiceAccount may only create/update RoleBindings in app-* and
+# picopaas-* namespaces (where the reconciler really works), never in kube-system, default, cert-manager, traefik, ...
+# Scoped by matchConditions to this one SA, so it does not affect any other user, controller or `kubectl apply` by
+# an admin/CI. failurePolicy Fail so an evaluation error denies rather than silently allows (the expression below only
+# reads request fields that always exist, so it cannot error in practice).
+# Rollback if it ever misbehaves: `kubectl delete validatingadmissionpolicybinding picopaas-rolebinding-scope`.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: picopaas-rolebinding-scope
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: only-platform-serviceaccount
+      expression: 'request.userInfo.username == "system:serviceaccount:picopaas-system:picopaas"'
+  validations:
+    - expression: "request.namespace.startsWith('app-') || request.namespace.startsWith('picopaas-')"
+      messageExpression: "'the platform service account may only create RoleBindings in app-* or picopaas-* namespaces, not in ' + request.namespace"
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: picopaas-rolebinding-scope
+spec:
+  policyName: picopaas-rolebinding-scope
+  validationActions: ["Deny"]

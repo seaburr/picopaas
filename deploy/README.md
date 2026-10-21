@@ -120,23 +120,16 @@ kubectl create secret generic do-dns-token -n picopaas-dns-sync \
 ```
 Prefer a DO token scoped to domains only for `do-dns-token` / `digitalocean-dns` if DO offers it.
 
-## Known RBAC exposure (flag for scm-security)
+## RBAC of the platform ServiceAccount (PENTEST #19 + MEDIUM, 2026-10-21)
 
-`deploy/platform/rbac.yaml`'s `picopaas-reconciler` ClusterRole grants `secrets`
-get/list/watch/create/update/patch/delete at **cluster scope**, because the reconciler creates
-and manages an arbitrary, dynamically-named namespace per app (`app-<id>`) and there's no way to
-pre-scope a namespaced Role to namespaces that don't exist yet. The same is true of
-`deployments`, `services`, `ingresses`, `resourcequotas`, `limitranges`, and `networkpolicies`.
-
-**Practical effect: a compromised platform pod (e.g. via an RCE in the FastAPI app) can read
-every Secret in every app namespace cluster-wide**, not just the ones it created — including
-per-app DB credentials and Spaces keys for every tenant. No wildcard verbs/resources were used,
-there's no `roles`/`rolebindings`/`escalate`/`bind`/`impersonate`, no `nodes`, and no
-`pods/exec`/`attach`/`portforward` — but the Secrets-cluster-wide exposure is real and is the
-single biggest blast-radius risk in this manifest set for a single-tenant-compromise-to
-cross-tenant-breach scenario. Needs a `docs/PENTEST.md` entry and a mitigation discussion
-(namespace-scoped Roles created per app namespace instead of one ClusterRole is the likely fix,
-at the cost of more moving parts in the reconciler).
+`deploy/platform/rbac.yaml` is a two-tier grant. ClusterRole `picopaas-reconciler` (cluster-wide) holds only namespaces,
+rolebindings (create/patch/get/list), `bind` on `picopaas-app-ns`, and read-only pods/pod logs/nodes/metrics. Everything the reconciler
+writes inside a namespace (secrets, services, resourcequotas, limitranges, deployments, ingresses, networkpolicies) lives in ClusterRole
+`picopaas-app-ns`, which is only usable through the per-namespace RoleBinding the reconciler creates right after each `app-<id>` Namespace
+(and the one in `picopaas-system`). A `ValidatingAdmissionPolicy` (`picopaas-rolebinding-scope`) stops the SA from creating RoleBindings
+outside `app-*` / `picopaas-*`, so a compromised platform pod cannot bind itself into kube-system or another system namespace.
+Rollout/verification/rollback: `docs/requests/0005-rbac-narrowing-runbook.md`; regression guard: `tests/test_platform_rbac.py`.
+Remaining known exposure: the SA can still create/patch/delete Namespaces cluster-wide (see the runbook's "Not changed" list).
 
 ## Not done / notes
 
