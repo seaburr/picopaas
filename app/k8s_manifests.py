@@ -17,6 +17,7 @@ from typing import Any
 
 from app.config import (
     APP_DOMAIN,
+    CUSTOM_DOMAIN_ISSUER,
     DEFAULT_CPU_LIMIT_M,
     DEFAULT_CPU_REQUEST_M,
     DEFAULT_MEM_LIMIT_MI,
@@ -532,6 +533,48 @@ def ingress_manifest(app_id: int, hostname: str, port: int) -> dict[str, Any]:
     }
 
 
+def custom_ingress_name(app_id: int) -> str:
+    return f"{_resource_name(app_id)}-custom"
+
+
+def _custom_tls_secret_name(app_id: int) -> str:
+    return f"{_resource_name(app_id)}-custom-tls"
+
+
+def custom_domain_ingress_manifest(app_id: int, custom_host: str, port: int) -> dict[str, Any]:
+    """An extra Ingress for a verified custom host. The cert-manager.io/cluster-issuer annotation makes
+    cert-manager's ingress-shim issue a per-host cert (HTTP-01) into its own Secret, owned by this Ingress — so
+    deleting this Ingress garbage-collects the Certificate and Secret too (custom-domain teardown)."""
+    name = custom_ingress_name(app_id)
+    return {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "Ingress",
+        "metadata": {
+            "name": name,
+            "namespace": namespace_name(app_id),
+            "annotations": {"cert-manager.io/cluster-issuer": CUSTOM_DOMAIN_ISSUER},
+        },
+        "spec": {
+            "ingressClassName": INGRESS_CLASS,
+            "tls": [{"hosts": [custom_host], "secretName": _custom_tls_secret_name(app_id)}],
+            "rules": [
+                {
+                    "host": custom_host,
+                    "http": {
+                        "paths": [
+                            {
+                                "path": "/",
+                                "pathType": "Prefix",
+                                "backend": {"service": {"name": _resource_name(app_id), "port": {"number": port}}},
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+    }
+
+
 def render_app_manifests(
     app_id: int,
     hostname: str,
@@ -550,8 +593,9 @@ def render_app_manifests(
     restart_nonce: str | None = None,
     used_limits: dict[str, int] | None = None,
     image_ref: str | None = None,
+    custom_host: str | None = None,
 ) -> dict[str, Any]:
-    """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts."""
+    """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
         "namespace": namespace_manifest(app_id),
         "role_binding": role_binding_manifest(app_id),
@@ -567,6 +611,10 @@ def render_app_manifests(
                                        restart_nonce=restart_nonce, image_ref=image_ref),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port) if include_ingress else None,
+        "custom_ingress": (
+            custom_domain_ingress_manifest(app_id, custom_host, port)
+            if include_ingress and custom_host else None
+        ),
     }
 
 
@@ -584,6 +632,8 @@ def flatten_manifests(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     ]
     if rendered.get("ingress") is not None:
         flat.append(rendered["ingress"])
+    if rendered.get("custom_ingress") is not None:
+        flat.append(rendered["custom_ingress"])
     return flat
 
 

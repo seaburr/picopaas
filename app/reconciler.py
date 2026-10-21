@@ -441,6 +441,7 @@ def reconcile_app(
         run_as_uid=app.run_as_uid,
         include_ingress=not suspended,
         restart_nonce=app.restart_nonce,
+        custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
     )
 
     def _hash(flat_manifests: list[dict[str, Any]]) -> str:
@@ -490,6 +491,11 @@ def reconcile_app(
         if suspended:
             # No Ingress while suspended: the host falls through to the wildcard catch-all (suspended page).
             kube.delete_ingress(namespace, k8s_manifests.ingress_name(app.id))
+        # Custom-domain Ingress exists only while the domain is verified AND the app is live. Otherwise remove it
+        # (idempotent); deleting the annotated Ingress also GCs its cert-manager Certificate + TLS Secret.
+        custom_served = bool(app.custom_domain and app.custom_domain_status == "active") and not suspended
+        if not custom_served:
+            kube.delete_ingress(namespace, k8s_manifests.custom_ingress_name(app.id))
         status = kube.get_status(namespace)
     except Exception as exc:
         # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.

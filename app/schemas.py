@@ -242,6 +242,22 @@ class RollbackRequest(BaseModel):
     digest: str = Field(min_length=1, max_length=80)
 
 
+class CustomDomainSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    host: str = Field(min_length=1, max_length=255)
+
+
+class CustomDomainOut(BaseModel):
+    """Status + the exact DNS records the user must create (shown in the UI)."""
+    host: str
+    status: str  # pending | active | error
+    verified_at: Optional[datetime] = None
+    error: Optional[str] = None
+    challenge_host: str  # add a TXT here...
+    challenge_token: str  # ...with this value (ownership proof)
+    cname_target: str  # and a CNAME from `host` to this (points the domain at the platform LB)
+
+
 class AppOut(BaseModel):
     id: int
     owner_id: int
@@ -265,4 +281,5 @@ class AppOut(BaseModel):
     last_event: Optional[AppEventOut] = None  # newest restart event, only if under 24h old
     resources: Optional[ResourcesOut] = None
     quota: AppQuotaOut = Field(default_factory=AppQuotaOut)
+    custom_domain: Optional[CustomDomainOut] = None
     env: List[EnvVarOut] = Field(default_factory=list)

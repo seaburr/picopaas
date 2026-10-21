@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, config, crypto, image_check, models, reconciler, resources, schemas
+from app import audit, config, crypto, custom_domains, image_check, models, reconciler, resources, schemas
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
@@ -73,6 +73,20 @@ def _quota_out(app: models.App) -> schemas.AppQuotaOut:
     )
 
 
+def _custom_domain_out(app: models.App) -> Optional[schemas.CustomDomainOut]:
+    if not app.custom_domain:
+        return None
+    return schemas.CustomDomainOut(
+        host=app.custom_domain,
+        status=app.custom_domain_status or "pending",
+        verified_at=app.custom_domain_verified_at,
+        error=app.custom_domain_error,
+        challenge_host=custom_domains.challenge_record(app.custom_domain),
+        challenge_token=app.custom_domain_token or "",
+        cname_target=config.CUSTOM_DOMAIN_CNAME_TARGET,
+    )
+
+
 def _app_out(app: models.App) -> schemas.AppOut:
     return schemas.AppOut(
         id=app.id,
@@ -97,6 +111,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         last_event=reconciler.last_event(app),
         resources=resources.describe(app),
         quota=_quota_out(app),
+        custom_domain=_custom_domain_out(app),
         env=[_env_var_out(e) for e in app.env_vars],
     )
 
@@ -386,4 +401,108 @@ def rotate_credentials(
     db.commit()
     db.refresh(app)
     audit.record(db, user, "app.rotate", "app", app.id, f"target={body.target}")
+    return _app_out(app)
+
+
+# --- Custom domains (app/custom_domains.py, reconciler custom ingress + cert) ---
+
+def _require_custom_domains_enabled() -> None:
+    if not config.CUSTOM_DOMAINS_ENABLED:
+        raise HTTPException(status_code=404, detail="Custom domains are not enabled on this platform.")
+
+
+@router.put("/{app_id}/domain", response_model=schemas.AppOut)
+def set_custom_domain(
+    app_id: int,
+    payload: schemas.CustomDomainSet,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Attach (or replace) a custom domain. Generates the ownership token and returns the DNS records to add.
+    The domain isn't served until it's verified (POST .../domain/verify)."""
+    _require_custom_domains_enabled()
+    app = _get_owned_app_or_404(db, app_id, user.id)
+    _forbid_if_suspended(app)
+    try:
+        host = custom_domains.normalize_host(payload.host)
+    except custom_domains.CustomDomainError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    taken = (
+        db.query(models.App)
+        .filter(models.App.custom_domain == host, models.App.id != app.id, models.App.deleted_at.is_(None))
+        .first()
+    )
+    if taken is not None:
+        raise HTTPException(status_code=409, detail="That domain is already attached to another app.")
+    was_active = app.custom_domain_status == "active"
+    app.custom_domain = host
+    app.custom_domain_token = custom_domains.generate_token()
+    app.custom_domain_status = "pending"
+    app.custom_domain_error = None
+    app.custom_domain_verified_at = None
+    if was_active:  # replacing a live domain: requeue so the old custom ingress is torn down
+        app.status = "pending"
+        app.reset_retry()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That domain is already attached to another app.")
+    audit.record(db, user, "app.domain.set", "app", app.id, f"host={host}")
+    return _app_out(app)
+
+
+@router.post("/{app_id}/domain/verify", response_model=schemas.AppOut)
+def verify_custom_domain(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Check the ownership TXT and that the host points at our LB. On success, mark active and requeue the app so
+    the reconciler renders the custom Ingress + cert. On failure, the error is stored (and shown) — status stays
+    pending so the user can fix DNS and retry."""
+    _require_custom_domains_enabled()
+    app = _get_owned_app_or_404(db, app_id, user.id)
+    if not app.custom_domain:
+        raise HTTPException(status_code=400, detail="This app has no custom domain to verify.")
+    try:
+        custom_domains.verify(app.custom_domain, app.custom_domain_token or "")
+    except custom_domains.CustomDomainError as exc:
+        app.custom_domain_status = "pending"
+        app.custom_domain_error = str(exc)
+        db.commit()
+        return _app_out(app)
+    app.custom_domain_status = "active"
+    app.custom_domain_error = None
+    app.custom_domain_verified_at = datetime.now(timezone.utc)
+    app.status = "pending"  # requeue: render the custom Ingress + request the cert
+    app.reset_retry()
+    db.commit()
+    audit.record(db, user, "app.domain.verify", "app", app.id, f"host={app.custom_domain}")
+    return _app_out(app)
+
+
+@router.delete("/{app_id}/domain", response_model=schemas.AppOut)
+def clear_custom_domain(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    """Detach the custom domain. If it was live, requeue so the reconciler deletes the custom Ingress (and
+    cert-manager GCs its cert). The generated *.APP_DOMAIN subdomain is unaffected."""
+    _require_custom_domains_enabled()
+    app = _get_owned_app_or_404(db, app_id, user.id)
+    if app.custom_domain:
+        was_active = app.custom_domain_status == "active"
+        host = app.custom_domain
+        app.custom_domain = None
+        app.custom_domain_token = None
+        app.custom_domain_status = None
+        app.custom_domain_error = None
+        app.custom_domain_verified_at = None
+        if was_active:
+            app.status = "pending"
+            app.reset_retry()
+        db.commit()
+        audit.record(db, user, "app.domain.clear", "app", app.id, f"host={host}")
     return _app_out(app)

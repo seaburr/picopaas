@@ -112,6 +112,14 @@ class App(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # False when only a user change can fix the error (invalid env refs, unreadable secrets): never auto-retried.
     error_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
+    # Custom domain (user-attached host + per-host auto-TLS; app/custom_domains.py). NULL = none, only the generated
+    # *.APP_DOMAIN subdomain. custom_domain_status: 'pending' (DNS not yet verified) -> 'active' (verified, served with
+    # its own cert) -> or 'error'. custom_domain_token is OUR ownership-TXT value (not the ACME challenge).
+    custom_domain: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    custom_domain_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    custom_domain_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    custom_domain_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    custom_domain_verified_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # Platform admin resource overrides; NULL = platform default (app/resources.py).
     cpu_request_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cpu_limit_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

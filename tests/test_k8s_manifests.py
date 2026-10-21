@@ -185,7 +185,9 @@ def test_render_app_manifests_includes_everything():
         "deployment",
         "service",
         "ingress",
+        "custom_ingress",
     }
+    assert rendered["custom_ingress"] is None  # no custom domain in the default render
     assert len(rendered["network_policies"]) == 5
 
 

@@ -74,6 +74,18 @@ API_KEY_PREFIX = "pp_sk_"
 # Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
 APP_DOMAIN = os.environ.get("APP_DOMAIN", "raisehellpraisedale.xyz")
 
+# --- Custom domains (user-attached domains + per-host auto-TLS; app/custom_domains.py + reconciler). Opt-in per app. ---
+CUSTOM_DOMAINS_ENABLED = os.environ.get("CUSTOM_DOMAINS_ENABLED", "1") != "0"
+# The CNAME target we tell users to point their domain at (the platform LB's DNS name). Verification requires the
+# custom host to resolve to the same IP(s) as this name — so we accept a CNAME, an ALIAS, or a flattened apex.
+CUSTOM_DOMAIN_CNAME_TARGET = os.environ.get("CUSTOM_DOMAIN_CNAME_TARGET", f"lb.{APP_DOMAIN}")
+# Label prefixed to the custom host for the ownership TXT (e.g. _picopaas-challenge.blog.example.com). This is OUR
+# ownership check (distinct from cert-manager's own _acme-challenge record used by the ACME HTTP-01 solver).
+CUSTOM_DOMAIN_CHALLENGE_LABEL = os.environ.get("CUSTOM_DOMAIN_CHALLENGE_LABEL", "_picopaas-challenge")
+# cert-manager ClusterIssuer (HTTP-01) that mints the per-host cert. DNS-01 issuers are DO-zone-only, so custom
+# domains (outside our DO account) must use HTTP-01. Use the -staging issuer while testing to avoid LE rate limits.
+CUSTOM_DOMAIN_ISSUER = os.environ.get("CUSTOM_DOMAIN_ISSUER", "letsencrypt-http01-prod")
+
 # Host routing (app/main.py): the platform lives at PLATFORM_HOST, the apex serves the landing page, and
 # LEGACY_HOSTS (comma-separated) 301 to PLATFORM_HOST.
 PLATFORM_HOST = os.environ.get("PLATFORM_HOST", "platform.raisehellpraisedale.xyz").lower()
