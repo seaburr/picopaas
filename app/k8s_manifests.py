@@ -441,6 +441,12 @@ def deployment_manifest(
                 "metadata": {"labels": pod_labels, "annotations": pod_annotations},
                 "spec": {
                     "automountServiceAccountToken": False,
+                    # Don't inject the {SVCNAME}_SERVICE_HOST/_PORT env vars for every Service in the namespace.
+                    # Nothing in the app needs them, and they leak the namespace's service topology into the
+                    # tenant's process env (CIS/pod-hardening best practice). The kubelet still injects the
+                    # KUBERNETES_* vars for the API server, but there's no token to use them and egress to the
+                    # API server's (private) IP is denied by the default-deny NetworkPolicy.
+                    "enableServiceLinks": False,
                     "securityContext": {
                         "runAsNonRoot": RUN_AS_NON_ROOT,
                         "seccompProfile": {"type": "RuntimeDefault"},
