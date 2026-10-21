@@ -629,3 +629,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [scm-security] START: commit landing footer Blog link + ledger; push; watch CI.
 - 2026-10-21 [scm-security] START: commit ${{ app.url }} preferred-host change; push; watch CI.
 - 2026-10-21 [backend-dev] DONE: ${{ app.url }} resolves to preferred host (custom domain > reserved subdomain > generated); tests 665 passed/60 skipped; docs updated.
+- 2026-10-21 [scm-security] DONE: 2ecef8b pushed; CI, image, deploy all green.
