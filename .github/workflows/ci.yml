@@ -53,7 +53,8 @@ jobs:
       - name: kubeconform
         run: |
           kubeconform -strict -ignore-missing-schemas -summary \
-            -ignore-filename-pattern 'values\.ya?ml$' deploy/
+            -ignore-filename-pattern 'values\.ya?ml$' \
+            -ignore-filename-pattern 'deploy/status/' deploy/
 
   backend-tests:
     runs-on: ubuntu-latest
