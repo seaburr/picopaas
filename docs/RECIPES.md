@@ -340,6 +340,110 @@ it's up, then drive it with the REST API using your key.
 
 Short URLs and visit stats live in MySQL, so they survive restarts.
 
+## Directus (headless CMS) on MySQL + S3
+
+The files are in `examples/directus/` in the repo (`README.md`, `directus.yaml`).
+[Directus](https://directus.io/) is an open-source headless CMS and data platform. It runs on PicoPaaS backed by
+the platform's MySQL database **and** the Spaces bucket, so it's the recipe that exercises the **full platform
+stack at once** (verified live at `https://directus.picopaas.xyz`: its data and an uploaded file both survived a
+pod restart, with CA-verified TLS to MySQL and no `sql_require_primary_key` issue).
+
+### No custom image needed
+
+Like Grafana and Shlink, Directus needs **no Dockerfile and no wrapper**. The official
+`directus/directus:12.4.1` image already runs as a non-root user (`node`), is about **242 MB** (under the 256 MB
+cap), and is configured entirely through environment variables. Point PicoPaaS straight at the public image,
+port `8055`. Pin a version (`:12.4.1`), not `:latest`. Request **both** a database (`db: true`) and a bucket
+(`storage: true`), and leave `auto_update: false`.
+
+### Point it at the platform MySQL — with CA-verified TLS
+
+Directus takes its database config as individual env vars, so map the platform refs one-to-one:
+
+- `DB_CLIENT=mysql`
+- `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_DATABASE=${{ db.name }}`, `DB_USER=${{ db.user }}`
+- `DB_PASSWORD=${{ db.password }}` — a ref; the platform injects the real password at deploy time.
+
+Our managed MySQL requires TLS, and here's the nice part:
+
+- `DB_SSL__CA=${{ db.ca_cert }}` — **CA-verified** TLS. Directus (via Knex) accepts the CA *content* directly in
+  this variable, so you get a fully verified connection with **no file to mount** and no skip-verify to reason
+  about. This is cleaner than the Grafana recipe, where the driver forces a CA-path-on-disk workaround and you
+  settle for encrypted-but-unverified.
+
+Keep the connection pool under the **10-connection-per-DB-user** cap:
+
+- `DB_POOL__MIN=0`, `DB_POOL__MAX=5`
+
+### Files on the Spaces bucket (S3)
+
+Directus stores uploaded files through an S3 driver, pointed at the platform's Spaces bucket:
+
+- `STORAGE_LOCATIONS=s3`, `STORAGE_S3_DRIVER=s3`
+- `STORAGE_S3_KEY=${{ storage.access_key }}`, `STORAGE_S3_SECRET=${{ storage.secret_key }}` (a ref; injected at
+  deploy time), `STORAGE_S3_BUCKET=${{ storage.bucket }}`, `STORAGE_S3_REGION=${{ storage.region }}`,
+  `STORAGE_S3_ENDPOINT=${{ storage.endpoint }}`
+
+No path-style flag is needed for Spaces — the default virtual-hosted addressing works.
+
+### The two required secrets, the admin, and the rest
+
+- `KEY` and `SECRET` — two required random strings Directus needs for signing and encryption. **Generate them
+  once and keep them stable** across deploys: rotating them invalidates sessions and breaks data encrypted at
+  rest. Set both as **secrets**.
+- `ADMIN_EMAIL` (a literal in the spec) plus `ADMIN_PASSWORD` (a **secret**) — the first admin account.
+- `PUBLIC_URL=${{ app.url }}` — Directus's public URL, resolved at deploy time to this app's own host.
+- `TELEMETRY=false` — turn off the outbound phone-home (tenant egress is restricted anyway).
+
+### `HOME=/tmp` and `PM2_HOME=/tmp/.pm2` are required
+
+Set both, or the app never serves:
+
+- `HOME=/tmp`
+- `PM2_HOME=/tmp/.pm2`
+
+The image launches Directus under a pm2 wrapper that, on boot, tries to `mkdir` a home directory for the
+non-root UID. The container's real home isn't writable by that UID, so without these two pointing pm2 at a
+writable path (`/tmp` is writable for any UID) it fails with `EACCES` and the process dies before it binds the
+port. This is the single most important line in the recipe.
+
+### Leave the health check OFF
+
+This is the one place Directus bends the usual advice. **Don't enable the readiness/liveness probe:**
+
+```yaml
+healthCheck: { enabled: false }
+```
+
+Directus **cold-starts slowly** — about **90–110s** on the 0.2-core CPU limit, because it loads its module
+graph twice during boot. The platform's liveness-probe timing (30s initial delay, then 3×20s) is far too tight
+for that, so an enabled probe decides the pod is dead and **restart-loops it** before Directus ever finishes
+starting. Turning the probe off lets it boot.
+
+The trade-off is real and worth stating plainly: with no probe, the app has **no liveness protection** (a wedged
+process won't be auto-restarted) and you'll see **~90s of downtime on every deploy or restart** while it cold-starts.
+For a throwaway CMS that's an acceptable deal; for anything you lean on, know what you're giving up. (If the
+platform's probe timing is ever relaxed, `/server/ping` is the public health path to point at — note that
+`/server/health` returns `403` to unauthenticated callers, so it's not usable as a probe path.)
+
+### Two harmless boot notes
+
+- A WARN on boot: `Couldn't bundle App extensions (EACCES ...)`. The container filesystem is read-only and you
+  aren't using custom extensions, so this is cosmetic — the admin UI and API work normally.
+- Run a **single replica**. Scaled-out Directus wasn't tested here (and see the Grafana recipe on why
+  multi-replica clustering isn't a platform feature).
+
+### Deploy on PicoPaaS
+
+Apply the spec exactly as in the Ghost recipe (dashboard **New app**, or `picopaas apply -f directus.yaml`, or
+the `/apps/spec` curl). Three values aren't platform refs — `KEY`, `SECRET`, and `ADMIN_PASSWORD` — so list them
+by name under `secrets:` and provide the values through the dashboard's secret editor or the API, never in the
+YAML file. Give the first boot ~90s, then open the app's URL and log in as `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+
+Directus is a clean demonstration of the full stack: it runs **non-root**, needs **no custom build**, is
+**PK-clean** (no `sql_require_primary_key` collision), and uses **MySQL and the Spaces bucket together** — so
+both your content and your uploads survive restarts.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build

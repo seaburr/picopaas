@@ -1,0 +1,64 @@
+apiVersion: picopaas/v1
+name: directus
+# Public image, pinned. Runs as the non-root user `node` and is configured entirely via env vars,
+# so no custom build is needed. ~242 MB, under the 256 MB image cap.
+image: directus/directus:12.4.1
+port: 8055
+# Health check is intentionally OFF. Directus cold-starts in ~90-110s on the 0.2-core limit
+# (it loads its modules twice), which is far longer than the platform's liveness timing
+# (30s delay + 3x20s) tolerates — an enabled probe restart-loops the pod. See docs/RECIPES.md.
+# Trade-off: no liveness protection + ~90s downtime on each deploy/restart.
+# (If probe timing is ever relaxed, /server/ping is the public health path; /server/health 403s
+#  to unauthenticated callers.)
+healthCheck:
+  enabled: false
+resources:
+  db: true
+  storage: true
+env:
+  # Database: individual vars, platform refs mapped one-to-one.
+  DB_CLIENT: "mysql"
+  DB_HOST: "${{ db.host }}"
+  DB_PORT: "${{ db.port }}"
+  DB_DATABASE: "${{ db.name }}"
+  DB_USER: "${{ db.user }}"
+  # A ref: the platform injects the real password at deploy time (not a literal).
+  DB_PASSWORD: "${{ db.password }}"
+
+  # CA-verified TLS to managed MySQL. Directus accepts the CA *content* directly (no file to
+  # mount), so this is cleaner than the skip-verify dance other apps need.
+  DB_SSL__CA: "${{ db.ca_cert }}"
+
+  # Keep the pool under the 10-connection-per-DB-user cap.
+  DB_POOL__MIN: "0"
+  DB_POOL__MAX: "5"
+
+  # The first admin. Password is a secret (below), not a literal here.
+  ADMIN_EMAIL: "admin@example.com"
+
+  # File storage on the Spaces bucket (S3-compatible). Keys/secret are platform refs.
+  STORAGE_LOCATIONS: "s3"
+  STORAGE_S3_DRIVER: "s3"
+  STORAGE_S3_KEY: "${{ storage.access_key }}"
+  # A ref: the platform injects the real Spaces secret key at deploy time.
+  STORAGE_S3_SECRET: "${{ storage.secret_key }}"
+  STORAGE_S3_BUCKET: "${{ storage.bucket }}"
+  STORAGE_S3_REGION: "${{ storage.region }}"
+  STORAGE_S3_ENDPOINT: "${{ storage.endpoint }}"
+
+  PUBLIC_URL: "${{ app.url }}"
+  TELEMETRY: "false"
+
+  # REQUIRED. The image's pm2 wrapper mkdir's a home dir as the non-root UID on boot; without
+  # a writable HOME/PM2_HOME it fails with EACCES and the container never serves.
+  HOME: "/tmp"
+  PM2_HOME: "/tmp/.pm2"
+
+secrets:
+  # Two required random strings — generate once and keep them STABLE across deploys
+  # (changing KEY/SECRET invalidates sessions and breaks existing data at rest).
+  - KEY
+  - SECRET
+  # The first admin's password.
+  - ADMIN_PASSWORD
+  # Set each value in the dashboard's secret editor or via the API. Never put values in this file.
