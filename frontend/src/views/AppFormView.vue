@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppTabs from '../components/AppTabs.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
@@ -264,6 +265,8 @@ async function onSubmit() {
           <RouterLink to="/templates" class="link">Browse templates</RouterLink>
         </p>
       </div>
+
+      <AppTabs v-if="isEdit && loadedApp" :id="loadedApp.id" active="edit" />
 
       <p v-if="templateNote" class="alert-info mb-3">
         <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
