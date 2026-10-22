@@ -1,4 +1,4 @@
-# 0006: Managed PostgreSQL support (status: PROPOSED, research + design only; NOT approved, nothing built)
+# 0006: Managed PostgreSQL support (status: APPROVED 2026-10-22, managed single-node SKU; Terraform written + validated, apply PENDING review)
 
 Chas asked for a roadmap and design for PostgreSQL alongside (or eventually instead of) MySQL, and was explicit: do not
 build anything. This file is the feasibility study and the budget request. No code, migration, provider or Terraform
@@ -25,6 +25,17 @@ exists for it. Nothing here may be provisioned until Chas marks it APPROVED.
      two) but is a large migration; see section 5 of the design.
 
 Approval line (Chas fills in): `APPROVED: <variant> on <date>` / `DECLINED`.
+
+## APPROVAL (2026-10-22)
+
+`APPROVED: managed, cheapest single-node SKU on 2026-10-22` (owner approved the budget: "use the cheapest managed service SKU you can find"). Supersedes the in-cluster-pilot-first recommendation above.
+
+- **SKU:** DO Managed PostgreSQL, Standard edition, slug `db-s-1vcpu-1gb` (1 vCPU / 1 GiB / 10 GiB disk), `node_count = 1` (no standby/HA), engine `pg`, version **17** (Standard EOL 2029-11-08), region `nyc3`, same VPC as DOKS and MySQL.
+- **Confirmed cost:** **$15.15/mo** ($0.02254/hr) per DO's pricing page (https://www.digitalocean.com/pricing/managed-databases), the cheapest Postgres tier. $0 per app. No I/O or egress charge inside the VPC.
+- **New baseline:** about **$75/mo** (previous about $60 + $15.15); about $103 with the autoscaled second node up.
+- **Terraform:** `infra/database.tf` (cluster `picopaas-pg-nyc3`, firewall trusting the k8s cluster + VPC range, CA data source), `infra/variables.tf` (`use_managed_postgres`, `postgres_size`, `postgres_version`), `infra/outputs.tf` (sensitive host/port/admin user/password/private uri/CA). `terraform fmt` + `validate` pass; no plan run locally (no DigitalOcean token in the dev env).
+- **Status: apply is PENDING review.** Nothing is provisioned. The real plan runs via the `terraform` GitHub workflow after commit.
+- **Follow-ups for the build stages (not built):** (1) egress NetworkPolicy needs a Postgres equivalent of `allow-egress-mysql` (5432 in-cluster, or the DO-assigned port such as 25060, from `DbServer.port`); (2) bootstrap must register the PG as an engine-aware `DbServer` (`DbServer.engine`, `BOOTSTRAP_PG_*`, CA from `postgres_ca_cert`); (3) `.github/workflows/terraform.yml` slug check only validates `mysql_size`; add an equivalent for `options.pg` sizes/versions.
 
 ---
 

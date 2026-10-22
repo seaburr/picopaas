@@ -84,3 +84,27 @@ variable "control_plane_allowed_cidrs" {
   type        = list(string)
   default     = []
 }
+
+variable "use_managed_postgres" {
+  description = <<-EOT
+    true  = provision a DO managed PostgreSQL cluster (request 0006, APPROVED 2026-10-22).
+    false = skip it.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "postgres_size" {
+  description = <<-EOT
+    DO managed PostgreSQL size slug. Cheapest Standard-edition plan, 1 vCPU / 1 GiB / 10 GiB, single node
+    ($15.15/mo; Chas: cheapest managed SKU, 2026-10-22). Same slug as mysql_size. NO standby/HA node.
+  EOT
+  type        = string
+  default     = "db-s-1vcpu-1gb"
+}
+
+variable "postgres_version" {
+  description = "PostgreSQL major version. 17: Standard-edition EOL 2029-11-08 (16 is 2028-11-09; 18 has no published EOL yet)."
+  type        = string
+  default     = "17"
+}

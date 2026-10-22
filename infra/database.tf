@@ -39,3 +39,47 @@ resource "digitalocean_database_firewall" "mysql" {
     value = digitalocean_vpc.main.ip_range
   }
 }
+
+# Managed PostgreSQL (request 0006). Same shape as MySQL above: nyc3, same VPC, single node, no HA/standby.
+resource "digitalocean_database_cluster" "postgres" {
+  count = var.use_managed_postgres ? 1 : 0
+
+  name       = "picopaas-pg-${var.region}"
+  engine     = "pg"
+  version    = var.postgres_version
+  size       = var.postgres_size
+  region     = var.region
+  node_count = 1 # single node, no standby
+
+  private_network_uuid = digitalocean_vpc.main.id
+
+  tags = ["picopaas"]
+
+  lifecycle {
+    prevent_destroy = true # will hold tenant data
+  }
+}
+
+# Same trusted sources as MySQL: the k8s cluster, plus the private VPC range (the k8s rule alone missed autoscaled nodes).
+resource "digitalocean_database_firewall" "postgres" {
+  count = var.use_managed_postgres ? 1 : 0
+
+  cluster_id = digitalocean_database_cluster.postgres[0].id
+
+  rule {
+    type  = "k8s"
+    value = digitalocean_kubernetes_cluster.picopaas.id
+  }
+
+  rule {
+    type  = "ip_addr"
+    value = digitalocean_vpc.main.ip_range
+  }
+}
+
+# CA certificate for sslmode=verify-ca (consumed later by the DbServer.ca_cert bootstrap).
+data "digitalocean_database_ca" "postgres" {
+  count = var.use_managed_postgres ? 1 : 0
+
+  cluster_id = digitalocean_database_cluster.postgres[0].id
+}
