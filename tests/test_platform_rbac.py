@@ -146,7 +146,7 @@ def test_no_writes_outside_bound_namespaces(roles, docs, ns, resource, group):
         assert not _allowed(roles, docs, verb, group, resource, ns, bound_namespaces={"app-7"}), (verb, resource, ns)
 
 
-def test_admission_policy_confines_rolebindings_to_app_and_platform_namespaces(docs):
+def test_admission_policy_confines_rolebindings_to_app_namespaces(docs):
     vap = next(d for d in docs if d["kind"] == "ValidatingAdmissionPolicy")
     binding = next(d for d in docs if d["kind"] == "ValidatingAdmissionPolicyBinding")
     assert binding["spec"]["policyName"] == vap["metadata"]["name"]
@@ -161,8 +161,14 @@ def test_admission_policy_confines_rolebindings_to_app_and_platform_namespaces(d
     assert cond["expression"] == f'request.userInfo.username == "{SA}"'
     (check,) = spec["validations"]
     expr = check["expression"]
-    assert "request.namespace.startsWith('app-')" in expr and "request.namespace.startsWith('picopaas-')" in expr
-    assert expr.count("||") == 1 and "&&" not in expr
+    assert expr == "request.namespace.startsWith('app-')"  # app-* ONLY (pentest N1): no picopaas-* allowance
+    assert "picopaas-" not in expr and "||" not in expr and "&&" not in expr
+    # Evaluate the rule the way CEL would: allowed in app-*, denied in the system / platform namespaces.
+    allows = lambda ns: ns.startswith("app-")
+    assert allows("app-105") and allows("app-1")
+    for ns in ("picopaas-data", "picopaas-system", "kube-system", "default", "cert-manager", "traefik"):
+        assert not allows(ns), ns
+    assert "picopaas-" not in check["messageExpression"]
     # The per-app RoleBinding the reconciler creates satisfies the policy.
     assert k8s.role_binding_manifest(7)["metadata"]["namespace"].startswith("app-")
     assert k8s.PLATFORM_SA_NAMESPACE == "picopaas-system" and k8s.PLATFORM_SA_NAME == "picopaas"

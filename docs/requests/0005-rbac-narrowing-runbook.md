@@ -7,7 +7,7 @@ Status: APPROVED by Chas (2026-10-21). Implemented in the working tree, **not co
    `deployments`, `ingresses`, `networkpolicies` move out of the cluster-wide ClusterRole `picopaas-reconciler` into the
    namespaced-by-binding ClusterRole `picopaas-app-ns`; the cluster-wide role keeps only namespaces, rolebindings (create/patch/get/list),
    `bind` on `picopaas-app-ns`, and read-only pods/pods-log/nodes/metrics. A `ValidatingAdmissionPolicy` + binding
-   (`picopaas-rolebinding-scope`) denies RoleBinding create/update by this SA outside `app-*` / `picopaas-*` namespaces.
+   (`picopaas-rolebinding-scope`) denies RoleBinding create/update by this SA outside `app-*` namespaces (initially `app-*` / `picopaas-*`; tightened to `app-*` only on 2026-10-22, see "Tightening: app-* only" below).
 2) **Why.** A compromised platform pod could otherwise create Deployments/Ingresses/NetworkPolicies in kube-system and bind itself
    (`bind` on `picopaas-app-ns`, which grants Secrets CRUD) into any namespace: cluster takeover.
 3) **Cost.** $0 static, $0 per app.
@@ -61,11 +61,11 @@ for v in get list watch update patch delete; do for r in deployments.apps ingres
 # unchanged (NO):  list secrets -n kube-system, bind clusterroles/cluster-admin, escalate clusterroles
 
 # 3. Admission policy (server dry-run, nothing persists). kube-system/default must be DENIED, app-97 must be allowed:
-for ns in kube-system default cert-manager app-97 picopaas-system; do
+for ns in kube-system default cert-manager traefik picopaas-data picopaas-system app-97; do
   echo "== $ns"; kubectl create rolebinding vap-probe --clusterrole=picopaas-app-ns --serviceaccount=picopaas-system:picopaas \
     -n $ns --as=$SA --dry-run=server 2>&1 | grep -v '^Warning: version'; done
-# expect: "denied request: ValidatingAdmissionPolicy 'picopaas-rolebinding-scope' ... may only create RoleBindings in app-* or picopaas-*"
-#         for kube-system, default, cert-manager; "created (server dry run)" for app-97 and picopaas-system.
+# expect: "denied request: ValidatingAdmissionPolicy 'picopaas-rolebinding-scope' ... may only create RoleBindings in app-* namespaces"
+#         for kube-system, default, cert-manager, traefik, picopaas-data, picopaas-system; "created (server dry run)" only for app-97.
 # The VAP only matches this SA: your admin kubeconfig must still be able to create RoleBindings anywhere
 #   (kubectl create rolebinding vap-probe --clusterrole=view --user=x -n kube-system --dry-run=server  -> created (server dry run)).
 ```
@@ -98,3 +98,24 @@ for ns in kube-system default cert-manager app-97 picopaas-system; do
   (API server refuses: verified by server dry-run as the SA), but the SA could still delete cert-manager, traefik, picopaas-system or picopaas-data, or relabel any namespace
   (e.g. loosen Pod Security). A second ValidatingAdmissionPolicy (namespace writes by this SA must be named `app-*`, plus its own) would close it; not done here (out of scope; it touches the Namespace apply path).
 * Binding to a Role in a tenant namespace is unrestricted by the VAP (it matches `app-*`); an attacker-chosen `app-*` namespace they create themselves gets nothing the SA doesn't already have.
+
+## Tightening: app-* only (pentest N1, owner-approved 2026-10-22)
+The `picopaas-rolebinding-scope` policy used to also admit the SA's RoleBinding writes in `picopaas-*`, so a post-RCE platform pod could bind
+`picopaas-app-ns` (Secrets CRUD) in `picopaas-data` and read the in-cluster MySQL admin Secret. The expression is now only
+`request.namespace.startsWith('app-')`. Safe because at runtime the reconciler writes exactly one RoleBinding per app, in `app-<id>`
+(`app/k8s_manifests.py role_binding_manifest`; no other code creates RoleBindings). The `picopaas-system` binding (`picopaas-platform`) is applied
+by `deploy.yml`/`bootstrap.yml` with the CI cluster-admin credential, which the policy (matched to the platform SA only) ignores.
+The only change in `kubectl diff` is the one validation expression + message.
+
+After-deploy verification. NOTE: `kubectl auth can-i` evaluates RBAC only, not admission, so it still answers `yes` for rolebindings in any
+namespace (the VAP is the control). Use server dry-run for the deny:
+```bash
+SA=system:serviceaccount:picopaas-system:picopaas
+for ns in picopaas-data picopaas-system kube-system; do   # each must be DENIED by picopaas-rolebinding-scope
+  kubectl create rolebinding vap-probe --clusterrole=picopaas-app-ns --serviceaccount=picopaas-system:picopaas -n $ns --as=$SA --dry-run=server 2>&1 | tail -1; done
+kubectl create rolebinding vap-probe --clusterrole=picopaas-app-ns --serviceaccount=picopaas-system:picopaas -n app-105 --as=$SA --dry-run=server   # created (server dry run)
+kubectl auth can-i create rolebindings -n app-105 --as=$SA    # yes (RBAC); picopaas-data also says yes here, by design (admission denies it)
+kubectl -n picopaas-system logs deploy/picopaas | grep -iE "forbidden|403"   # nothing new
+```
+Then deploy a throwaway app end to end (step 5 above); the new `app-<id>` namespace + RoleBinding must still be created. Rollback: revert the
+expression, or `kubectl delete validatingadmissionpolicybinding picopaas-rolebinding-scope`.

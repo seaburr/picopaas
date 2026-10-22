@@ -15,7 +15,7 @@
 #   * Residual ("bind anywhere"): the SA still has create/patch on rolebindings cluster-wide plus `bind` on picopaas-app-ns
 #     (resourceNames-limited, no `escalate`), so by RBAC alone it could bind itself into ANY namespace. The
 #     ValidatingAdmissionPolicy at the bottom of this file closes that: RoleBindings written by this SA are only admitted
-#     in app-* / picopaas-* namespaces.
+#     in app-* namespaces (tightened from app-* / picopaas-*; pentest N1).
 #
 # Apply order matters (kubectl apply -f is sequential): picopaas-app-ns is applied BEFORE picopaas-reconciler so there is
 # never a moment where the SA has lost the cluster-wide grant but not yet gained the namespaced one.
@@ -119,8 +119,10 @@ roleRef:
   name: picopaas-reconciler
   apiGroup: rbac.authorization.k8s.io
 ---
-# Closes the "bind anywhere" residual: the platform ServiceAccount may only create/update RoleBindings in app-* and
-# picopaas-* namespaces (where the reconciler really works), never in kube-system, default, cert-manager, traefik, ...
+# Closes the "bind anywhere" residual: the platform ServiceAccount may only create/update RoleBindings in app-*
+# namespaces (the only place the reconciler writes one at runtime), never in kube-system, default, cert-manager, traefik,
+# picopaas-data (in-cluster MySQL admin Secret, pentest N1) or picopaas-system. The picopaas-system RoleBinding above is
+# applied by bootstrap/deploy with the CI cluster-admin credential, which this policy does not match.
 # Scoped by matchConditions to this one SA, so it does not affect any other user, controller or `kubectl apply` by
 # an admin/CI. failurePolicy Fail so an evaluation error denies rather than silently allows (the expression below only
 # reads request fields that always exist, so it cannot error in practice).
@@ -141,8 +143,8 @@ spec:
     - name: only-platform-serviceaccount
       expression: 'request.userInfo.username == "system:serviceaccount:picopaas-system:picopaas"'
   validations:
-    - expression: "request.namespace.startsWith('app-') || request.namespace.startsWith('picopaas-')"
-      messageExpression: "'the platform service account may only create RoleBindings in app-* or picopaas-* namespaces, not in ' + request.namespace"
+    - expression: "request.namespace.startsWith('app-')"
+      messageExpression: "'the platform service account may only create RoleBindings in app-* namespaces, not in ' + request.namespace"
       reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1

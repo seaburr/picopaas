@@ -127,7 +127,7 @@ rolebindings (create/patch/get/list), `bind` on `picopaas-app-ns`, and read-only
 writes inside a namespace (secrets, services, resourcequotas, limitranges, deployments, ingresses, networkpolicies) lives in ClusterRole
 `picopaas-app-ns`, which is only usable through the per-namespace RoleBinding the reconciler creates right after each `app-<id>` Namespace
 (and the one in `picopaas-system`). A `ValidatingAdmissionPolicy` (`picopaas-rolebinding-scope`) stops the SA from creating RoleBindings
-outside `app-*` / `picopaas-*`, so a compromised platform pod cannot bind itself into kube-system or another system namespace.
+outside `app-*` (tightened 2026-10-22, pentest N1: `picopaas-data` / `picopaas-system` are denied too), so a compromised platform pod cannot bind itself into kube-system, `picopaas-data` (MySQL admin Secret) or any other system namespace. The `picopaas-system` binding comes from `deploy.yml`/`bootstrap.yml` (CI credential). After a deploy verify with `--dry-run=server` rolebinding probes (see the runbook; `kubectl auth can-i` ignores admission).
 Rollout/verification/rollback: `docs/requests/0005-rbac-narrowing-runbook.md`; regression guard: `tests/test_platform_rbac.py`.
 Remaining known exposure: the SA can still create/patch/delete Namespaces cluster-wide (see the runbook's "Not changed" list).
 
