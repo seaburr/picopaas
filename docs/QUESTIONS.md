@@ -7,12 +7,15 @@ background on each item if you want it.
 
 ## Open questions
 
-- **PostgreSQL support — your call on a few things (full design in `docs/requests/0006-postgresql-support.md`, status PROPOSED).** It's feasible: Postgres can replicate our per-app DB+role + TLS + egress-lock + connection-cap model; the only hard part is the 50 MB size quota (Postgres has no per-DB cap, so enforcement is a two-stage speed-bump → hard cutoff, weaker against a *hostile* tenant than MySQL's un-undoable REVOKE). Decisions:
-  1. **In-cluster Postgres pilot** (~$0–2/mo PVC, within budget — recommended) vs **DO Managed Postgres** (~$15/mo, pushes the baseline ~$60→~$75, **over the ~$60/mo cap → needs your budget approval**).
-  2. **Add Postgres alongside MySQL now, revisit retiring MySQL after ~a quarter** (recommended — Ghost is MySQL-only and the control plane uses MySQL `GET_LOCK` + MySQL migrations) vs commit to Postgres-only.
-  3. OK with the weaker-vs-hostile-tenant quota enforcement trade-off?
-  4. A live spike to confirm what DO managed `doadmin` can actually do is needed **before any build**.
-  Unlocks n8n, Listmonk, Miniflux, Wiki.js and more.
+- **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
+  shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
+  databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
+  run, but we can't seal them: they're shared catalogs owned by the cluster superuser, DO's `doadmin` isn't superuser,
+  and even with superuser the names leak through `pg_stat_activity`, `pg_shdepend` and error-message differences. Shared
+  PG platforms (Supabase, RDS, Heroku's shared tiers) accept this. The only real seal is one database instance per app,
+  which costs per app (a 1 GiB managed instance is ~$15/mo). **Accepted for now.** Revisit if PicoPaaS moves toward
+  app-specific hosting or a tenant that cares about name confidentiality shows up. Optional: Claude can test on a
+  throwaway database exactly how much DO lets us revoke. — _your answer:_
 
 - **FYI: a hard cap of 5 active apps per account (admins included) now exists** (`MAX_APPS_PER_USER`, app/config.py). You may want to mention it in bootstrap.md. Yes, document it and the default value.
 
@@ -74,6 +77,14 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-22: **PostgreSQL support (answered and shipped).** Chas approved DO Managed PostgreSQL on the cheapest SKU
+  (`db-s-1vcpu-1gb`, $15.15/mo, baseline now ≈ $75.30/mo), alongside MySQL rather than replacing it, with the two-stage
+  quota trade-off accepted. The spike confirmed what `doadmin` can do. It's live: the `primary-pg` database server is registered, and n8n (app 110) passed
+  the acceptance test, which included surviving a restart. The pentest found no cross-tenant data access or privilege
+  escalation. Chas accepted F1 (all database servers share one `/24` that tenant egress allows, so a tenant can open TCP
+  to the other engine's server, though it can't authenticate) and F2 (trusted `dblink`/`postgres_fdw` let a tenant probe
+  the network from the database server). Both are recorded in OPERATIONS.md §9. F3 is still open above. Request 0006 is
+  IMPLEMENTED.
 - 2026-10-21: **Release-blogger API key (answered).** The key needed is a Ghost **Admin API** credential (`<id>:<secret>`);
   a Custom Integration Admin API key or a **Staff Access Token** both work (JWT signed with the secret, `kid`=id, audience
   `/admin/`). Chas will provide it as GitHub secret **`PICOPAAS_GHOST_BLOGGER_TOKEN`**; `.claude/agents/release-blogger.md`

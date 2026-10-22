@@ -188,6 +188,20 @@ Other known gaps:
 - PodDisruptionBudget for the platform is deferred until 2+ nodes.
 - Spaces credential theft is out of scope (request 0002).
 
+Accepted risks from the PostgreSQL pentest (Chas, 2026-10-22). None of them gives access to another tenant's data:
+
+- **F1: shared database subnet.** Tenant DB egress allows the whole VPC `/24` on the database port, not only the app's
+  own server. A PostgreSQL app can open TCP to the MySQL server, and a MySQL app whose server listens on 25060 can open
+  TCP to the PostgreSQL server. Getting in still needs valid credentials and CONNECT, and the platform admin logins
+  refuse tenants. To tighten this, narrow the egress to each DbServer's `/32`, which means pinning the managed IPs.
+- **F2: trusted extensions on PostgreSQL.** A tenant owns schema `public`, so it can `CREATE EXTENSION dblink` or
+  `postgres_fdw` and open outbound TCP from the database server, outside its pod's NetworkPolicy. These extensions still
+  need a password plus CONNECT on the target, so they don't reach other tenants' databases. DO blocks `file_fdw`,
+  `COPY ... PROGRAM`, file reads and the untrusted procedural languages. Revoking CREATE on `public` would break app
+  migrations.
+- **F3: catalog names (open, see QUESTIONS.md).** On PostgreSQL, tenants can read other apps' database and role *names*
+  from `pg_database` and `pg_roles`. They can't read data or password hashes. This can't be sealed on a shared server.
+
 ## Unknown app hosts and suspended apps
 
 An unknown `*.picopaas.xyz` host matches the low-priority catch-all Ingress
