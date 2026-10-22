@@ -114,6 +114,52 @@ updates the app in place.
 
 Posts and settings live in MySQL and uploaded images in the bucket, so both survive restarts.
 
+## Status / uptime page (Gatus)
+
+The files are in `examples/status/` in the repo (`Dockerfile`, `config.yaml`, `README.md`).
+
+### Why a custom image
+
+Apps have no config-file mount, so Gatus's `config.yaml` has to be baked into the image. The upstream
+`twinproduction/gatus` image is `FROM scratch` and runs as root; PicoPaaS rejects root, so the wrapper sets a numeric
+`USER 10001:10001` (works on scratch, no `/etc/passwd` needed).
+
+### The image
+
+```dockerfile
+FROM twinproduction/gatus:v5.37.0
+USER 10001:10001
+COPY config.yaml /config/config.yaml
+ENV GATUS_CONFIG_PATH=/config/config.yaml
+EXPOSE 8080
+```
+
+The template config monitors `https://example.com` and a DNS lookup, with in-memory storage (no persistent volume,
+so history resets on restart). Replace the endpoints with your own public services. Keep secrets out of the file:
+reference them as `${ENV_VAR}` and set them as app env vars. SMTP egress is blocked, so alert via a webhook
+(Discord, Slack, ntfy, Telegram), not email.
+
+### Deploy on PicoPaaS
+
+Build and push the image (the `examples` workflow publishes `ghcr.io/seaburr/picopaas-example-status`; make the
+package public). Then create an app with that image, port `8080`, and no database or bucket:
+
+```yaml
+apiVersion: picopaas/v1
+name: my-status
+image: ghcr.io/seaburr/picopaas-example-status:latest
+port: 8080
+```
+
+Apply it as in the Ghost recipe. Ask an admin for a reserved subdomain if you want a short URL.
+
+### Use case and limitation
+
+Use it to monitor **any public service** (your other apps' custom domains, third-party APIs, DNS): tenant egress
+allows the public internet. It **cannot probe PicoPaaS's own public URLs** from inside the cluster, because traffic
+to the platform's own load balancer hairpins and fails. That is tenant isolation doing its job, not a bug; monitor
+the platform from an external service instead.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build

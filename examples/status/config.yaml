@@ -1,0 +1,52 @@
+# Example Gatus config. It renders GREEN out of the box using stable public endpoints.
+#
+# >>> REPLACE the endpoints below with YOUR OWN public services before you deploy. <<<
+#
+# Secrets are ${ENV_VAR} placeholders resolved from the app's PicoPaaS env vars at startup;
+# never write a real secret in this file.
+web:
+  port: 8080
+
+# In-memory: PicoPaaS has no persistent volume. Check history resets whenever the pod restarts.
+storage:
+  type: memory
+
+ui:
+  title: My Status Page
+  header: My Status Page
+  description: Live health of my services, checked every minute.
+
+# Alerting is OFF by default. To enable: uncomment, set DISCORD_WEBHOOK_URL as an app env var
+# (a PicoPaaS secret), then add `alerts:` to the endpoints you care about.
+# Outbound SMTP (25/465/587) is blocked for tenant apps, so use a webhook provider
+# (discord/slack/ntfy/telegram), not email.
+# alerting:
+#   discord:
+#     webhook-url: "${DISCORD_WEBHOOK_URL}"
+#     default-alert:
+#       failure-threshold: 3
+#       success-threshold: 2
+#       send-on-resolved: true
+
+endpoints:
+  # HTTP check against a public site. Swap in your own URL.
+  - name: Example website
+    group: Public
+    url: https://example.com
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+    # alerts:
+    #   - type: discord
+
+  # DNS check: does the name resolve through a public resolver?
+  - name: Example DNS
+    group: Public
+    url: 1.1.1.1
+    interval: 5m
+    dns:
+      query-name: example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
