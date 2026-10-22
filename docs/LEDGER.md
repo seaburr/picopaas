@@ -683,3 +683,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] START: commit/push managed PostgreSQL feature, watch CI/image/deploy.
 - 2026-10-22 [scm-security] DONE: managed PostgreSQL committed 83a46cd and pushed; CI, image, deploy all green. No security findings filed.
 - 2026-10-22 [scm-security] START: commit/push engine picker UI, docs MySQL+PostgreSQL pass, n8n recipe; watch CI.
+- 2026-10-22 [scm-security] DONE: engine picker 910a24f, docs pass be9c60f, n8n recipe 9658ee9 pushed; CI, image, examples, deploy all green. No security findings filed.
