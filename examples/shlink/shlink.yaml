@@ -1,0 +1,42 @@
+apiVersion: picopaas/v1
+name: shlink
+# Public image, pinned. Runs as non-root UID 1001 and is configured entirely via env vars,
+# so no custom build is needed.
+image: shlinkio/shlink:5.1.8
+port: 8080
+# Shlink's /rest/health returns 200 only once it has connected to its database.
+healthCheck:
+  enabled: true
+  path: /rest/health
+resources:
+  db: true
+  storage: false
+env:
+  # Database: Shlink takes individual vars, so map the platform refs one-to-one.
+  DB_DRIVER: "mysql"
+  DB_HOST: "${{ db.host }}"
+  DB_PORT: "${{ db.port }}"
+  DB_NAME: "${{ db.name }}"
+  DB_USER: "${{ db.user }}"
+  # A ref: the platform injects the real password at deploy time (not a literal secret).
+  DB_PASSWORD: "${{ db.password }}"
+
+  # Managed MySQL requires TLS. Shlink has a first-class switch for it — no CA file to mount
+  # and no skip-verify, unlike the Grafana recipe.
+  DB_USE_ENCRYPTION: "true"
+
+  # The domain short URLs are built on. MUST be a BARE host (no scheme, no path), so you
+  # CANNOT use ${{ app.url }} here (that's a full https:// URL). Use your reserved subdomain's
+  # bare hostname and change this to match.
+  DEFAULT_DOMAIN: "shlink.picopaas.xyz"
+  IS_HTTPS_ENABLED: "true"
+
+  # Keep both worker pools small so DB connections stay under the 10-per-user cap.
+  WEB_WORKER_NUM: "4"
+  TASK_WORKER_NUM: "4"
+
+secrets:
+  # A long random string you choose; Shlink seeds a first API key with this value on startup.
+  # Set the value in the dashboard's secret editor or via the API. Never put it in this file.
+  # Call the REST API with it in the `X-Api-Key` header.
+  - INITIAL_API_KEY

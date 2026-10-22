@@ -242,6 +242,104 @@ each other, so they don't work. This is intentional and out of scope: the platfo
 headless/per-pod Services or peer discovery. A single MySQL-backed Grafana is the supported shape, and it's
 plenty for a throwaway dashboards instance.
 
+## Shlink (URL shortener) on MySQL
+
+The files are in `examples/shlink/` in the repo (`README.md`, `shlink.yaml`). [Shlink](https://shlink.io/) is a
+self-hosted URL shortener with a REST API. It runs on PicoPaaS backed by the platform's MySQL database, with
+short URLs and visit stats persisting across restarts (verified: health `200`, links survive a redeploy).
+
+### No custom image needed
+
+Like Grafana, Shlink needs **no Dockerfile and no wrapper**. The official `shlinkio/shlink:5.1.8` image already
+runs as a non-root numeric UID (`USER 1001`) and is configured entirely through environment variables, so you
+point PicoPaaS straight at the public image. Pin a version (`:5.1.8`), not `:latest`. The app listens on port
+`8080` and has a real health endpoint at `/rest/health`. Request a database (`db: true`), no bucket
+(`storage: false`).
+
+### Point it at the platform MySQL
+
+Shlink takes its database config as individual env vars, so map the platform refs one-to-one:
+
+- `DB_DRIVER=mysql`
+- `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_NAME=${{ db.name }}`, `DB_USER=${{ db.user }}`
+- `DB_PASSWORD=${{ db.password }}` — set this as a **secret**, not a literal in the spec.
+
+### TLS to MySQL — one clean switch
+
+Our managed MySQL requires TLS. Shlink has a first-class switch for it:
+
+- `DB_USE_ENCRYPTION=true`
+
+That's the whole story — no CA file to mount and no skip-verify to reason about, unlike the Grafana recipe above
+where the driver forces a CA-path workaround. Shlink's PDO MySQL layer negotiates an encrypted connection
+directly from this one flag.
+
+### The public URL — a bare host, not a full URL
+
+Shlink's `DEFAULT_DOMAIN` is the domain your short URLs are built on, and it must be a **bare host** (no scheme,
+no path) — e.g. `shlink.<domain>`. This is the one place you **cannot** use `${{ app.url }}`: that ref resolves
+to a full `https://...` URL, which Shlink would fold into malformed short links. Use your reserved subdomain's
+bare hostname instead (ask an admin for a reserved subdomain; see the Ghost recipe). Then tell Shlink it's
+served over HTTPS:
+
+- `DEFAULT_DOMAIN=shlink.<domain>` (bare host, literal — not a ref)
+- `IS_HTTPS_ENABLED=true`
+
+### Getting your first API key
+
+Shlink's API and the short-URL management all go through an API key. Seed one at first boot:
+
+- `INITIAL_API_KEY=<a long random string>` — set this as a **secret**. Shlink creates a key with this value on
+  startup if none exists.
+
+Then call the REST API with that key in the `X-Api-Key` header, for example:
+
+```bash
+curl -fsS https://shlink.<domain>/rest/v3/short-urls \
+  -H "X-Api-Key: $INITIAL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"longUrl": "https://example.com/some/very/long/link"}'
+```
+
+### Keep the connection pool under the cap
+
+Each database user may hold at most **10 connections**. Shlink runs a web worker pool and a background task
+worker pool, each of which opens DB connections, so keep both small:
+
+- `WEB_WORKER_NUM=4`
+- `TASK_WORKER_NUM=4`
+
+Those defaults stay comfortably under the 10-per-user limit even during a restart overlap. Raising them on a
+throwaway instance mostly buys you a tripped connection cap.
+
+### The GeoLite2 warning is harmless
+
+Shlink logs a warning on boot that it couldn't download the GeoLite2 database (it needs a MaxMind license key
+you haven't set). That only disables **IP geolocation** of visits — the shortener, redirects and visit counts
+all work normally. Leave it off unless you want geolocation, in which case add a `GEOLITE_LICENSE_KEY` secret.
+
+### Enable the readiness probe
+
+Shlink has a real health endpoint, so turn the probe on and point it there:
+
+```yaml
+healthCheck: { enabled: true, path: /rest/health }
+```
+
+`/rest/health` returns `200` once Shlink has connected to its database, so the app only goes ready when it can
+actually serve.
+
+### Deploy on PicoPaaS
+
+Apply the spec exactly as in the Ghost recipe (dashboard **New app**, or `picopaas apply -f shlink.yaml`, or the
+`/apps/spec` curl). The database credentials come from platform refs (so `DB_PASSWORD: ${{ db.password }}` stays
+in `env` — the platform injects the real value), but `INITIAL_API_KEY` is a literal you choose, so it's a
+**secret**: list it by name under `secrets:` and provide the value through the dashboard's secret editor or the
+API, never in the YAML file. Open the app's URL to confirm
+it's up, then drive it with the REST API using your key.
+
+Short URLs and visit stats live in MySQL, so they survive restarts.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build
@@ -257,3 +355,41 @@ plenty for a throwaway dashboards instance.
   uploads in the storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
 - **No outbound SMTP.** Disable features that send email, or they will error.
 - **Fit the caps:** 512 MB image, 200m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
+
+## Apps we evaluated (and what didn't fit)
+
+Not every popular app runs on PicoPaaS, and we'd rather tell you up front than have you hit the wall yourself.
+Two things define the shape of what fits: **images must run as a non-root numeric UID**, and the managed
+database keeps its **integrity defaults** (notably, every table needs a primary key). We don't relax either of
+those platform-wide to shoehorn in a single app — the isolation and the data guarantees are the product. Here's
+where that landed for two apps we tried.
+
+### FreshRSS — not supported
+
+[FreshRSS](https://freshrss.org/) is a great self-hosted feed reader, but the official `freshrss/freshrss`
+image **runs as root**. Its entrypoint does root-time work on every boot — rewriting its config, enabling
+Apache modules, and `chown`-ing its data directory — so it can't simply be told to start as UID 1001. PicoPaaS
+rejects root images (non-root only), and there's no env var that moves that startup work out of root.
+
+The HTTP side was actually solvable: FreshRSS lets you move Apache off the privileged port 80 with the `LISTEN`
+env var, which is all PicoPaaS needs (non-root containers can't bind ports below 1024). But the root entrypoint
+was the blocker. FreshRSS would fit fine behind a **custom non-root image** (the same pattern as the Ghost
+recipe: do the root-time setup at build, run as the UID), which we haven't built. Out of the box, it doesn't
+run here.
+
+### Wiki.js — not supported (today)
+
+[Wiki.js](https://js.wiki/) came much closer. It runs **non-root** out of the box and even does TLS to MySQL
+cleanly with a CA-verified connection (`DB_SSL_CA`), so none of the usual blockers applied. The wall was in the
+database, and it's a subtle one:
+
+DigitalOcean's managed MySQL enforces `sql_require_primary_key=ON` cluster-wide — every table you create must
+have a primary key. Wiki.js's **first schema migration creates a table without one**, and the server rejects
+that `CREATE TABLE` outright, so Wiki.js can never finish its initial setup. There's no app-level env var in
+Wiki.js to add the missing key or to work around the requirement.
+
+The only fixes would be platform-side: turn off `sql_require_primary_key` for the whole managed database, or
+carve out a separate database with it relaxed. We deliberately **keep the integrity default** rather than loosen
+it platform-wide for one app — a required primary key is a guarantee every other tenant benefits from. So
+Wiki.js is a "not today": clean on every axis except one upstream migration that collides with a default we're
+choosing to keep.
