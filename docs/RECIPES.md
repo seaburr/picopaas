@@ -153,12 +153,11 @@ port: 8080
 
 Apply it as in the Ghost recipe. Ask an admin for a reserved subdomain if you want a short URL.
 
-### Use case and limitation
+### What it can and can't watch
 
-Use it to monitor **any public service** (your other apps' custom domains, third-party APIs, DNS): tenant egress
-allows the public internet. It **cannot probe PicoPaaS's own public URLs** from inside the cluster, because traffic
-to the platform's own load balancer hairpins and fails. That is tenant isolation doing its job, not a bug; monitor
-the platform from an external service instead.
+Use it to monitor services hosted **outside PicoPaaS** — third-party APIs, sites on other providers, public DNS. Your app can reach the public internet, so these checks work normally.
+
+It can't reliably monitor services hosted **on PicoPaaS itself**, including your own PicoPaaS apps (whether on a `*.picopaas.xyz` URL or a custom domain) — requests from inside the platform back to its own address don't loop around. To track uptime of your PicoPaaS apps, use an external monitoring service.
 
 ## Lessons for bringing your own image
 

@@ -647,3 +647,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [scm-security] DONE: kubeconform BLOCKED (bac7dd0) resolved; ci.yml skips deploy/status/ non-manifest yaml.
 - 2026-10-21 [scm-security] START: commit+push status-page pivot (examples/status, removals, dead links).
 - 2026-10-21 [scm-security] DONE: status-page pivot committed and pushed.
+- 2026-10-21 [backend-dev] START: docs audience pass (USER_GUIDE, API, RECIPES; Admin API moved to OPERATIONS §10).
+- 2026-10-21 [backend-dev] DONE: docs audience pass, uncommitted; test-image references untouched.
+- 2026-10-21 [scm-security] DONE: docs audience pass committed and pushed.

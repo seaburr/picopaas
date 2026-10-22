@@ -13,8 +13,7 @@ Platform URL: `https://platform.picopaas.xyz` (the CLI default).
 2. New accounts start as `pending`. You can log in, but the API refuses app and key calls with `403` ("Your account is
    waiting for administrator approval...") until an administrator approves you. The UI shows a waiting page and
    checks every 20 seconds, so you land on your apps as soon as you're approved.
-3. Once approved (`active`) you can create apps and API keys. The first account registered on a fresh platform becomes
-   the platform admin (role `platform_admin`) and is active immediately.
+3. Once approved (`active`) you can create apps and API keys.
 
 If you request access with an email that already has an account, you see the same response as a new request, so
 nobody can use the form to check who has an account. Log in instead.
@@ -51,8 +50,7 @@ CMD ["python", "-m", "http.server", "8080"]
 
 ## 3. Deploying
 
-You can deploy four ways. All of them save the same app record, and the reconciler (it runs every 15 seconds)
-makes the cluster match it.
+You can deploy four ways. All of them save the same app record; the platform then rolls it out, usually within a minute.
 
 ### 3a. UI form
 
@@ -380,8 +378,8 @@ Your app is always reachable at its generated `*.picopaas.xyz` hostname. You can
 domain and we'll issue a free TLS certificate for it automatically.
 
 **Attach, verify and remove custom domains only through the PicoPaaS UI or its REST API** (`PUT`, `POST .../verify`
-and `DELETE /apps/{id}/domain`; same effect either way). Don't hand-edit cluster Ingress or manifests: the reconciler
-owns them and will revert manual changes.
+and `DELETE /apps/{id}/domain`; same effect either way). Don't hand-edit the underlying routing: the platform manages
+it and will revert manual changes.
 
 1. On the app's page, open **Custom domain**, enter a subdomain you control (e.g. `blog.example.com`) and click
    **Add domain**. Apex domains (bare `example.com`) can't be used unless your DNS provider supports CNAME
@@ -401,7 +399,7 @@ The UI and CLI show friendly names. The API uses the raw value in the second col
 
 | Status | API value | Meaning |
 |---|---|---|
-| Queued | `pending` | Saved, waiting for the reconciler (it runs every 15 s). Also set after any change to image, port, env or health check, and after a credential rotation. |
+| Queued | `pending` | Saved; the platform picks it up within about 15 seconds. Also set after any change to image, port, env or health check, and after a credential rotation. |
 | Deploying | `deploying` | Applied to the cluster. The new pod isn't ready yet, or a rollout is still in progress. |
 | Running | `running` | At least one ready pod is serving the current version. |
 | Failed | `error` | Something went wrong. Read the message on the app page (`status_detail` in the API). Typical causes: image pull failures, crash loops, a port that doesn't answer, no free database capacity. The platform retries on its own after 1, 5, 15, then every 60 minutes. The message says when the next retry happens, or that it won't retry until you change something. Saving the app or clicking **Restart** retries right away. |

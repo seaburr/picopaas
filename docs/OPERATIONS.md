@@ -135,7 +135,7 @@ Open **Admin**, then **Database servers**, or use the API (`/admin/db-servers`).
   records registrations, failed logins, password changes and resets, API key create and revoke, app create, update, delete,
   restart, rotate, image updates, resource overrides and storage deletes, user approve, suspend, unsuspend, delete and
   app-limit changes, app suspend and unsuspend, and database server changes. The full list of action names is in
-  [API.md](API.md).
+  the Admin API reference (§10) below.
 
 ## 7. Health dashboard
 
@@ -172,7 +172,7 @@ Open GitHub issues (`gh issue list`):
 
 | # | Title |
 |---|---|
-| 10 | Move the API under `/api/` (SPA and API share paths; see API.md) |
+| 10 | Move the API under `/api/` (the SPA and API share paths) |
 | 11 | In-cluster calls to an app's public URL time out (load balancer hairpin) |
 | 9 | `status_detail` "deployment failed" is too vague for customers (messages have since been rewritten; may be ready to close) |
 
@@ -202,3 +202,32 @@ Caps are defined once in `app/config.py` (env overrides: `DB_QUOTA_BYTES`, `STOR
 the new container limits, LimitRange and ResourceQuota through the rendered-hash sweep on the next reconcile (pods restart once).
 Existing databases over 50 MB are made read-only at the next quota poll (within a minute) and buckets over 100 MB within 5 minutes. Owners must
 free space to get writes back (see the User Guide, section 10). Existing images over 256 MB keep running but cannot be redeployed or updated until shrunk.
+
+## 10. Admin API reference
+
+| Method | Path | Body | Response / notes |
+|---|---|---|---|
+| GET | `/admin/users` | none | List of `{id, email, role, app_limit, app_count, status, created_at, terms_accepted_at}` (excludes deleted). |
+| PATCH | `/admin/users/{id}` | `{app_limit: int >= 0}` | Updated user. Audited as `user.update`. |
+| POST | `/admin/users/{id}/approve` | none | `pending` to `active`; 409 if the user is not pending (the message says whether they were already approved). |
+| POST | `/admin/users/{id}/reset-password` | none | 200 `{"temporary_password": "..."}`. Sets a random 16-character password, shown once, and flags the user `must_change_password`. Audited as `user.reset_password` (the password is never logged). Existing sessions are not revoked. Hand the password over out of band. |
+| POST | `/admin/users/{id}/suspend` | none | User `suspended`; all their live apps `suspended` (scaled to zero). 400 for the platform admin. |
+| POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 if the user is not suspended. |
+| DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the platform admin. |
+| GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at, resources}`. |
+| PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi}` (ints; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
+| PUT | `/admin/apps/{id}/platform-host` | `{"subdomain": "blog"}` | `App`. Gives the app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one (served on the wildcard cert; no per-host cert). One lowercase DNS label; reserved labels (`platform`, `www`, `api`, `lb`, `app`, `apps`, `admin`, `*`, ...) and platform hosts are 422; a label already used by another app is 409. Requeues the app. `App.platform_subdomain` / `platform_host` expose it. |
+| DELETE | `/admin/apps/{id}/platform-host` | none | `App`. Clears the fixed host and requeues. |
+| POST | `/admin/apps/{id}/suspend` | none | App `suspended`. |
+| POST | `/admin/apps/{id}/unsuspend` | none | App to `pending`; 409 if the app is not suspended. |
+| DELETE | `/admin/apps/{id}` | none | 204; works even on suspended apps. |
+| GET | `/admin/audit?limit=100` | none | Newest first; `limit` 1 to 1000. Items: `{id, at, actor_email, action, target_type, target_id, detail}`. |
+| GET | `/admin/db-servers` | none | `{id, name, host, port, status, max_databases, used, pct, warn}`; `warn` at 80% or more. |
+| POST | `/admin/db-servers` | `{name, host, port=3306, admin_user, admin_password, max_databases, ca_cert?}` | 201 server. 409 if the name exists. Status starts `active`. `ca_cert` is optional PEM text (max 20000 characters). Audited as `dbserver.create`. |
+| PATCH | `/admin/db-servers/{id}` | `{status?: active\|draining\|full, max_databases?: int > 0, ca_cert?: string}` | Updated server. An empty `ca_cert` clears it. `full` is a legacy value that the UI hides; it stops new placements, same as `draining`. Audited as `dbserver.update`. |
+| GET | `/admin/health` | none | Cluster dashboard JSON, cached 15 s: `generated_at, metrics_available, errors, cluster{node_count,max_nodes,pods_total}, nodes, apps[], platform[], db_servers[]`. The payload may gain fields; see `app/health.py`. |
+
+Audit actions recorded: `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`,
+`user.reset_password`, `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`,
+`apikey.revoke`, `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`,
+`app.resources`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`. Never contains secrets; `detail` is capped at 255 characters.

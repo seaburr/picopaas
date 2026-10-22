@@ -16,8 +16,8 @@ Auth levels used below:
 - **user**: any logged-in, non-deleted user (including pending and suspended).
 - **active**: user with status `active`. Pending gets `403` "Your account is waiting for administrator approval..."; anything
   else gets `403` "Your account is suspended and your apps are stopped...".
-- **admin**: the `platform_admin` role (`403` "This needs administrator access." otherwise). Missing auth is `401` "You're logged
-  out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked."
+
+Missing auth is `401` "You're logged out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked."
 
 Error `detail` strings are written to be shown to people as-is (what happened, why, what to do) and may be reworded;
 match on the status code, not the text.
@@ -32,23 +32,10 @@ An example call that works with an API key:
 curl -sS https://platform.picopaas.xyz/apps -H "Authorization: Bearer $PICOPAAS_TOKEN"
 ```
 
-## SPA navigation and path overlap (issue #10)
+## Scripting the API
 
-The Vue UI and the API share paths (`/admin`, `/admin/health`, `/apps`, `/apps/new`, ...). Because the API is not
-under an `/api` prefix (issue #10 proposes moving it), the server decides per request:
-
-- A **browser navigation** (GET/HEAD with `Sec-Fetch-Mode: navigate`, or, when that header is absent, an `Accept`
-  starting with `text/html`) gets `index.html` so refreshes and deep links work.
-- Everything else (the SPA's own `fetch` calls, curl, the CLI) gets the JSON API.
-- Never swapped: `/static/*`, `/healthz`, `/docs`, `/redoc`, `/openapi.json`.
-- Unknown non-API paths fall back to the SPA; unknown paths starting with `auth`, `apps`, `admin`, `api`,
-  `healthz` or `static` return a JSON 404.
-- A request whose `Accept` lists `application/json` first never gets the SPA, even with `Sec-Fetch-Mode: navigate`.
-- Caching: the SPA HTML is `Cache-Control: no-cache`; every JSON response is `Cache-Control: no-store`. Both carry
-  `Vary: Sec-Fetch-Mode, Accept`, because one URL can return either (a cache must not replay one for the other).
-
-If you script against the API, do not send `Accept: text/html` or a `Sec-Fetch-Mode: navigate` header on GET.
-The only route that already has an `/api` prefix is `/api/keys`.
+The web UI and the API share the same host. When scripting, request JSON and do not send a browser-style
+`Accept: text/html` or `Sec-Fetch-Mode: navigate` header on GET, or the request may return the UI's HTML instead of JSON.
 
 ## Health
 
@@ -75,7 +62,7 @@ reset and informational only (the server does not block other calls); the UI sho
   server with a free slot; draining and full servers don't count). `storage` is true when the platform has bucket
   credentials configured. Hide the matching checkbox when false.
 - `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb, ephemeral_mi,
-  override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform caps (from `app/config.py`; `ephemeral_mi` is
+  override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform caps (`ephemeral_mi` is
   the scratch disk) and the range an administrator may override per app.
 
 ## API keys (`/api/keys`, active)
@@ -118,7 +105,7 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | GET | `/apps/{app_id}/logs?tail=N` | none | `{lines[], pod, note}`. `tail` is 1 or more, default 200, capped at 1000. `lines` is empty and `note` explains why when there is no pod or the logs can't be read. Owner or admin. |
 | POST | `/apps/{app_id}/restart` | none | `App`. Owner or admin. 409 if suspended. Re-resolves the image tag first ("pull latest"); a new image that fails the checks is skipped and the old one restarted (`image_update_error` is set). |
 | POST | `/apps/{app_id}/check-image` | none | `App`. Owner or admin. Re-resolves the tag now and redeploys if it changed and passes the checks. 502 if the registry can't be reached; 409 if suspended. |
-| | | | **Custom domains: change them only via these endpoints (or the UI); the reconciler owns the cluster Ingress and reverts hand edits.** |
+| | | | **Custom domains: change them only via these endpoints (or the UI); the platform manages the underlying routing and reverts hand edits.** |
 | PUT | `/apps/{app_id}/domain` | `{"host": "blog.example.com"}` | `App`. Attaches/replaces a custom domain (owner). Generates the ownership token; returns it in `custom_domain`. 422 for an invalid host or one of our own domains; 409 if the host is attached to another app; 403 if suspended; 404 if custom domains are disabled platform-wide. |
 | POST | `/apps/{app_id}/domain/verify` | none | `App`. Checks the ownership TXT and that the host resolves to the platform LB. On success `custom_domain.status` is `active` and the app requeues (cert issues, host served). On failure returns 200 with `custom_domain.error` set and status still `pending`. 400 if no domain is set. |
 | DELETE | `/apps/{app_id}/domain` | none | `App`. Detaches the custom domain (owner); if it was live the app requeues so the custom Ingress + cert are torn down. The generated subdomain is unaffected. |
@@ -173,36 +160,7 @@ values given for undeclared secrets, missing secret values, trying to remove a d
 app, or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
-## Admin (`/admin`, admin only)
+## Background jobs
 
-| Method | Path | Body | Response / notes |
-|---|---|---|---|
-| GET | `/admin/users` | none | List of `{id, email, role, app_limit, app_count, status, created_at, terms_accepted_at}` (excludes deleted). |
-| PATCH | `/admin/users/{id}` | `{app_limit: int >= 0}` | Updated user. Audited as `user.update`. |
-| POST | `/admin/users/{id}/approve` | none | `pending` to `active`; 409 if the user is not pending (the message says whether they were already approved). |
-| POST | `/admin/users/{id}/reset-password` | none | 200 `{"temporary_password": "..."}`. Sets a random 16-character password, shown once, and flags the user `must_change_password`. Audited as `user.reset_password` (the password is never logged). Existing sessions are not revoked. Hand the password over out of band. |
-| POST | `/admin/users/{id}/suspend` | none | User `suspended`; all their live apps `suspended` (scaled to zero). 400 for the platform admin. |
-| POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 if the user is not suspended. |
-| DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the platform admin. |
-| GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at, resources}`. |
-| PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi}` (ints; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
-| PUT | `/admin/apps/{id}/platform-host` | `{"subdomain": "blog"}` | `App`. Gives the app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one (served on the wildcard cert; no per-host cert). One lowercase DNS label; reserved labels (`platform`, `www`, `api`, `lb`, `app`, `apps`, `admin`, `*`, ...) and platform hosts are 422; a label already used by another app is 409. Requeues the app. `App.platform_subdomain` / `platform_host` expose it. |
-| DELETE | `/admin/apps/{id}/platform-host` | none | `App`. Clears the fixed host and requeues. |
-| POST | `/admin/apps/{id}/suspend` | none | App `suspended`. |
-| POST | `/admin/apps/{id}/unsuspend` | none | App to `pending`; 409 if the app is not suspended. |
-| DELETE | `/admin/apps/{id}` | none | 204; works even on suspended apps. |
-| GET | `/admin/audit?limit=100` | none | Newest first; `limit` 1 to 1000. Items: `{id, at, actor_email, action, target_type, target_id, detail}`. |
-| GET | `/admin/db-servers` | none | `{id, name, host, port, status, max_databases, used, pct, warn}`; `warn` at 80% or more. |
-| POST | `/admin/db-servers` | `{name, host, port=3306, admin_user, admin_password, max_databases, ca_cert?}` | 201 server. 409 if the name exists. Status starts `active`. `ca_cert` is optional PEM text (max 20000 characters). Audited as `dbserver.create`. |
-| PATCH | `/admin/db-servers/{id}` | `{status?: active\|draining\|full, max_databases?: int > 0, ca_cert?: string}` | Updated server. An empty `ca_cert` clears it. `full` is a legacy value that the UI hides; it stops new placements, same as `draining`. Audited as `dbserver.update`. |
-| GET | `/admin/health` | none | Cluster dashboard JSON, cached 15 s: `generated_at, metrics_available, errors, cluster{node_count,max_nodes,pods_total}, nodes, apps[], platform[], db_servers[]`. The payload may gain fields; see `app/health.py`. |
-
-Audit actions recorded: `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`,
-`user.reset_password`, `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`,
-`apikey.revoke`, `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`,
-`app.resources`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`. Never contains secrets; `detail` is capped at 255 characters.
-
-## Not an API
-
-The reconciler (every 15 s), the database quota poll (every 60 s), the storage quota poll (every 5 min) and the image watcher (every 10 min) run inside the platform process when
-`RECONCILER_ENABLED=1`; there are no endpoints to trigger them.
+The platform reconciles apps, polls database and storage usage, and re-checks image tags on its own
+schedule. There are no API endpoints to trigger them.
