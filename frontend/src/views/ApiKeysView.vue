@@ -122,7 +122,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
       <h1 class="page-title">API keys</h1>
       <p class="mt-1 max-w-2xl text-sm text-zinc-300">
         API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for

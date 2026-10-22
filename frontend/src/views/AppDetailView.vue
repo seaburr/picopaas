@@ -450,7 +450,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-4xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
       <div v-if="notFound" class="card card-pad text-center">
         <p class="section-title">App not found</p>
         <p class="help">It may have been deleted.</p>

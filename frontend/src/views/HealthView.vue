@@ -148,7 +148,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-5xl space-y-4 px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-6xl space-y-4 px-4 py-4 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="page-title">Cluster health</h1>
         <div class="flex items-center gap-3 text-xs text-zinc-400" aria-live="polite">

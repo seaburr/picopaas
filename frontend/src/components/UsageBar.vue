@@ -13,7 +13,7 @@ const warn = computed(() => props.usage.over_quota || pct.value >= 80)
     <div class="flex items-baseline justify-between gap-2 text-sm">
       <span class="meta">{{ label }}</span>
       <span class="mono" :class="usage.over_quota ? 'text-danger-light' : warn ? 'text-amber-400' : 'text-zinc-300'">
-        {{ mb(usage.size_bytes) }} / {{ mb(usage.limit_bytes) }} MB<span v-if="usage.over_quota"> · over cap</span>
+        {{ mb(usage.size_bytes) }} / {{ mb(usage.limit_bytes) }} MB<span v-if="usage.over_quota"> · over cap</span><span v-else-if="warn"> · near cap</span>
       </span>
     </div>
     <div

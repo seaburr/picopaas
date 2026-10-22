@@ -669,3 +669,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: multi-pod observability committed 854f907 and pushed; CI (incl. mysql-integration), image, deploy all green. No security findings filed.
 - 2026-10-22 [infra-ops] START: tighten picopaas-rolebinding-scope VAP to app-* only (pentest N1).
 - 2026-10-22 [infra-ops] DONE (uncommitted, NOT applied): rbac.yaml VAP expression now only startsWith('app-'); tests/test_platform_rbac.py, 0005 runbook, deploy/README.md updated. Runtime SA only writes RoleBindings in app-<id>; picopaas-system binding is CI-applied.
+- 2026-10-22 [frontend] DONE: wider page containers (5xl->6xl, 4xl->5xl), nav hover/active contrast, a11y polish (.link underline, near-cap text). typecheck clean; uncommitted.
