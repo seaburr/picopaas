@@ -276,6 +276,7 @@ class AppOut(BaseModel):
     want_storage: bool
     health_check_enabled: bool = False
     health_check_path: str = DEFAULT_HEALTH_PATH
+    replicas: int = 1
     status: str
     status_detail: Optional[str] = None
     status_reason: Optional[str] = None  # machine code for status=error (image_pull, crash_loop, oom, not_ready, quota, ...)

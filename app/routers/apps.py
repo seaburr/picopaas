@@ -103,6 +103,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         want_storage=app.want_storage,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
+        replicas=app.replicas,
         status=app.status,
         status_detail=app.status_detail,
         status_reason=app.status_reason if app.status == "error" else None,

@@ -203,6 +203,15 @@ the new container limits, LimitRange and ResourceQuota through the rendered-hash
 Existing databases over 50 MB are made read-only at the next quota poll (within a minute) and buckets over 100 MB within 5 minutes. Owners must
 free space to get writes back (see the User Guide, section 10). Existing images over 256 MB keep running but cannot be redeployed or updated until shrunk.
 
+## Replicas (admin only)
+
+Replica count is a platform-admin setting (`App.replicas`, default 1, ceiling `MAX_REPLICAS` env, default 3), not exposed to
+users. The ResourceQuota is sized for `replicas` steady pods plus one rolling-update surge pod (maxSurge 1,
+maxUnavailable 0), so CPU, memory, ephemeral storage and pod count scale with the replica count. With more than one
+replica an extra `allow-same-namespace` NetworkPolicy lets the app's own pods talk to each other (all ports, TCP and UDP)
+for clustered apps; it cannot reach other namespaces. Each replica gets the full per-pod limits, and replicas share
+the app's single DB and bucket. Replicas do not share local disk.
+
 ## 10. Admin API reference
 
 | Method | Path | Body | Response / notes |
@@ -216,6 +225,7 @@ free space to get writes back (see the User Guide, section 10). Existing images 
 | DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the platform admin. |
 | GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at, resources}`. |
 | PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi}` (ints; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
+| PUT | `/admin/apps/{id}/replicas` | `{"replicas": int}` (1 to `MAX_REPLICAS`, default 3) | `App` (includes `replicas`). 422 outside the range or on extra fields. Requeues the app (`pending`); a suspended app stays suspended at 0 pods and picks the count up on unsuspend. Audited as `app.replicas`. See "Replicas" below. |
 | PUT | `/admin/apps/{id}/platform-host` | `{"subdomain": "blog"}` | `App`. Gives the app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one (served on the wildcard cert; no per-host cert). One lowercase DNS label; reserved labels (`platform`, `www`, `api`, `lb`, `app`, `apps`, `admin`, `*`, ...) and platform hosts are 422; a label already used by another app is 409. Requeues the app. `App.platform_subdomain` / `platform_host` expose it. |
 | DELETE | `/admin/apps/{id}/platform-host` | none | `App`. Clears the fixed host and requeues. |
 | POST | `/admin/apps/{id}/suspend` | none | App `suspended`. |
@@ -230,4 +240,4 @@ free space to get writes back (see the User Guide, section 10). Existing images 
 Audit actions recorded: `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`,
 `user.reset_password`, `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`,
 `apikey.revoke`, `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`,
-`app.resources`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`. Never contains secrets; `detail` is capped at 255 characters.
+`app.resources`, `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`. Never contains secrets; `detail` is capped at 255 characters.

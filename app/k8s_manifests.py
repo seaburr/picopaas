@@ -31,14 +31,13 @@ from app.config import (
 RUN_AS_NON_ROOT = True
 
 # ResourceQuota / LimitRange values (ARCHITECTURE.md §2 "Compute").
-# The quota admits 2 pods' worth (2x the per-pod caps (app/config.py), which the LimitRange / container limits keep).
-# Replicas are pinned to 1 by the platform and tenants can't create pods, so the extra headroom is only ever
-# used by the surge pod during a rolling update (maxSurge 1); without it the surge pod is rejected with
+# The quota admits (replicas + 1) pods' worth of the per-pod caps (app/config.py), which the LimitRange / container
+# limits keep. Replicas are set by the platform admin (App.replicas, default 1) and tenants can't create pods, so the
+# extra pod is only ever used by the surge pod during a rolling update (maxSurge 1); without it the surge is rejected with
 # "exceeded quota: app-quota" and the rollout never completes.
 POD_LIMIT_CPU = f"{DEFAULT_CPU_LIMIT_M}m"  # per-pod caps (what the health page shows)
 POD_LIMIT_MEMORY = f"{DEFAULT_MEM_LIMIT_MI}Mi"
 POD_LIMIT_EPHEMERAL = f"{EPHEMERAL_LIMIT_MI}Mi"
-QUOTA_PODS = "2"
 QUOTA_SERVICES = "1"
 
 LIMIT_RANGE_DEFAULT_CPU = POD_LIMIT_CPU
@@ -125,9 +124,9 @@ def _res(resources: dict[str, int] | None) -> dict[str, int]:
 
 def resource_quota_manifest(
     app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None,
-    custom_domain: bool = False,
+    custom_domain: bool = False, replicas: int = 1,
 ) -> dict[str, Any]:
-    """Quota = max(2 x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
+    """Quota = max((replicas + 1) x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
     ({"cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi", "pods"}, summed over the pods in the cluster) is None when there are no pods.
 
@@ -136,13 +135,14 @@ def resource_quota_manifest(
     otherwise be rejected by the services=1 / pods=2 caps. NodePort/LoadBalancer services stay forbidden."""
     e = _res(resources)
     used = used_limits or {}
-    cpu_total = max(2 * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
-    mem_total = max(2 * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
-    eph_total = max(2 * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
+    slots = max(1, int(replicas)) + 1  # steady replicas + one rolling-update surge pod
+    cpu_total = max(slots * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
+    mem_total = max(slots * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
+    eph_total = max(slots * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
     # Pod count too: a Terminating old pod still counts, so back-to-back rollouts (e.g. storage key swap then
     # recovery roll) need (existing + 1) slots, not a fixed 2. +1 more when a custom domain may run an ACME solver pod.
     solver_headroom = 1 if custom_domain else 0
-    pods_total = max(int(QUOTA_PODS) + solver_headroom, (used.get("pods") or 0) + 1 + solver_headroom)
+    pods_total = max(slots + solver_headroom, (used.get("pods") or 0) + 1 + solver_headroom)
     services_total = int(QUOTA_SERVICES) + solver_headroom
     return {
         "apiVersion": "v1",
@@ -219,6 +219,7 @@ def network_policies(
     mysql_port: int | None = None,
     storage_ips: list[str] | None = None,
     custom_domain: bool = False,
+    replicas: int = 1,
 ) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules.
 
@@ -369,6 +370,20 @@ def network_policies(
                         "ports": [{"protocol": "TCP", "port": ACME_SOLVER_PORT}],
                     }
                 ],
+            },
+        })
+    if replicas > 1:
+        # HA/clustered apps (e.g. gossip peers) need pod-to-pod traffic. Strictly namespace-scoped: a bare
+        # podSelector (no namespaceSelector) only matches pods in THIS policy's namespace, so no cross-tenant path.
+        policies.append({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": "allow-same-namespace", "namespace": namespace},
+            "spec": {
+                **all_pods_selector,
+                "policyTypes": ["Ingress", "Egress"],
+                "ingress": [{"from": [{"podSelector": {}}]}],
+                "egress": [{"to": [{"podSelector": {}}]}],
             },
         })
     if storage_ips:
@@ -637,10 +652,11 @@ def render_app_manifests(
     return {
         "namespace": namespace_manifest(app_id),
         "role_binding": role_binding_manifest(app_id),
-        "resource_quota": resource_quota_manifest(app_id, resources, used_limits, custom_domain=bool(custom_host)),
+        "resource_quota": resource_quota_manifest(app_id, resources, used_limits, custom_domain=bool(custom_host),
+                                                  replicas=replicas),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips,
-                                              custom_domain=bool(custom_host)),
+                                              custom_domain=bool(custom_host), replicas=replicas),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,

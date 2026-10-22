@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, health, models, naming, resources, schemas
+from app import audit, config, crypto, health, models, naming, resources, schemas
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_kube, require_platform_admin
@@ -366,6 +366,25 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
     out = _app_admin_out(a)
     out.exceeds_platform_caps = out.resources.exceeds_platform_caps
     return out
+
+
+class ReplicasSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    replicas: int = Field(ge=1, le=config.MAX_REPLICAS)
+
+
+@router.put("/apps/{app_id}/replicas", response_model=schemas.AppOut)
+def set_replicas(app_id: int, payload: ReplicasSet, db: Session = Depends(get_db),
+                 admin: models.User = Depends(require_platform_admin)):
+    """Set the Deployment replica count. A suspended app stays suspended (scaled to 0) and picks it up on unsuspend."""
+    a = _get_app_or_404(db, app_id)
+    old = a.replicas
+    a.replicas = payload.replicas
+    _requeue(a)
+    db.commit()
+    audit.record(db, admin, "app.replicas", "app", a.id, f"{old} -> {a.replicas}")
+    from app.routers.apps import _app_out
+    return _app_out(a)
 
 
 @router.delete("/apps/{app_id}", status_code=204)

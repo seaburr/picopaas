@@ -128,6 +128,8 @@ class App(Base):
     cpu_limit_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     mem_request_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     mem_limit_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Platform-admin-set Deployment replica count (1..config.MAX_REPLICAS); 0 is applied separately when suspended.
+    replicas: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 

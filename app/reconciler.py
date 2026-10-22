@@ -440,7 +440,7 @@ def reconcile_app(
         storage_ips=(
             _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []
         ),
-        replicas=0 if suspended else 1,
+        replicas=0 if suspended else max(1, app.replicas or 1),
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         resources=resources.effective(app),
@@ -471,11 +471,12 @@ def reconcile_app(
     except Exception as exc:
         log.warning("app %s: reading used limits failed: %s", app.id, _kube_error_summary(exc))
         used = None
+    slots = max(1, render_kwargs["replicas"]) + 1  # steady replicas + one surge pod (matches the quota floor)
     if used and (
-        (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > 2 * eff["cpu_limit_m"]
-        or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > 2 * eff["mem_limit_mi"]
-        or (used.get("ephemeral_limit_mi") or 0) + config.EPHEMERAL_LIMIT_MI > 2 * config.EPHEMERAL_LIMIT_MI
-        or (used.get("pods") or 0) + 1 > int(k8s_manifests.QUOTA_PODS)
+        (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > slots * eff["cpu_limit_m"]
+        or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > slots * eff["mem_limit_mi"]
+        or (used.get("ephemeral_limit_mi") or 0) + config.EPHEMERAL_LIMIT_MI > slots * config.EPHEMERAL_LIMIT_MI
+        or (used.get("pods") or 0) + 1 > slots
     ):
         flat = k8s_manifests.flatten_manifests(
             k8s_manifests.render_app_manifests(**render_kwargs, used_limits=used)

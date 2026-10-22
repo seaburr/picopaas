@@ -115,6 +115,9 @@ MAX_DB_USER_CONNECTIONS = int(os.environ.get("MAX_DB_USER_CONNECTIONS", "10"))
 # lower, never higher (see resources.effective_app_limit).
 MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))
 
+# Ceiling for the admin-set per-app replica count (PUT /admin/apps/{id}/replicas).
+MAX_REPLICAS = int(os.environ.get("MAX_REPLICAS", "3"))
+
 # --- Platform caps: SINGLE SOURCE OF TRUTH (Chas lowered them 2026-10-19; bootstrap.md pending his update) ---
 # Used by k8s_manifests (container limits, LimitRange, quota = 2x), quota.py, resources.py, health.py.
 DB_QUOTA_BYTES = int(os.environ.get("DB_QUOTA_BYTES", 50 * 1024 * 1024))
