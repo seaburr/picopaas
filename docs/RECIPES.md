@@ -447,6 +447,124 @@ Directus is a clean demonstration of the full stack: it runs **non-root**, needs
 **PK-clean** (no `sql_require_primary_key` collision), and uses **MySQL and the Spaces bucket together** — so
 both your content and your uploads survive restarts.
 
+## n8n (workflow automation) on PostgreSQL
+
+The files are in `examples/n8n/` in the repo (`README.md`, `n8n.yaml`). [n8n](https://n8n.io/) is an
+open-source workflow-automation tool. It's PicoPaaS's **first PostgreSQL-backed recipe**, and the proof that
+the new managed Postgres engine works end to end (verified live at `https://n8n.picopaas.xyz`): a per-app
+Postgres database and role, auto-provisioned by the platform, reached over CA-verified TLS, with a created
+workflow **and** the owner account surviving a pod restart.
+
+### No custom image needed
+
+Like Grafana, Shlink and Directus, n8n needs **no Dockerfile and no wrapper**. The official
+`n8nio/n8n:2.41.7` image already runs as a non-root user, listens on port `5678`, and is configured entirely
+through environment variables. Point PicoPaaS straight at the public image. Pin a version (`:2.41.7`), not
+`:latest`. It has a real health endpoint at `/healthz`, so turn the readiness probe on:
+
+```yaml
+healthCheck: { enabled: true, path: /healthz }
+```
+
+### Choosing the Postgres engine — the new `db_engine` selector
+
+This is the recipe that introduces the engine selector. Request a database and set the engine to `pg`:
+
+```yaml
+resources:
+  db: true
+  db_engine: pg   # mysql (default) | pg
+```
+
+`db_engine: pg` tells PicoPaaS to back the app with **PostgreSQL** instead of MySQL. The platform
+**auto-provisions a per-app Postgres database and role** (exactly as it does for MySQL — a dedicated
+`app_<id>` database and login role, isolated from every other tenant), and the same `${{ db.* }}` refs
+resolve to the Postgres connection details. The engine is **immutable** once the app has a database (to
+switch, create a new app). The default stays `mysql`, so existing specs are unaffected. n8n is Postgres-first,
+which is why it's the recipe that exercises this path.
+
+### Point it at the managed Postgres — with CA-verified TLS
+
+n8n takes its database config as individual env vars, so map the platform refs one-to-one:
+
+- `DB_TYPE=postgresdb`
+- `DB_POSTGRESDB_HOST=${{ db.host }}`, `DB_POSTGRESDB_PORT=${{ db.port }}`,
+  `DB_POSTGRESDB_DATABASE=${{ db.name }}`, `DB_POSTGRESDB_USER=${{ db.user }}`
+- `DB_POSTGRESDB_PASSWORD=${{ db.password }}` — a ref; the platform injects the real password at deploy time.
+  (On the app it's stored as a secret env var, but its *value* is this platform ref, so there's no literal to
+  put in the file.)
+
+Our managed Postgres requires TLS, and n8n's Postgres driver takes the CA content inline — no file to mount:
+
+- `DB_POSTGRESDB_SSL_ENABLED=true`
+- `DB_POSTGRESDB_SSL_CA=${{ db.ca_cert }}` — the platform CA PEM, passed as a value
+- `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=true` — **CA-verified** TLS (the server cert is validated against that
+  CA), cleaner than the Grafana skip-verify dance and matching Directus's MySQL `DB_SSL__CA` approach.
+
+### Keep the connection pool under the Postgres cap
+
+Managed Postgres is tighter than MySQL here. Each per-app role gets a **CONNECTION LIMIT of 5** (not 10): the
+cheapest 1 GB Postgres node has only ~22 usable connections total. Size n8n's pool well under it:
+
+- `DB_POSTGRESDB_POOL_SIZE=2`
+
+### Pin the encryption key — required, so credentials survive restarts
+
+n8n encrypts stored credentials with `N8N_ENCRYPTION_KEY`. The scratch disk is wiped on every restart, so if
+the key isn't pinned, a restart regenerates it and **every saved credential becomes undecryptable**:
+
+- `N8N_ENCRYPTION_KEY` — set it as a **secret**, generate it once, and keep it stable across deploys. This is
+  the one value that isn't a platform ref.
+
+The workflow definitions and the owner account live in Postgres (not on disk), so with the key pinned they
+survive restarts — which is exactly what we verified.
+
+### `N8N_USER_FOLDER=/tmp` is required
+
+- `N8N_USER_FOLDER=/tmp`
+
+The image's default HOME isn't writable as the non-root UID, so n8n can't create its `.n8n` working directory
+and dies on boot. Pointing it at `/tmp` (writable for any UID) fixes it. This is the n8n equivalent of
+Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line.
+
+### The public URL and the rest of the env
+
+- `N8N_HOST` (bare host, e.g. `n8n.picopaas.xyz`), `N8N_PROTOCOL=https`, `N8N_PORT=5678`,
+  `WEBHOOK_URL=https://<host>/`, `N8N_EDITOR_BASE_URL=https://<host>` — n8n wants these set to its own public
+  address (a reserved subdomain or custom domain if you have one; ask an admin for a reserved subdomain as in
+  the Ghost recipe).
+- `GENERIC_TIMEZONE=UTC`.
+
+### Memory: n8n needs an admin override to ~512 MiB
+
+This is the honest caveat. n8n **OOMs at the 384 MiB default cap**, so it needs an **admin resource override to
+~512 MiB** (we verified 512 MiB holds; n8n used ~338 MiB at idle). Memory isn't a spec field — ask an admin to
+raise the limit for the app, the same control that raises CPU.
+
+The interplay with Node's heap cap matters: `NODE_OPTIONS=--max-old-space-size=384` sets the V8 heap ceiling,
+and it must stay **below** the container memory limit or you just trade one OOM for another — too low and Node
+heap-OOMs, too high and the container OOMs. We run **384 MiB of heap inside a 512 MiB container**.
+
+Optional footprint-trimming flags (all from the live env) keep n8n lean on the small instance:
+
+- `N8N_RUNNERS_ENABLED=false`, `N8N_DIAGNOSTICS_ENABLED=false`,
+  `N8N_VERSION_NOTIFICATIONS_ENABLED=false`, `N8N_TEMPLATES_ENABLED=false` — turn off task runners, the
+  outbound phone-home, update checks and the templates gallery (none useful on a throwaway, egress-restricted
+  instance).
+- `NODES_INCLUDE=["n8n-nodes-base.webhook", ...]` — load only the nodes you use instead of the whole catalog,
+  which noticeably cuts memory. Drop it to load everything (and raise the memory override accordingly).
+
+### Deploy on PicoPaaS
+
+Apply the spec exactly as in the Ghost recipe (dashboard **New app** with **Database** ticked and the engine
+set to Postgres, or `picopaas apply -f n8n.yaml`, or the `/apps/spec` curl). The one value that isn't a
+platform ref is `N8N_ENCRYPTION_KEY`, so list it by name under `secrets:` and provide the value through the
+dashboard's secret editor or the API, never in the YAML file. Ask an admin to raise the memory limit to
+~512 MiB. Then open the app's URL, create the owner account, and build a workflow.
+
+n8n is the end-to-end proof of managed Postgres on PicoPaaS: a per-app database and role, CA-verified TLS, and
+data that survives restarts.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build

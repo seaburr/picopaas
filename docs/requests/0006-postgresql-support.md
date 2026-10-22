@@ -1,4 +1,25 @@
-# 0006: Managed PostgreSQL support (status: APPROVED 2026-10-22, managed single-node SKU; Terraform written + validated, apply PENDING review)
+# 0006: Managed PostgreSQL support (status: IMPLEMENTED / LIVE 2026-10-22, managed single-node SKU applied and in production)
+
+## IMPLEMENTED / LIVE (2026-10-22)
+
+**Verified end to end in production.** The managed PostgreSQL cluster is applied and live, and the first
+Postgres-backed app is running:
+
+- **DbServer `primary-pg`** (DO Managed PostgreSQL 17, `db-s-1vcpu-1gb`, single node, NYC3, port 25060, TLS
+  only) is live and registered as an engine-aware `DbServer` (`engine = pg`).
+- **n8n** (app id 110, `n8nio/n8n:2.41.7`, vanilla public image, non-root, no custom build) runs at
+  `https://n8n.picopaas.xyz` on `db_engine: pg`. The reconciler **auto-provisioned a per-app Postgres
+  database + role**, n8n connected over **CA-verified TLS**, and a created workflow **plus** the owner account
+  **survived a pod restart** (data in Postgres, `N8N_ENCRYPTION_KEY` pinned).
+- Memory: n8n needs a **512 MiB admin override** (it OOMs at the 384 MiB default; used ~338 MiB).
+- Recipe + worked example shipped: `docs/RECIPES.md` ("n8n (workflow automation) on PostgreSQL") and
+  `examples/n8n/`. `docs/USER_GUIDE.md` documents `resources.db_engine: mysql | pg`.
+
+This supersedes the "apply PENDING review" status below; the SKU, provider, model, bootstrap and egress work
+described further down are all implemented.
+
+---
+
 
 Chas asked for a roadmap and design for PostgreSQL alongside (or eventually instead of) MySQL, and was explicit: do not
 build anything. This file is the feasibility study and the budget request. No code, migration, provider or Terraform

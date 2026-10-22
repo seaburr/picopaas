@@ -1,0 +1,65 @@
+apiVersion: picopaas/v1
+name: n8n
+# Public image, pinned. n8n runs as a non-root user and listens on 5678, and it's configured
+# entirely via env vars — so there's NO custom build (no Dockerfile here).
+image: n8nio/n8n:2.41.7
+port: 5678
+healthCheck:
+  enabled: true
+  path: /healthz
+resources:
+  db: true
+  # The NEW engine selector: pick PostgreSQL instead of the default MySQL. The platform
+  # auto-provisions a per-app Postgres database + role (over CA-verified TLS). n8n is
+  # Postgres-first, so this is our first pg-backed recipe.
+  db_engine: pg
+env:
+  # --- Postgres connection: individual vars, platform refs mapped one-to-one. ---
+  DB_TYPE: "postgresdb"
+  DB_POSTGRESDB_HOST: "${{ db.host }}"
+  DB_POSTGRESDB_PORT: "${{ db.port }}"
+  DB_POSTGRESDB_DATABASE: "${{ db.name }}"
+  DB_POSTGRESDB_USER: "${{ db.user }}"
+  # A ref: the platform injects the real password at deploy time (not a literal).
+  # It's stored as a secret env var on the app, but its value is this platform ref.
+  DB_POSTGRESDB_PASSWORD: "${{ db.password }}"
+
+  # CA-verified TLS to managed Postgres. n8n's pg driver takes the CA content inline
+  # (no file to mount), so set SSL on and verify the server against the platform CA.
+  DB_POSTGRESDB_SSL_ENABLED: "true"
+  DB_POSTGRESDB_SSL_CA: "${{ db.ca_cert }}"
+  DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED: "true"
+  # Keep the pool at/under the per-app role's CONNECTION LIMIT of 5 (the 1 GB Postgres
+  # node only has ~22 usable connections total — far fewer than MySQL's 10 per user).
+  DB_POSTGRESDB_POOL_SIZE: "2"
+
+  # --- Public URL wiring (resolved to this app's own host). ---
+  N8N_HOST: "n8n.picopaas.xyz"
+  N8N_PROTOCOL: "https"
+  N8N_PORT: "5678"
+  WEBHOOK_URL: "https://n8n.picopaas.xyz/"
+  N8N_EDITOR_BASE_URL: "https://n8n.picopaas.xyz"
+  GENERIC_TIMEZONE: "UTC"
+
+  # REQUIRED. The image's default HOME isn't writable as the non-root UID, so point n8n's
+  # user folder at /tmp (writable for any UID). Without this n8n can't write .n8n and dies.
+  N8N_USER_FOLDER: "/tmp"
+
+  # Node heap cap. Keep it BELOW the container memory limit: too low and Node heap-OOMs,
+  # too high and the container OOMs. 384 heap inside a 512 MiB container (admin override) works.
+  NODE_OPTIONS: "--max-old-space-size=384"
+
+  # --- Optional footprint trimming (per the live env). ---
+  N8N_RUNNERS_ENABLED: "false"
+  N8N_DIAGNOSTICS_ENABLED: "false"
+  N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+  N8N_TEMPLATES_ENABLED: "false"
+  # Load only the nodes you use to keep memory down. Drop this to load all nodes.
+  NODES_INCLUDE: '["n8n-nodes-base.webhook", "n8n-nodes-base.manualTrigger", "n8n-nodes-base.set", "n8n-nodes-base.httpRequest", "n8n-nodes-base.scheduleTrigger", "n8n-nodes-base.noOp", "n8n-nodes-base.code", "n8n-nodes-base.if", "n8n-nodes-base.respondToWebhook"]'
+
+secrets:
+  # REQUIRED and PINNED. n8n encrypts stored credentials with this key. Set it once and keep
+  # it STABLE: the disk is ephemeral, so if the key isn't pinned, a restart regenerates it and
+  # every saved credential becomes undecryptable. Set the value in the dashboard's secret
+  # editor or via the API — never put it in this file.
+  - N8N_ENCRYPTION_KEY
