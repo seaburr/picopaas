@@ -160,11 +160,11 @@
   }
 
   .nav-link {
-    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-300 hover:bg-pico-card/50 hover:text-white;
+    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-card/50 hover:text-white;
   }
-  /* idle -> hover (half-strength card) -> active (full card, inset accent underline, medium white text) */
+  /* idle (dim) -> hover (half-strength card + white) -> active (full card, medium, bright white); no underline */
   .nav-link.nav-active {
-    @apply bg-pico-card font-medium text-white shadow-[inset_0_-2px_0_0_theme(colors.accent.light)];
+    @apply bg-pico-card font-medium text-white;
   }
 
   .page-title {

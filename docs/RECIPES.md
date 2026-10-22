@@ -213,6 +213,9 @@ doesn't trip the limit:
   **secret**, not a literal in the spec.
 - `GF_ANALYTICS_REPORTING_ENABLED=false`, `GF_ANALYTICS_CHECK_FOR_UPDATES=false` — Grafana's outbound phone-home
   is pointless here (tenant egress is restricted anyway) and these stop it logging failures trying.
+- `GF_PLUGINS_PREINSTALL_DISABLED=true` — **required.** Grafana 13 otherwise downloads its "preinstalled" app
+  plugins into `/var/lib/grafana/plugins` on every boot (~250 MB), which hits the 250 MB scratch-disk cap and gets
+  the pod evicted in a restart loop. Disabling preinstall keeps that directory empty and the pod stable.
 
 ### Enable the readiness probe
 
