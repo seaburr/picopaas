@@ -62,6 +62,7 @@ def _settings() -> SimpleNamespace:
     return SimpleNamespace(
         mysql_egress_mode=config.MYSQL_EGRESS_MODE,
         mysql_cidr=config.MYSQL_EGRESS_CIDR or None,
+        pg_cidr=config.PG_EGRESS_CIDR or None,
     )
 
 
@@ -91,9 +92,9 @@ class _NoStorage:
 
 
 def _mysql_factory(server: models.DbServer):
-    from app.providers.mysql import MySQLAdminClient
+    from app.providers.factory import db_admin_for
 
-    return MySQLAdminClient(server)
+    return db_admin_for(server)
 
 
 def reconcile_job() -> None:
@@ -221,7 +222,7 @@ def bootstrap_db_server() -> None:
     ca_cert = _read_ca()
     session = SessionLocal()
     try:
-        if session.execute(select(models.DbServer.id).limit(1)).first() is not None:
+        if session.execute(select(models.DbServer.id).where(models.DbServer.engine == "mysql").limit(1)).first() is not None:
             primary = session.execute(
                 select(models.DbServer).where(models.DbServer.name == "primary")
             ).scalar_one_or_none()
@@ -258,6 +259,59 @@ def bootstrap_db_server() -> None:
         )
         session.commit()
         log.info("bootstrapped DbServer 'primary'")
+    finally:
+        session.close()
+
+
+def bootstrap_pg_server() -> None:
+    """Insert (or keep in sync) DbServer 'primary-pg' (engine=pg) from BOOTSTRAP_PG_HOST/PORT/USER/PASSWORD
+    (+ BOOTSTRAP_PG_CA = path to the PEM CA) when all of host/user/password are set. Independent of the MySQL
+    bootstrap: an existing MySQL 'primary' does not stop it. No network calls (the per-server `REVOKE .. ON
+    defaultdb FROM PUBLIC` runs in PostgresAdmin.create_db_user)."""
+    host = os.environ.get("BOOTSTRAP_PG_HOST")
+    user = os.environ.get("BOOTSTRAP_PG_USER")
+    password = os.environ.get("BOOTSTRAP_PG_PASSWORD")
+    if not (host and user and password):
+        return
+    port = int(os.environ.get("BOOTSTRAP_PG_PORT", "25060"))
+    ca_cert = None
+    ca_path = os.environ.get("BOOTSTRAP_PG_CA") or config.PG_BOOTSTRAP_CA
+    if ca_path:
+        try:
+            with open(ca_path, encoding="utf-8") as f:
+                ca_cert = f.read().strip() + "\n"
+        except OSError:
+            ca_cert = None
+    session = SessionLocal()
+    try:
+        row = session.execute(
+            select(models.DbServer).where(models.DbServer.name == "primary-pg")
+        ).scalar_one_or_none()
+        if row is None:
+            session.add(models.DbServer(
+                name="primary-pg", engine="pg", host=host, port=port, admin_user=user,
+                admin_password_encrypted=crypto.encrypt(password), ca_cert=ca_cert, max_databases=10,
+            ))
+            session.commit()
+            log.info("bootstrapped DbServer 'primary-pg'")
+            return
+        changed = []
+        if ca_cert and row.ca_cert != ca_cert:
+            row.ca_cert = ca_cert
+            changed.append("ca_cert")
+        if (row.host, row.port, row.admin_user) != (host, port, user):
+            row.host, row.port, row.admin_user = host, port, user
+            changed.append("connection")
+        try:
+            current = crypto.decrypt(row.admin_password_encrypted)
+        except ValueError:
+            current = None
+        if current != password:
+            row.admin_password_encrypted = crypto.encrypt(password)
+            changed.append("admin password")
+        if changed:
+            session.commit()
+            log.info("updated DbServer 'primary-pg': %s", ", ".join(changed))
     finally:
         session.close()
 

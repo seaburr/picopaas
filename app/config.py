@@ -111,6 +111,17 @@ MAX_IMAGE_SIZE_BYTES = int(os.environ.get("MAX_IMAGE_SIZE_BYTES", 512 * 1024 * 1
 # Apps with a connection pool must keep their pool size at or below this.
 MAX_DB_USER_CONNECTIONS = int(os.environ.get("MAX_DB_USER_CONNECTIONS", "10"))
 
+# PostgreSQL (managed, DO): per-role connection cap (the 1 GB node has ~22 usable connections in total), and the
+# size multiple of DB_QUOTA_BYTES at which the quota poll escalates from stage 1 (default_transaction_read_only +
+# kill sessions) to stage 2 (REVOKE CONNECT + kill sessions).
+PG_MAX_DB_USER_CONNECTIONS = int(os.environ.get("PG_MAX_DB_USER_CONNECTIONS", "5"))
+PG_HARD_CAP_RATIO = float(os.environ.get("PG_HARD_CAP_RATIO", "2.0"))
+PG_STATEMENT_TIMEOUT_MS = int(os.environ.get("PG_STATEMENT_TIMEOUT_MS", "60000"))
+PG_IDLE_TX_TIMEOUT_MS = int(os.environ.get("PG_IDLE_TX_TIMEOUT_MS", "60000"))
+# Bootstrap of the managed-PG DbServer 'primary-pg' (BOOTSTRAP_PG_HOST/PORT/USER/PASSWORD env, see
+# app/scheduler.py::bootstrap_pg_server). The CA is a file path (PEM) like MYSQL_SSL_CA; the password is NOT here.
+PG_BOOTSTRAP_CA = os.environ.get("BOOTSTRAP_PG_CA", "")
+
 # Hard ceiling on active apps per account, INCLUDING platform admins (Chas, 2026-10-20). A user's app_limit can be
 # lower, never higher (see resources.effective_app_limit).
 MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))
@@ -147,6 +158,9 @@ RECONCILER_ENABLED = os.environ.get("RECONCILER_ENABLED") == "1"
 # pod app=mysql) or "cidr" (managed DB, MYSQL_EGRESS_CIDR).
 MYSQL_EGRESS_MODE = os.environ.get("MYSQL_EGRESS_MODE", "cidr")
 MYSQL_EGRESS_CIDR = os.environ.get("MYSQL_EGRESS_CIDR", "")
+# Managed PostgreSQL tenant egress (port comes from the DbServer, 25060 on DO). Empty = reuse MYSQL_EGRESS_CIDR
+# (same VPC CIDR). Postgres is always managed, so there is no in-cluster mode.
+PG_EGRESS_CIDR = os.environ.get("PG_EGRESS_CIDR", "")
 
 # Ingress controller (Traefik, standard Ingress API): class name for per-app Ingresses and the
 # namespace the per-app NetworkPolicy admits traffic from.

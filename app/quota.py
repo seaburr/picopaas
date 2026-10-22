@@ -13,7 +13,7 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app import crypto, models
-from app.config import DB_QUOTA_BYTES, STORAGE_QUOTA_BYTES  # noqa: F401
+from app.config import DB_QUOTA_BYTES, PG_HARD_CAP_RATIO, STORAGE_QUOTA_BYTES  # noqa: F401
 from app.providers.base import MySQLAdmin, ObjectStore
 
 log = logging.getLogger(__name__)
@@ -59,21 +59,27 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bo
     over = size > DB_QUOTA_BYTES
     result: dict | None = None
     flipped = over != row.over_quota
+    # PostgreSQL has no un-undoable REVOKE, so enforcement is two-stage (providers/postgres.py): stage 1 at the cap
+    # (read-only default + kill sessions, overridable by the tenant), stage 2 (REVOKE CONNECT) past
+    # PG_HARD_CAP_RATIO x the cap. Re-run every poll while over, like MySQL, so stage 2 escalates when it is reached.
+    extra: dict = {}
+    if getattr(row.server, "engine", "mysql") == "pg":
+        extra["hard"] = size > DB_QUOTA_BYTES * PG_HARD_CAP_RATIO
     if flipped:
-        result = admin.set_read_only(row.app_id, over, app_password)
+        result = admin.set_read_only(row.app_id, over, app_password, **extra)
         row.over_quota = over
         log.warning(
             "quota: app %s db write access %s (%s, limit %d MB)",
             row.app_id, "REVOKED" if over else "restored", _mb(size), DB_QUOTA_BYTES // 1024 // 1024,
         )
     elif over:
-        result = admin.set_read_only(row.app_id, True, app_password)
+        result = admin.set_read_only(row.app_id, True, app_password, **extra)
     if over and result is not None:
         killed, failed = result.get("killed", 0), result.get("failed", 0)
         path = result.get("path", "admin")
         # Via the app user the list is authoritative (0 listed = no other sessions); via admin, 0 listed may mean
         # the account can't see the app's threads, so it is unverified.
-        unverified = bool(result.get("list_error")) or (result.get("listed", 0) == 0 and path != "app-user")
+        unverified = bool(result.get("list_error")) or (result.get("listed", 0) == 0 and path not in ("app-user", "pg"))
         if flipped or killed or failed:
             log.warning(
                 "quota: app %s db sessions: killed %d, failed %d%s (via %s)",

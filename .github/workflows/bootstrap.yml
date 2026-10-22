@@ -30,6 +30,7 @@ jobs:
       CLUSTER_NAME: picopaas-nyc3
       VPC_NAME: picopaas-nyc3
       DB_CLUSTER_NAME: picopaas-mysql-nyc3
+      PG_CLUSTER_NAME: picopaas-pg-nyc3
       DOMAIN: picopaas.xyz
       PLATFORM_HOST: platform.picopaas.xyz
       SPACES_REGION: atl1
@@ -233,6 +234,27 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "db host (private): $admin_host:$admin_port, vpc cidr: $vpc_cidr"
 
+          # Managed PostgreSQL (request 0006), same lookup path as MySQL (doctl + DO API, no TF outputs needed).
+          # Optional: if the cluster does not exist yet, the platform simply has no 'primary-pg' DbServer.
+          pg_id=$(doctl databases list -o json | jq -r --arg n "$PG_CLUSTER_NAME" '.[] | select(.name == $n) | .id')
+          if [ -n "$pg_id" ]; then
+            pgconn=$(doctl databases connection "$pg_id" --private -o json)
+            pg_pw=$(echo "$pgconn" | jq -r 'if type == "array" then .[0] else . end | .password')
+            echo "::add-mask::$pg_pw"
+            curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/databases/$pg_id/ca" \
+              | jq -r '.ca.certificate' | base64 -d > "$RUNNER_TEMP/pg-ca.crt"
+            grep -q 'BEGIN CERTIFICATE' "$RUNNER_TEMP/pg-ca.crt" || { echo "::error::could not fetch PG CA"; exit 1; }
+            {
+              echo "PG_HOST=$(echo "$pgconn" | jq -r 'if type == "array" then .[0] else . end | .host')"
+              echo "PG_PORT=$(echo "$pgconn" | jq -r 'if type == "array" then .[0] else . end | .port')"
+              echo "PG_USER=$(echo "$pgconn" | jq -r 'if type == "array" then .[0] else . end | .user')"
+              echo "PG_PW=$pg_pw"
+            } >> "$GITHUB_ENV"
+            echo "pg host (private) found; CA fetched"
+          else
+            echo "::notice::managed PostgreSQL $PG_CLUSTER_NAME not found; skipping BOOTSTRAP_PG_*"
+          fi
+
       - name: Platform secrets (picopaas-env, picopaas-db-ca)
         if: steps.gate.outputs.run == 'true'
         env:
@@ -287,7 +309,8 @@ jobs:
           echo "::add-mask::$DATABASE_URL"
 
           kubectl -n $ns create secret generic picopaas-db-ca \
-            --from-file=ca.crt="$RUNNER_TEMP/db-ca.crt" --dry-run=client -o yaml | kubectl apply -f -
+            --from-file=ca.crt="$RUNNER_TEMP/db-ca.crt" \
+            ${PG_HOST:+--from-file=pg-ca.crt="$RUNNER_TEMP/pg-ca.crt"} --dry-run=client -o yaml | kubectl apply -f -
 
           # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
           kubectl -n $ns create secret generic picopaas-env \
@@ -312,6 +335,12 @@ jobs:
             --from-literal=BOOTSTRAP_DB_PORT="$ADMIN_PORT" \
             --from-literal=BOOTSTRAP_DB_USER="$ADMIN_USER" \
             --from-literal=BOOTSTRAP_DB_PASSWORD="$ADMIN_PW" \
+            --from-literal=PG_EGRESS_CIDR="$VPC_CIDR" \
+            --from-literal=BOOTSTRAP_PG_HOST="${PG_HOST:-}" \
+            --from-literal=BOOTSTRAP_PG_PORT="${PG_PORT:-25060}" \
+            --from-literal=BOOTSTRAP_PG_USER="${PG_USER:-}" \
+            --from-literal=BOOTSTRAP_PG_PASSWORD="${PG_PW:-}" \
+            --from-literal=BOOTSTRAP_PG_CA=/etc/picopaas/db-ca/pg-ca.crt \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # ---- step 5: issuers, certificate, platform workload ----

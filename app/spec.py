@@ -20,6 +20,7 @@ class SpecError(ValueError):
 class _Resources(BaseModel):
     model_config = ConfigDict(extra="forbid")
     db: StrictBool = False
+    db_engine: Literal["mysql", "pg"] = "mysql"  # engine for `db: true`; immutable once the app has a database
     storage: StrictBool = False
 
 

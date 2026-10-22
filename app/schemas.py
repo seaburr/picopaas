@@ -176,6 +176,7 @@ class AppCreate(BaseModel):
     image: str = Field(min_length=1, max_length=512)
     port: int = Field(ge=1024, le=65535, description=PORT_DESC)
     want_db: bool = False
+    db_engine: Literal["mysql", "pg"] = "mysql"  # which engine hosts the database when want_db (immutable later)
     want_storage: bool = False
     env: List[EnvVarIn] = Field(default_factory=list)
     health_check_enabled: bool = False
@@ -273,6 +274,7 @@ class AppOut(BaseModel):
     image_update_error: Optional[str] = None
     port: int
     want_db: bool
+    db_engine: str = "mysql"
     want_storage: bool
     health_check_enabled: bool = False
     health_check_path: str = DEFAULT_HEALTH_PATH

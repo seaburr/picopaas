@@ -1,8 +1,8 @@
 # Platform Deployment: FastAPI + Vue (built-in) + in-process reconciler (ARCHITECTURE.md §2).
 # Secrets `picopaas-env` and `picopaas-db-ca` are NOT in this repo. .github/workflows/bootstrap.yml
 # creates them (idempotently); see deploy/README.md "Secrets" for the keys (SECRET_KEY, FERNET_KEY,
-# DATABASE_URL, DIGITALOCEAN_TOKEN, SPACES_*, BOOTSTRAP_DB_*, MYSQL_EGRESS_*, RECONCILER_ENABLED, ...).
-# `picopaas-db-ca` (key ca.crt) is the managed-MySQL CA; DATABASE_URL points at it via ?ssl_ca=.
+# DATABASE_URL, DIGITALOCEAN_TOKEN, SPACES_*, BOOTSTRAP_DB_*, MYSQL_EGRESS_*, BOOTSTRAP_PG_* + PG_EGRESS_CIDR, RECONCILER_ENABLED, ...).
+# `picopaas-db-ca` (key ca.crt = managed-MySQL CA, key pg-ca.crt = managed-PostgreSQL CA -> BOOTSTRAP_PG_CA); DATABASE_URL points at it via ?ssl_ca=.
 # The image tag below is a placeholder: bootstrap.yml / deploy.yml set the real short-sha tag.
 apiVersion: apps/v1
 kind: Deployment

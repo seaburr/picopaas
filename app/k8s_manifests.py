@@ -321,6 +321,8 @@ def network_policies(
         },
     }
 
+    # One DB-egress policy serves both engines: `mysql_cidr`/`mysql_port` are the app's DB server's CIDR/port
+    # (reconciler picks the pg CIDR + 25060 for a Postgres-backed app), so an app only gets egress for its own engine.
     # mysql_cidr=None -> in-cluster MySQL (ns picopaas-data, pod app=mysql);
     # otherwise a managed DB reached by CIDR.
     if mysql_cidr is None:

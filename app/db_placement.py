@@ -15,8 +15,8 @@ class NoDbCapacity(Exception):
     """Raised when no 'active' DbServer has a free slot."""
 
 
-def choose_server(session: Session) -> DbServer:
-    """Return the 'active' DbServer with the most free slots
+def choose_server(session: Session, engine: str = "mysql") -> DbServer:
+    """Return the 'active' DbServer of the requested `engine` ('mysql' | 'pg') with the most free slots
     (`max_databases` minus its current `AppDatabase` count), tie-broken by
     the lowest id. Raises `NoDbCapacity` if no active server qualifies."""
     counts = dict(
@@ -28,7 +28,7 @@ def choose_server(session: Session) -> DbServer:
     )
 
     active_servers = (
-        session.execute(select(DbServer).where(DbServer.status == "active")).scalars().all()
+        session.execute(select(DbServer).where(DbServer.status == "active", DbServer.engine == engine)).scalars().all()
     )
 
     best: DbServer | None = None

@@ -100,6 +100,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         image_update_error=app.image_update_error,
         port=app.port,
         want_db=app.want_db,
+        db_engine=app.db_engine,
         want_storage=app.want_storage,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
@@ -181,6 +182,7 @@ def create_app(
         run_as_uid=run_as_uid,
         port=payload.port,
         want_db=payload.want_db,
+        db_engine=payload.db_engine,
         want_storage=payload.want_storage,
         health_check_enabled=payload.health_check_enabled,
         health_check_path=payload.health_check_path,
@@ -324,9 +326,9 @@ class RotateIn(BaseModel):
 
 def get_mysql_admin_factory():
     """Overridden in tests with a FakeMySQLAdmin factory."""
-    from app.providers.mysql import MySQLAdminClient
+    from app.providers.factory import db_admin_for
 
-    return MySQLAdminClient
+    return db_admin_for
 
 
 def get_object_store() -> ObjectStore:

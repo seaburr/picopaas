@@ -55,6 +55,16 @@ jobs:
           echo "$opts" | jq -e --arg s "$slug" '[.options.mysql.layouts[].sizes[]] | index($s)' >/dev/null \
             || { echo "::error::slug $slug not valid; mysql sizes:"; echo "$opts" | jq -c '[.options.mysql.layouts[].sizes[]]|unique'; exit 1; }
           echo "mysql slug $slug OK in $region"
+          # Same for managed PostgreSQL (request 0006); also report its layout so connection limits can be sanity-checked.
+          pgslug=$(sed -n '/variable "postgres_size"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
+          echo "$opts" | jq -e --arg r "$region" '.options.pg.regions | index($r)' >/dev/null \
+            || { echo "::error::managed PostgreSQL not offered in $region"; exit 1; }
+          echo "$opts" | jq -e --arg s "$pgslug" '[.options.pg.layouts[].sizes[]] | index($s)' >/dev/null \
+            || { echo "::error::slug $pgslug not valid; pg sizes:"; echo "$opts" | jq -c '[.options.pg.layouts[].sizes[]]|unique'; exit 1; }
+          echo "pg slug $pgslug OK in $region; versions: $(echo "$opts" | jq -c '.options.pg.versions')"
+          # DO's 1 GB node allows ~25 connections (22 usable; 3 reserved). Platform budget: PG_MAX_DB_USER_CONNECTIONS
+          # (default 5) per tenant, so >4 PG tenants can exhaust it: warn (not fail) when the slug is the 1 GB node.
+          case "$pgslug" in *1gb*) echo "::warning::pg $pgslug has ~25 connections total; keep PG tenants x PG_MAX_DB_USER_CONNECTIONS <= ~20 (use PgBouncer pools or a bigger SKU beyond that)";; esac
           # The region's size list is what has capacity right now; DOKS returns a vague "insufficient capacity" 422 otherwise.
           node=$(sed -n '/variable "node_size"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
           curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/regions?per_page=200" \

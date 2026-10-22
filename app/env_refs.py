@@ -22,6 +22,17 @@ class EnvValidationError(ValueError):
     pass
 
 
+def db_url(engine: str, user: str, password: str, host: str, port: int | str, name: str, tls: bool = False) -> str:
+    """Connection URL for `${{ db.url }}`: `postgres://` for engine 'pg' (with `?sslmode=require` on a TLS server),
+    `mysql://` otherwise. Engine-neutral parts (host/port/name/user/password) are separate refs."""
+    from urllib.parse import quote
+
+    auth = f"{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{name}"
+    if engine == "pg":
+        return f"postgres://{auth}" + ("?sslmode=require" if tls else "")
+    return f"mysql://{user}:{password}@{host}:{port}/{name}"
+
+
 def validate_env_key(key: str) -> None:
     if not ENV_KEY_RE.match(key):
         raise EnvValidationError(

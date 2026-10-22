@@ -46,6 +46,9 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
    kubectl apply -f deploy/platform/namespace.yaml -f deploy/platform/rbac.yaml
    ```
    Create `picopaas-env` (see Secrets). `DATABASE_URL` is the platform's own metadata DB.
+   Managed PostgreSQL (`picopaas-pg-nyc3`) is looked up by bootstrap.yml via doctl exactly like MySQL and written to
+   `picopaas-env` as `BOOTSTRAP_PG_HOST/PORT/USER/PASSWORD` + `PG_EGRESS_CIDR`; its CA is key `pg-ca.crt` of `picopaas-db-ca`
+   (`BOOTSTRAP_PG_CA=/etc/picopaas/db-ca/pg-ca.crt`). Skipped with a notice if the cluster does not exist.
 6. **MySQL for app databases**
    - **Managed (`use_managed_mysql = true`)**: nothing to deploy; register the managed server as a
      `DbServer` using Terraform outputs. Skip to step 7.

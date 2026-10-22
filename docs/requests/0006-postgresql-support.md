@@ -39,6 +39,54 @@ Approval line (Chas fills in): `APPROVED: <variant> on <date>` / `DECLINED`.
 
 ---
 
+## SPIKE-CONFIRMED DESIGN AND IMPLEMENTATION (2026-10-22, backend)
+
+A read/write spike as `doadmin` on the live DO Managed PG 17 cluster (port **25060**, TLS only) fixed the design below;
+it is implemented in `app/providers/postgres.py` (`PostgresAdmin`, subclass of the shared `DbAdmin` abc in
+`app/providers/base.py`; `MySQLAdmin`/`MySQLAdminError` remain as aliases). Engine is chosen per server by
+`DbServer.engine` (`mysql` | `pg`) in `app/providers/factory.py`.
+
+- **doadmin capabilities.** Not a superuser, but has CREATEROLE + CREATEDB, and receives ADMIN OPTION on every role it
+  creates, so it can ALTER/GRANT/terminate sessions of the app roles with no extra GRANTs.
+- **Admin-from-defaultdb rule.** Every admin statement runs while connected to `defaultdb`. Connecting to an app DB that
+  is in `default_transaction_read_only` mode makes doadmin's own session read-only and breaks ALTER/GRANT/REVOKE. Only
+  exception: the one `ALTER SCHEMA` at creation (the DB is not read-only yet).
+- **Provisioning SQL** (`create_db_user`, identifiers via `psycopg.sql.Identifier`, password via `sql.Literal`):
+  `REVOKE CONNECT, TEMP ON DATABASE defaultdb FROM PUBLIC` (idempotent, every create);
+  `CREATE ROLE app_<id> LOGIN PASSWORD '<random>' CONNECTION LIMIT 5` (or `ALTER ROLE` if a retry finds it);
+  `CREATE DATABASE app_<id>` (owner stays doadmin; skipped if present); `REVOKE ALL ON DATABASE app_<id> FROM PUBLIC`;
+  `GRANT CONNECT, TEMP ON DATABASE app_<id> TO app_<id>`;
+  `ALTER ROLE app_<id> SET statement_timeout = '60000ms'`, `SET idle_in_transaction_session_timeout = '60000ms'`,
+  `SET search_path = 'public'`; then, connected to `app_<id>`: `ALTER SCHEMA public OWNER TO app_<id>`.
+- **public-schema-owner fix.** PG15+/17: `public` is owned by `pg_database_owner`, so without the `ALTER SCHEMA` the app
+  role cannot CREATE TABLE.
+- **defaultdb PUBLIC revoke.** `REVOKE CONNECT, TEMP ON DATABASE defaultdb FROM PUBLIC` once per server so app roles
+  cannot connect to `defaultdb`; `PostgresAdmin.init_server()` does it, and `create_db_user` re-runs it (idempotent,
+  best effort) so no separate bootstrap network step is needed.
+- **Dropped idea: `temp_file_limit`.** Superuser-only to set; not available to doadmin. Not used.
+- **Connection limit ~5.** `CONNECTION LIMIT 5` per role (`PG_MAX_DB_USER_CONNECTIONS`): the 1 GB node only has ~22
+  usable connections in total, far fewer than MySQL's per-user cap of 10. Apps must keep their pool at or below 5.
+- **Drop.** `DROP DATABASE IF EXISTS app_<id> WITH (FORCE)` then `DROP ROLE IF EXISTS app_<id>` (from defaultdb).
+- **Size.** `SELECT pg_database_size('app_<id>')` from defaultdb.
+- **Quota enforcement (two-stage, honest).** Stage 1 (size over `DB_QUOTA_BYTES`): `ALTER DATABASE app_<id> SET
+  default_transaction_read_only = on` + `pg_terminate_backend` of the role's sessions. This is a speed-bump: a tenant can
+  override it with a session-level `SET default_transaction_read_only = off`. Stage 2 (size over `DB_QUOTA_BYTES x
+  PG_HARD_CAP_RATIO`, default 2.0, passed as `hard=True` by `app/quota.py`): additionally `REVOKE CONNECT ON DATABASE
+  app_<id> FROM app_<id>` + terminate. Restore (`set_read_only(.., False)`): `GRANT CONNECT` + `read_only = off`. A
+  stage-2 tenant cannot shrink the DB, so recovery normally needs an admin.
+- **TLS.** Admin connections use `sslmode=verify-ca` with the DbServer's `ca_cert` (written to a private temp file for
+  libpq), `require` when no CA is stored. `${{ db.ca_cert }}` / `${{ db.tls }}` stay generic; `${{ db.url }}` is
+  `postgres://user:pw@host:25060/app_<id>?sslmode=require` for pg, `mysql://...` for mysql.
+- **Platform surface.** `DbServer.engine` and `App.db_engine` (migration `c6e1a8d4f2b7`); `AppCreate.db_engine` /
+  spec `resources.db_engine` (`mysql` default | `pg`; immutable once the app has a database); placement
+  (`choose_server(session, engine)`) filters by engine; `POST /admin/db-servers` accepts `engine`. Bootstrap:
+  `BOOTSTRAP_PG_HOST/PORT(25060)/USER/PASSWORD` (+ `BOOTSTRAP_PG_CA` = path to the PEM CA) insert/sync DbServer
+  `primary-pg` (`scheduler.bootstrap_pg_server`).
+- **Left for the infra follow-up.** Egress NetworkPolicy to the PG host on 25060 (tenant policy today only allows the
+  MySQL CIDR/in-cluster mode; platform pods need it too); wiring the `BOOTSTRAP_PG_*` secret values and CA file into the
+  platform Deployment/bootstrap workflow; Terraform check that the chosen PG size gives enough connections; add
+  `psycopg` to the deployed image (requirements.txt updated); the actual n8n deploy.
+
 # Design: can Postgres support our isolation model?
 
 **Short answer: yes for every protection except the hard size quota, which becomes a two-stage, weaker-by-default

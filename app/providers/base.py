@@ -122,12 +122,16 @@ def generate_password(length: int = 32) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-class MySQLAdminError(Exception):
+class DbAdminError(Exception):
     pass
 
 
-class MySQLAdmin(ABC):
-    """Manages one MySQL database + user per app (ARCHITECTURE.md §2 "DB").
+# Historic name, kept so existing `except MySQLAdminError` sites also catch PostgreSQL provider failures.
+MySQLAdminError = DbAdminError
+
+
+class DbAdmin(ABC):
+    """Manages one database + user per app (MySQL or PostgreSQL; `app/providers/factory.py` picks by DbServer.engine) (ARCHITECTURE.md §2 "DB").
 
     Implementations are constructed per `DbServer` (host/port/admin creds come
     from `__init__`, chosen via `app/db_placement.py::choose_server` —
@@ -175,6 +179,9 @@ class MySQLAdmin(ABC):
     def rotate_password(self, app_id: int) -> dict[str, Any]:
         """Set a new random password for the app's db user; return the full new creds."""
         return self.set_password(app_id, generate_password())
+
+
+MySQLAdmin = DbAdmin  # historic name
 
 
 class ObjectStoreError(Exception):

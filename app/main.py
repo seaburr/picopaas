@@ -28,6 +28,7 @@ async def lifespan(_app: FastAPI):
 
         scheduler.rotate_encrypted_data()
         scheduler.bootstrap_db_server()
+        scheduler.bootstrap_pg_server()
         sched = scheduler.start_scheduler()
     try:
         yield

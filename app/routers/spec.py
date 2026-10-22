@@ -74,6 +74,14 @@ def deploy_spec(
                     "the app if you really want to drop it (this destroys the data)."
                 ),
             )
+    if app is not None and app.want_db and spec.resources.db and app.db_engine != spec.resources.db_engine:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A spec can't change the database engine of an existing app. Delete and recreate "
+                "the app if you really want to switch (this destroys the data)."
+            ),
+        )
     missing = [s for s in spec.secrets if s not in payload.secrets and s not in existing_secrets]
     if missing:
         raise HTTPException(status_code=422, detail=(
@@ -112,6 +120,7 @@ def deploy_spec(
             run_as_uid=run_as_uid,
             port=spec.port,
             want_db=spec.resources.db,
+            db_engine=spec.resources.db_engine,
             want_storage=spec.resources.storage,
             health_check_enabled=spec.healthCheck.enabled,
             health_check_path=spec.healthCheck.path,
@@ -121,8 +130,8 @@ def deploy_spec(
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
-            (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.want_storage, app.health_check_enabled, app.health_check_path)
-            != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.storage,
+            (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.db_engine, app.want_storage, app.health_check_enabled, app.health_check_path)
+            != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.db_engine, spec.resources.storage,
                 spec.healthCheck.enabled, spec.healthCheck.path)
         )
         app.image = spec.image
@@ -131,6 +140,7 @@ def deploy_spec(
         app.run_as_uid = run_as_uid
         app.port = spec.port
         app.want_db = spec.resources.db
+        app.db_engine = spec.resources.db_engine
         app.want_storage = spec.resources.storage
         app.health_check_enabled = spec.healthCheck.enabled
         app.health_check_path = spec.healthCheck.path

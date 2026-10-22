@@ -70,6 +70,7 @@ class DbServerOut(BaseModel):
     host: str
     port: int
     status: str
+    engine: str = "mysql"
     max_databases: int
     used: int
     pct: float
@@ -91,6 +92,7 @@ class DbServerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(default=3306, gt=0, le=65535)
+    engine: Literal["mysql", "pg"] = "mysql"
     admin_user: str = Field(min_length=1, max_length=255)
     admin_password: str = Field(min_length=1)
     max_databases: int = Field(gt=0)
@@ -123,7 +125,7 @@ def _user_out(db: Session, user: models.User) -> dict:
 def _server_out(db: Session, s: models.DbServer) -> DbServerOut:
     used = db.query(func.count(models.AppDatabase.id)).filter(models.AppDatabase.db_server_id == s.id).scalar()
     pct = round(used * 100.0 / s.max_databases, 1) if s.max_databases else 100.0
-    return DbServerOut(id=s.id, name=s.name, host=s.host, port=s.port, status=s.status,
+    return DbServerOut(id=s.id, name=s.name, host=s.host, port=s.port, status=s.status, engine=s.engine,
                        max_databases=s.max_databases, used=used, pct=pct, warn=pct >= WARN_PCT)
 
 
@@ -438,7 +440,7 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
     server = models.DbServer(
         name=payload.name, host=payload.host, port=payload.port, admin_user=payload.admin_user,
         admin_password_encrypted=crypto.encrypt(payload.admin_password),
-        max_databases=payload.max_databases, status="active", ca_cert=payload.ca_cert,
+        max_databases=payload.max_databases, status="active", ca_cert=payload.ca_cert, engine=payload.engine,
     )
     db.add(server)
     try:

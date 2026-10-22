@@ -189,6 +189,45 @@ class FakeMySQLAdmin(MySQLAdmin):
         return creds
 
 
+class FakePostgresAdmin(FakeMySQLAdmin):
+    """In-memory PostgreSQL admin: same bookkeeping as the MySQL fake, `postgres://` creds, and the two-stage
+    set_read_only (`hard` = REVOKE CONNECT). `hard_calls` records (app_id, read_only, hard)."""
+
+    def __init__(self, server: Any = None) -> None:
+        super().__init__(server)
+        self.hard: dict[int, bool] = {}
+        self.hard_calls: list[tuple[int, bool, bool]] = []
+
+    def create_db_user(self, app_id: int) -> dict[str, Any]:
+        from app.env_refs import db_url
+        creds = {
+            "host": "pg.example.internal", "port": 25060, "name": f"app_{app_id}", "user": f"app_{app_id}",
+            "password": secrets.token_urlsafe(24),
+        }
+        creds["url"] = db_url("pg", creds["user"], creds["password"], creds["host"], creds["port"], creds["name"], tls=True)
+        self.creds[app_id] = creds
+        self.sizes[app_id] = 0
+        self.read_only[app_id] = False
+        self.hard[app_id] = False
+        return creds
+
+    def set_read_only(self, app_id: int, read_only: bool, app_password: Optional[str] = None, hard: bool = False):
+        self.read_only[app_id] = read_only
+        self.hard[app_id] = bool(read_only and hard)
+        self.calls.append((app_id, read_only))
+        self.hard_calls.append((app_id, read_only, hard))
+        if not read_only:
+            return None
+        return {"listed": 1, "killed": 1, "failed": 0, "list_error": False, "path": "pg"}
+
+    def set_password(self, app_id: int, password: str) -> dict[str, Any]:
+        from app.env_refs import db_url
+        creds = dict(self.creds[app_id], password=password)
+        creds["url"] = db_url("pg", creds["user"], password, creds["host"], creds["port"], creds["name"], tls=True)
+        self.creds[app_id] = creds
+        return creds
+
+
 class FakeObjectStore(ObjectStore):
     def __init__(self) -> None:
         self.creds: dict[int, dict[str, Any]] = {}

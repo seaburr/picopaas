@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app import config, crypto, env_refs, image_check, image_history, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
+from app.env_refs import db_url
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
 log = logging.getLogger(__name__)
@@ -44,8 +45,12 @@ def _get(settings: Any, key: str, default: Any) -> Any:
     return getattr(settings, key, default)
 
 
-def _mysql_cidr(settings: Any) -> str | None:
-    """None means "in-cluster MySQL" (MYSQL_EGRESS_MODE=in-cluster); else a CIDR."""
+def _mysql_cidr(settings: Any, engine: str = "mysql") -> str | None:
+    """None means "in-cluster MySQL" (MYSQL_EGRESS_MODE=in-cluster); else a CIDR.
+    Postgres is always managed (never in-cluster): its CIDR is PG_EGRESS_CIDR, falling back to the MySQL one
+    (both clusters live in the same VPC, so the VPC CIDR covers both)."""
+    if engine == "pg":
+        return _get(settings, "pg_cidr", None) or _get(settings, "mysql_cidr", None) or DEFAULT_MYSQL_CIDR
     if _get(settings, "mysql_egress_mode", "cidr") == "in-cluster":
         return None
     return _get(settings, "mysql_cidr", None) or DEFAULT_MYSQL_CIDR
@@ -62,7 +67,8 @@ def _db_refs(app: models.App) -> dict[str, str]:
         "db.name": row.db_name,
         "db.user": row.db_user,
         "db.password": password,
-        "db.url": f"mysql://{row.db_user}:{password}@{server.host}:{server.port}/{row.db_name}",
+        "db.url": db_url(server.engine, row.db_user, password, server.host, server.port, row.db_name,
+                         tls=bool(server.ca_cert)),
         "db.ca_cert": server.ca_cert or "",
         "db.tls": "required" if server.ca_cert else "off",
     }
@@ -355,7 +361,7 @@ def reconcile_app(
     # 1. Database.
     if app.want_db and app.database is None:
         try:
-            server = choose_server(session)
+            server = choose_server(session, app.db_engine or "mysql")
         except NoDbCapacity:
             _fail_key(session, app, "db_capacity", now=now)
             return
@@ -435,7 +441,8 @@ def reconcile_app(
         image_ref=app.image,
         port=app.port,
         env=resolved_env,
-        mysql_cidr=_mysql_cidr(settings),
+        mysql_cidr=_mysql_cidr(
+            settings, app.database.server.engine if app.want_db and app.database is not None else "mysql"),
         mysql_port=app.database.server.port if app.want_db and app.database is not None else None,
         storage_ips=(
             _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []

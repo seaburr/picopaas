@@ -87,6 +87,8 @@ class App(Base):
     rejected_digest: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     port: Mapped[int] = mapped_column(nullable=False)
     want_db: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Which engine the app's database is placed on: 'mysql' (default) | 'pg'. Immutable once the database exists.
+    db_engine: Mapped[str] = mapped_column(String(8), nullable=False, default="mysql", server_default="mysql")
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
     health_check_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     health_check_path: Mapped[str] = mapped_column(String(255), nullable=False, default="/healthz", server_default="/healthz")
@@ -236,6 +238,8 @@ class DbServer(Base):
     # 'active' (eligible for new placements), 'draining' (keep existing dbs,
     # no new ones), or 'full' (at/over max_databases).
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
+    # Database engine of this server: 'mysql' | 'pg' (selects the provider in app/providers/factory.py).
+    engine: Mapped[str] = mapped_column(String(8), nullable=False, default="mysql", server_default="mysql")
     # PEM CA certificate for TLS-only servers (e.g. DO managed MySQL); exposed
     # to tenant apps as `${{ db.ca_cert }}`. NULL = plaintext server.
     ca_cert: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
