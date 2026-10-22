@@ -659,3 +659,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: replica control committed c4cfb32 and pushed; CI, image, deploy all green. No security findings filed.
 - 2026-10-22 [frontend] DONE: multi-pod UI. Resource usage + Health use cpu/mem_capacity as denominator; logs pod picker + per-pod sections; types updated. typecheck clean; uncommitted.
 - 2026-10-22 [scm-security] START: commit/push multi-pod observability wave, watch CI + deploy.
+- 2026-10-22 [scm-security] DONE: multi-pod observability committed 854f907 and pushed; CI (incl. mysql-integration), image, deploy all green. No security findings filed.
