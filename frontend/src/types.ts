@@ -19,6 +19,7 @@ export interface User {
 export interface Features {
   databases: boolean
   storage: boolean
+  db_engines?: string[] // engines with free capacity now: a subset of ['mysql', 'pg']
 }
 
 export interface Limits {
@@ -112,6 +113,7 @@ export interface App {
   image_update_error?: string | null
   port: number
   want_db: boolean
+  db_engine?: 'mysql' | 'pg'
   want_storage: boolean
   status: string
   status_detail: string | null
@@ -159,6 +161,7 @@ export interface AppCreatePayload {
   image: string
   port: number
   want_db: boolean
+  db_engine?: 'mysql' | 'pg'
   want_storage: boolean
   health_check_enabled?: boolean
   health_check_path?: string
@@ -210,6 +213,7 @@ export interface DbServer {
   host: string
   port: number
   status: string
+  engine: 'mysql' | 'pg'
   max_databases: number
   used: number
   pct: number
@@ -229,6 +233,7 @@ export interface DbServerCreate {
   name: string
   host: string
   port: number
+  engine: 'mysql' | 'pg'
   admin_user: string
   admin_password: string
   max_databases: number

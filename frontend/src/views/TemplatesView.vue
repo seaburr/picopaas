@@ -36,7 +36,7 @@ onMounted(async () => {
           <h2 class="section-title break-words">{{ t.name }}</h2>
           <p class="text-sm text-zinc-300">{{ t.description }}</p>
           <div class="flex flex-wrap gap-1">
-            <span v-if="t.wants_db" class="badge badge-info">MySQL database</span>
+            <span v-if="t.wants_db" class="badge badge-info">Database</span>
             <span v-if="t.wants_storage" class="badge badge-info">Storage bucket</span>
             <span v-if="!t.wants_db && !t.wants_storage" class="badge badge-neutral">No add-ons</span>
           </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import HostLink from '../components/HostLink.vue'
@@ -31,6 +31,7 @@ const form = reactive({
   image: '',
   port: 8080 as number | string,
   want_db: false,
+  db_engine: 'mysql' as 'mysql' | 'pg',
   want_storage: false,
   health_check_enabled: false,
   health_check_path: '/healthz',
@@ -51,7 +52,28 @@ const errorBox = ref<HTMLElement | null>(null)
 const limits = computed(() => auth.user?.limits)
 const dbOff = computed(() => auth.user?.features?.databases === false)
 const storageOff = computed(() => auth.user?.features?.storage === false)
-const dbLabel = computed(() => `MySQL, ${limits.value?.db_mb ?? 50} MB`)
+const dbLabel = computed(() => `${limits.value?.db_mb ?? 50} MB`)
+
+// Which engines a new database can use. When the backend doesn't report db_engines (older build), fall back to MySQL.
+const availableEngines = computed(() => auth.user?.features?.db_engines ?? ['mysql'])
+const engineChoices = computed(() =>
+  (
+    [
+      { value: 'mysql', label: 'MySQL' },
+      { value: 'pg', label: 'PostgreSQL' },
+    ] as const
+  ).map((e) => ({ ...e, available: availableEngines.value.includes(e.value) })),
+)
+
+// Ticking Database should land on an engine that actually has capacity (and the engine is immutable, so only on create).
+watch(
+  () => form.want_db,
+  (on) => {
+    if (on && !isEdit.value && !availableEngines.value.includes(form.db_engine)) {
+      form.db_engine = (availableEngines.value[0] as 'mysql' | 'pg') ?? 'mysql'
+    }
+  },
+)
 const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket, S3-compatible`)
 const imageMb = computed(() => limits.value?.image_mb ?? 512)
 
@@ -74,6 +96,7 @@ onMounted(async () => {
       originalImage.value = app.image
       form.port = app.port
       form.want_db = app.want_db
+      form.db_engine = app.db_engine ?? 'mysql'
       form.want_storage = app.want_storage
       form.health_check_enabled = app.health_check_enabled ?? false
       form.health_check_path = app.health_check_path || '/healthz'
@@ -186,6 +209,7 @@ async function onSubmit() {
         image: form.image.trim(),
         port,
         want_db: form.want_db,
+        db_engine: form.db_engine,
         want_storage: form.want_storage,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
@@ -350,6 +374,20 @@ async function onSubmit() {
                   <span v-if="dbOff && !isEdit" class="help block !mt-0">Databases aren't available right now.</span>
                 </span>
               </label>
+              <fieldset v-if="form.want_db" class="ml-6 flex gap-4" role="radiogroup" aria-label="Database engine">
+                <label v-for="eng in engineChoices" :key="eng.value" class="flex items-center gap-1.5 text-sm text-zinc-200">
+                  <input
+                    v-model="form.db_engine"
+                    type="radio"
+                    name="db_engine"
+                    :value="eng.value"
+                    :disabled="isEdit || !eng.available"
+                    class="check"
+                  />
+                  <span :class="{ 'text-zinc-500': !eng.available && !isEdit }">{{ eng.label }}</span>
+                </label>
+                <span v-if="isEdit" class="help !mt-0 self-center">Engine can't be changed after creation.</span>
+              </fieldset>
               <label class="flex items-start gap-2 text-sm text-zinc-200">
                 <input v-model="form.want_storage" type="checkbox" :disabled="isEdit || storageOff" class="check mt-0.5" />
                 <span>

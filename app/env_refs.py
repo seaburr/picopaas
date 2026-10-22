@@ -90,7 +90,7 @@ def validate_env_value(value: str, want_db: bool, want_storage: bool) -> None:
     domain = ref.split(".", 1)[0]
     if domain == "db" and not want_db:
         raise EnvValidationError(
-            f"${{{{ {ref} }}}} needs a database, but this app doesn't have one. Turn on the database (MySQL) "
+            f"${{{{ {ref} }}}} needs a database, but this app doesn't have one. Turn on the database "
             "option for this app, or remove the reference.")
     if domain == "storage" and not want_storage:
         raise EnvValidationError(

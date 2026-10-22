@@ -185,7 +185,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.delenv(k, raising=False)
     me = admin.get("/auth/me").json()
-    assert me["features"] == {"databases": False, "storage": False}
+    assert me["features"] == {"databases": False, "storage": False, "db_engines": []}
     assert me["limits"] == {
         "cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI,
         "cpu_request_m": config.DEFAULT_CPU_REQUEST_M, "mem_request_mi": config.DEFAULT_MEM_REQUEST_MI,
@@ -198,7 +198,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     db_session.commit()
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.setenv(k, "not-a-secret")
-    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True}
+    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True, "db_engines": ["mysql"]}
 
 
 def test_me_databases_false_when_no_server_can_take_one(admin, db_session):
@@ -213,6 +213,22 @@ def test_me_databases_false_when_no_server_can_take_one(admin, db_session):
     srv.max_databases = 5
     db_session.commit()
     assert admin.get("/auth/me").json()["features"]["databases"] is True
+
+
+def test_me_db_engines_lists_each_engine_with_capacity(admin, db_session):
+    """The deploy form's engine picker only offers engines that have an active server with a free slot."""
+    assert admin.get("/auth/me").json()["features"]["db_engines"] == []
+    db_session.add(models.DbServer(name="primary", host="h", admin_user="u", admin_password_encrypted="x", engine="mysql"))
+    db_session.commit()
+    assert admin.get("/auth/me").json()["features"]["db_engines"] == ["mysql"]
+    db_session.add(models.DbServer(name="primary-pg", host="h2", admin_user="u", admin_password_encrypted="x", engine="pg"))
+    db_session.commit()
+    # Order is mysql, pg (the order _available_db_engines probes), regardless of insert order.
+    assert admin.get("/auth/me").json()["features"]["db_engines"] == ["mysql", "pg"]
+    # A full pg server drops out but mysql stays.
+    db_session.query(models.DbServer).filter_by(name="primary-pg").one().max_databases = 0
+    db_session.commit()
+    assert admin.get("/auth/me").json()["features"]["db_engines"] == ["mysql"]
 
 
 # --- Password reset / change ---

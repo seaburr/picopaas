@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, useId } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -11,6 +11,7 @@ import {
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
+import { dbEngineLabel } from '../composables/appUi'
 import { useModal } from '../composables/useModal'
 import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
@@ -187,7 +188,7 @@ async function patch(s: DbServer, payload: { status?: string; max_databases?: nu
     await load()
   }
 }
-const emptyForm = () => ({ name: '', host: '', port: 3306, admin_user: '', admin_password: '', max_databases: 25 })
+const emptyForm = () => ({ name: '', host: '', port: 3306, engine: 'mysql' as 'mysql' | 'pg', admin_user: '', admin_password: '', max_databases: 25 })
 const form = reactive(emptyForm())
 const addOpen = ref(false)
 const addDlg = ref<HTMLDialogElement | null>(null)
@@ -199,6 +200,14 @@ function openAdd() {
   addError.value = ''
   addOpen.value = true
 }
+// Offer the engine's conventional managed port when switching engine, unless the admin has set a custom one.
+const DEFAULT_PORT: Record<string, number> = { mysql: 3306, pg: 25060 }
+watch(
+  () => form.engine,
+  (engine, prev) => {
+    if (form.port === DEFAULT_PORT[prev]) form.port = DEFAULT_PORT[engine]
+  },
+)
 async function addServer() {
   addError.value = ''
   saving.value = true
@@ -206,7 +215,7 @@ async function addServer() {
     await createDbServer({ ...form })
     Object.assign(form, emptyForm()) // clears the password
     addOpen.value = false
-    toast.success('Database server added. Apps can now request a MySQL database.')
+    toast.success(`Database server added. Apps can now request a ${dbEngineLabel(form.engine)} database.`)
     await load()
   } catch (e) {
     addError.value = msg(e, "Couldn't add the database server. Check the host and credentials.")
@@ -237,7 +246,7 @@ const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
 const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_7rem_6.5rem] md:items-center md:gap-3'
 const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
-const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_9rem_8.5rem] md:items-center md:gap-3'
+const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
 
@@ -260,7 +269,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <ol class="mt-3 space-y-2 text-sm text-zinc-200">
           <li class="flex flex-wrap items-center gap-2">
             <span class="badge-warn">To do</span>
-            <span>Add a MySQL database server. Until then the Database option is hidden from users.</span>
+            <span>Add a database server (MySQL or PostgreSQL). Until then the Database option is hidden from users.</span>
             <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add database server</button>
           </li>
           <li class="flex flex-wrap items-center gap-2">
@@ -395,17 +404,18 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <!-- DB SERVERS -->
         <template v-else-if="tab === 'servers'">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-sm text-zinc-300">MySQL servers that app databases are placed on.</p>
+            <p class="text-sm text-zinc-300">Database servers (MySQL or PostgreSQL) that app databases are placed on.</p>
             <button type="button" class="btn-primary btn-sm shrink-0" @click="openAdd">Add server</button>
           </div>
           <div class="card overflow-hidden">
             <div :class="[serversGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>Name</span><span>Host</span><span>Capacity</span><span>Status</span>
+              <span>Name</span><span>Host</span><span>Engine</span><span>Capacity</span><span>Status</span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="s in servers" :key="s.id" :class="[rowBase, serversGrid]">
                 <div class="truncate font-medium text-white" :title="s.name">{{ s.name }}</div>
                 <div class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</div>
+                <div><span class="badge-neutral">{{ dbEngineLabel(s.engine) }}</span></div>
                 <DbCapacityBar :server="s" />
                 <select
                   :value="s.status"
@@ -468,9 +478,17 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
           <p class="help">Label shown in this page.</p>
         </div>
         <div>
+          <label :for="`${uid}-e`" class="label">Engine</label>
+          <select :id="`${uid}-e`" v-model="form.engine" class="input">
+            <option value="mysql">MySQL</option>
+            <option value="pg">PostgreSQL</option>
+          </select>
+          <p class="help">Which database engine this server runs. Apps pick a matching engine when they add a database.</p>
+        </div>
+        <div>
           <label :for="`${uid}-h`" class="label">Host</label>
           <input :id="`${uid}-h`" v-model="form.host" required placeholder="private-xxxx.db.ondigitalocean.com" class="input mono" />
-          <p class="help">Hostname the platform connects to. For DO managed MySQL use the private host.</p>
+          <p class="help">Hostname the platform connects to. For a DO managed database use the private host.</p>
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

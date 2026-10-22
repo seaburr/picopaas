@@ -136,27 +136,33 @@ def _spaces_configured() -> bool:
     return all(os.environ.get(k) for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"))
 
 
-def _db_placement_available(db: Session) -> bool:
-    """True when a new app database could be placed now: an 'active' DbServer with a free slot (draining/full don't count)."""
+def _available_db_engines(db: Session) -> list[str]:
+    """Engines a new app database could land on now: each engine with an 'active' DbServer that has a
+    free slot (draining/full don't count). A subset of ["mysql", "pg"], same order."""
     from app.db_placement import NoDbCapacity, choose_server
 
-    try:
-        choose_server(db)
-        return True
-    except NoDbCapacity:
-        return False
+    engines: list[str] = []
+    for engine in ("mysql", "pg"):
+        try:
+            choose_server(db, engine)
+            engines.append(engine)
+        except NoDbCapacity:
+            pass
+    return engines
 
 
 @router.get("/me", response_model=schemas.MeOut)
 def me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     out = schemas.UserOut.model_validate(current_user).model_dump()
+    db_engines = _available_db_engines(db)
     return schemas.MeOut(
         **out,
         max_apps=config.MAX_APPS_PER_USER,
         app_limit_effective=resources.effective_app_limit(current_user),
         features=schemas.Features(
-            databases=_db_placement_available(db),
+            databases=bool(db_engines),
             storage=_spaces_configured(),
+            db_engines=db_engines,
         ),
         limits=schemas.Limits(
             cpu_limit_m=DEFAULT_CPU_LIMIT_M,

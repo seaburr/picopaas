@@ -1,6 +1,10 @@
 import { onBeforeUnmount, ref } from 'vue'
 import type { App } from '../types'
 
+// Display name for a database engine ('mysql' | 'pg'). One source of truth for every DB label in the UI.
+export const DB_ENGINE_LABEL: Record<string, string> = { mysql: 'MySQL', pg: 'PostgreSQL' }
+export const dbEngineLabel = (engine?: string | null): string => DB_ENGINE_LABEL[engine ?? 'mysql'] ?? 'MySQL'
+
 // Backend datetimes may be naive UTC ("2026-10-19T12:00:00"); treat a missing zone as UTC.
 export function parseTs(iso: string): Date {
   const hasZone = /(Z|[+-]\d\d:?\d\d)$/.test(iso)

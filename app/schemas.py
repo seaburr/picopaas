@@ -114,6 +114,7 @@ class UserOut(BaseModel):
 class Features(BaseModel):
     databases: bool
     storage: bool
+    db_engines: List[str] = []  # engines with free capacity now: a subset of ["mysql", "pg"], for the deploy form's engine picker
 
 
 class LimitOverride(BaseModel):

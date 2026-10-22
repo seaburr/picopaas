@@ -17,7 +17,7 @@ import { clearCustomDomain, deleteStorageObjects, getAppEvents, getAppLogs, getI
 import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
-import { eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
+import { dbEngineLabel, eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
@@ -613,7 +613,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <div><dt class="meta">Health check</dt><dd class="text-zinc-200"><span v-if="app.health_check_enabled" class="mono">{{ app.health_check_path }}</span><template v-else>Off</template></dd></div>
               <div>
                 <dt class="meta">Database</dt>
-                <dd class="text-zinc-200">{{ app.want_db ? `Attached (MySQL, ${limits?.db_mb ?? 50} MB)` : 'Not enabled' }}</dd>
+                <dd class="text-zinc-200">{{ app.want_db ? `Attached (${dbEngineLabel(app.db_engine)}, ${limits?.db_mb ?? 50} MB)` : 'Not enabled' }}</dd>
               </div>
               <div>
                 <dt class="meta">Storage</dt>
