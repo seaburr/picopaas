@@ -76,7 +76,7 @@ async function onSubmit() {
         </p>
       </div>
       <p class="mt-4 text-center text-xs text-zinc-400">
-        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a>
+        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a> · <a href="https://status.picopaas.xyz" target="_blank" rel="noopener noreferrer" class="link">Status</a>
       </p>
     </div>
   </div>

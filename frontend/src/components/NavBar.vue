@@ -61,6 +61,7 @@ function skip(e: Event) {
             <RouterLink to="/keys" class="nav-link" active-class="nav-active" exact-active-class="nav-active">API keys</RouterLink>
           </template>
           <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
+          <a href="https://status.picopaas.xyz" target="_blank" rel="noopener noreferrer" class="nav-link">Status</a>
           <div v-if="isAdmin" class="ml-2 flex items-center gap-0.5 border-l border-pico-border pl-2" role="group" aria-label="Administration">
             <RouterLink to="/admin" class="nav-link" active-class="" exact-active-class="nav-active">
               Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black" :aria-label="`${pending} pending`">{{ pending }}</span>
@@ -107,6 +108,7 @@ function skip(e: Event) {
           <RouterLink to="/keys" class="nav-link" active-class="nav-active" exact-active-class="nav-active">API keys</RouterLink>
         </template>
         <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
+        <a href="https://status.picopaas.xyz" target="_blank" rel="noopener noreferrer" class="nav-link">Status</a>
         <a href="/privacy" class="nav-link">Privacy</a>
         <template v-if="isAdmin">
           <p class="mt-2 px-2.5 text-xs font-medium uppercase tracking-wide text-zinc-400">Administration</p>
