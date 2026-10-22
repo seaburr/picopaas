@@ -1,0 +1,85 @@
+# Gatus config for https://status.picopaas.xyz. Pinned image: see Dockerfile.
+# Secrets are ${VAR} placeholders resolved from the app's PicoPaaS env vars at startup; none are committed.
+web:
+  port: 8080
+
+# In-memory: no persistent volume exists on PicoPaaS. Check history resets whenever the pod restarts.
+storage:
+  type: memory
+
+ui:
+  title: PicoPaaS Status
+  header: PicoPaaS Status
+  description: Live health of the PicoPaaS platform, checked every minute.
+  link: https://picopaas.xyz
+  buttons:
+    - name: Platform
+      link: https://platform.picopaas.xyz
+    - name: Devlog
+      link: https://blog.picopaas.xyz
+
+# Alerting is OFF by default. To enable, uncomment, set DISCORD_WEBHOOK_URL as an app env var
+# (a PicoPaaS secret) and add `alerts:` to the endpoints you care about (see README). Tenant egress blocks
+# SMTP (25/465/587), so use a webhook provider (discord/slack/ntfy/telegram), not email.
+# alerting:
+#   discord:
+#     webhook-url: "${DISCORD_WEBHOOK_URL}"
+#     default-alert:
+#       failure-threshold: 3
+#       success-threshold: 2
+#       send-on-resolved: true
+
+endpoints:
+  # Real platform health endpoint: app/main.py GET /healthz -> 200 {"status":"ok"}.
+  # Shallow by design (API process up and serving); the LB, Traefik, TLS and DNS are all in the path.
+  - name: API health
+    group: Platform
+    url: https://platform.picopaas.xyz/healthz
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == ok"
+      - "[RESPONSE_TIME] < 2000"
+
+  - name: Web console
+    group: Platform
+    url: https://platform.picopaas.xyz/
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - '[BODY] == pat(*id="app"*)'
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: TLS certificate
+    group: Platform
+    url: https://platform.picopaas.xyz/healthz
+    interval: 30m
+    conditions:
+      - "[CERTIFICATE_EXPIRATION] > 168h"
+
+  - name: Landing page
+    group: Public sites
+    url: https://picopaas.xyz/
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: Devlog
+    group: Public sites
+    url: https://blog.picopaas.xyz/
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 4000"
+
+  # DNS via the system resolver path would not catch a broken public record; ask a public resolver.
+  - name: DNS
+    group: Platform
+    url: 1.1.1.1
+    interval: 5m
+    dns:
+      query-name: platform.picopaas.xyz
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
