@@ -142,3 +142,25 @@ def test_render_threads_replicas_into_quota_and_policies():
     m = k8s.render_app_manifests(1, "h", "img", 80, {}, None, replicas=2)
     assert m["resource_quota"]["spec"]["hard"]["pods"] == "3"
     assert "allow-same-namespace" in _policy_names(m["network_policies"])
+
+
+def _live_policies(kube, aid):
+    return _policy_names([m for m in kube.applied[f"app-{aid}"] if m["kind"] == "NetworkPolicy"])
+
+
+def test_scale_2_to_1_prunes_same_namespace_policy_and_1_to_2_adds_it(admin, user, db_session):
+    kube = FakeKubeProvider()
+    aid = user.post("/apps", json=APP).json()["id"]
+    _sweep(db_session, kube)
+    assert "allow-same-namespace" not in _live_policies(kube, aid)
+    _put(admin, aid, 2)
+    _sweep(db_session, kube)
+    assert "allow-same-namespace" in _live_policies(kube, aid)
+    other = _live_policies(kube, aid) - {"allow-same-namespace"}
+    _put(admin, aid, 1)
+    _sweep(db_session, kube)
+    assert "allow-same-namespace" not in _live_policies(kube, aid)
+    assert _live_policies(kube, aid) == other  # only that one policy is touched
+    _put(admin, aid, 2)
+    _sweep(db_session, kube)
+    assert "allow-same-namespace" in _live_policies(kube, aid)

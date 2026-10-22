@@ -75,6 +75,7 @@ async function loadEvents() {
 
 // Resource usage history (one sample a minute, ~3h kept)
 const metrics = ref<MetricsHistory | null>(null)
+const podCount = computed(() => Math.max(metrics.value?.replicas ?? 1, metrics.value?.pods ?? 1))
 async function loadMetrics() {
   try {
     metrics.value = await getMetricsHistory(Number(props.id))
@@ -115,6 +116,7 @@ async function confirmRollback() {
 const logs = ref<AppLogs | null>(null)
 const logsError = ref('')
 const logsBusy = ref(false)
+const podSel = ref('') // '' = all pods
 const autoRefresh = ref(false)
 const dlBusy = ref(false)
 // eslint-disable-next-line no-control-regex
@@ -125,8 +127,9 @@ async function downloadLogs() {
   if (!a || dlBusy.value) return
   dlBusy.value = true
   try {
-    const r = await getAppLogs(a.id, 1000)
-    const lines = r.lines.map((l) => l.replace(ANSI_RE, ''))
+    const r = await getAppLogs(a.id, 1000, podSel.value || undefined)
+    const multi = (r.sections?.length ?? 0) > 1
+    const lines = (multi ? r.sections!.flatMap((x) => [`=== pod ${x.pod} (restarts ${x.restarts}) ===`, ...x.lines]) : r.lines).map((l) => l.replace(ANSI_RE, ''))
     if (!lines.length && !r.note) {
       toast.error('No logs to download yet.')
       return
@@ -148,13 +151,20 @@ async function downloadLogs() {
   }
 }
 
+const logText = computed(() => {
+  const l = logs.value
+  if (!l) return ''
+  if (!podSel.value && (l.sections?.length ?? 0) > 1)
+    return l.sections!.map((x) => `=== pod ${x.pod} (restarts ${x.restarts}) ===\n${x.lines.join('\n')}${x.note && !x.lines.length ? '(' + x.note + ')' : ''}`).join('\n\n')
+  return l.lines.join('\n')
+})
 const logBox = ref<HTMLElement | null>(null)
 let logTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadLogs() {
   logsBusy.value = true
   try {
-    logs.value = await getAppLogs(Number(props.id), 200)
+    logs.value = await getAppLogs(Number(props.id), 200, podSel.value || undefined)
     logsError.value = ''
     await nextTick()
     if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight
@@ -499,11 +509,11 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           </section>
 
           <section v-if="metrics && !suspended" class="card card-pad" aria-labelledby="h-metrics">
-            <h2 id="h-metrics" class="section-title mb-2">Resource usage</h2>
+            <h2 id="h-metrics" class="section-title mb-2">Resource usage <span v-if="podCount > 1" class="meta font-normal">across {{ podCount }} pods</span></h2>
             <p v-if="!metrics.points.length" class="meta">Collecting&hellip; the first points show up within a couple of minutes.</p>
             <div v-else class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-              <Sparkline label="CPU" unit="m" :values="metrics.points.map((p) => p.cpu_m)" :limit="metrics.cpu_limit_m" />
-              <Sparkline label="Mem" unit="Mi" :values="metrics.points.map((p) => p.mem_mi)" :limit="metrics.mem_limit_mi" />
+              <Sparkline label="CPU" unit="m" :values="metrics.points.map((p) => p.cpu_m)" :limit="metrics.cpu_capacity_m ?? metrics.cpu_limit_m" />
+              <Sparkline label="Mem" unit="Mi" :values="metrics.points.map((p) => p.mem_mi)" :limit="metrics.mem_capacity_mi ?? metrics.mem_limit_mi" />
             </div>
           </section>
 
@@ -536,14 +546,21 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </div>
             <p v-if="logsError" class="text-sm text-zinc-400">{{ logsError }}</p>
             <template v-else-if="logs">
-              <p v-if="logs.pod" class="meta mono mb-1 truncate" :title="logs.pod">Pod {{ logs.pod }}</p>
+              <div v-if="(logs.pods?.length ?? 0) > 1" class="mb-1 flex items-center gap-2 text-xs text-zinc-300">
+                <label for="log-pod">Pod</label>
+                <select id="log-pod" v-model="podSel" class="input mono w-auto py-0.5" @change="loadLogs">
+                  <option value="">All pods ({{ logs.pods!.length }})</option>
+                  <option v-for="p in logs.pods" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+              <p v-else-if="logs.pod" class="meta mono mb-1 truncate" :title="logs.pod">Pod {{ logs.pod }}</p>
               <pre
                 v-if="logs.lines.length"
                 ref="logBox"
                 tabindex="0"
                 aria-label="Application logs"
                 class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md border border-pico-border bg-black/40 p-3 mono leading-relaxed text-zinc-200"
-              >{{ logs.lines.join('\n') }}</pre>
+              >{{ logText }}</pre>
               <p v-else class="rounded-md border border-dashed border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
                 {{ logs.note || 'No log output yet. Logs appear once your app is running.' }}
               </p>

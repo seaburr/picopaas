@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [backend-dev] START: multi-pod observability (logs per pod, metrics aggregate capacity, health) + prune allow-same-namespace on scale-down.
+- 2026-10-22 [backend-dev] DONE (uncommitted): logs sections/pods/?pod=; metric samples pods+per_pod (migration b7d2e4f6a8c1), metrics-history replicas/capacity; health apps replicas/capacity/pod_usage; reconciler deletes allow-same-namespace when replicas<=1 (kube.delete_network_policy); tests/test_multipod_observability.py + test_replicas; docs API/OPERATIONS. Suite 1010 passed/60 skipped.
 - 2026-10-21 [release-blogger] DONE: published devlog "A status page recipe, born from our own isolation" (slug release-status-uptime-page-recipe, tag picopaas-release) to blog.picopaas.xyz; HTTP 200 live. Slug-checked (404) before create, so no duplicate.
 - 2026-10-21 [infra-ops] START: pivot platform status page into a user-facing recipe + worked example (examples/status, docs/RECIPES.md).
 - 2026-10-21 [infra-ops] DONE (uncommitted): live app 104 + `status` reserved subdomain were torn down (platform page can't hairpin the LB; issue #11 outage risk, not re-applying the LB fix). Pivot: new examples/status/{Dockerfile,config.yaml,README.md} (Gatus v5.37.0, generic green template), `status` added to examples.yml matrix, RECIPES.md section "Status / uptime page (Gatus)". Removed deploy/status/, .github/workflows/status-image.yml, and the deploy/status ignore line in ci.yml. ORPHANED: ghcr.io/seaburr/picopaas-status GHCR package (tags 5.37.0, 807b95e) is no longer used; Chas can delete it (needs write:packages, agents lack it).
@@ -655,3 +657,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [backend-dev] DONE: App.replicas (migration f23a7cb649f7), MAX_REPLICAS=3, PUT /admin/apps/{id}/replicas, reconciler renders replicas (0 if suspended), replicas-aware ResourceQuota ((replicas+1) x per-pod caps, max() with used+1 kept), allow-same-namespace NetworkPolicy when replicas>1, AppOut.replicas, tests/test_replicas.py, OPERATIONS.md. Uncommitted.
 - 2026-10-22 [scm-security] START: commit/push admin replica control, watch CI.
 - 2026-10-22 [scm-security] DONE: replica control committed c4cfb32 and pushed; CI, image, deploy all green. No security findings filed.
+- 2026-10-22 [frontend] DONE: multi-pod UI. Resource usage + Health use cpu/mem_capacity as denominator; logs pod picker + per-pod sections; types updated. typecheck clean; uncommitted.
+- 2026-10-22 [scm-security] START: commit/push multi-pod observability wave, watch CI + deploy.

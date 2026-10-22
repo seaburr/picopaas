@@ -9,15 +9,41 @@ Fakes for all four live in `fake.py` and are what tests should depend on.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
 @dataclass
+class PodSection:
+    """Logs of one pod (previous-container lines included when it restarted)."""
+    pod: str
+    lines: list[str]
+    note: Optional[str] = None
+    restarts: int = 0
+
+
+@dataclass
 class PodLogs:
+    """Logs of an app's pods. `sections` has one entry per pod read (all pods, or just the requested one);
+    `pods` lists every available pod name (so a UI can offer a picker). `pod`/`lines` are the flat view:
+    `pod` is the single pod's name (None with several), `lines` the grouped lines ("=== pod x ===" headers
+    when more than one pod)."""
     pod: Optional[str]
     lines: list[str]
     note: Optional[str] = None
+    pods: list[str] = field(default_factory=list)
+    sections: list[PodSection] = field(default_factory=list)
+
+    @classmethod
+    def from_sections(cls, sections: list[PodSection], pods: list[str], note: Optional[str] = None) -> "PodLogs":
+        if len(sections) == 1:
+            s = sections[0]
+            return cls(pod=s.pod, lines=list(s.lines), note=s.note or note, pods=pods, sections=sections)
+        lines: list[str] = []
+        for s in sections:
+            lines.append(f"=== pod {s.pod} ===")
+            lines += s.lines if s.lines else [f"({s.note or 'no output'})"]
+        return cls(pod=None, lines=lines, note=note, pods=pods, sections=sections)
 
 
 class KubeProvider(ABC):
@@ -37,6 +63,10 @@ class KubeProvider(ABC):
     def delete_ingress(self, namespace: str, name: str) -> None:
         """Delete one Ingress (no error if absent). Used so suspended apps fall through to the catch-all."""
         raise NotImplementedError
+
+    def delete_network_policy(self, namespace: str, name: str) -> None:
+        """Delete one NetworkPolicy (no error if absent). Targeted prune only (allow-same-namespace on scale-down)."""
+        return None
 
     @abstractmethod
     def list_app_namespaces(self) -> set[str]:
@@ -67,9 +97,10 @@ class KubeProvider(ABC):
         return {}
 
     @abstractmethod
-    def pod_logs(self, namespace: str, tail: int) -> "PodLogs":
-        """Logs of the app container of the newest pod in an APP namespace (never the platform namespace).
-        Includes the previous container's last lines when the current one restarted."""
+    def pod_logs(self, namespace: str, tail: int, pod: Optional[str] = None) -> "PodLogs":
+        """Logs of the app container of every pod (or only `pod`, which must be one of the app's pods; raises
+        LookupError otherwise) in an APP namespace (never the platform namespace); `tail` applies per pod.
+        Includes the previous container's last lines when a pod's container restarted."""
         raise NotImplementedError
 
     @abstractmethod

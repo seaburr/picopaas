@@ -61,6 +61,9 @@ PRIVATE_CIDRS = [
 MYSQL_PORT = 3306
 
 
+SAME_NAMESPACE_POLICY = "allow-same-namespace"  # only rendered when replicas > 1
+
+
 def namespace_name(app_id: int) -> str:
     return f"app-{app_id}"
 
@@ -378,7 +381,7 @@ def network_policies(
         policies.append({
             "apiVersion": "networking.k8s.io/v1",
             "kind": "NetworkPolicy",
-            "metadata": {"name": "allow-same-namespace", "namespace": namespace},
+            "metadata": {"name": SAME_NAMESPACE_POLICY, "namespace": namespace},
             "spec": {
                 **all_pods_selector,
                 "policyTypes": ["Ingress", "Egress"],

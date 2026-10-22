@@ -504,6 +504,10 @@ def reconcile_app(
         custom_served = bool(app.custom_domain and app.custom_domain_status == "active") and not suspended
         if not custom_served:
             kube.delete_ingress(namespace, k8s_manifests.custom_ingress_name(app.id))
+        # Targeted prune (not general GC): the same-namespace policy is only rendered for replicas > 1, so
+        # scaling back down must remove it explicitly (idempotent).
+        if render_kwargs["replicas"] <= 1:
+            kube.delete_network_policy(namespace, k8s_manifests.SAME_NAMESPACE_POLICY)
         status = kube.get_status(namespace)
     except Exception as exc:
         # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.

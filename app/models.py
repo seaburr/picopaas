@@ -193,6 +193,10 @@ class AppMetricSample(Base):
     ts: Mapped[datetime] = mapped_column(nullable=False)
     cpu_m: Mapped[int] = mapped_column(nullable=False)
     mem_mi: Mapped[int] = mapped_column(nullable=False)
+    # cpu_m/mem_mi are SUMS over the app's pods at sample time. `pods` = how many pods were summed (old rows: 1);
+    # `per_pod` = JSON {pod name: [cpu_m, mem_mi]} (null on old rows).
+    pods: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    per_pod: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class AppEnvVar(Base):

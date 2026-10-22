@@ -211,7 +211,7 @@ def test_rotate_all_logs_summary_at_warning(session, caplog):
 
 # --- real provider logs -------------------------------------------------------
 
-def test_pod_logs_previous_container_and_newest_pod():
+def test_pod_logs_previous_container_and_all_pods():
     pods = [
         {"metadata": {"name": "old", "creationTimestamp": "2026-01-01T00:00:00Z"}, "status": {}},
         {"metadata": {"name": "new", "creationTimestamp": "2026-01-02T00:00:00Z"},
@@ -219,10 +219,15 @@ def test_pod_logs_previous_container_and_newest_pod():
     ]
     core = MagicMock()
     core.read_namespaced_pod_log.side_effect = lambda **kw: "boom\nbye" if kw["previous"] else "hello\nworld"
-    out = KubeClientProvider(tk._dyn(pods=pods), core_api=core).pod_logs("app-7", 200)
-    assert out.pod == "new"
+    out = KubeClientProvider(tk._dyn(pods=pods), core_api=core).pod_logs("app-7", 200, pod="new")
+    assert out.pod == "new" and out.pods == ["new", "old"]
     assert out.lines[0].startswith("--- previous container") and "boom" in out.lines
     assert out.lines[-2:] == ["hello", "world"]
+    both = KubeClientProvider(tk._dyn(pods=pods), core_api=core).pod_logs("app-7", 200)
+    assert both.pod is None and [s.pod for s in both.sections] == ["new", "old"]
+    assert both.lines[0] == "=== pod new ===" and "=== pod old ===" in both.lines
+    with pytest.raises(LookupError):
+        KubeClientProvider(tk._dyn(pods=pods), core_api=core).pod_logs("app-7", 200, pod="nope")
     assert KubeClientProvider(tk._dyn(), core_api=core).pod_logs("app-7", 5).note == "No running pod yet."
     with pytest.raises(ValueError):
         KubeClientProvider(tk._dyn(pods=pods), core_api=core).pod_logs("picopaas-system", 5)
@@ -249,7 +254,7 @@ def test_logs_endpoint_authz_tail_cap_and_note(make_client, kube):
     register_and_login(c, "o@example.com")
     app_id = _create(c)
     r = c.get(f"/apps/{app_id}/logs")
-    assert r.status_code == 200 and r.json() == {"lines": [], "pod": None, "note": "No running pod yet."}
+    assert r.status_code == 200 and r.json() == {"lines": [], "pod": None, "note": "No running pod yet.", "pods": [], "sections": []}
     assert kube.log_calls[-1] == (f"app-{app_id}", 200)
     kube.logs[f"app-{app_id}"] = PodLogs(pod="app-1-abc", lines=["a", "b"])
     assert c.get(f"/apps/{app_id}/logs?tail=99999").json()["lines"] == ["a", "b"]

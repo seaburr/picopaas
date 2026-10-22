@@ -7,6 +7,7 @@ from typing import Any, Optional
 from app.providers.base import (
     ImageInfo,
     PodLogs,
+    PodSection,
     KubeProvider,
     MySQLAdmin,
     MySQLAdminError,
@@ -29,6 +30,7 @@ class FakeKubeProvider(KubeProvider):
         self.forced_status: dict[str, str] = {}
         self.hints: dict[str, str] = {}  # ns -> pending_hint
         self.logs: dict[str, PodLogs] = {}  # ns -> canned logs
+        self.pod_lines: dict[str, dict[str, list[str]]] = {}  # ns -> {pod name: log lines} (multi-pod)
         self.log_calls: list[tuple[str, int]] = []
         self.used_limits: dict[str, Optional[dict[str, int]]] = {}
         self.pod_events: dict[str, list[dict[str, Any]]] = {}  # ns -> events (shape: KubeProvider.app_pod_events)
@@ -67,6 +69,12 @@ class FakeKubeProvider(KubeProvider):
             if not (m.get("kind") == "Ingress" and m["metadata"]["name"] == name)
         ]
 
+    def delete_network_policy(self, namespace: str, name: str) -> None:
+        self.applied[namespace] = [
+            m for m in self.applied.get(namespace, [])
+            if not (m.get("kind") == "NetworkPolicy" and m["metadata"]["name"] == name)
+        ]
+
     def list_app_namespaces(self) -> set[str]:
         self.list_ns_calls += 1
         return {ns for ns in self.applied if ns.startswith("app-")}
@@ -85,9 +93,20 @@ class FakeKubeProvider(KubeProvider):
     def pending_hint(self, namespace: str) -> str:
         return self.hints.get(namespace, "none")
 
-    def pod_logs(self, namespace: str, tail: int) -> PodLogs:
+    def pod_logs(self, namespace: str, tail: int, pod: str | None = None) -> PodLogs:
         self.log_calls.append((namespace, tail))
-        return self.logs.get(namespace, PodLogs(pod=None, lines=[], note="No running pod yet."))
+        multi = self.pod_lines.get(namespace)
+        if multi:  # multi-pod fixture: {pod name: lines}; tail applies per pod, like the real provider
+            names = sorted(multi)
+            if pod is not None and pod not in multi:
+                raise LookupError(pod)
+            chosen = [pod] if pod is not None else names
+            return PodLogs.from_sections([PodSection(pod=n, lines=multi[n][-tail:]) for n in chosen], names)
+        out = self.logs.get(namespace, PodLogs(pod=None, lines=[], note="No running pod yet."))
+        if out.pod and not out.sections:  # canned single-pod logs
+            out.pods = [out.pod]
+            out.sections = [PodSection(pod=out.pod, lines=out.lines, note=out.note)]
+        return out
 
 
 class FakeMySQLAdmin(MySQLAdmin):

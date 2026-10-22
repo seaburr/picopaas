@@ -36,10 +36,13 @@ export interface AppLogs {
   lines: string[]
   pod: string | null
   note: string | null
+  pods?: string[]
+  sections?: { pod: string; lines: string[]; note: string | null; restarts: number }[]
 }
 
 // Backend contract (docs/UX plan): GET /apps/{id}/logs?tail=N and POST /apps/{id}/restart. 404 = older backend.
-export const getAppLogs = (id: number, tail = 200) => apiFetch<AppLogs>(`/apps/${id}/logs?tail=${tail}`)
+export const getAppLogs = (id: number, tail = 200, pod?: string) =>
+  apiFetch<AppLogs>(`/apps/${id}/logs?tail=${tail}${pod ? `&pod=${encodeURIComponent(pod)}` : ''}`)
 
 export const getMetricsHistory = (id: number) => apiFetch<MetricsHistory>(`/apps/${id}/metrics-history`)
 

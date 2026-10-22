@@ -140,7 +140,7 @@ Open **Admin**, then **Database servers**, or use the API (`/admin/db-servers`).
 ## 7. Health dashboard
 
 `/admin/health` in the UI (the administrator can reach it from the nav bar), backed by `GET /admin/health` (cached 15 s). It shows nodes,
-per-app pod readiness, restarts and CPU/memory against the 200m/384Mi limits, platform pods
+per-app pod readiness, restarts and CPU/memory (summed over the app's pods) against the aggregate capacity, replicas x the 200m/384Mi per-pod limits (`cpu_capacity_m`/`mem_capacity_mi`; per-pod usage in `pod_usage`), platform pods
 (`picopaas-system`, `traefik`, `cert-manager`), and DB server capacity. CPU/memory need metrics-server (installed
 by bootstrap); without it usage cells show a dash and `metrics_available` is false. The node ceiling shown comes
 from `MAX_NODES` (2, set at bootstrap); the real cap is `max_nodes` in Terraform.

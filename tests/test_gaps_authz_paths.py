@@ -145,7 +145,7 @@ def test_non_admin_denied_on_admin_state_changes(admin, user):
 # --- provider failure paths ----------------------------------------------------------------------------------
 
 class _ExplodingKube(FakeKubeProvider):
-    def pod_logs(self, namespace, tail):
+    def pod_logs(self, namespace, tail, pod=None):
         raise RuntimeError("apiserver says: token=super-secret-value")
 
 

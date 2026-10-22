@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.providers.base import KubeProvider, PodLogs
+from app.providers.base import KubeProvider, PodLogs, PodSection
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ ERROR_CODES = {
 APP_CONTAINER = "app"
 MAX_LOG_LINE = 2000
 PREVIOUS_TAIL = 50
+MAX_LOG_PODS = 10  # pods read per request (admin replica ceiling is lower; this bounds API calls)
 
 
 def _load_config() -> None:
@@ -167,6 +168,15 @@ class KubeClientProvider(KubeProvider):
         except NotFoundError:
             pass
 
+    def delete_network_policy(self, namespace: str, name: str) -> None:
+        from kubernetes.dynamic.exceptions import NotFoundError
+
+        resource = self.dyn.resources.get(api_version="networking.k8s.io/v1", kind="NetworkPolicy")
+        try:
+            resource.delete(name=name, namespace=namespace)
+        except NotFoundError:
+            pass
+
     def list_app_namespaces(self) -> set[str]:
         resource = self.dyn.resources.get(api_version="v1", kind="Namespace")
         res = _as_dict(resource.get(label_selector="picopaas.io/app-id"))
@@ -261,7 +271,7 @@ class KubeClientProvider(KubeProvider):
         meta = pod.get("metadata") or {}
         return str(meta.get("creationTimestamp") or meta.get("creation_timestamp") or "")
 
-    def pod_logs(self, namespace: str, tail: int) -> PodLogs:
+    def pod_logs(self, namespace: str, tail: int, pod: str | None = None) -> PodLogs:
         # Only ever app namespaces (app-<id>); callers derive the name from the app id, never from user input.
         if not namespace.startswith("app-"):
             raise ValueError("not an app namespace")
@@ -269,7 +279,15 @@ class KubeClientProvider(KubeProvider):
         pods = [p for p in pods if not (p.get("metadata") or {}).get("deletionTimestamp")] or pods
         if not pods:
             return PodLogs(pod=None, lines=[], note="No running pod yet.")
-        pod = max(pods, key=self._created)
+        pods = sorted(pods, key=lambda p: p["metadata"]["name"])[:MAX_LOG_PODS]
+        names = [p["metadata"]["name"] for p in pods]
+        if pod is not None:
+            if pod not in names:  # only names we just listed are ever passed to the log API
+                raise LookupError(pod)
+            pods = [p for p in pods if p["metadata"]["name"] == pod]
+        return PodLogs.from_sections([self._pod_section(namespace, p, tail) for p in pods], names)
+
+    def _pod_section(self, namespace: str, pod: dict[str, Any], tail: int) -> PodSection:
         name = pod["metadata"]["name"]
         cstat = ((pod.get("status") or {}).get("containerStatuses") or [{}])[0]
         restarts = int(cstat.get("restartCount") or 0)
@@ -298,7 +316,7 @@ class KubeClientProvider(KubeProvider):
             lines += current
             if not current and len(lines) == 0:
                 note = "The container hasn't printed anything yet."
-        return PodLogs(pod=name, lines=lines, note=note)
+        return PodSection(pod=name, lines=lines, note=note, restarts=restarts)
 
     def cluster_snapshot(self) -> dict[str, Any]:
         """Nodes + non-terminated pods (+ metrics.k8s.io usage when available). Read-only, resources only."""

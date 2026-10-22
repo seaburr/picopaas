@@ -82,9 +82,13 @@ export interface AppEvent {
 }
 
 export interface MetricsHistory {
-  points: { ts: string; cpu_m: number; mem_mi: number }[]
-  cpu_limit_m: number
-  mem_limit_mi: number
+  points: { ts: string; cpu_m: number; mem_mi: number; pods?: number; per_pod?: Record<string, { cpu_m: number; mem_mi: number }> }[]
+  cpu_limit_m: number // PER POD
+  mem_limit_mi: number // PER POD
+  replicas?: number
+  pods?: number
+  cpu_capacity_m?: number // max(replicas, pods) x per-pod limit
+  mem_capacity_mi?: number
 }
 
 export interface ImageVersion {
@@ -284,8 +288,20 @@ export interface HealthApp {
   restarts: number
   cpu_used_m: number | null
   mem_used_mi: number | null
-  cpu_limit_m: number
-  mem_limit_mi: number
+  cpu_limit_m: number // per pod
+  mem_limit_mi: number // per pod
+  replicas?: number
+  cpu_capacity_m?: number // aggregate; the denominator for cpu_used_m
+  mem_capacity_mi?: number
+  pod_usage?: HealthPodUsage[]
+}
+
+export interface HealthPodUsage {
+  name: string
+  ready: boolean
+  restarts: number
+  cpu_used_m: number | null
+  mem_used_mi: number | null
 }
 
 export interface HealthPlatform {

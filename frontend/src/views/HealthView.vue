@@ -85,7 +85,12 @@ function sortBy(k: SortKey) {
     sortDesc.value = true
   }
 }
-const usage = (a: HealthApp, k: SortKey) => (k === 'cpu' ? pct(a.cpu_used_m, a.cpu_limit_m) : pct(a.mem_used_mi, a.mem_limit_mi))
+const cpuCap = (a: HealthApp): number => a.cpu_capacity_m ?? a.cpu_limit_m
+const memCap = (a: HealthApp): number => a.mem_capacity_mi ?? a.mem_limit_mi
+const usage = (a: HealthApp, k: SortKey) => (k === 'cpu' ? pct(a.cpu_used_m, cpuCap(a)) : pct(a.mem_used_mi, memCap(a)))
+const podTitle = (a: HealthApp) =>
+  (a.pod_usage ?? []).map((p) => `${p.name}: ${p.ready ? 'ready' : 'not ready'}, ${p.restarts} restarts, ${p.cpu_used_m ?? 'n/a'}m, ${p.mem_used_mi ?? 'n/a'}Mi`).join('\n') || undefined
+const podsWanted = (a: HealthApp) => (a.replicas && a.replicas !== a.pods_total ? ` (want ${a.replicas})` : '')
 const sortedApps = computed(() => {
   const k = sortKey.value
   const dir = sortDesc.value ? -1 : 1
@@ -326,15 +331,15 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
                   <td class="truncate" :title="`${a.name} (${a.namespace})`"><span class="text-white">{{ a.name }}</span><div class="mono truncate text-zinc-400">{{ a.namespace }}</div></td>
                   <td class="truncate" :title="a.owner_email">{{ a.owner_email }}</td>
                   <td><StatusBadge :status="a.status" /></td>
-                  <td class="mono text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''">{{ a.pods_ready }}/{{ a.pods_total }}</td>
+                  <td class="mono text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''" :title="podTitle(a)">{{ a.pods_ready }}/{{ a.pods_total }}{{ podsWanted(a) }}</td>
                   <td class="mono text-right" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
-                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.cpu_used_m, a.cpu_limit_m)) ? 'font-semibold text-amber-400' : ''">
-                    <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, a.cpu_limit_m, 'm') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.cpu_limit_m }}m</span></template>
+                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.cpu_used_m, cpuCap(a))) ? 'font-semibold text-amber-400' : ''">
+                    <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, cpuCap(a), 'm') }}</template>
+                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ cpuCap(a) }}m</span></template>
                   </td>
-                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.mem_used_mi, a.mem_limit_mi)) ? 'font-semibold text-amber-400' : ''">
-                    <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, a.mem_limit_mi, 'Mi') }}</template>
-                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ a.mem_limit_mi }}Mi</span></template>
+                  <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.mem_used_mi, memCap(a))) ? 'font-semibold text-amber-400' : ''">
+                    <template v-if="a.mem_used_mi !== null">{{ fmtUse(a.mem_used_mi, memCap(a), 'Mi') }}</template>
+                    <template v-else><span :title="NA">—</span> <span class="font-normal text-zinc-400">/ {{ memCap(a) }}Mi</span></template>
                   </td>
                 </tr>
                 <tr v-if="sortedApps.length === 0"><td colspan="7" class="text-zinc-400">No apps.</td></tr>

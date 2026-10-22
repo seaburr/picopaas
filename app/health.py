@@ -1,6 +1,7 @@
 """Admin health dashboard payload (GET /admin/health). Cached in-process for CACHE_TTL_S."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -166,12 +167,20 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factor
         ns = namespace_name(app_.id)
         ps = by_ns.get(ns, [])
         eff = resources.effective(app_)
+        replicas = max(1, app_.replicas or 1)
+        slots = max(replicas, len(ps))  # a rollout surge pod can briefly exceed `replicas`
         apps.append({
             "id": app_.id, "name": app_.name, "owner_email": email, "status": app_.status, "namespace": ns,
             "pods_ready": sum(1 for p in ps if p["ready"]), "pods_total": len(ps),
             "restarts": sum(p["restarts"] for p in ps),
             "cpu_used_m": _sum([p["cpu_used_m"] for p in ps]), "mem_used_mi": _sum([p["mem_used_mi"] for p in ps]),
-            "cpu_limit_m": eff["cpu_limit_m"], "mem_limit_mi": eff["mem_limit_mi"],
+            "cpu_limit_m": eff["cpu_limit_m"], "mem_limit_mi": eff["mem_limit_mi"],  # per pod
+            # usage above is summed over pods: compare it to the aggregate capacity, not the per-pod limit
+            "replicas": replicas,
+            "cpu_capacity_m": slots * eff["cpu_limit_m"], "mem_capacity_mi": slots * eff["mem_limit_mi"],
+            "pod_usage": [{"name": p["name"], "ready": p["ready"], "restarts": p["restarts"],
+                           "cpu_used_m": p["cpu_used_m"], "mem_used_mi": p["mem_used_mi"]}
+                          for p in sorted(ps, key=lambda p: p["name"])],
         })
 
     platform = [
@@ -211,7 +220,10 @@ def sample_app_metrics(db: Session, kube: KubeProvider) -> int:
         mem = _sum([p["mem_used_mi"] for p in ps])
         if cpu is None or mem is None:
             continue
-        db.add(models.AppMetricSample(app_id=app_.id, ts=now, cpu_m=int(cpu), mem_mi=int(mem)))
+        per_pod = {p["name"]: [p["cpu_used_m"], p["mem_used_mi"]] for p in ps
+                   if p["cpu_used_m"] is not None and p["mem_used_mi"] is not None}
+        db.add(models.AppMetricSample(app_id=app_.id, ts=now, cpu_m=int(cpu), mem_mi=int(mem),
+                                      pods=max(1, len(ps)), per_pod=json.dumps(per_pod)))
         inserted += 1
         db.flush()
         cutoff = (
