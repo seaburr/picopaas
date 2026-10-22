@@ -672,3 +672,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [infra-ops] START: tighten picopaas-rolebinding-scope VAP to app-* only (pentest N1).
 - 2026-10-22 [infra-ops] DONE (uncommitted, NOT applied): rbac.yaml VAP expression now only startsWith('app-'); tests/test_platform_rbac.py, 0005 runbook, deploy/README.md updated. Runtime SA only writes RoleBindings in app-<id>; picopaas-system binding is CI-applied.
 - 2026-10-22 [frontend] DONE (committed 287597f): wider page containers (5xl->6xl, 4xl->5xl), nav hover/active contrast, near-cap text. The `.link` underline change was reverted to hover-only (not shipped); the rest is committed. typecheck clean.
+- 2026-10-22 [scm-security] DONE: Directus recipe committed 2477662 and pushed; gitleaks clean, no secret values. No findings.
