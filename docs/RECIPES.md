@@ -159,6 +159,89 @@ Use it to monitor services hosted **outside PicoPaaS** — third-party APIs, sit
 
 It can't reliably monitor services hosted **on PicoPaaS itself**, including your own PicoPaaS apps (whether on a `*.picopaas.xyz` URL or a custom domain) — requests from inside the platform back to its own address don't loop around. To track uptime of your PicoPaaS apps, use an external monitoring service.
 
+## Grafana (dashboards) on MySQL
+
+The files are in `examples/grafana/` in the repo (`README.md`, `grafana.yaml`). Grafana runs on PicoPaaS
+backed by the platform's MySQL database, with its data persisting across restarts (verified: health `200`,
+dashboards and users survive a redeploy).
+
+### No custom image needed
+
+Unlike Ghost and the status page, Grafana needs **no Dockerfile and no wrapper**. The official
+`grafana/grafana:13.2.4` image already runs as a non-root numeric UID (472), and Grafana is configured
+entirely through `GF_*` environment variables — no config-file mount required. So you point PicoPaaS straight
+at the public image and set env vars. Pin a version (`:13.2.4`), not `:latest`, so a silent upstream bump
+can't break your app.
+
+### Point it at the platform MySQL
+
+Request a database (`db: true`), no bucket, and wire Grafana's database env:
+
+- `GF_DATABASE_TYPE=mysql`
+- `GF_DATABASE_URL=${{ db.url }}` — one ref, the whole value. PicoPaaS only accepts a `${{ ... }}` value that
+  is **exactly one** reference, so you can't build a DSN by concatenating `${{ db.host }}`, `${{ db.port }}`
+  and text. Use `db.url` (it resolves to `mysql://user:password@host:port/name`), which is the one ref that
+  hands Grafana everything in a single string.
+
+### TLS and the CA file
+
+Our managed MySQL requires TLS, and Grafana's MySQL driver insists on reading a CA file from disk even when
+you tell it not to verify. So:
+
+- `GF_DATABASE_SSL_MODE=skip-verify`
+- `GF_DATABASE_CA_CERT_PATH=/etc/ssl/certs/ca-certificates.crt` — the CA bundle already baked into the Grafana
+  image. Pointing at it satisfies the driver's file check.
+
+This gives you **encrypted-but-unverified** TLS: the connection is encrypted, but Grafana doesn't validate the
+server certificate against a specific CA. Full CA-*verified* TLS would need a PEM file mounted into the
+container, which PicoPaaS doesn't offer (there's no config-file or volume mount). Encrypted-but-unverified to
+the in-platform MySQL is the honest tradeoff here.
+
+### Keep the connection pool under the cap
+
+Each database user may hold at most **10 connections**. Size Grafana's pool below that so a restart or a surge
+doesn't trip the limit:
+
+- `GF_DATABASE_MAX_OPEN_CONN=8`
+- `GF_DATABASE_MAX_IDLE_CONN=2`
+
+### The rest of the env
+
+- `GF_SERVER_HTTP_PORT=3000` and app `port: 3000`.
+- `GF_SERVER_ROOT_URL=${{ app.url }}` — Grafana's public URL, resolved at deploy time to this app's own host.
+- `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` — the first-login admin. Set the password as a
+  **secret**, not a literal in the spec.
+- `GF_ANALYTICS_REPORTING_ENABLED=false`, `GF_ANALYTICS_CHECK_FOR_UPDATES=false` — Grafana's outbound phone-home
+  is pointless here (tenant egress is restricted anyway) and these stop it logging failures trying.
+
+### Enable the readiness probe
+
+Grafana has a real health endpoint, so turn the probe on and point it there:
+
+```yaml
+healthCheck: { enabled: true, path: /api/health }
+```
+
+`/api/health` returns `200` once Grafana has connected to its database, so the app only goes ready when it can
+actually serve — no half-up pods behind the router.
+
+### Deploy on PicoPaaS
+
+Apply the spec exactly as in the Ghost recipe (dashboard **New app**, or `picopaas apply -f grafana.yaml`, or
+the `/apps/spec` curl). The admin password is the one value that isn't a platform ref, so set it as a secret:
+leave `GF_SECURITY_ADMIN_PASSWORD` in the spec's `secrets:` list (name only) and provide the value through the
+dashboard's secret editor or the API — never in the YAML file. Open the app's URL and log in as your admin
+user.
+
+### Single replica only — HA/clustering is not supported on PicoPaaS
+
+Run Grafana at **one replica**. PicoPaaS gives each app a single ClusterIP Service on the app port, and nothing
+that lets one pod discover and address the others individually. Multi-replica setups that need pods to gossip
+with named peers — Grafana's 2+ replica HA with unified-alerting memberlist, for example — have no way to find
+each other, so they don't work. This is intentional and out of scope: the platform does not offer
+headless/per-pod Services or peer discovery. A single MySQL-backed Grafana is the supported shape, and it's
+plenty for a throwaway dashboards instance.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build

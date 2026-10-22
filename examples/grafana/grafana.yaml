@@ -1,0 +1,42 @@
+apiVersion: picopaas/v1
+name: grafana
+# Public image, pinned. Runs as non-root UID 472 and is configured entirely via GF_* env vars,
+# so no custom build is needed.
+image: grafana/grafana:13.2.4
+port: 3000
+# Grafana's /api/health returns 200 only once it has connected to its database.
+healthCheck:
+  enabled: true
+  path: /api/health
+resources:
+  db: true
+  storage: false
+env:
+  GF_SERVER_HTTP_PORT: "3000"
+  GF_SERVER_ROOT_URL: "${{ app.url }}"
+
+  # Database: one ref, the whole value. PicoPaaS only accepts a ${{ }} value that is exactly one
+  # reference, so use db.url (mysql://user:password@host:port/name), not host/port vars + text.
+  GF_DATABASE_TYPE: "mysql"
+  GF_DATABASE_URL: "${{ db.url }}"
+
+  # Managed MySQL requires TLS. Grafana's MySQL driver insists on reading a CA file even for
+  # skip-verify, so point it at the CA bundle already in the image. Encrypted but unverified
+  # (CA-verified TLS would need a PEM mount the platform doesn't offer).
+  GF_DATABASE_SSL_MODE: "skip-verify"
+  GF_DATABASE_CA_CERT_PATH: "/etc/ssl/certs/ca-certificates.crt"
+
+  # Keep the pool under the 10-connection-per-DB-user cap.
+  GF_DATABASE_MAX_OPEN_CONN: "8"
+  GF_DATABASE_MAX_IDLE_CONN: "2"
+
+  # First-login admin user. The password is a secret (below), not a literal here.
+  GF_SECURITY_ADMIN_USER: "admin"
+
+  # Outbound phone-home is pointless here (egress is restricted); don't let it log failures.
+  GF_ANALYTICS_REPORTING_ENABLED: "false"
+  GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+
+secrets:
+  # Set the value in the dashboard's secret editor or via the API. Never put it in this file.
+  - GF_SECURITY_ADMIN_PASSWORD

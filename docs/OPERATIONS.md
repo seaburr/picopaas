@@ -212,6 +212,13 @@ replica an extra `allow-same-namespace` NetworkPolicy lets the app's own pods ta
 for clustered apps; it cannot reach other namespaces. Each replica gets the full per-pod limits, and replicas share
 the app's single DB and bucket. Replicas do not share local disk.
 
+**Replicas are stateless-only.** An app gets one ClusterIP Service on its app port and no per-pod addressing
+(no headless Service, no stable pod DNS). Pods can reach each other over the `allow-same-namespace` policy, but
+nothing lets one pod discover and address the others individually. So clustered/gossip apps that need named
+peers — Grafana's 2+ replica HA with unified-alerting memberlist, for example — are **not supported**: they
+can't form a cluster and will misbehave at >1 replica. Only scale out apps that are stateless behind the single
+Service (all shared state in the DB/bucket). Such apps run single-pod; see the Grafana recipe in `RECIPES.md`.
+
 ## 10. Admin API reference
 
 | Method | Path | Body | Response / notes |
