@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-21 [infra-ops] START: pivot platform status page into a user-facing recipe + worked example (examples/status, docs/RECIPES.md).
+- 2026-10-21 [infra-ops] DONE (uncommitted): live app 104 + `status` reserved subdomain were torn down (platform page can't hairpin the LB; issue #11 outage risk, not re-applying the LB fix). Pivot: new examples/status/{Dockerfile,config.yaml,README.md} (Gatus v5.37.0, generic green template), `status` added to examples.yml matrix, RECIPES.md section "Status / uptime page (Gatus)". Removed deploy/status/, .github/workflows/status-image.yml, and the deploy/status ignore line in ci.yml. ORPHANED: ghcr.io/seaburr/picopaas-status GHCR package (tags 5.37.0, 807b95e) is no longer used; Chas can delete it (needs write:packages, agents lack it).
 - 2026-10-21 [infra-ops] START: status page for PicoPaaS (status.picopaas.xyz) on PicoPaaS; evaluate OSS options, Gatus thin image.
 - 2026-10-21 [infra-ops] DONE (uncommitted, NOTHING built/pushed/deployed): deploy/status/{Dockerfile,config.yaml,.dockerignore,README.md}. Gatus v5.37.0 chosen (runs as tenant app: tenant egress allows public internet except RFC1918/SMTP, so probing platform.picopaas.xyz works; hairpin handled by traefik hostname LB). Image adds USER 10001 (upstream is root). Runbook: build+push to ghcr.io/seaburr/picopaas-status (make public), POST /apps, PUT /admin/apps/{id}/platform-host {"subdomain":"status"}. Docker daemon was down so image build/config not smoke-tested locally.
 - 2026-10-21 [infra-ops] START: platform SA RBAC narrowing (pentest MEDIUM): move deployments/ingresses/networkpolicies out of cluster-wide ClusterRole picopaas-reconciler into picopaas-app-ns; add ValidatingAdmissionPolicy confining the SA's RoleBindings to app-*/picopaas-*.
@@ -643,3 +645,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [infra-ops] DONE: deploy/status written, uncommitted, unbuilt; see Now / Next.
 - 2026-10-21 [scm-security] BLOCKED (owner infra-ops): ci.yml kubeconform job fails on deploy/status/config.yaml (Gatus config, not a k8s manifest: 'missing kind key'). Fix: add 'config\.yaml$' for deploy/status to -ignore-filename-pattern or exclude deploy/status in .github/workflows/ci.yml. status-image green, pushed ghcr.io/seaburr/picopaas-status:5.37.0 + :807b95e (package must be set Public).
 - 2026-10-21 [scm-security] DONE: kubeconform BLOCKED (bac7dd0) resolved; ci.yml skips deploy/status/ non-manifest yaml.
+- 2026-10-21 [scm-security] START: commit+push status-page pivot (examples/status, removals, dead links).
+- 2026-10-21 [scm-security] DONE: status-page pivot committed and pushed.
