@@ -642,3 +642,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-21 [infra-ops] START: status page (deploy/status).
 - 2026-10-21 [infra-ops] DONE: deploy/status written, uncommitted, unbuilt; see Now / Next.
 - 2026-10-21 [scm-security] BLOCKED (owner infra-ops): ci.yml kubeconform job fails on deploy/status/config.yaml (Gatus config, not a k8s manifest: 'missing kind key'). Fix: add 'config\.yaml$' for deploy/status to -ignore-filename-pattern or exclude deploy/status in .github/workflows/ci.yml. status-image green, pushed ghcr.io/seaburr/picopaas-status:5.37.0 + :807b95e (package must be set Public).
+- 2026-10-21 [scm-security] DONE: kubeconform BLOCKED (bac7dd0) resolved; ci.yml skips deploy/status/ non-manifest yaml.
