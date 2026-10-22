@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-21 [release-blogger] DONE: published devlog "A status page recipe, born from our own isolation" (slug release-status-uptime-page-recipe, tag picopaas-release) to blog.picopaas.xyz; HTTP 200 live. Slug-checked (404) before create, so no duplicate.
 - 2026-10-21 [infra-ops] START: pivot platform status page into a user-facing recipe + worked example (examples/status, docs/RECIPES.md).
 - 2026-10-21 [infra-ops] DONE (uncommitted): live app 104 + `status` reserved subdomain were torn down (platform page can't hairpin the LB; issue #11 outage risk, not re-applying the LB fix). Pivot: new examples/status/{Dockerfile,config.yaml,README.md} (Gatus v5.37.0, generic green template), `status` added to examples.yml matrix, RECIPES.md section "Status / uptime page (Gatus)". Removed deploy/status/, .github/workflows/status-image.yml, and the deploy/status ignore line in ci.yml. ORPHANED: ghcr.io/seaburr/picopaas-status GHCR package (tags 5.37.0, 807b95e) is no longer used; Chas can delete it (needs write:packages, agents lack it).
 - 2026-10-21 [infra-ops] START: status page for PicoPaaS (status.picopaas.xyz) on PicoPaaS; evaluate OSS options, Gatus thin image.
