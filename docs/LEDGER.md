@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [infra-ops] START: PostgreSQL support research + design (docs only; owner said do NOT build).
+- 2026-10-22 [infra-ops] DONE (uncommitted, docs only, NO code/migrations/infra): new docs/requests/0006-postgresql-support.md (PROPOSED, not approved: protections inventory, Postgres mapping, quota design, platform changes outline, managed vs in-cluster cost, ditch-MySQL options); docs/ROADMAP.md entry. Awaiting Chas on request 0006.
 - 2026-10-22 [scm-security] DONE: committed+pushed Shlink recipe, apps-we-evaluated notes, examples/shlink (docs/examples only; examples.yml matrix unchanged; no secret values).
 - 2026-10-22 [infra-ops] START: Shlink (URL shortener) recipe (public image shlinkio/shlink:5.1.8 (patched), env-only, MySQL over TLS via DB_USE_ENCRYPTION) + honest "apps we evaluated" note (FreshRSS root-image reject, Wiki.js sql_require_primary_key clash) (docs/RECIPES.md, examples/shlink/).
 - 2026-10-22 [release-blogger] DONE: published devlog "Grafana runs on PicoPaaS, and we kept the isolation intact" (slug release-grafana-on-picopaas, tag picopaas-release) to blog.picopaas.xyz; HTTP 200 live.

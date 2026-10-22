@@ -107,6 +107,17 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
   "bring a prebuilt public image" barrier) but the one item that adds real node CPU/disk at build time, so
   opt-in + quota-bounded, not strictly free.
 
+## Managed PostgreSQL support: investigating (design only, 2026-10-22)
+Research and design are done; **nothing is built** (Chas: do not build). Full feasibility, protection-by-protection
+mapping, quota design, cost and the "ditch MySQL?" analysis: [docs/requests/0006-postgresql-support.md](requests/0006-postgresql-support.md).
+- Every isolation protection (per-app DB+role, `REVOKE ... FROM PUBLIC`, TLS, egress netpol, connection cap, rotation) maps
+  cleanly to Postgres. The **50 MB size quota is the hard part**: no native cap and the tenant role owns its objects, so
+  the recommended design is a two-stage hybrid (read-only default + session kill, then CONNECT lockout), weaker than
+  MySQL's REVOKE against a hostile tenant. The `sql_require_primary_key` (Wiki.js) blocker disappears.
+- Recommended path: in-cluster pilot (about $0-2/mo), then DO Managed PostgreSQL (about $15/mo, needs a budget request) if
+  adopted. Run alongside MySQL; revisit retiring MySQL later (Ghost is MySQL-only and the control plane uses MySQL).
+- Unlocks n8n, Listmonk, Miniflux, Wiki.js and more. Status: awaiting Chas's decision on request 0006.
+
 ## Notes from the 2026-10-20 Ghost load test
 On the old **100m CPU / 384 MB**, Ghost (Node SSR) was **CPU-bound**: a single concurrent reader already
 pinned the 100m cap (~1 req/s, ~640 ms p50); ~5 concurrent started timing out. Memory stayed ~150 MB of 384.

@@ -7,6 +7,13 @@ background on each item if you want it.
 
 ## Open questions
 
+- **PostgreSQL support — your call on a few things (full design in `docs/requests/0006-postgresql-support.md`, status PROPOSED).** It's feasible: Postgres can replicate our per-app DB+role + TLS + egress-lock + connection-cap model; the only hard part is the 50 MB size quota (Postgres has no per-DB cap, so enforcement is a two-stage speed-bump → hard cutoff, weaker against a *hostile* tenant than MySQL's un-undoable REVOKE). Decisions:
+  1. **In-cluster Postgres pilot** (~$0–2/mo PVC, within budget — recommended) vs **DO Managed Postgres** (~$15/mo, pushes the baseline ~$60→~$75, **over the ~$60/mo cap → needs your budget approval**).
+  2. **Add Postgres alongside MySQL now, revisit retiring MySQL after ~a quarter** (recommended — Ghost is MySQL-only and the control plane uses MySQL `GET_LOCK` + MySQL migrations) vs commit to Postgres-only.
+  3. OK with the weaker-vs-hostile-tenant quota enforcement trade-off?
+  4. A live spike to confirm what DO managed `doadmin` can actually do is needed **before any build**.
+  Unlocks n8n, Listmonk, Miniflux, Wiki.js and more.
+
 - **FYI: a hard cap of 5 active apps per account (admins included) now exists** (`MAX_APPS_PER_USER`, app/config.py). You may want to mention it in bootstrap.md. Yes, document it and the default value.
 
 - **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
