@@ -654,3 +654,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [backend-dev] START: admin-only app replica count (App.replicas, PUT /admin/apps/{id}/replicas, replicas-aware quota, same-namespace NetworkPolicy).
 - 2026-10-22 [backend-dev] DONE: App.replicas (migration f23a7cb649f7), MAX_REPLICAS=3, PUT /admin/apps/{id}/replicas, reconciler renders replicas (0 if suspended), replicas-aware ResourceQuota ((replicas+1) x per-pod caps, max() with used+1 kept), allow-same-namespace NetworkPolicy when replicas>1, AppOut.replicas, tests/test_replicas.py, OPERATIONS.md. Uncommitted.
 - 2026-10-22 [scm-security] START: commit/push admin replica control, watch CI.
+- 2026-10-22 [scm-security] DONE: replica control committed c4cfb32 and pushed; CI, image, deploy all green. No security findings filed.
