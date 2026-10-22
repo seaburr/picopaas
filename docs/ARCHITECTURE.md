@@ -17,12 +17,13 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 |---|---|---|
 | DOKS control plane | non-HA, NYC3 | $0 |
 | Worker node | 1 × `s-2vcpu-4gb-amd` (Premium AMD, 2 vCPU / 4 GB) | $28 (*) |
-| Managed MySQL | `db-s-1vcpu-1gb`, MySQL 8.4, single node, NYC3 | $15.15 |
+| Managed MySQL | `db-s-1vcpu-1gb`, MySQL 8.4, single node, NYC3 (platform DB + MySQL app DBs) | $15.15 |
+| Managed PostgreSQL | `db-s-1vcpu-1gb`, PostgreSQL 17, single node, NYC3 (`picopaas-pg-nyc3`, PostgreSQL app DBs; added 2026-10-22) | $15.15 |
 | Load balancer | 1 × regional DO LB (created by the Traefik Service) | $12 |
 | Spaces | 1 subscription (bucket `pico-paas-s3-a` in ATL1 plus one bucket per storage-enabled app) | $5 |
 | DNS, VPC, GHCR (public images), Terraform Cloud (state only), GitHub Actions (public repo), Let's Encrypt | | $0 |
-| **Baseline** | | **about $60.15** |
-| **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $88.15** |
+| **Baseline** | | **about $75.30** |
+| **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $103.30** |
 
 (*) Confirmed by Chas from the DO bill (2026-10-20); DO's public pages don't list this size.
 
@@ -39,7 +40,7 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 ### Per-app marginal cost
 About $0 until the node is full. An app requests 64m CPU / 128Mi and is capped at 200m / 384Mi, so one 4 GB node holds
 roughly 8 to 12 apps next to the platform. After that each extra node ($28) holds about 8 to 12 more, which is
-**about $2.50 to $3.50 per app per month**. A database adds nothing (about 25 app DBs fit one MySQL server). A bucket
+**about $2.50 to $3.50 per app per month**. A database adds nothing (about 25 app DBs fit one MySQL or PostgreSQL server). A bucket
 adds nothing inside the Spaces allowance.
 
 ### Sources
@@ -53,7 +54,7 @@ adds nothing inside the Spaces allowance.
   same-size Regular Droplet is $24 (https://www.digitalocean.com/pricing/droplets).
 - Droplet transfer allowance for the node is not counted; app egress is small at these caps.
 
-CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60, tracked in `docs/QUESTIONS.md`.
+CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $75.30 (about $60.15 before managed PostgreSQL was added, 2026-10-22), tracked in `docs/QUESTIONS.md`.
 
 ## 2. Components
 
@@ -98,7 +99,9 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60
   `USER` line example. A named non-root user (kubelet can't verify it) is accepted and forced to
   `runAsUser`/`runAsGroup` = `NAMED_USER_RUN_AS_UID` (10001, `apps.run_as_uid`). Every app namespace also
   carries Pod Security Admission `enforce: restricted` (+ `enforce-version: latest`) as a backstop.
-- **DB:** one MySQL database plus one user per app (`GRANT ALL ON app_<id>.*`), `MAX_USER_CONNECTIONS` = `MAX_DB_USER_CONNECTIONS` (default 10, app/config.py; re-applied to every existing app user by `ALTER USER` on each reconciler sweep, so raising it self-heals),
+- **DB:** per-app databases are MySQL or PostgreSQL, chosen by `resources.db_engine` (`mysql` default, `pg`; immutable once the DB exists). The platform's own control-plane DB stays MySQL.
+  PostgreSQL: a per-app database owned by admin plus a dedicated LOGIN role `app_<id>` with `CONNECTION LIMIT 5`, `REVOKE ALL ... FROM PUBLIC`, CA-verified TLS on port 25060.
+  MySQL: one database plus one user per app (`GRANT ALL ON app_<id>.*`), `MAX_USER_CONNECTIONS` = `MAX_DB_USER_CONNECTIONS` (default 10, app/config.py; re-applied to every existing app user by `ALTER USER` on each reconciler sweep, so raising it self-heals),
   and a random 32-char password. MySQL has no per-database quota, so the reconciler polls
   `information_schema.TABLES` and, above 50 MB, revokes INSERT/UPDATE/CREATE/ALTER (leaving SELECT/DELETE/TRUNCATE/DROP so the
   user can clean up) and flags the app in the UI. DB is polled every 60s (`DB_QUOTA_POLL_SECONDS`) and
@@ -191,7 +194,7 @@ server that has room.
 | Resource | Unit we add | Capacity per unit | Ceiling signal |
 |---|---|---|---|
 | Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 200m/384Mi) | Pending pods / node allocatable |
-| MySQL | +1 DB server (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 76 max ÷ ~10 per app user (cap is a ceiling, not a reservation), oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
+| MySQL / PostgreSQL | +1 DB server per engine (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 76 max ÷ ~10 per app user (cap is a ceiling, not a reservation), oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
 | Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
 
 ### Compute
@@ -200,13 +203,13 @@ the spending ceiling, built into Terraform. The cluster autoscaler adds a node w
 scheduled and removes it when nodes are idle. This is the only automatic scale-out, and it's bounded by an approved `max_nodes`.
 
 ### Database: many servers, one placement table
-- `db_servers` table: each registered MySQL server (host, port, encrypted admin creds, `max_databases`,
+- `db_servers` table: each registered MySQL or PostgreSQL server (an `engine` column says which; host, port, encrypted admin creds, `max_databases`,
   status `active | draining`; `full` is a legacy value that behaves like `draining`). The first server comes from Terraform. More are added by the
   platform admin in the admin UI after a request is approved, or by Terraform outputs.
 - `app_databases` table: which server each app's DB lives on (`db_server_id`), plus its size and quota flag.
   The reconciler builds the reference variables (`db.host`, `db.url`, …) from that row, so apps on different
   servers simply get different hosts.
-- **Placement** (`app/db_placement.py`): a new DB goes on the `active` server with the most free slots. If
+- **Placement** (`app/db_placement.py`): a new DB goes on the `active` server of the app's engine with the most free slots (placement is per-engine). If
   there's no room, the deploy fails with a clear "no database capacity" error and the platform admin is alerted.
 - **Tracking:** the reconciler's quota poll (it already measures per-DB size for the 50 MB cap) also
   rolls up per-server counts and bytes. When a server reaches 80%, the admin dashboard shows a banner and
@@ -214,7 +217,7 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
   (what / why / cost) to send to Chas.
 - **Draining:** setting a server to `draining` stops new placements. Moving existing DBs between servers
   (dump → restore → swap secret → restart app) is a later admin action, not v1.
-- Every server is the same kind of thing to the platform. In-cluster MySQL (the earlier, cheaper option) and managed MySQL
+- Every server is the same kind of thing to the platform (per engine). In-cluster MySQL (the earlier, cheaper option) and managed MySQL
   can coexist, so mixing them later costs nothing.
 
 ### Spaces

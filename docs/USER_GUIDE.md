@@ -1,6 +1,6 @@
 # PicoPaaS User Guide
 
-This guide is for app owners. You deploy one Docker image, give it env vars and secrets, and optionally add a MySQL
+This guide is for app owners. You deploy one Docker image, give it env vars and secrets, and optionally add a MySQL or PostgreSQL
 database and an S3-compatible storage bucket. PicoPaaS serves your app over HTTPS at a generated hostname such as
 `clever-robin-a1b2c3d.picopaas.xyz`.
 
@@ -35,7 +35,7 @@ administrator restores the account.
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too. Over the limit gives `403` ("You've reached your limit of N apps..."). |
-| Database | Optional MySQL database, 50 MB. |
+| Database | Optional database (MySQL or PostgreSQL), 50 MB. |
 | Storage | Optional storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
@@ -158,7 +158,8 @@ secrets:
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
 | `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
-| `resources.db` | boolean | no | `false` | Provisions a MySQL database. Cannot be removed from an existing app via spec (422). |
+| `resources.db` | boolean | no | `false` | Provisions a database (MySQL by default; see `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
+| `resources.db_engine` | string | no | `mysql` | `mysql` or `pg`. Chooses the database engine for `db: true`: `pg` gives you a managed **PostgreSQL** database instead of MySQL. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. |
 | `resources.storage` | boolean | no | `false` | Provisions a storage bucket. Same removal rule. |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
 | `healthCheck.path` | string | no | `/healthz` | Starts with `/`, at most 255 characters. Allowed: letters, digits and `._~!$&()*+,;=:@/%-`. No `..` segments (also `%2e%2e`), spaces or quotes. |
@@ -195,7 +196,7 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 | `${{ db.name }}` | Your database name |
 | `${{ db.user }}` | Your database user |
 | `${{ db.password }}` | Your database password |
-| `${{ db.url }}` | `mysql://user:password@host:port/name` (no driver parameters) |
+| `${{ db.url }}` | `mysql://user:password@host:port/name` for MySQL, or `postgres://user:password@host:port/name` (with `?sslmode=require` when the server has TLS) for PostgreSQL |
 | `${{ db.ca_cert }}` | CA certificate PEM text; empty string if the server has none |
 | `${{ db.tls }}` | `required` if the server has a CA cert, else `off` |
 | `${{ storage.endpoint }}` | Full URL, for example `https://atl1.digitaloceanspaces.com` |
@@ -207,9 +208,9 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 
 You pick your own variable names. The platform does not inject `DATABASE_URL` and friends by itself.
 
-## 6. Connecting to MySQL (TLS)
+## 6. Connecting to your database (TLS)
 
-The database server requires TLS, so map the CA certificate and the TLS flag:
+The database server requires TLS, so map the CA certificate and the TLS flag. The refs are the same for both engines; pick the client block for your engine (`resources.db_engine`, MySQL by default):
 
 ```yaml
 resources: { db: true }
@@ -224,7 +225,7 @@ env:
   DB_TLS: ${{ db.tls }}
 ```
 
-Python (pymysql). Python 3.13 enables `VERIFY_X509_STRICT`, which rejects DigitalOcean's CA ("Basic Constraints
+**MySQL.** Python (pymysql). Python 3.13 enables `VERIFY_X509_STRICT`, which rejects DigitalOcean's CA ("Basic Constraints
 of CA cert not marked critical"), so clear that one flag. Chain and hostname checks stay on.
 
 ```python
@@ -256,7 +257,20 @@ mysql CLI (save the PEM to `ca.pem`). The database is only reachable from inside
 mysql --ssl-mode=VERIFY_CA --ssl-ca=ca.pem -h HOST -P PORT -u USER -p DBNAME
 ```
 
-**Connection limit.** Your database user is capped at 10 simultaneous connections (platform setting `MAX_DB_USER_CONNECTIONS`). If your app uses a connection pool, keep its maximum size at or below this, otherwise MySQL returns `exceeded the 'max_user_connections' resource`. For example, set Knex/Ghost `pool.max` to 10 or less.
+**PostgreSQL** (`resources.db_engine: pg`). Same `env:` mapping as above. The server listens on port 25060 and `${{ db.url }}` takes the form `postgres://user:password@host:port/name` (with `?sslmode=require` when the server has TLS). To verify the server certificate, write the CA out and use `sslmode=verify-full`. Python (psycopg v3):
+
+```python
+import os, psycopg
+open("/tmp/db-ca.pem", "w").write(os.environ["DB_CA_CERT"])
+conn = psycopg.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"]),
+                       user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"],
+                       dbname=os.environ["DB_NAME"],
+                       sslmode="verify-full", sslrootcert="/tmp/db-ca.pem")
+```
+
+**Connection limit (PostgreSQL).** Your app's database role is capped at 5 simultaneous connections (`CONNECTION LIMIT 5`). Keep your pool's maximum size at or below this.
+
+**Connection limit (MySQL).** Your database user is capped at 10 simultaneous connections (platform setting `MAX_DB_USER_CONNECTIONS`). If your app uses a connection pool, keep its maximum size at or below this, otherwise MySQL returns `exceeded the 'max_user_connections' resource`. For example, set Knex/Ghost `pool.max` to 10 or less.
 
 ## 7. Connecting to the storage bucket (S3-compatible)
 
@@ -437,12 +451,13 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | Stuck in **Deploying** | Readiness isn't passing. Check the health check path, the port, and that the app starts within a few seconds. After 10 minutes the app moves to **Failed** with the reason. |
 | **Failed** with a message | Read the message and the logs on the app page. The platform retries automatically (see section 12). To retry now, click **Restart** or save the app. |
 | "My app restarted" (a **Restarted ...** notice on the app page, or a gap in the logs) | Open **Recent events** on the app page (or `GET /apps/{id}/events`, or `picopaas status`). It says why: more than 250 MB of local disk (files, `/tmp`, logs; local files are lost, so keep files in the storage bucket), out of memory (384 MB limit; reduce memory use), or the app exited with a code (check the logs; the previous container's last lines are shown above the current ones). The notice stays on the app page for 24 hours; the last 20 events are kept. |
-| TLS error from MySQL | Use the CA certificate from `${{ db.ca_cert }}`. See the strict-flag note in section 6. |
+| TLS error from your database | Use the CA certificate from `${{ db.ca_cert }}`. See the strict-flag note in section 6. |
 | Database writes fail with a read-only or permission error | You hit the 50 MB cap. The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
 | Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Click **Free up space** (or run `picopaas storage-delete`). Your app's own key is read-only and can't delete. |
 | The app restarts with "used more than 250 MB of local disk" | The app wrote too much to the container filesystem, `/tmp` or logs. Store files in the storage bucket and log less. |
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
 | `User ... has exceeded the 'max_user_connections' resource` | Your pool is bigger than the per-app MySQL connection cap (10). Lower the pool's max size. |
+| PostgreSQL: `too many connections for role "app_<id>"` | The equivalent limit on PostgreSQL is the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |
 

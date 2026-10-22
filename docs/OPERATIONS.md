@@ -9,7 +9,8 @@ design in [ARCHITECTURE.md](ARCHITECTURE.md), the manual runbook in [../deploy/R
 *.picopaas.xyz (A records -> DO load balancer) -> Traefik (ns traefik, wildcard cert from cert-manager)
    platform.picopaas.xyz -> platform (ns picopaas-system, 2 replicas: API + UI; one leader runs the reconciler)
    <adjective>-<animal>-<7 chars>.picopaas.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
-Managed MySQL (DO, nyc3, private VPC): platform DB `picopaas` + one DB/user per app
+Managed MySQL (DO, nyc3, private VPC): platform DB `picopaas` + one DB/user per MySQL app
+Managed PostgreSQL (DO, nyc3, private VPC, `picopaas-pg-nyc3`): one database + `app_<id>` role per PostgreSQL app
 Spaces (atl1): one bucket + key per app, plus the adopted platform bucket pico-paas-s3-a
 State: Terraform Cloud (org seaburr, workspace picopaas, local execution = state only)
 Images: GHCR (ghcr.io/seaburr/picopaas, tagged with the short commit SHA)
@@ -19,6 +20,7 @@ Images: GHCR (ghcr.io/seaburr/picopaas, tagged with the short commit SHA)
 - With `RECONCILER_ENABLED=1` the platform process runs four APScheduler jobs: reconcile every 15 s, database quota poll
   every 60 s, storage quota poll every 5 min, and the image watcher every 10 min. With MySQL, `GET_LOCK('picopaas-reconciler')`
   keeps the replicas from double-running.
+- Terraform and bootstrap cover both managed clusters. On start, `BOOTSTRAP_PG_*` env creates the PostgreSQL DbServer the same way `BOOTSTRAP_DB_*` does for MySQL.
 - Reconciler drift sweep: running apps whose rendered manifest hash changed are re-applied; running apps whose
   `app-<id>` namespace is missing (cluster rebuilt) are recreated.
 - On start, `BOOTSTRAP_DB_*` env creates DbServer `primary` if no server exists, and keeps its host, port, admin
@@ -40,7 +42,7 @@ All are manual (`workflow_dispatch`) unless noted. `bootstrap` and `deploy` shar
 |---|---|---|
 | `ci` (push/PR) | Automatic | gitleaks (no allowlist files allowed), terraform validate, kubeconform, backend tests, MySQL integration, frontend. |
 | `image` (push to main) | Automatic | Builds and pushes `ghcr.io/seaburr/picopaas:<short sha>`. |
-| `terraform` | Create or change DO infra (cluster, MySQL, VPC, firewall, DNS, Spaces bucket) | Input `apply` (default true; untick for plan only). Skips if `TF_API_TOKEN` is unset. Pre-checks the MySQL slug and that the node size currently has capacity in the region. Sets the TFC workspace to local execution. |
+| `terraform` | Create or change DO infra (cluster, MySQL, PostgreSQL, VPC, firewall, DNS, Spaces bucket) | Input `apply` (default true; untick for plan only). Skips if `TF_API_TOKEN` is unset. Pre-checks the MySQL slug and that the node size currently has capacity in the region. Sets the TFC workspace to local execution. |
 | `bootstrap` | Fresh or replaced cluster, or when platform add-ons/secrets change | Installs Traefik, cert-manager, metrics-server, upserts DNS A records `*` and `picopaas`, creates secrets and the platform DB, issuers and wildcard cert, deploys the platform, waits for health (up to about 10 min). Idempotent. Input `sha`. |
 | `deploy` (also after a successful `image` run on main) | Roll a new platform version | Applies RBAC, deployment (image + env checksum), service, ingress; waits for rollout. Input `sha`. Skips if there is no token or no cluster `picopaas-nyc3`. |
 | `diag` | Something is broken in-cluster | Inputs `namespace` (default `picopaas-system`), `selector`, `tail`. Prints nodes, pods, events, non-ready pod descriptions and logs with secret values masked. |
@@ -158,12 +160,12 @@ the GitHub issue). True disk capacity would come from that same source.
 
 ## 8. Cost
 
-Baseline about $60.15/mo (node $28 + MySQL $15.15 + LB $12 + Spaces $5), about $88.15 while the autoscaler runs the
+Baseline about $75.30/mo (node $28 + MySQL $15.15 + PostgreSQL $15.15 + LB $12 + Spaces $5), about $103.30 while the autoscaler runs the
 second node. The full table, cost drivers, per-app marginal cost, and sources are in
 [ARCHITECTURE.md §1](ARCHITECTURE.md#1-hosting-cost). `infra/variables.tf` is the source of truth; update §1 if you
 change a size. Any new paid resource needs a request in `docs/requests/`.
 
-Capacity: roughly 8 to 12 apps per node; about 25 app databases per MySQL server; Spaces has a 100 buckets per
+Capacity: roughly 8 to 12 apps per node; about 25 app databases per MySQL or PostgreSQL server (limited by ~22 usable connections on PostgreSQL against the per-app `CONNECTION LIMIT 5`); Spaces has a 100 buckets per
 account limit.
 
 ## 9. Known limitations and open issues

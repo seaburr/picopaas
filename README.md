@@ -1,8 +1,8 @@
 # PicoPaaS
 
 A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker image, add env vars and secrets,
-and optionally get a MySQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
-subdomain. It runs on DigitalOcean Kubernetes for about $60/mo.
+and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
+subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
@@ -12,7 +12,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
-- Optional MySQL database and S3-compatible storage bucket per app, each with its own credentials.
+- Optional MySQL or PostgreSQL database and S3-compatible storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.picopaas.xyz`) from a wildcard certificate.
 - Logs (with download), restart, and live status in the UI.
 - One-click templates (Ghost, an nginx static site, the podinfo sample API) that prefill the new-app form.
@@ -35,7 +35,7 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Memory | 384 MB limit (128 MB request) |
 | Scratch disk | 250 MB (pod is evicted over it) |
 | Image size | 512 MB compressed |
-| MySQL database | 50 MB (writes revoked over it) |
+| MySQL or PostgreSQL database | 50 MB (writes revoked over it) |
 | Storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
 | Apps per user | 1 by default (an administrator can raise it) |
 
@@ -61,13 +61,16 @@ flowchart TB
   plat -- "Kubernetes API" --> app
 
   subgraph data["Data (DigitalOcean)"]
-    mysql[("Managed MySQL 8.4<br/>platform DB + one DB per app")]
+    mysql[("Managed MySQL 8.4<br/>platform DB + per-app MySQL DBs")]
+    pg[("Managed PostgreSQL 17<br/>per-app PostgreSQL DBs")]
     spaces[("Spaces<br/>one bucket + key per app")]
   end
 
   plat -- "VPC, TLS" --> mysql
+  plat -- "VPC, TLS" --> pg
   plat -- "DO API + S3 API" --> spaces
   app -- "own DB user" --> mysql
+  app -- "own DB role" --> pg
   app -- "own bucket key" --> spaces
 
   subgraph ext["External services"]
@@ -126,10 +129,10 @@ sequenceDiagram
 | Ingress | Traefik (standard Ingress API) | ingress-nginx is retired; one default TLS store serves the wildcard cert |
 | TLS | cert-manager, Let's Encrypt, DNS-01 via DO | One wildcard cert, so no per-app issuance or rate limits |
 | Metrics | metrics-server | CPU and memory in the admin health view |
-| Database | DO Managed MySQL 8.4 | Platform DB plus one database and user per app, over the VPC with TLS |
+| Database | DO Managed MySQL 8.4 and Managed PostgreSQL 17 | MySQL holds the platform DB. Each app's database (MySQL or PostgreSQL, chosen by `resources.db_engine`) gets its own database and user/role, over the VPC with TLS |
 | Object storage | DO Spaces (S3 API, boto3) | A bucket and access key per app |
 | Secrets at rest | Fernet (`cryptography`), MultiFernet for rotation | One platform key encrypts env secrets, DB and bucket credentials |
-| Infra as code | Terraform with Terraform Cloud state | Cluster, VPC, MySQL, firewall, Spaces bucket, DNS |
+| Infra as code | Terraform with Terraform Cloud state | Cluster, VPC, MySQL, PostgreSQL, firewall, Spaces bucket, DNS |
 | CI/CD | GitHub Actions, GHCR | Public repo and images, so both are free |
 | Secret scanning | gitleaks pre-commit hook, plus a CI guard against allowlists | Keeps keys out of git |
 | Tests | pytest (SQLite in memory, real login flow), Playwright e2e | Infra clients are faked behind interfaces; e2e and pentest suites run against the live site |
@@ -138,16 +141,16 @@ sequenceDiagram
 
 **Desired state lives in the platform DB.** The API validates a request, reads the image manifest (size cap, non-root
 check, digest), stores the app, and returns. A reconciler loop inside the API process runs every 15 seconds and
-converges Kubernetes, MySQL and Spaces toward what the DB says. It renders the manifests, hashes them, and applies
+converges Kubernetes, MySQL, PostgreSQL and Spaces toward what the DB says. It renders the manifests, hashes them, and applies
 only on change. A drift sweep re-checks running apps against that hash, so a deleted namespace or a rebuilt cluster
 gets repaired. Two replicas run, but only the one holding a MySQL named lock does the work.
 
 **Isolation.** Every app gets its own namespace with a ResourceQuota and LimitRange. Pods run non-root with Pod
 Security Admission set to `restricted`, no service account token, and no privilege escalation. NetworkPolicies deny
-everything by default: ingress only from Traefik, egress to the internet and to MySQL, nothing to other apps, and SMTP
+everything by default: ingress only from Traefik, egress to the internet and to the database servers, nothing to other apps, and SMTP
 ports are blocked. Each app gets its own DB user and bucket key, never the platform's.
 
-**Quota enforcement.** MySQL and Spaces have no per-tenant quotas, so the platform polls sizes itself. Over 50 MB, an
+**Quota enforcement.** MySQL, PostgreSQL and Spaces have no per-tenant quotas, so the platform polls sizes itself. Over 50 MB, an
 app's DB user loses INSERT, UPDATE and CREATE, its open sessions are killed, and the pod is rolled if that can't be
 confirmed. Over 100 MB, the bucket key swaps to read-only. Users can free space and get write access back.
 
@@ -161,7 +164,7 @@ rotation is supported.
 
 ## Cost
 
-About $60/mo baseline (node, managed MySQL, load balancer, Spaces) and about $88 while the autoscaler runs a second
+About $75/mo baseline (node, managed MySQL, managed PostgreSQL, load balancer, Spaces) and about $103 while the autoscaler runs a second
 node. Per-app cost is about $0 until the node fills up. Details, sources and what we couldn't verify:
 [docs/ARCHITECTURE.md §1](docs/ARCHITECTURE.md#1-hosting-cost).
 

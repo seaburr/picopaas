@@ -79,4 +79,4 @@ The platform sets the `PORT` env var to your app's port unless you set `PORT` yo
 
 ## Connecting to your database
 
-See [USER_GUIDE.md](USER_GUIDE.md), section 6, for the TLS settings and Python, Node and `mysql` examples.
+See [USER_GUIDE.md](USER_GUIDE.md), section 6, for the TLS settings and per-engine connection examples.
