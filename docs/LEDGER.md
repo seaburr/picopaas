@@ -679,3 +679,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: Directus recipe committed 2477662 and pushed; gitleaks clean, no secret values. No findings.
 - 2026-10-22 [infra-ops] DONE (uncommitted): Postgres infra wiring. bootstrap.yml looks up picopaas-pg-nyc3 via doctl (same as MySQL; no TF outputs/GH secrets needed) -> picopaas-env BOOTSTRAP_PG_* + PG_EGRESS_CIDR, CA as pg-ca.crt in picopaas-db-ca; terraform.yml pg size/region check + 1GB connection warning; reconciler picks pg CIDR (never in-cluster) for pg-backed apps, port from DbServer (25060); config PG_EGRESS_CIDR; test added. Platform ns has no NetworkPolicy so egress already open. Nothing applied.
 - 2026-10-22 [scm-security] START: commit/push managed PostgreSQL feature, watch CI/image/deploy.
+- 2026-10-22 [scm-security] DONE: managed PostgreSQL committed 83a46cd and pushed; CI, image, deploy all green. No security findings filed.
