@@ -27,6 +27,8 @@ from app.config import (
     EPHEMERAL_REQUEST_MI,
     INGRESS_CLASS,
     INGRESS_NAMESPACE,
+    VOLUME_FS_GROUP,
+    VOLUME_STORAGE_CLASS,
 )
 
 RUN_AS_NON_ROOT = True
@@ -91,6 +93,10 @@ def _secret_name(app_id: int) -> str:
     return f"app-{app_id}-env"
 
 
+def pvc_name(app_id: int) -> str:
+    return f"app-{app_id}-data"
+
+
 def _full_hostname(hostname: str) -> str:
     return f"{hostname}.{APP_DOMAIN}"
 
@@ -147,7 +153,7 @@ def _eph(e: dict[str, int]) -> int:
 
 def resource_quota_manifest(
     app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None,
-    custom_domain: bool = False, replicas: int = 1,
+    custom_domain: bool = False, replicas: int = 1, volume: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Quota = max((replicas + 1) x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
@@ -168,12 +174,17 @@ def resource_quota_manifest(
     solver_headroom = 1 if custom_domain else 0
     pods_total = max(slots + solver_headroom, (used.get("pods") or 0) + 1 + solver_headroom)
     services_total = int(QUOTA_SERVICES) + solver_headroom
+    # With a volume: exactly one PVC and exactly its size, so nothing in the namespace can claim more storage.
+    volume_quota = (
+        {"persistentvolumeclaims": "1", "requests.storage": f"{int(volume['size_gi'])}Gi"} if volume else {}
+    )
     return {
         "apiVersion": "v1",
         "kind": "ResourceQuota",
         "metadata": {"name": "app-quota", "namespace": namespace_name(app_id)},
         "spec": {
             "hard": {
+                **volume_quota,
                 "limits.cpu": f"{cpu_total}m",
                 "limits.memory": f"{mem_total}Mi",
                 "requests.cpu": f"{cpu_total}m",
@@ -488,9 +499,12 @@ def deployment_manifest(
     restart_nonce: str | None = None,
     image_ref: str | None = None,
     health_check_timeout_seconds: int | None = None,
+    volume: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
+    if volume:
+        replicas = min(replicas, 1)  # ReadWriteOnce: one pod at a time (0 stays 0 when suspended)
     pod_labels = {"app": name}
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
     # envFrom alone never restarts a running pod.
@@ -544,7 +558,11 @@ def deployment_manifest(
         "spec": {
             "replicas": replicas,
             # Surge one pod (headroom is in app-quota), never drop below the running pod.
-            "strategy": {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}},
+            # A volume app uses Recreate: a rolling surge pod could never attach the ReadWriteOnce volume (deadlock).
+            "strategy": (
+                {"type": "Recreate"} if volume
+                else {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}}
+            ),
             "selector": {"matchLabels": pod_labels},
             "template": {
                 "metadata": {"labels": pod_labels, "annotations": pod_annotations},
@@ -559,7 +577,13 @@ def deployment_manifest(
                     "securityContext": {
                         "runAsNonRoot": RUN_AS_NON_ROOT,
                         "seccompProfile": {"type": "RuntimeDefault"},
+                        # Lets the non-root UID write a fresh volume; OnRootMismatch skips the slow recursive chown on reattach.
+                        **({"fsGroup": VOLUME_FS_GROUP, "fsGroupChangePolicy": "OnRootMismatch"} if volume else {}),
                     },
+                    **(
+                        {"volumes": [{"name": "data", "persistentVolumeClaim": {"claimName": pvc_name(app_id)}}]}
+                        if volume else {}
+                    ),
                     "containers": [
                         {
                             "name": "app",
@@ -583,12 +607,32 @@ def deployment_manifest(
                                     else {}
                                 ),
                             },
+                            **(
+                                {"volumeMounts": [{"name": "data", "mountPath": volume["mount_path"]}]}
+                                if volume else {}
+                            ),
                             **port_env,
                             **probes,
                         }
                     ],
                 },
             },
+        },
+    }
+
+
+def pvc_manifest(app_id: int, volume: dict[str, Any]) -> dict[str, Any]:
+    """The app's one persistent volume claim. Never deleted by reconcile/restart; goes with the namespace on app delete
+    (StorageClass reclaimPolicy Delete). Size only ever grows (volume expansion)."""
+    return {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {"name": pvc_name(app_id), "namespace": namespace_name(app_id),
+                     "labels": {"app": _resource_name(app_id)}},
+        "spec": {
+            "accessModes": ["ReadWriteOnce"],
+            "storageClassName": VOLUME_STORAGE_CLASS,
+            "resources": {"requests": {"storage": f"{int(volume['size_gi'])}Gi"}},
         },
     }
 
@@ -706,13 +750,14 @@ def render_app_manifests(
     custom_host: str | None = None,
     platform_subdomain: str | None = None,
     health_check_timeout_seconds: int | None = None,
+    volume: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
         "namespace": namespace_manifest(app_id),
         "role_binding": role_binding_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id, resources, used_limits, custom_domain=bool(custom_host),
-                                                  replicas=replicas),
+                                                  replicas=replicas, volume=volume),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips,
                                               custom_domain=bool(custom_host), replicas=replicas),
@@ -723,7 +768,9 @@ def render_app_manifests(
                                        health_check_path=health_check_path, user_env=env,
                                        resources=resources, run_as_uid=run_as_uid,
                                        restart_nonce=restart_nonce, image_ref=image_ref,
-                                       health_check_timeout_seconds=health_check_timeout_seconds),
+                                       health_check_timeout_seconds=health_check_timeout_seconds,
+                                       volume=volume),
+        "pvc": pvc_manifest(app_id, volume) if volume else None,
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain) if include_ingress else None,
         "custom_ingress": (
@@ -742,6 +789,10 @@ def flatten_manifests(rendered: dict[str, Any]) -> list[dict[str, Any]]:
         rendered["limit_range"],
         *rendered["network_policies"],
         rendered["secret"],
+    ]
+    if rendered.get("pvc") is not None:
+        flat.append(rendered["pvc"])  # after the quota (so a grow fits), before the Deployment that mounts it
+    flat += [
         rendered["deployment"],
         rendered["service"],
     ]

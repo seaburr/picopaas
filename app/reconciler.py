@@ -74,6 +74,21 @@ def _db_refs(app: models.App) -> dict[str, str]:
     }
 
 
+def _volume_of(app: models.App) -> Optional[dict[str, Any]]:
+    """The volume to render, or None. With VOLUMES_ENABLED off no PVC is ever rendered (an existing one is left alone)."""
+    if not config.VOLUMES_ENABLED or app.volume_size_gi is None:
+        return None
+    return {"size_gi": app.volume_size_gi, "mount_path": app.volume_mount_path or config.VOLUME_DEFAULT_MOUNT_PATH}
+
+
+def refresh_volume_phase(app: models.App, kube: KubeProvider) -> None:
+    """Record the PVC phase on the app (read-only kube call; failures keep the old value)."""
+    try:
+        app.volume_phase = kube.volume_phase(k8s_manifests.namespace_name(app.id), k8s_manifests.pvc_name(app.id))
+    except Exception as exc:  # noqa: BLE001 - informational
+        log.warning("app %s: reading volume phase failed: %s", app.id, _kube_error_summary(exc))
+
+
 def _app_url(app: models.App) -> str:
     """Public URL of the app, preferring a nicer host when one is set:
     an active custom domain > an admin-reserved platform subdomain > the generated <hostname>.<APP_DOMAIN>.
@@ -457,7 +472,7 @@ def reconcile_app(
         storage_ips=(
             _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []
         ),
-        replicas=0 if suspended else max(1, app.replicas or 1),
+        replicas=0 if suspended else (1 if _volume_of(app) else max(1, app.replicas or 1)),
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         health_check_timeout_seconds=app.health_check_timeout_seconds,
@@ -467,6 +482,7 @@ def reconcile_app(
         restart_nonce=app.restart_nonce,
         platform_subdomain=app.platform_subdomain,
         custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
+        volume=_volume_of(app),
     )
 
     def _hash(flat_manifests: list[dict[str, Any]]) -> str:
@@ -527,6 +543,8 @@ def reconcile_app(
         if render_kwargs["replicas"] <= 1:
             kube.delete_network_policy(namespace, k8s_manifests.SAME_NAMESPACE_POLICY)
         status = kube.get_status(namespace)
+        if render_kwargs["volume"]:
+            refresh_volume_phase(app, kube)
     except Exception as exc:
         # Operator-only log. k8s Status code/reason/message describe the failure without echoing Secret data.
         log.warning("app %s: kube apply failed: %s", app.id, _kube_error_summary(exc))
@@ -749,6 +767,14 @@ def reconcile_all(
         )
         if app.status == "running":
             image_history.record_running(session, app)
+
+    polled = False
+    for app in running:  # a PVC binds only once its pod is scheduled, so poll until Bound
+        if _volume_of(app) is not None and app.volume_phase != "Bound":
+            refresh_volume_phase(app, kube)
+            polled = True
+    if polled:  # (an unconditional commit would expire every loaded app and re-query them one by one)
+        session.commit()
 
     if running:
         try:

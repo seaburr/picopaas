@@ -185,13 +185,14 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.delenv(k, raising=False)
     me = admin.get("/auth/me").json()
-    assert me["features"] == {"databases": False, "storage": False, "db_engines": []}
+    assert me["features"] == {"databases": False, "storage": False, "volumes": False, "db_engines": []}
     assert me["limits"] == {
         "cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI,
         "cpu_request_m": config.DEFAULT_CPU_REQUEST_M, "mem_request_mi": config.DEFAULT_MEM_REQUEST_MI,
         "image_mb": config.MAX_IMAGE_SIZE_BYTES // 1048576, "db_mb": config.DB_QUOTA_BYTES // 1048576,
         "bucket_mb": config.STORAGE_QUOTA_BYTES // 1048576, "ephemeral_mi": config.EPHEMERAL_LIMIT_MI,
         "egress_mbit": config.EGRESS_BANDWIDTH_MBIT,
+        "volume_max_gi": 1, "volume_default_gi": 1, "volume_default_mount_path": "/data",
         "override": {"cpu_min_m": 10, "cpu_max_m": 1000, "mem_min_mi": 32, "mem_max_mi": 2048},
     }
     assert me["must_change_password"] is False
@@ -199,7 +200,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     db_session.commit()
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.setenv(k, "not-a-secret")
-    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True, "db_engines": ["mysql"]}
+    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True, "volumes": False, "db_engines": ["mysql"]}
 
 
 def test_me_databases_false_when_no_server_can_take_one(admin, db_session):

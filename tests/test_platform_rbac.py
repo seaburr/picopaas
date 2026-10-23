@@ -27,6 +27,7 @@ KIND_RESOURCE = {
     "Deployment": ("apps", "deployments"),
     "Service": ("", "services"),
     "Ingress": ("networking.k8s.io", "ingresses"),
+    "PersistentVolumeClaim": ("", "persistentvolumeclaims"),
 }
 CLUSTER_WIDE_KINDS = {"Namespace", "RoleBinding"}
 APP_NS_WORKLOAD_RESOURCES = {"deployments", "ingresses", "networkpolicies"}
@@ -101,6 +102,7 @@ def test_cluster_wide_role_is_exactly_the_documented_set(roles):
     dict(custom_host="app.example.org"),
     dict(include_ingress=False, replicas=0),
     dict(storage_ips=["10.0.0.1"], platform_subdomain="shop", mysql_cidr=None),
+    dict(volume={"size_gi": 1, "mount_path": "/data"}),
 ])
 def test_every_reconciler_apply_is_still_allowed(roles, docs, variant):
     """SSA = PATCH (+ CREATE when the object is new) for every manifest the reconciler renders, in app-<id>."""
@@ -143,7 +145,7 @@ def test_reconciler_reads_deletes_and_status_calls_are_allowed(roles, docs):
 @pytest.mark.parametrize("ns", ["kube-system", "default", "cert-manager", "traefik", "picopaas-data"])
 @pytest.mark.parametrize("resource,group", [
     ("deployments", "apps"), ("ingresses", "networking.k8s.io"), ("networkpolicies", "networking.k8s.io"),
-    ("secrets", ""), ("services", ""), ("resourcequotas", ""), ("limitranges", ""),
+    ("secrets", ""), ("services", ""), ("resourcequotas", ""), ("limitranges", ""), ("persistentvolumeclaims", ""),
 ])
 def test_no_writes_outside_bound_namespaces(roles, docs, ns, resource, group):
     for verb in ("create", "patch", "update", "delete"):
@@ -176,3 +178,16 @@ def test_admission_policy_confines_rolebindings_to_app_namespaces(docs):
     # The per-app RoleBinding the reconciler creates satisfies the policy.
     assert k8s.role_binding_manifest(7)["metadata"]["namespace"].startswith("app-")
     assert k8s.PLATFORM_SA_NAMESPACE == "picopaas-system" and k8s.PLATFORM_SA_NAME == "picopaas"
+
+
+def test_pvc_grant_is_namespaced_and_no_persistent_volume_access(roles, docs):
+    """PVCs (apply, expand, get phase, delete) only inside bound app namespaces; no PV access anywhere (reclaim Delete)."""
+    b = {"app-7"}
+    for verb in ("get", "list", "create", "update", "patch", "delete"):
+        assert _allowed(roles, docs, verb, "", "persistentvolumeclaims", "app-7", bound_namespaces=b), verb
+    for ns in ("kube-system", "default", "picopaas-data"):
+        assert not _allowed(roles, docs, "get", "", "persistentvolumeclaims", ns, bound_namespaces=b), ns
+    assert not _allowed(roles, docs, "list", "", "persistentvolumeclaims")  # not cluster-wide
+    assert "persistentvolumeclaims" not in {r for rule in roles["picopaas-reconciler"] for r in rule["resources"]}
+    for role in roles.values():
+        assert not any("persistentvolumes" in rule["resources"] for rule in role)

@@ -8,7 +8,8 @@ from typing import Dict, List, Literal, Optional
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError, field_validator
 
-from app.config import HEALTH_TIMEOUT_MAX_S, HEALTH_TIMEOUT_MIN_S
+from app.config import HEALTH_TIMEOUT_MAX_S, HEALTH_TIMEOUT_MIN_S, OVERRIDE_VOLUME_MAX_GI, VOLUME_DEFAULT_MOUNT_PATH
+from app.volumes import MOUNT_PATH_MAX, validate_mount_path
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 MAX_SPEC_BYTES = 64 * 1024
@@ -18,11 +19,23 @@ class SpecError(ValueError):
     pass
 
 
+class _Volume(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sizeGi: StrictInt = Field(default=1, ge=1, le=OVERRIDE_VOLUME_MAX_GI)
+    mountPath: StrictStr = Field(default=VOLUME_DEFAULT_MOUNT_PATH, max_length=MOUNT_PATH_MAX)
+
+    @field_validator("mountPath")
+    @classmethod
+    def _validate_mount_path(cls, v: str) -> str:
+        return validate_mount_path(v)
+
+
 class _Resources(BaseModel):
     model_config = ConfigDict(extra="forbid")
     db: StrictBool = False
     db_engine: Literal["mysql", "pg"] = "mysql"  # engine for `db: true`; immutable once the app has a database
     storage: StrictBool = False
+    volume: Optional[_Volume] = None  # persistent volume (platform must have VOLUMES_ENABLED); can't be removed later
 
 
 class _HealthCheck(BaseModel):

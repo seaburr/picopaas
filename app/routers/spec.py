@@ -6,7 +6,7 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, resources, schemas
+from app import audit, crypto, models, resources, schemas, volumes
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
@@ -74,6 +74,14 @@ def deploy_spec(
                     "the app if you really want to drop it (this destroys the data)."
                 ),
             )
+    if app is not None and app.volume_size_gi is not None and spec.resources.volume is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A spec can't remove a persistent volume from an existing app. Keep resources.volume in the spec, "
+                "or delete and recreate the app if you really want to drop it (this destroys the data)."
+            ),
+        )
     if app is not None and app.want_db and spec.resources.db and app.db_engine != spec.resources.db_engine:
         raise HTTPException(
             status_code=422,
@@ -127,6 +135,8 @@ def deploy_spec(
             health_check_timeout_seconds=spec.healthCheck.timeoutSeconds,
             status="pending",
         )
+        if spec.resources.volume is not None:
+            volumes.apply_request(db, app, spec.resources.volume.sizeGi, spec.resources.volume.mountPath, new_app=True)
         db.add(app)
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
@@ -136,6 +146,9 @@ def deploy_spec(
             != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.db_engine, spec.resources.storage,
                 spec.healthCheck.enabled, spec.healthCheck.path, spec.healthCheck.timeoutSeconds)
         )
+        if spec.resources.volume is not None and volumes.apply_request(
+                db, app, spec.resources.volume.sizeGi, spec.resources.volume.mountPath):
+            changed = True
         app.image = spec.image
         app.image_digest = digest
         app.image_update_error = None

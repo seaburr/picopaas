@@ -107,7 +107,12 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
   "bring a prebuilt public image" barrier) but the one item that adds real node CPU/disk at build time, so
   opt-in + quota-bounded, not strictly free.
 
-## Persistent volumes (block storage): planned (Chas, 2026-10-22)
+## Persistent volumes (block storage): backend built, disabled (Chas, 2026-10-22)
+**Status 2026-10-23:** the backend is implemented behind `VOLUMES_ENABLED` (default off): `resources.volume` in the API and
+spec, PVC + `Recreate` + `fsGroup`, single replica enforced, ResourceQuota, grow-only admin override (1 to 20 GiB),
+`VOLUMES_MAX_TOTAL` capacity cap, RBAC for namespaced PVCs. Nothing is provisioned until `docs/requests/0007` is approved
+and the flag is turned on. Still open: frontend UI, snapshot backups, pentest pass, usage (`statfs`) in the health views.
+Detaching is intentionally not supported (delete the app). The original plan follows.
 Today an app's only disk is its 250 MB scratch disk, which is wiped on every restart. Many self-hosted apps
 expect a persistent folder: SQLite apps (Uptime Kuma, Vaultwarden), n8n's user folder (binary data, community
 nodes, event log), and file uploads. Add an opt-in `resources.volume` that mounts one small block-storage

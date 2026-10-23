@@ -146,6 +146,11 @@ class App(Base):
     health_check_timeout_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Platform-admin-set Deployment replica count (1..config.MAX_REPLICAS); 0 is applied separately when suspended.
     replicas: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Persistent volume (app/volumes.py). NULL size = no volume. Grow-only; never detached (delete the app instead).
+    volume_size_gi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    volume_mount_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # PVC phase last seen by the reconciler ('Pending' | 'Bound' | ...); NULL until the PVC has been applied.
+    volume_phase: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 

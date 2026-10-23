@@ -183,6 +183,7 @@ def test_render_app_manifests_includes_everything():
         "limit_range",
         "network_policies",
         "secret",
+        "pvc",
         "deployment",
         "service",
         "ingress",

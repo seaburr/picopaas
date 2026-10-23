@@ -120,6 +120,11 @@ class KubeProvider(ABC):
         """Delete one NetworkPolicy (no error if absent). Targeted prune only (allow-same-namespace on scale-down)."""
         return None
 
+    def volume_phase(self, namespace: str, name: str) -> Optional[str]:
+        """Phase of the app's PersistentVolumeClaim ('Pending' | 'Bound' | 'Lost'), None if it doesn't exist. Read-only:
+        the platform never deletes a PVC (it goes with the namespace)."""
+        return None
+
     @abstractmethod
     def list_app_namespaces(self) -> set[str]:
         """Names of existing app namespaces (label picopaas.io/app-id), in one API call."""

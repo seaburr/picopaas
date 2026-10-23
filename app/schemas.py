@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app import config
+from app import config, volumes
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 from app.env_refs import EnvValidationError, validate_env_key
@@ -115,6 +115,7 @@ class UserOut(BaseModel):
 class Features(BaseModel):
     databases: bool
     storage: bool
+    volumes: bool = False  # persistent volumes enabled (VOLUMES_ENABLED); hide the volume option when false
     db_engines: List[str] = []  # engines with free capacity now: a subset of ["mysql", "pg"], for the deploy form's engine picker
 
 
@@ -135,6 +136,9 @@ class Limits(BaseModel):
     bucket_mb: int
     ephemeral_mi: int
     egress_mbit: int = 20
+    volume_max_gi: int = 1  # per-app volume size ceiling for users (admins can grant more)
+    volume_default_gi: int = 1
+    volume_default_mount_path: str = "/data"
     override: LimitOverride
 
 
@@ -173,6 +177,24 @@ class EnvVarOut(BaseModel):
 
 # --- Apps ---
 
+class VolumeIn(BaseModel):
+    """Request a persistent volume. Omitted fields: size_gi = 1, mount_path = /data."""
+    model_config = ConfigDict(extra="forbid")
+    size_gi: Optional[int] = Field(default=None, ge=1, le=config.OVERRIDE_VOLUME_MAX_GI)
+    mount_path: Optional[str] = Field(default=None, max_length=volumes.MOUNT_PATH_MAX)
+
+    @field_validator("mount_path")
+    @classmethod
+    def _validate_mount_path(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else volumes.validate_mount_path(v)
+
+
+class VolumeOut(BaseModel):
+    size_gi: int
+    mount_path: str
+    phase: Optional[str] = None  # PVC phase: Pending | Bound (null until the first deploy applied it)
+
+
 class AppCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     name: str = Field(min_length=1, max_length=255)
@@ -187,6 +209,7 @@ class AppCreate(BaseModel):
     health_check_timeout_seconds: Optional[int] = Field(
         default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: bool = True
+    volume: Optional[VolumeIn] = None  # needs VOLUMES_ENABLED (else 422)
 
     @field_validator("health_check_path")
     @classmethod
@@ -206,6 +229,8 @@ class AppUpdate(BaseModel):
     health_check_timeout_seconds: Optional[int] = Field(
         default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: Optional[bool] = None
+    # Omit = unchanged. Adds a volume, or grows it / changes its mount path. Explicit null is rejected (no detaching).
+    volume: Optional[VolumeIn] = None
 
     @field_validator("health_check_path")
     @classmethod
@@ -295,6 +320,7 @@ class AppOut(BaseModel):
     health_check_path: str = DEFAULT_HEALTH_PATH
     health_check_timeout_seconds: Optional[int] = None
     replicas: int = 1
+    volume: Optional[VolumeOut] = None
     status: str
     status_detail: Optional[str] = None
     status_reason: Optional[str] = None  # machine code for status=error (image_pull, crash_loop, oom, not_ready, quota, ...)

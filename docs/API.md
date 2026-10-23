@@ -96,12 +96,13 @@ reset and informational only (the server does not block other calls); the UI sho
 `/auth/me` adds:
 - `max_apps`: the platform ceiling on `app_limit`. `app_limit_effective`: the number of apps this user may have
   (administrators are exempt from the check on create).
-- `features: {databases, storage, db_engines}`: `databases` is true when a new database could be placed now (an `active`
+- `features: {databases, storage, volumes, db_engines}`: `volumes` is true when persistent volumes are enabled
+  (`VOLUMES_ENABLED`); hide the volume option when false. (The `databases`, `storage` and `db_engines` flags:) `databases` is true when a new database could be placed now (an `active`
   database server with a free slot; draining and full servers don't count). `db_engines` lists the engines that have room
   now, a subset of `["mysql", "pg"]` (`databases` is true when it is non-empty); use it for the engine picker. `storage` is true when the platform has bucket
   credentials configured. Hide the matching checkbox when false.
 - `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb, ephemeral_mi, egress_mbit,
-  override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform defaults (`image_mb`, `db_mb`, `bucket_mb`
+  volume_max_gi, volume_default_gi, volume_default_mount_path, override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform defaults (`image_mb`, `db_mb`, `bucket_mb`
   and `ephemeral_mi` (the scratch disk) are per-app defaults an administrator can raise) and the CPU/memory range an
   administrator may override per app.
 
@@ -127,8 +128,16 @@ wants_db, wants_storage, env{KEY: value}, notes, docs_url}` (`env` values may be
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.picopaas.xyz), image, port,
-image_digest, auto_update, image_checked_at, image_update_error, want_db, db_engine (`mysql`|`pg`), want_storage, health_check_enabled, health_check_path, health_check_timeout_seconds, replicas, status, status_detail, status_reason, retry_at, created_at, last_event, resources, quota, custom_domain, platform_subdomain, platform_host, env[]`.
-`replicas` is set by an administrator only (default 1). `platform_subdomain` / `platform_host` are an admin-assigned fixed label and its full host (for example `blog.picopaas.xyz`), or null; the generated `hostname` keeps working. `db_engine` is only meaningful when `want_db` is true.
+image_digest, auto_update, image_checked_at, image_update_error, want_db, db_engine (`mysql`|`pg`), want_storage, health_check_enabled, health_check_path, health_check_timeout_seconds, replicas, volume, status, status_detail, status_reason, retry_at, created_at, last_event, resources, quota, custom_domain, platform_subdomain, platform_host, env[]`.
+`replicas` is set by an administrator only (default 1). `volume` is null, or `{size_gi, mount_path, phase}` (`phase` is the
+PVC phase, `Pending` or `Bound`, null until the first deploy applied it). Request one with `volume: {size_gi?, mount_path?}`
+on `POST /apps` and `PATCH /apps/{id}` (defaults `1` GiB and `/data`; the whole feature is behind `VOLUMES_ENABLED`, else 422
+`Persistent volumes aren't enabled on this platform.`). `mount_path` must be absolute, without `..`, not `/` and not under
+`/proc /sys /dev /etc /usr /bin /sbin /lib /tmp /run`, at most 255 characters. Rules: `size_gi` is capped at `limits.volume_max_gi`
+(422) and only grows (shrinking is 422; a value an administrator granted can be re-sent); `volume: null` is 422 (volumes are never
+detached, delete the app instead); an app with replicas above 1 can't get a volume (409), and a volume app can't be scaled above 1
+(409, also on `PUT /admin/apps/{id}/replicas`); when the platform already holds `VOLUMES_MAX_TOTAL` volumes, adding one is 409.
+A volume app rolls with the `Recreate` strategy, so each deploy has a short gap. Changing the size or mount path re-deploys. `platform_subdomain` / `platform_host` are an admin-assigned fixed label and its full host (for example `blog.picopaas.xyz`), or null; the generated `hostname` keeps working. `db_engine` is only meaningful when `want_db` is true.
 `custom_domain` is null when none is attached, else `{host, status (pending|active|error), verified_at, error, challenge_host, challenge_token, cname_target}` — the last three are the DNS records the user must create. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`, `root_image`, `config`, `quota`, `env_invalid`, `unreadable_secrets`, `db_capacity`, `db_failed`, `storage_failed`, `unknown`); it is null unless `status` is `error`.
 `quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, storage every 5 min), no live calls. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, ephemeral_limit_mi, db_max_connections, db_quota_mb,
@@ -207,7 +216,7 @@ fails, the previous version keeps running and `image_update_error` explains why 
 Request: `{"spec": "<YAML, max 64KB>", "secrets": {"NAME": "value"}}` (`secrets` optional; each key must be in the
 spec's `secrets` list).
 
-Spec fields: `apiVersion: picopaas/v1`, `name`, `image`, `port` (1024 to 65535), `resources{db, db_engine (mysql|pg), storage}`,
+Spec fields: `apiVersion: picopaas/v1`, `name`, `image`, `port` (1024 to 65535), `resources{db, db_engine (mysql|pg), storage, volume{sizeGi (1 to 20, default 1), mountPath (default /data)}}`,
 `healthCheck{enabled, path, timeoutSeconds (1 to 90)}`, `env{}`, `secrets[]`.
 
 Response: 200 `App` plus `created: bool` (200 for both create and update). The app is matched by
@@ -215,7 +224,7 @@ Response: 200 `App` plus `created: bool` (200 for both create and update). The a
 the spec says (missing ones are removed; a secret still listed but not resupplied keeps its value).
 Errors: 422 for YAML/spec errors (message lists `field: problem` in plain words, e.g. `port: is required`),
 values given for undeclared secrets, missing secret values, trying to remove a database or bucket from an existing
-app, trying to change the `resources.db_engine` of an existing app, or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
+app, trying to change the `resources.db_engine` of an existing app, removing `resources.volume` from an app that has one, an invalid volume request (see `POST /apps`; 409 when out of volume capacity), or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
 ## Background jobs
@@ -275,13 +284,14 @@ All return 404 for an unknown or deleted app.
 | `storage_quota_mb` | 1 to 51200 | 100 |
 | `image_size_mb` | 1 to 2048 | 512 |
 | `egress_mbit` (outbound bandwidth, Mbit/s) | 1 to 160 | 20 |
+| `volume_size_gi` (persistent volume, GiB) | 1 to 20, **grow-only**, app must already have a volume | 1 (user ceiling `VOLUME_MAX_GI`) |
 
 422 if a request exceeds its limit (CPU or memory). Response (`AdminAppOut`): `id, name, hostname, status, owner_id,
-owner_email, image, created_at, replicas, want_db, want_storage, db_engine (null without a database), platform_host,
+owner_email, image, created_at, replicas, volume (`{size_gi, mount_path, phase}` or null), want_db, want_storage, db_engine (null without a database), platform_host,
 custom_domain (the host string or null), exceeds_platform_caps, restarts_app, resources`. `resources` holds the
 effective value of every field above plus `overridden`, `exceeds_platform_caps` and `defaults` (the platform default of
 each field for this app's engine). `exceeds_platform_caps` and `restarts_app` are set only on the PATCH response;
-`restarts_app` is true when the change alters the pod spec (CPU, memory, scratch disk, outbound bandwidth) so pods roll. Changing a quota
+`volume_size_gi` is not nullable (a volume can't be reset or shrunk: 422) and growing it re-applies the claim without rolling pods (`restarts_app` false). `restarts_app` is true when the change alters the pod spec (CPU, memory, scratch disk, outbound bandwidth) so pods roll. Changing a quota
 re-checks usage immediately (a raised quota restores a read-only database or bucket right away).
 `AppOut.quota.*.limit_bytes` and `/apps/{id}/database|storage/usage` reflect the app's effective quotas.
 

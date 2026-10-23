@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import audit, config, crypto, custom_domains, image_check, models, reconciler, resources, schemas
+from app import audit, config, crypto, custom_domains, image_check, models, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
@@ -106,6 +106,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         health_check_path=app.health_check_path,
         health_check_timeout_seconds=app.health_check_timeout_seconds,
         replicas=app.replicas,
+        volume=volumes.out(app),
         status=app.status,
         status_detail=app.status_detail,
         status_reason=app.status_reason if app.status == "error" else None,
@@ -190,6 +191,8 @@ def create_app(
         health_check_timeout_seconds=payload.health_check_timeout_seconds,
         status="pending",
     )
+    if payload.volume is not None:
+        volumes.apply_request(db, app, payload.volume.size_gi, payload.volume.mount_path, new_app=True)
     for item in payload.env:
         app.env_vars.append(
             models.AppEnvVar(
@@ -270,6 +273,11 @@ def update_app(
         if payload.port != app.port:
             workload_changed = True
         app.port = payload.port
+    if "volume" in payload.model_fields_set:
+        if payload.volume is None:
+            raise HTTPException(status_code=422, detail="A persistent volume can't be detached. Delete the app to remove its data.")
+        if volumes.apply_request(db, app, payload.volume.size_gi, payload.volume.mount_path):
+            workload_changed = True
     health_changed = False
     if payload.health_check_enabled is not None and payload.health_check_enabled != app.health_check_enabled:
         app.health_check_enabled = payload.health_check_enabled

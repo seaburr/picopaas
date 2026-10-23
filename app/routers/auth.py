@@ -162,6 +162,7 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
         features=schemas.Features(
             databases=bool(db_engines),
             storage=_spaces_configured(),
+            volumes=config.VOLUMES_ENABLED,
             db_engines=db_engines,
         ),
         limits=schemas.Limits(
@@ -174,6 +175,9 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
             bucket_mb=STORAGE_QUOTA_BYTES // (1024 * 1024),
             ephemeral_mi=EPHEMERAL_LIMIT_MI,
             egress_mbit=config.EGRESS_BANDWIDTH_MBIT,
+            volume_max_gi=config.VOLUME_MAX_GI,
+            volume_default_gi=config.VOLUME_DEFAULT_GI,
+            volume_default_mount_path=config.VOLUME_DEFAULT_MOUNT_PATH,
             override=schemas.LimitOverride(
                 cpu_min_m=resources.CPU_MIN_M, cpu_max_m=resources.CPU_MAX_M,
                 mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=resources.MEM_MAX_MI,

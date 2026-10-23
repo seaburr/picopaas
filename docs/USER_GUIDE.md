@@ -164,6 +164,7 @@ secrets:
 | `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
 | `resources.db_engine` | string | no | see note | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a storage bucket. Same removal rule. |
+| `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
 | `healthCheck.timeoutSeconds` | integer | no | blank | 1 to 90. Probe timeout for both probes; blank uses the platform values (see section 8). `periodSeconds` is raised to at least the timeout. |
 | `healthCheck.path` | string | no | `/healthz` | Starts with `/`, at most 255 characters. Allowed: letters, digits and `._~!$&()*+,;=:@/%-`. No `..` segments (also `%2e%2e`), spaces or quotes. |
@@ -321,6 +322,26 @@ s3.put_object(Bucket=os.environ["S3_BUCKET"], Key="hello.txt", Body=b"hi")
 ```
 
 The key works for your bucket only. `storage.endpoint` already includes `https://`.
+
+## 7a. Persistent volume
+
+Normally an app's local disk is scratch space and is wiped on every restart. A persistent volume is a small disk that
+survives restarts, deploys and node moves, for apps that keep files on disk (SQLite databases, uploads, plugins, a CMS).
+It is optional and only available when your administrator has enabled it; if you don't see the option, it is off.
+
+```yaml
+resources: { volume: { sizeGi: 1, mountPath: /data } }
+```
+
+In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to know before you use one:
+- **One copy only.** A volume attaches to one pod, so the app always runs a single replica.
+- **Short downtime on every deploy.** Updates stop the old pod before starting the new one (the volume can't be shared),
+  so expect a gap of up to about a minute on each deploy, restart and when the platform moves your app to another machine.
+- **Your app writes to the mount path.** The volume is writable by the non-root user your image runs as; put the data
+  under `mountPath` (default `/data`). Don't mount over directories your image needs to start, unless it copies them in.
+- **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink.
+- **No detaching.** To drop a volume, delete the app; the data is destroyed with it.
+- **Not backed up yet.** Treat it as one copy of the data. Keep anything irreplaceable somewhere else too.
 
 ## 8. Health checks
 

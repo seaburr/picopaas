@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import audit, config, crypto, health, models, naming, quota, resources, schemas
+from app import audit, config, crypto, health, models, naming, quota, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_platform_admin
@@ -54,6 +54,7 @@ class AdminAppOut(BaseModel):
     resources: Optional[ResourcesOut] = None
     exceeds_platform_caps: Optional[bool] = None  # only set on the PATCH /resources response
     replicas: int = 1
+    volume: Optional[schemas.VolumeOut] = None
     want_db: bool = False
     want_storage: bool = False
     db_engine: Optional[str] = None  # null when the app has no database
@@ -283,7 +284,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 def _app_admin_out(a: models.App) -> AdminAppOut:
     return AdminAppOut(id=a.id, name=a.name, hostname=f"{a.hostname}.{APP_DOMAIN}", status=a.status,
                        owner_id=a.owner_id, owner_email=a.owner.email, image=a.image, created_at=a.created_at,
-                       resources=resources.describe(a), replicas=a.replicas, want_db=a.want_db,
+                       resources=resources.describe(a), replicas=a.replicas, volume=volumes.out(a), want_db=a.want_db,
                        want_storage=a.want_storage, db_engine=a.db_engine if a.want_db else None,
                        platform_host=f"{a.platform_subdomain}.{APP_DOMAIN}" if a.platform_subdomain else None,
                        custom_domain=a.custom_domain)
@@ -416,6 +417,23 @@ class AppResourcesPatch(BaseModel):
         default=None, ge=config.OVERRIDE_IMAGE_SIZE_MIN_MB, le=config.OVERRIDE_IMAGE_SIZE_MAX_MB)
     egress_mbit: Optional[int] = Field(
         default=None, ge=config.OVERRIDE_EGRESS_MIN_MBIT, le=config.OVERRIDE_EGRESS_MAX_MBIT)
+    # Grow-only (Kubernetes PVC expansion); the app must already have a volume. Explicit null is rejected.
+    volume_size_gi: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_VOLUME_MIN_GI, le=config.OVERRIDE_VOLUME_MAX_GI)
+
+
+def _grow_volume(a: models.App, size_gi: Optional[int]) -> bool:
+    """Admin volume size override: grow-only, needs an existing volume. True if the size changed."""
+    volumes.require_enabled()
+    if size_gi is None:
+        raise HTTPException(status_code=422, detail="A volume size can't be reset. Volumes only grow.")
+    if a.volume_size_gi is None:
+        raise HTTPException(status_code=422, detail="This app has no persistent volume. The owner has to add one first.")
+    if size_gi < a.volume_size_gi:
+        raise HTTPException(status_code=422, detail=f"A volume can't shrink (it is {a.volume_size_gi} GiB). Volumes only grow.")
+    changed = size_gi != a.volume_size_gi
+    a.volume_size_gi = size_gi
+    return changed
 
 
 def _res_str(a: models.App) -> str:
@@ -428,7 +446,11 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
                         mysql_admin_factory=Depends(get_mysql_admin_factory),
                         object_store=Depends(_object_store_or_none)):
     a = _get_app_or_404(db, app_id)
-    changes = {f: getattr(payload, f) for f in payload.model_fields_set}
+    changes = {f: getattr(payload, f) for f in payload.model_fields_set if f != "volume_size_gi"}
+    volume_grown = False
+    old_volume = a.volume_size_gi
+    if "volume_size_gi" in payload.model_fields_set:
+        volume_grown = _grow_volume(a, payload.volume_size_gi)
     new = {f: changes.get(f, getattr(a, f)) for f in resources.FIELDS}
     eff = resources.effective(type("N", (), new))  # unclamped check below uses raw merged values
     cpu_req = new["cpu_request_m"] or resources.DEFAULT_CPU_REQUEST_M
@@ -443,12 +465,13 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
     conns_changed = new["db_max_connections"] != a.db_max_connections
     for f, v in new.items():
         setattr(a, f, v)
-    if restarts and a.status != "suspended":  # suspended apps pick this up when unsuspended
+    if (restarts or volume_grown) and a.status != "suspended":  # suspended apps pick this up when unsuspended
         a.status = "pending"  # the reconciler re-renders Deployment + LimitRange + quota, so pods roll
         a.status_detail = None
         a.reset_retry()
     db.commit()
-    audit.record(db, admin, "app.resources", "app", a.id, f"{old} -> {_res_str(a)}")
+    vol = f",volume_size_gi={old_volume} -> {a.volume_size_gi}" if volume_grown else ""
+    audit.record(db, admin, "app.resources", "app", a.id, f"{old} -> {_res_str(a)}{vol}")
     if conns_changed and a.want_db and a.database is not None:
         try:
             want_limit = resources.effective(a)["db_max_connections"]
@@ -476,6 +499,8 @@ def set_replicas(app_id: int, payload: ReplicasSet, db: Session = Depends(get_db
                  admin: models.User = Depends(require_platform_admin)):
     """Set the Deployment replica count. A suspended app stays suspended (scaled to 0) and picks it up on unsuspend."""
     a = _get_app_or_404(db, app_id)
+    if a.volume_size_gi is not None and payload.replicas > 1:
+        raise HTTPException(status_code=409, detail=volumes.REPLICAS_WITH_VOLUME_MSG)
     old = a.replicas
     a.replicas = payload.replicas
     _requeue(a)

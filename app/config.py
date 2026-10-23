@@ -171,6 +171,19 @@ OVERRIDE_EGRESS_MIN_MBIT, OVERRIDE_EGRESS_MAX_MBIT = 1, 160
 # User-set health-check probe timeout (seconds); unset = readiness 3s / liveness 5s.
 HEALTH_TIMEOUT_MIN_S, HEALTH_TIMEOUT_MAX_S = 1, 90
 
+# --- Persistent volumes (one block-storage PVC per app; REQ-1..4 in docs/research/wordpress-requirements.md) ---
+# OFF by default: a volume is a new paid resource (docs/requests/0007) and nothing may be provisioned until it is approved.
+# When off, the API rejects volume requests (422) and the reconciler never renders a PVC.
+VOLUMES_ENABLED = os.environ.get("VOLUMES_ENABLED", "0") == "1"
+VOLUME_STORAGE_CLASS = os.environ.get("VOLUME_STORAGE_CLASS", "do-block-storage")  # must have reclaimPolicy Delete
+VOLUME_DEFAULT_GI = 1  # DigitalOcean's minimum volume size
+VOLUME_MAX_GI = int(os.environ.get("VOLUME_MAX_GI", 1))  # per-app ceiling for users
+OVERRIDE_VOLUME_MIN_GI, OVERRIDE_VOLUME_MAX_GI = 1, 20  # platform-admin ceiling (grow-only)
+# DOKS attaches at most 15 volumes per node; cap the platform-wide count (live apps with a volume) below that.
+VOLUMES_MAX_TOTAL = int(os.environ.get("VOLUMES_MAX_TOTAL", 10))
+VOLUME_DEFAULT_MOUNT_PATH = "/data"
+VOLUME_FS_GROUP = 10001  # pod fsGroup so the non-root UID can write a fresh volume
+
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.
 SESSION_COOKIE_SECURE = not IS_DEV

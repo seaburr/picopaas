@@ -66,6 +66,15 @@ required.
 | `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
 | `RATE_LIMIT_ENABLED` | Login and signup rate limiting; on by default. |
 
+**Persistent volumes** (off by default; a new paid resource, see `docs/requests/0007-persistent-volumes.md`)
+
+| Variable | Purpose |
+|---|---|
+| `VOLUMES_ENABLED` | `1` lets apps request a persistent volume (one `ReadWriteOnce` PVC each). Off: the API answers 422 "Persistent volumes aren't enabled on this platform." and the reconciler never renders a PVC. Turning it off later stops mounting volumes into existing apps; it does not delete a claim or its data. |
+| `VOLUME_STORAGE_CLASS` | StorageClass for the claims (default `do-block-storage`). It must have `reclaimPolicy: Delete` and allow volume expansion. |
+| `VOLUME_MAX_GI` | Largest volume a user can ask for (default 1, the provider minimum). |
+| `VOLUMES_MAX_TOTAL` | Platform-wide cap on live apps with a volume (default 10). Adding one beyond it is a 409. Keep it under the per-node attach limit of your provider (15 on DigitalOcean). The admin health page shows the count as `workloads.with_volume`. |
+
 **Names and domains**
 
 | Variable | Purpose |
@@ -266,6 +275,7 @@ Defaults come from `app/config.py`; an admin can override most per app.
 | Bucket quota | 1 to 51200 MB |
 | Image size | 1 to 2048 MB |
 | Outbound bandwidth | 1 to 160 Mbit/s |
+| Persistent volume | 1 to 20 GiB, grow-only (the app must already have one) |
 
 Clear a field to return to the default. Changing CPU, memory, scratch disk or outbound bandwidth rolls the app's pods.
 Changing a quota runs that app's check immediately, so raising it restores a read-only database or bucket at once.
@@ -275,6 +285,28 @@ Connection caps apply immediately and on each reconcile sweep (not in MySQL proc
 replica gets the full per-pod limits and all replicas share the app's one database and bucket, not local disk. An
 extra NetworkPolicy lets an app's own pods talk to each other. Replicas must be stateless: an app has one ClusterIP
 Service and no per-pod addressing, so clustered or gossip apps that need named peers are not supported.
+
+## Persistent volumes
+
+Enable with `VOLUMES_ENABLED=1` after the cost is approved. Block storage is billed per GiB per month for as long as
+the volume exists, including while the app is stopped, so cost is (sum of volume sizes) x the provider's per-GiB price;
+the count and size caps above bound it. What the platform does for an app with a volume:
+- Renders a PVC `app-<id>-data` (RWO, `VOLUME_STORAGE_CLASS`), mounts it at the app's mount path, and sets the pod
+  `fsGroup` 10001 so the non-root user can write.
+- Uses the `Recreate` strategy and exactly one replica (setting replicas above 1 is refused with 409). Every deploy,
+  restart and node drain is a short outage while the volume detaches and reattaches.
+- Adds `persistentvolumeclaims: 1` and `requests.storage: <size>` to the namespace ResourceQuota.
+- Never deletes the claim on restart or redeploy. It goes with the app: deleting the namespace deletes the claim and, with
+  `reclaimPolicy: Delete`, the CSI driver removes the volume. Check once with
+  `kubectl get storageclass <class> -o jsonpath='{.reclaimPolicy}'` (DigitalOcean's `do-block-storage` is `Delete`; its
+  `-retain` variant is not suitable). If a claim ever leaves an orphaned PV, delete the PV by hand; the platform has no
+  PersistentVolume permission on purpose.
+- Grow with `PATCH /admin/apps/{id}/resources {"volume_size_gi": N}` (1 to 20, only up). The claim is expanded online.
+  The storage class cannot be changed on an existing claim.
+- Users can't detach a volume; deleting the app is the only way to drop it.
+- Not backed up: add snapshots before relying on it for data that cannot be recreated.
+
+Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persistentvolumeclaims` rights to `picopaas-app-ns`).
 
 ## Scaling
 

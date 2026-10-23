@@ -38,6 +38,14 @@ rules:
     resources: ["resourcequotas", "limitranges", "secrets", "services"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # The app's single persistent volume claim (opt-in, VOLUMES_ENABLED): server-side apply = create/patch, `update` for
+  # volume expansion (grow-only), `delete` for completeness. Namespaced only. Nothing cluster-wide: with the StorageClass
+  # reclaimPolicy Delete, deleting the app namespace removes the PVC and the CSI driver deletes the PV and the cloud volume,
+  # so the platform needs no PersistentVolume access (no `persistentvolumes` rule).
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+
   # Delete finished (Succeeded/Failed, e.g. Evicted) pods so they don't pile up (kubelet GC threshold is 12500).
   # Namespaced on purpose: the cluster-wide role stays read-only for pods.
   - apiGroups: [""]

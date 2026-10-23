@@ -148,7 +148,7 @@ def test_platform_counts(make_client, kube, db_session):
     mk("e", status="running", want_db=True, deleted_at=datetime(2026, 1, 1))
     db_session.commit()
     w = admin.get("/admin/health").json()["workloads"]
-    assert w == {"apps_total": 4, "with_db": 2, "with_storage": 2, "by_db_engine": {"mysql": 2, "postgres": 0},
+    assert w == {"apps_total": 4, "with_db": 2, "with_storage": 2, "with_volume": 0, "by_db_engine": {"mysql": 2, "postgres": 0},
                  "by_status": {"running": 2, "deploying": 0, "pending": 0, "error": 1, "suspended": 1}}
 
 

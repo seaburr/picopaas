@@ -44,6 +44,16 @@ class FakeKubeProvider(KubeProvider):
         self.pod_meta: dict[str, dict[str, PodInfo]] = {}
         # ns -> {pod: [event dicts]} for pod_events() (shape: KubeProvider.pod_events)
         self.k8s_events: dict[str, dict[str, list[dict[str, Any]]]] = {}
+        # ns -> forced PVC phase (default: 'Bound' once a PVC was applied there)
+        self.pvc_phases: dict[str, str] = {}
+        self.volume_phase_calls: list[tuple[str, str]] = []
+
+    def volume_phase(self, namespace: str, name: str) -> Optional[str]:
+        self.volume_phase_calls.append((namespace, name))
+        if not any(m.get("kind") == "PersistentVolumeClaim" and m["metadata"]["name"] == name
+                   for m in self.applied.get(namespace, [])):
+            return None
+        return self.pvc_phases.get(namespace, "Bound")
 
     def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
         known = set(self.pod_lines.get(namespace, {})) | set(self.pod_meta.get(namespace, {}))

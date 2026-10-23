@@ -191,6 +191,9 @@ def cmd_status(c, args) -> None:
     lines += [("image", a["image"]), ("health", health or "off")]
     if (a.get("replicas") or 1) > 1:
         lines.append(("replicas", str(a["replicas"])))
+    if a.get("volume"):
+        v = a["volume"]
+        lines.append(("volume", f"{v['size_gi']} GiB at {v['mount_path']}" + (f" ({v['phase']})" if v.get("phase") else "")))
     if a.get("want_db"):
         lines.append(("engine", "PostgreSQL" if a.get("db_engine") == "pg" else "MySQL"))
     for label, key, name in (("database", "db", "Database"), ("storage", "storage", "Storage")):
@@ -274,7 +277,8 @@ def spec_from_app(a: dict) -> str:
     lines = ["apiVersion: picopaas/v1", f"name: {_yaml_str(a['name'])}", f"image: {_yaml_str(a['image'])}", f"port: {a['port']}"]
     if a.get("health_check_enabled"):
         lines.append(f"healthCheck: {{ enabled: true, path: {_yaml_str(a.get('health_check_path') or '/healthz')} }}")
-    if a.get("want_db") or a.get("want_storage"):
+    vol = a.get("volume")
+    if a.get("want_db") or a.get("want_storage") or vol:
         parts = []
         if a.get("want_db"):
             parts.append("db: true")
@@ -282,6 +286,8 @@ def spec_from_app(a: dict) -> str:
                 parts.append("db_engine: pg")
         if a.get("want_storage"):
             parts.append("storage: true")
+        if vol:
+            parts.append(f"volume: {{ sizeGi: {vol['size_gi']}, mountPath: {_yaml_str(vol['mount_path'])} }}")
         lines.append(f"resources: {{ {', '.join(parts)} }}")
     if env:
         lines.append("env:")
