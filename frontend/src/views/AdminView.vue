@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NavBar from '../components/NavBar.vue'
+import PasswordField from '../components/PasswordField.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -17,7 +18,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -214,6 +215,34 @@ async function patch(s: DbServer, payload: { status?: string; max_databases?: nu
     await load()
   }
 }
+// Change the admin password: the platform verifies it against the server before saving, 422 detail shown as a toast.
+const pwServer = ref<DbServer | null>(null)
+const pwNew = ref('')
+const pwConfirm = ref('')
+const pwSaving = ref(false)
+const pwSrvDlg = ref<HTMLDialogElement | null>(null)
+const pwSrvModal = useModal(pwSrvDlg, () => pwServer.value !== null, () => !pwSaving.value && (pwServer.value = null))
+function openPw(s: DbServer) {
+  pwNew.value = ''
+  pwConfirm.value = ''
+  pwServer.value = s
+}
+async function savePw() {
+  const s = pwServer.value
+  if (!s || pwNew.value !== pwConfirm.value) return
+  pwSaving.value = true
+  try {
+    await patchDbServer(s.id, { admin_password: pwNew.value })
+    pwServer.value = null
+    toast.success(`Admin password for ${s.name} verified and saved.`)
+  } catch (e) {
+    toast.error(msg(e, "Couldn't change the admin password. Check it and try again."))
+  } finally {
+    pwNew.value = ''
+    pwConfirm.value = ''
+    pwSaving.value = false
+  }
+}
 const emptyForm = () => ({ name: '', host: '', port: 3306, engine: 'mysql' as 'mysql' | 'pg', admin_user: '', admin_password: '', max_databases: 25 })
 const form = reactive(emptyForm())
 const addOpen = ref(false)
@@ -290,7 +319,7 @@ const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
 const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_7rem_6.5rem] md:items-center md:gap-3'
 const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
-const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem] md:items-center md:gap-3'
+const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem_2rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
 
@@ -464,7 +493,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
           </div>
           <div class="card overflow-hidden">
             <div :class="[serversGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>Name</span><span>Host</span><span>Engine</span><span>Capacity</span><span>Status</span>
+              <span>Name</span><span>Host</span><span>Engine</span><span>Capacity</span><span>Status</span><span></span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="s in servers" :key="s.id" :class="[rowBase, serversGrid]">
@@ -483,6 +512,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <option value="draining">Draining</option>
                   <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
                 </select>
+                <IconButton :icon="Lock" :label="`Change admin password of ${s.name}`" sm @click="openPw(s)" />
               </li>
               <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
                 <p class="text-sm text-zinc-300">No database servers yet. Users can't create apps with a database until you add one.</p>
@@ -523,6 +553,27 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </template>
       </div>
     </main>
+
+    <!-- Change database server admin password -->
+    <dialog
+      ref="pwSrvDlg"
+      :aria-labelledby="`${uid}-pws-title`"
+      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      @cancel="pwSrvModal.onNativeCancel"
+      @click="pwSrvModal.onBackdrop"
+    >
+      <form v-if="pwServer" class="space-y-3 p-4" @submit.prevent="savePw">
+        <h2 :id="`${uid}-pws-title`" class="section-title">Change admin password: {{ pwServer.name }}</h2>
+        <p class="help">Change the password on the database server first. The platform connects with the new one and only saves it if that works.</p>
+        <PasswordField v-model="pwNew" label="New admin password" autocomplete="new-password" />
+        <PasswordField v-model="pwConfirm" label="Confirm new password" autocomplete="new-password" :invalid="pwConfirm !== '' && pwConfirm !== pwNew" />
+        <p v-if="pwConfirm !== '' && pwConfirm !== pwNew" class="text-sm text-red-300" role="alert">The passwords don't match.</p>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn-secondary" :disabled="pwSaving" @click="pwServer = null">Cancel</button>
+          <button type="submit" class="btn-primary" :disabled="pwSaving || !pwNew || pwNew !== pwConfirm">{{ pwSaving ? 'Verifying...' : 'Verify and save' }}</button>
+        </div>
+      </form>
+    </dialog>
 
     <!-- Add database server -->
     <dialog

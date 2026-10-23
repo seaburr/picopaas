@@ -11,7 +11,7 @@ export const listDbServers = () => apiFetch<DbServer[]>('/admin/db-servers')
 export const createDbServer = (payload: DbServerCreate) =>
   apiFetch<DbServer>('/admin/db-servers', { method: 'POST', body: JSON.stringify(payload) })
 
-export const patchDbServer = (id: number, payload: { status?: string; max_databases?: number }) =>
+export const patchDbServer = (id: number, payload: { status?: string; max_databases?: number; admin_password?: string; ca_cert?: string }) =>
   apiFetch<DbServer>(`/admin/db-servers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
 
 const post = (path: string) => apiFetch<void>(path, { method: 'POST' })
