@@ -8,8 +8,10 @@ from app.providers.fake import FakeKubeProvider
 from tests.conftest import register_and_login
 
 APP = {"name": "demo", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
-DEFAULTS = {"cpu_request_m": 64, "cpu_limit_m": 200, "mem_request_mi": 128, "mem_limit_mi": 384,
-            "overridden": False, "exceeds_platform_caps": False}
+_BASE = {"cpu_request_m": 64, "cpu_limit_m": 200, "mem_request_mi": 128, "mem_limit_mi": 384,
+         "ephemeral_limit_mi": 250, "db_max_connections": 10, "db_quota_mb": 50, "storage_quota_mb": 100,
+         "image_size_mb": 512}
+DEFAULTS = {**_BASE, "overridden": False, "exceeds_platform_caps": False, "defaults": _BASE}
 
 
 @pytest.fixture()
@@ -30,7 +32,7 @@ def test_set_and_response(admin, aid, db_session):
     r = admin.patch(f"/admin/apps/{aid}/resources", json={"cpu_limit_m": 500, "mem_limit_mi": 1024})
     assert r.status_code == 200
     d = r.json()
-    assert d["resources"] == {"cpu_request_m": 64, "cpu_limit_m": 500, "mem_request_mi": 128, "mem_limit_mi": 1024,
+    assert d["resources"] == {**DEFAULTS, "cpu_limit_m": 500, "mem_limit_mi": 1024,
                               "overridden": True, "exceeds_platform_caps": True}
     assert d["exceeds_platform_caps"] is True
     assert admin.get(f"/apps/{aid}").json()["resources"]["cpu_limit_m"] == 500

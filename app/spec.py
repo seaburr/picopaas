@@ -8,6 +8,7 @@ from typing import Dict, List, Literal, Optional
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, ValidationError, field_validator
 
+from app.config import HEALTH_TIMEOUT_MAX_S, HEALTH_TIMEOUT_MIN_S
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 MAX_SPEC_BYTES = 64 * 1024
@@ -28,6 +29,8 @@ class _HealthCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: StrictBool = False
     path: StrictStr = DEFAULT_HEALTH_PATH
+    # Probe timeout in seconds; omitted = platform defaults (readiness 3s / liveness 5s).
+    timeoutSeconds: Optional[StrictInt] = Field(default=None, ge=HEALTH_TIMEOUT_MIN_S, le=HEALTH_TIMEOUT_MAX_S)
 
     @field_validator("path")
     @classmethod

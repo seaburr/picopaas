@@ -3,6 +3,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app import config
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 from app.env_refs import EnvValidationError, validate_env_key
@@ -182,6 +183,8 @@ class AppCreate(BaseModel):
     env: List[EnvVarIn] = Field(default_factory=list)
     health_check_enabled: bool = False
     health_check_path: str = Field(default=DEFAULT_HEALTH_PATH, max_length=255)
+    health_check_timeout_seconds: Optional[int] = Field(
+        default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: bool = True
 
     @field_validator("health_check_path")
@@ -198,6 +201,9 @@ class AppUpdate(BaseModel):
     env: Optional[List[EnvVarIn]] = None
     health_check_enabled: Optional[bool] = None
     health_check_path: Optional[str] = Field(default=None, max_length=255)
+    # Omit = unchanged; explicit null = back to the default timeouts.
+    health_check_timeout_seconds: Optional[int] = Field(
+        default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: Optional[bool] = None
 
     @field_validator("health_check_path")
@@ -211,8 +217,14 @@ class ResourcesOut(BaseModel):
     cpu_limit_m: int
     mem_request_mi: int
     mem_limit_mi: int
+    ephemeral_limit_mi: int
+    db_max_connections: int
+    db_quota_mb: int
+    storage_quota_mb: int
+    image_size_mb: int
     overridden: bool = False
     exceeds_platform_caps: bool = False
+    defaults: Optional[dict[str, int]] = None  # platform default of every overridable field (for this app's engine)
 
 
 class UsageOut(BaseModel):
@@ -279,6 +291,7 @@ class AppOut(BaseModel):
     want_storage: bool
     health_check_enabled: bool = False
     health_check_path: str = DEFAULT_HEALTH_PATH
+    health_check_timeout_seconds: Optional[int] = None
     replicas: int = 1
     status: str
     status_detail: Optional[str] = None

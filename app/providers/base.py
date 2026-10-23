@@ -148,8 +148,9 @@ class DbAdmin(ABC):
         """Drop the app's database and user."""
         raise NotImplementedError
 
-    def set_user_connection_limit(self, app_id: int) -> None:
-        """Re-apply config.MAX_DB_USER_CONNECTIONS to the app's existing db user (idempotent). Optional."""
+    def set_user_connection_limit(self, app_id: int, limit: Optional[int] = None) -> None:
+        """Re-apply the per-user connection cap (`limit`, else the engine's config default) to the app's existing
+        db user (idempotent). Optional."""
         return None
 
     def server_health(self) -> dict[str, Any]:

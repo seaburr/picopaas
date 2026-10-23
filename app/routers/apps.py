@@ -36,7 +36,7 @@ def app_limit_message(limit: int) -> str:
     return f"You've reached your limit of {limit} app{'' if limit == 1 else 's'}. Delete one, or ask an administrator to raise your limit."
 
 
-def _check_image_cap(registry: Registry, image: str) -> tuple[Optional[int], Optional[str]]:
+def _check_image_cap(registry: Registry, image: str, app: Optional[models.App] = None) -> tuple[Optional[int], Optional[str]]:
     """Enforce the image checks (size cap, non-root; ARCHITECTURE.md §2). Returns (run_as_uid, digest to pin).
 
     Any registry failure (not found, private, unparsable manifest) is
@@ -48,7 +48,7 @@ def _check_image_cap(registry: Registry, image: str) -> tuple[Optional[int], Opt
     except RegistryError:
         raise HTTPException(status_code=422, detail="Couldn't find that image, or it's private. Check the name and tag, and make the image public in your registry.")
     try:
-        run_as_uid = image_check.evaluate(info)
+        run_as_uid = image_check.evaluate(info, resources.image_size_bytes(app))
     except image_check.ImageRejected as rej:
         raise HTTPException(status_code=422, detail=rej.message)
     return run_as_uid, (image_check.digest_of_ref(image) or info.digest or None)
@@ -67,9 +67,9 @@ def _quota_out(app: models.App) -> schemas.AppQuotaOut:
     db_row, st_row = app.database, app.storage
     return schemas.AppQuotaOut(
         db=None if db_row is None else schemas.UsageOut(
-            size_bytes=db_row.size_bytes, limit_bytes=config.DB_QUOTA_BYTES, over_quota=db_row.over_quota),
+            size_bytes=db_row.size_bytes, limit_bytes=resources.db_quota_bytes(app), over_quota=db_row.over_quota),
         storage=None if st_row is None else schemas.UsageOut(
-            size_bytes=st_row.size_bytes, limit_bytes=config.STORAGE_QUOTA_BYTES, over_quota=st_row.over_quota),
+            size_bytes=st_row.size_bytes, limit_bytes=resources.storage_quota_bytes(app), over_quota=st_row.over_quota),
     )
 
 
@@ -104,6 +104,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         want_storage=app.want_storage,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
+        health_check_timeout_seconds=app.health_check_timeout_seconds,
         replicas=app.replicas,
         status=app.status,
         status_detail=app.status_detail,
@@ -186,6 +187,7 @@ def create_app(
         want_storage=payload.want_storage,
         health_check_enabled=payload.health_check_enabled,
         health_check_path=payload.health_check_path,
+        health_check_timeout_seconds=payload.health_check_timeout_seconds,
         status="pending",
     )
     for item in payload.env:
@@ -246,7 +248,7 @@ def update_app(
     if payload.name is not None:
         app.name = payload.name
     if payload.image is not None:
-        run_as_uid, digest = _check_image_cap(registry, payload.image)
+        run_as_uid, digest = _check_image_cap(registry, payload.image, app)
         if payload.image != app.image or run_as_uid != app.run_as_uid or digest != app.image_digest:
             workload_changed = True
         app.image = payload.image
@@ -268,6 +270,10 @@ def update_app(
         health_changed = True
     if payload.health_check_path is not None and payload.health_check_path != app.health_check_path:
         app.health_check_path = payload.health_check_path
+        health_changed = True
+    if "health_check_timeout_seconds" in payload.model_fields_set and \
+            payload.health_check_timeout_seconds != app.health_check_timeout_seconds:
+        app.health_check_timeout_seconds = payload.health_check_timeout_seconds
         health_changed = True
     if health_changed:
         workload_changed = True

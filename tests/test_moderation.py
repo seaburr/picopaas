@@ -137,7 +137,8 @@ def test_admin_apps_and_delete(make_client):
     rows = admin.get("/admin/apps").json()
     assert rows[0]["owner_email"] == "user@example.com" and rows[0]["id"] == app_id
     assert set(rows[0]) == {"id", "name", "hostname", "status", "owner_id", "owner_email", "image", "created_at",
-                           "resources", "exceeds_platform_caps"}
+                           "resources", "exceeds_platform_caps", "replicas", "want_db", "want_storage", "db_engine",
+                            "platform_host", "custom_domain", "restarts_app"}
     assert admin.delete(f"/admin/apps/{app_id}").status_code == 204
     assert admin.get("/admin/apps").json() == []
 

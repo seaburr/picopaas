@@ -155,12 +155,12 @@ class PostgresAdmin(DbAdmin):
         except psycopg.Error as exc:
             raise DbAdminError(f"drop({app_id}) failed: {type(exc).__name__}") from exc
 
-    def set_user_connection_limit(self, app_id: int) -> None:
+    def set_user_connection_limit(self, app_id: int, limit: Optional[int] = None) -> None:
         ident = sql.Identifier(_ident(app_id))
         try:
             with self._connect() as conn:
                 conn.execute(sql.SQL("ALTER ROLE {} CONNECTION LIMIT {}").format(
-                    ident, sql.Literal(int(config.PG_MAX_DB_USER_CONNECTIONS))))
+                    ident, sql.Literal(int(limit or config.PG_MAX_DB_USER_CONNECTIONS))))
         except psycopg.Error as exc:
             raise DbAdminError(f"set_user_connection_limit({app_id}) failed: {type(exc).__name__}") from exc
 
@@ -200,6 +200,8 @@ class PostgresAdmin(DbAdmin):
                 conn.execute(sql.SQL("ALTER DATABASE {} SET default_transaction_read_only = on").format(ident))
                 if hard:
                     conn.execute(sql.SQL("REVOKE CONNECT ON DATABASE {} FROM {}").format(ident, ident))
+                else:  # stage 1: undo a previous stage 2 (e.g. the quota was raised but the DB is still over it)
+                    conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(ident, ident))
                 return self._terminate(conn, name)
         except psycopg.Error as exc:
             raise DbAdminError(f"set_read_only({app_id}) failed: {type(exc).__name__}") from exc

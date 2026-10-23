@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
-from app import audit, config, models, quota
+from app import audit, models, quota, resources
 from app.db import get_db
 from app.dependencies import get_active_user
 from app.providers.base import MySQLAdminError, ObjectStore, ObjectStoreError
@@ -73,7 +73,8 @@ def database_usage(
         raise HTTPException(status_code=502, detail=_UNAVAILABLE)
     row.size_bytes = size
     db.commit()
-    return UsageOut(size_bytes=size, limit_bytes=config.DB_QUOTA_BYTES, over_quota=size > config.DB_QUOTA_BYTES)
+    return UsageOut(size_bytes=size, limit_bytes=resources.db_quota_bytes(app),
+                    over_quota=size > resources.db_quota_bytes(app))
 
 
 @router.get("/{app_id}/storage/usage", response_model=StorageUsageOut)
@@ -94,8 +95,8 @@ def storage_usage(
     row.size_bytes = u["size_bytes"]
     db.commit()
     return StorageUsageOut(
-        size_bytes=u["size_bytes"], limit_bytes=config.STORAGE_QUOTA_BYTES,
-        over_quota=u["size_bytes"] > config.STORAGE_QUOTA_BYTES,
+        size_bytes=u["size_bytes"], limit_bytes=resources.storage_quota_bytes(app),
+        over_quota=u["size_bytes"] > resources.storage_quota_bytes(app),
         objects=u["objects"], top_prefixes=u["top_prefixes"],
     )
 
@@ -125,5 +126,5 @@ def storage_delete(
     except Exception:  # noqa: BLE001 - the delete itself worked; the next poll retries the flip
         db.rollback()
         log.warning("app %s: could not update storage state after delete", app.id)
-        over = size > config.STORAGE_QUOTA_BYTES
+        over = size > resources.storage_quota_bytes(app)
     return StorageDeleteOut(deleted=res["deleted"], size_bytes=size, truncated=res["truncated"], over_quota=over)

@@ -167,7 +167,7 @@ _REASON_OF = {
 def status_message(key: str, app: models.App) -> str:
     eff = resources.effective(app)
     return STATUS_MESSAGES[key].format(
-        port=app.port, mem=eff["mem_limit_mi"], disk=config.EPHEMERAL_LIMIT_MI, path=app.health_check_path, minutes=config.DEPLOY_TIMEOUT_MINUTES
+        port=app.port, mem=eff["mem_limit_mi"], disk=eff["ephemeral_limit_mi"], path=app.health_check_path, minutes=config.DEPLOY_TIMEOUT_MINUTES
     )[:255]
 
 
@@ -184,7 +184,7 @@ LAST_EVENT_MAX_AGE = timedelta(hours=24)
 
 def event_message(kind: str, app: models.App, exit_code: Any = None) -> str:
     eff = resources.effective(app)
-    return EVENT_MESSAGES[kind].format(disk=config.EPHEMERAL_LIMIT_MI, mem=eff["mem_limit_mi"], code=exit_code)[:255]
+    return EVENT_MESSAGES[kind].format(disk=eff["ephemeral_limit_mi"], mem=eff["mem_limit_mi"], code=exit_code)[:255]
 
 
 def record_app_events(session: Session, apps: list[models.App], by_ns: dict[str, list[dict[str, Any]]]) -> int:
@@ -383,9 +383,10 @@ def reconcile_app(
         app.database = db_row
 
     elif sweep and app.want_db and app.database is not None:
-        # Self-heal: re-apply the per-user connection cap (picks up a raised MAX_DB_USER_CONNECTIONS).
+        # Self-heal: re-apply the per-user connection cap (picks up a raised MAX_DB_USER_CONNECTIONS or a per-app admin override).
         try:
-            mysql_admin_factory(app.database.server).set_user_connection_limit(app.id)
+            mysql_admin_factory(app.database.server).set_user_connection_limit(
+                app.id, resources.effective(app)["db_max_connections"])
         except Exception as exc:  # noqa: BLE001 - never break the sweep
             log.warning("app %s: set db connection limit failed: %s", app.id, _provider_error_summary(exc))
 
@@ -450,6 +451,7 @@ def reconcile_app(
         replicas=0 if suspended else max(1, app.replicas or 1),
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
+        health_check_timeout_seconds=app.health_check_timeout_seconds,
         resources=resources.effective(app),
         run_as_uid=app.run_as_uid,
         include_ingress=not suspended,
@@ -482,7 +484,7 @@ def reconcile_app(
     if used and (
         (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > slots * eff["cpu_limit_m"]
         or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > slots * eff["mem_limit_mi"]
-        or (used.get("ephemeral_limit_mi") or 0) + config.EPHEMERAL_LIMIT_MI > slots * config.EPHEMERAL_LIMIT_MI
+        or (used.get("ephemeral_limit_mi") or 0) + eff["ephemeral_limit_mi"] > slots * eff["ephemeral_limit_mi"]
         or (used.get("pods") or 0) + 1 > slots
     ):
         flat = k8s_manifests.flatten_manifests(

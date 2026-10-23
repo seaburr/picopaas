@@ -148,6 +148,16 @@ DEFAULT_MEM_LIMIT_MI = int(os.environ.get("DEFAULT_MEM_LIMIT_MI", 384))
 EPHEMERAL_REQUEST_MI = 64
 EPHEMERAL_LIMIT_MI = int(os.environ.get("EPHEMERAL_LIMIT_MI", 250))
 
+# Hard ceilings (and floors) for the platform-admin per-app overrides (PATCH /admin/apps/{id}/resources). Chas's numbers,
+# except OVERRIDE_DB_QUOTA_MAX_MB (no ceiling was given; 1024 chosen). Defaults stay the constants above.
+OVERRIDE_DB_CONNECTIONS_MIN, OVERRIDE_DB_CONNECTIONS_MAX = 1, 25
+OVERRIDE_EPHEMERAL_MIN_MI, OVERRIDE_EPHEMERAL_MAX_MI = 64, 2048
+OVERRIDE_DB_QUOTA_MIN_MB, OVERRIDE_DB_QUOTA_MAX_MB = 1, 1024
+OVERRIDE_STORAGE_QUOTA_MIN_MB, OVERRIDE_STORAGE_QUOTA_MAX_MB = 1, 51200
+OVERRIDE_IMAGE_SIZE_MIN_MB, OVERRIDE_IMAGE_SIZE_MAX_MB = 1, 2048
+# User-set health-check probe timeout (seconds); unset = readiness 3s / liveness 5s.
+HEALTH_TIMEOUT_MIN_S, HEALTH_TIMEOUT_MAX_S = 1, 90
+
 SESSION_COOKIE_NAME = "session"
 # Cookies are only marked Secure outside dev so local HTTP development still works.
 SESSION_COOKIE_SECURE = not IS_DEV

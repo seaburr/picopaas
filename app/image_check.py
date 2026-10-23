@@ -13,7 +13,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import audit, models
+from app import audit, models, resources
 from app.config import MAX_IMAGE_SIZE_BYTES, NAMED_USER_RUN_AS_UID
 from app.providers.base import ImageInfo, Registry, RegistryError
 
@@ -65,17 +65,18 @@ def short_digest(digest: Optional[str]) -> str:
     return (digest or "").removeprefix("sha256:")[:12]
 
 
-def evaluate(info: ImageInfo) -> Optional[int]:
+def evaluate(info: ImageInfo, max_bytes: Optional[int] = None) -> Optional[int]:
     """Platform checks on an inspected image. Returns the run_as_uid to force (None = numeric USER)."""
     uid = info.user.split(":", 1)[0].strip()
     if uid in ("", "0", "root"):
         raise ImageRejected("root", ROOT_MESSAGE)
     size = info.size_bytes
-    if size > MAX_IMAGE_SIZE_BYTES:
+    cap = max_bytes or MAX_IMAGE_SIZE_BYTES
+    if size > cap:
         mb = math.ceil(size / 1024 / 1024)
         raise ImageRejected(
             "size",
-            f"Image is {mb} MB; the limit is {MAX_IMAGE_SIZE_BYTES // 1024 // 1024} MB. "
+            f"Image is {mb} MB; the limit is {cap // 1024 // 1024} MB. "
             "Slim it down (for example a -slim or alpine base, or a multi-stage build).",
             size_mb=mb,
         )
@@ -116,10 +117,11 @@ def refresh_app_image(db: Session, app: models.App, registry: Registry, actor: O
     digest = info.digest or digest
     tag = image_tag(app.image)
     try:
-        run_as_uid = evaluate(info)
+        cap = resources.image_size_bytes(app)
+        run_as_uid = evaluate(info, cap)
     except ImageRejected as rej:
         if rej.kind == "size":
-            msg = (f"New image for :{tag} is {rej.size_mb} MB, over the {MAX_IMAGE_SIZE_BYTES // 1024 // 1024} MB "
+            msg = (f"New image for :{tag} is {rej.size_mb} MB, over the {cap // 1024 // 1024} MB "
                    "limit; still running the previous version.")
         else:
             msg = f"New image for :{tag} runs as root, which isn't allowed; still running the previous version."

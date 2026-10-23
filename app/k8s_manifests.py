@@ -55,8 +55,22 @@ PRIVATE_CIDRS = [
     "10.0.0.0/8",
     "172.16.0.0/12",
     "192.168.0.0/16",
-    "169.254.0.0/16",
+    "169.254.0.0/16",  # link-local, incl. cloud metadata 169.254.169.254
 ]
+
+# Non-routable / special-use ranges that never hold a legitimate public destination. Excluded from the internet
+# egress allowance too (defence in depth: DOKS pod/service CIDRs 10.244/16 + 10.245/16 are already inside 10/8).
+# Kept separate from PRIVATE_CIDRS because the reconciler uses that list to detect VPC-private storage IPs.
+RESERVED_CIDRS = [
+    "0.0.0.0/8",       # "this network"
+    "100.64.0.0/10",   # CGNAT / shared address space (some clouds/overlays route internal services here)
+    "127.0.0.0/8",     # loopback
+    "192.0.0.0/24",    # IETF protocol assignments
+    "198.18.0.0/15",   # benchmarking
+    "224.0.0.0/4",     # multicast
+    "240.0.0.0/4",     # reserved (incl. 255.255.255.255 broadcast)
+]
+EGRESS_EXCEPT_CIDRS = PRIVATE_CIDRS + RESERVED_CIDRS
 
 MYSQL_PORT = 3306
 
@@ -125,6 +139,11 @@ def _res(resources: dict[str, int] | None) -> dict[str, int]:
     return resources or r.effective(None)
 
 
+def _eph(e: dict[str, int]) -> int:
+    """Per-pod scratch-disk limit (MiB): the app's effective value, else the platform default."""
+    return e.get("ephemeral_limit_mi") or EPHEMERAL_LIMIT_MI
+
+
 def resource_quota_manifest(
     app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None,
     custom_domain: bool = False, replicas: int = 1,
@@ -141,7 +160,8 @@ def resource_quota_manifest(
     slots = max(1, int(replicas)) + 1  # steady replicas + one rolling-update surge pod
     cpu_total = max(slots * e["cpu_limit_m"], (used.get("cpu_limit_m") or 0) + e["cpu_limit_m"])
     mem_total = max(slots * e["mem_limit_mi"], (used.get("mem_limit_mi") or 0) + e["mem_limit_mi"])
-    eph_total = max(slots * EPHEMERAL_LIMIT_MI, (used.get("ephemeral_limit_mi") or 0) + EPHEMERAL_LIMIT_MI)
+    eph = _eph(e)
+    eph_total = max(slots * eph, (used.get("ephemeral_limit_mi") or 0) + eph)
     # Pod count too: a Terminating old pod still counts, so back-to-back rollouts (e.g. storage key swap then
     # recovery roll) need (existing + 1) slots, not a fixed 2. +1 more when a custom domain may run an ACME solver pod.
     solver_headroom = 1 if custom_domain else 0
@@ -181,9 +201,9 @@ def limit_range_manifest(app_id: int, resources: dict[str, int] | None = None) -
                 {
                     "type": "Container",
                     "max": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
-                            "ephemeral-storage": POD_LIMIT_EPHEMERAL},
+                            "ephemeral-storage": f"{_eph(e)}Mi"},
                     "default": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
-                                "ephemeral-storage": POD_LIMIT_EPHEMERAL},
+                                "ephemeral-storage": f"{_eph(e)}Mi"},
                     "defaultRequest": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi",
                                        "ephemeral-storage": LIMIT_RANGE_DEFAULT_REQUEST_EPHEMERAL},
                 }
@@ -193,20 +213,46 @@ def limit_range_manifest(app_id: int, resources: dict[str, int] | None = None) -
 
 
 SMTP_PORTS = (25, 465, 587)
+# Outbound abuse ports commonly blocked by hosting providers (inclusive (lo, hi) ranges). SSH (22), NTP (123),
+# DNS (53) and database ports are deliberately NOT blocked: git-over-ssh, clock sync, custom resolvers and
+# external managed databases are legitimate. See docs/PENTEST.md "Abuse hardening review (2026-10-22)".
+ABUSE_TCP_RANGES = (
+    (19, 19),      # chargen
+    (23, 23),      # telnet
+    (135, 139),    # MS-RPC / NetBIOS
+    (445, 445),    # SMB
+    (3389, 3389),  # RDP
+    (6660, 6669),  # IRC (botnet C2)
+    (6697, 6697),  # IRC over TLS
+)
+ABUSE_UDP_RANGES = (
+    (19, 19),        # chargen
+    (111, 111),      # rpcbind (amplification)
+    (135, 139),      # RPC / NetBIOS
+    (161, 161),      # SNMP (amplification)
+    (389, 389),      # CLDAP (amplification)
+    (445, 445),      # SMB
+    (1900, 1900),    # SSDP (amplification)
+    (3389, 3389),    # RDP
+    (11211, 11211),  # memcached (amplification)
+)
+
+
+def _allowed_ranges(protocol: str, blocked: list[tuple[int, int]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    start = 1
+    for lo, hi in sorted(blocked):
+        if lo > start:
+            out.append({"protocol": protocol, "port": start, "endPort": lo - 1})
+        start = max(start, hi + 1)
+    if start <= 65535:
+        out.append({"protocol": protocol, "port": start, "endPort": 65535})
+    return out
 
 
 def _internet_egress_ports() -> list[dict[str, Any]]:
-    ports: list[dict[str, Any]] = []
-    start = 1
-    for blocked in SMTP_PORTS:
-        if blocked > start:
-            ports.append({"protocol": "TCP", "port": start, "endPort": blocked - 1})
-        elif blocked == start:
-            pass
-        start = blocked + 1
-    ports.append({"protocol": "TCP", "port": start, "endPort": 65535})
-    ports.append({"protocol": "UDP", "port": 1, "endPort": 65535})
-    return ports
+    tcp_blocked = [(p, p) for p in SMTP_PORTS] + list(ABUSE_TCP_RANGES)
+    return _allowed_ranges("TCP", tcp_blocked) + _allowed_ranges("UDP", list(ABUSE_UDP_RANGES))
 
 
 # cert-manager's ACME HTTP-01 solver pod listens on this port (its --listen-port default) and is labelled
@@ -309,12 +355,12 @@ def network_policies(
                         {
                             "ipBlock": {
                                 "cidr": "0.0.0.0/0",
-                                "except": list(PRIVATE_CIDRS),
+                                "except": list(EGRESS_EXCEPT_CIDRS),
                             }
                         }
                     ],
-                    # NetworkPolicy can't deny, so allow everything EXCEPT SMTP
-                    # (TCP 25/465/587) via endPort ranges (K8s >= 1.25). All UDP allowed.
+                    # NetworkPolicy can't deny, so allow everything EXCEPT SMTP and the abuse ports
+                    # (see _internet_egress_ports) via endPort ranges (K8s >= 1.25).
                     "ports": _internet_egress_ports(),
                 }
             ],
@@ -440,6 +486,7 @@ def deployment_manifest(
     run_as_uid: int | None = None,
     restart_nonce: str | None = None,
     image_ref: str | None = None,
+    health_check_timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
@@ -450,19 +497,22 @@ def deployment_manifest(
     if restart_nonce:  # POST /apps/{id}/restart: a new nonce changes the pod template, so the pod rolls
         pod_annotations["picopaas.io/restart-nonce"] = restart_nonce
     if health_check_enabled:
+        # A user-set timeout applies to both probes; the period is raised to at least the timeout so probes never overlap.
+        ready_timeout = health_check_timeout_seconds or 3
+        live_timeout = health_check_timeout_seconds or 5
         probes: dict[str, Any] = {
             "readinessProbe": {
                 "httpGet": {"path": health_check_path, "port": port},
                 "initialDelaySeconds": 5,
-                "periodSeconds": 10,
-                "timeoutSeconds": 3,
+                "periodSeconds": max(10, ready_timeout),
+                "timeoutSeconds": ready_timeout,
                 "failureThreshold": 3,
             },
             "livenessProbe": {
                 "httpGet": {"path": health_check_path, "port": port},
                 "initialDelaySeconds": 30,
-                "periodSeconds": 20,
-                "timeoutSeconds": 5,
+                "periodSeconds": max(20, live_timeout),
+                "timeoutSeconds": live_timeout,
                 "failureThreshold": 3,
             },
         }
@@ -516,7 +566,7 @@ def deployment_manifest(
                                 "requests": {"cpu": f"{e['cpu_request_m']}m", "memory": f"{e['mem_request_mi']}Mi",
                                              "ephemeral-storage": LIMIT_RANGE_DEFAULT_REQUEST_EPHEMERAL},
                                 "limits": {"cpu": f"{e['cpu_limit_m']}m", "memory": f"{e['mem_limit_mi']}Mi",
-                                           "ephemeral-storage": POD_LIMIT_EPHEMERAL},
+                                           "ephemeral-storage": f"{_eph(e)}Mi"},
                             },
                             "envFrom": [{"secretRef": {"name": _secret_name(app_id)}}],
                             "securityContext": {
@@ -652,6 +702,7 @@ def render_app_manifests(
     image_ref: str | None = None,
     custom_host: str | None = None,
     platform_subdomain: str | None = None,
+    health_check_timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
@@ -668,7 +719,8 @@ def render_app_manifests(
                                        health_check_enabled=health_check_enabled,
                                        health_check_path=health_check_path, user_env=env,
                                        resources=resources, run_as_uid=run_as_uid,
-                                       restart_nonce=restart_nonce, image_ref=image_ref),
+                                       restart_nonce=restart_nonce, image_ref=image_ref,
+                                       health_check_timeout_seconds=health_check_timeout_seconds),
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain) if include_ingress else None,
         "custom_ingress": (

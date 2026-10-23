@@ -125,11 +125,11 @@ class FakeMySQLAdmin(MySQLAdmin):
         self.conn_limits: dict[int, int] = {}
         self.fail_set_password = False  # `creds[app_id]["password"]` is the one valid password
 
-    def set_user_connection_limit(self, app_id: int) -> None:
+    def set_user_connection_limit(self, app_id: int, limit: Optional[int] = None) -> None:
         from app import config
         if getattr(self, "limit_error", None):
             raise MySQLAdminError(self.limit_error)
-        self.conn_limits[app_id] = config.MAX_DB_USER_CONNECTIONS
+        self.conn_limits[app_id] = limit or config.MAX_DB_USER_CONNECTIONS
 
     def server_health(self) -> dict[str, Any]:
         if getattr(self, "health_error", None):

@@ -1,23 +1,26 @@
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, config, crypto, health, models, naming, resources, schemas
+from app import audit, config, crypto, health, models, naming, quota, resources, schemas
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_kube, require_platform_admin
 from app.schemas import ResourcesOut
-from app.routers.apps import get_mysql_admin_factory
+from app.routers.apps import get_mysql_admin_factory, get_object_store
 from app.security import hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
+
+log = logging.getLogger(__name__)
 
 WARN_PCT = 80.0
 
@@ -45,6 +48,13 @@ class AdminAppOut(BaseModel):
     created_at: datetime
     resources: Optional[ResourcesOut] = None
     exceeds_platform_caps: Optional[bool] = None  # only set on the PATCH /resources response
+    replicas: int = 1
+    want_db: bool = False
+    want_storage: bool = False
+    db_engine: Optional[str] = None  # null when the app has no database
+    platform_host: Optional[str] = None
+    custom_domain: Optional[str] = None
+    restarts_app: Optional[bool] = None  # only set on the PATCH /resources response
 
 
 class AuditOut(BaseModel):
@@ -231,7 +241,10 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 def _app_admin_out(a: models.App) -> AdminAppOut:
     return AdminAppOut(id=a.id, name=a.name, hostname=f"{a.hostname}.{APP_DOMAIN}", status=a.status,
                        owner_id=a.owner_id, owner_email=a.owner.email, image=a.image, created_at=a.created_at,
-                       resources=resources.describe(a))
+                       resources=resources.describe(a), replicas=a.replicas, want_db=a.want_db,
+                       want_storage=a.want_storage, db_engine=a.db_engine if a.want_db else None,
+                       platform_host=f"{a.platform_subdomain}.{APP_DOMAIN}" if a.platform_subdomain else None,
+                       custom_domain=a.custom_domain)
 
 
 def _get_app_or_404(db: Session, app_id: int) -> models.App:
@@ -330,6 +343,15 @@ def clear_platform_host(app_id: int, db: Session = Depends(get_db),
     return _app_out(a)
 
 
+def _object_store_or_none(request: Request):
+    """The object store, or None when Spaces isn't configured (the immediate quota check then skips storage)."""
+    factory = request.app.dependency_overrides.get(get_object_store, get_object_store)
+    try:
+        return factory()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class AppResourcesPatch(BaseModel):
     """Omitted field = unchanged; explicit null = reset to the platform default."""
     model_config = ConfigDict(extra="forbid")
@@ -337,6 +359,16 @@ class AppResourcesPatch(BaseModel):
     cpu_limit_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=resources.CPU_MAX_M)
     mem_request_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
     mem_limit_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
+    db_max_connections: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_DB_CONNECTIONS_MIN, le=config.OVERRIDE_DB_CONNECTIONS_MAX)
+    ephemeral_limit_mi: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_EPHEMERAL_MIN_MI, le=config.OVERRIDE_EPHEMERAL_MAX_MI)
+    db_quota_mb: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_DB_QUOTA_MIN_MB, le=config.OVERRIDE_DB_QUOTA_MAX_MB)
+    storage_quota_mb: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_STORAGE_QUOTA_MIN_MB, le=config.OVERRIDE_STORAGE_QUOTA_MAX_MB)
+    image_size_mb: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_IMAGE_SIZE_MIN_MB, le=config.OVERRIDE_IMAGE_SIZE_MAX_MB)
 
 
 def _res_str(a: models.App) -> str:
@@ -345,7 +377,9 @@ def _res_str(a: models.App) -> str:
 
 @router.patch("/apps/{app_id}/resources", response_model=AdminAppOut)
 def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = Depends(get_db),
-                        admin: models.User = Depends(require_platform_admin)):
+                        admin: models.User = Depends(require_platform_admin),
+                        mysql_admin_factory=Depends(get_mysql_admin_factory),
+                        object_store=Depends(_object_store_or_none)):
     a = _get_app_or_404(db, app_id)
     changes = {f: getattr(payload, f) for f in payload.model_fields_set}
     new = {f: changes.get(f, getattr(a, f)) for f in resources.FIELDS}
@@ -357,16 +391,28 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
     if mem_req > eff["mem_limit_mi"]:
         raise HTTPException(status_code=422, detail="Memory request can't exceed the memory limit.")
     old = _res_str(a)
+    restarts = any(new[f] != getattr(a, f) for f in resources.POD_FIELDS)
+    quota_changed = any(new[f] != getattr(a, f) for f in ("db_quota_mb", "storage_quota_mb"))
+    conns_changed = new["db_max_connections"] != a.db_max_connections
     for f, v in new.items():
         setattr(a, f, v)
-    if a.status != "suspended":  # suspended apps pick this up when unsuspended
-        a.status = "pending"
+    if restarts and a.status != "suspended":  # suspended apps pick this up when unsuspended
+        a.status = "pending"  # the reconciler re-renders Deployment + LimitRange + quota, so pods roll
         a.status_detail = None
-    a.reset_retry()
+        a.reset_retry()
     db.commit()
     audit.record(db, admin, "app.resources", "app", a.id, f"{old} -> {_res_str(a)}")
+    if conns_changed and a.want_db and a.database is not None:
+        try:
+            mysql_admin_factory(a.database.server).set_user_connection_limit(a.id, resources.effective(a)["db_max_connections"])
+        except Exception as exc:  # noqa: BLE001 - the reconciler sweep re-applies it
+            log.warning("app %s: applying db connection limit failed: %s", a.id, type(exc).__name__)
+    if quota_changed:  # restore (or revoke) right away instead of at the next poll
+        quota.check_app_quota(db, a, mysql_admin_factory=mysql_admin_factory, object_store=object_store)
+        db.refresh(a)
     out = _app_admin_out(a)
     out.exceeds_platform_caps = out.resources.exceeds_platform_caps
+    out.restarts_app = restarts and a.status != "suspended"
     return out
 
 

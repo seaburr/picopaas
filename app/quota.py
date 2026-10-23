@@ -8,11 +8,11 @@ succeeded, so a failed flip is retried on the next poll.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from sqlalchemy.orm import Session
 
-from app import crypto, models
+from app import crypto, models, resources
 from app.config import DB_QUOTA_BYTES, PG_HARD_CAP_RATIO, STORAGE_QUOTA_BYTES  # noqa: F401
 from app.providers.base import MySQLAdmin, ObjectStore
 
@@ -56,7 +56,8 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bo
         app_password: str | None = crypto.decrypt(row.password_encrypted)
     except Exception:  # unreadable: the provider falls back to the admin kill, then the pod roll
         app_password = None
-    over = size > DB_QUOTA_BYTES
+    limit = resources.db_quota_bytes(row.app)
+    over = size > limit
     result: dict | None = None
     flipped = over != row.over_quota
     # PostgreSQL has no un-undoable REVOKE, so enforcement is two-stage (providers/postgres.py): stage 1 at the cap
@@ -64,13 +65,13 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bo
     # PG_HARD_CAP_RATIO x the cap. Re-run every poll while over, like MySQL, so stage 2 escalates when it is reached.
     extra: dict = {}
     if getattr(row.server, "engine", "mysql") == "pg":
-        extra["hard"] = size > DB_QUOTA_BYTES * PG_HARD_CAP_RATIO
+        extra["hard"] = size > limit * PG_HARD_CAP_RATIO
     if flipped:
         result = admin.set_read_only(row.app_id, over, app_password, **extra)
         row.over_quota = over
         log.warning(
             "quota: app %s db write access %s (%s, limit %d MB)",
-            row.app_id, "REVOKED" if over else "restored", _mb(size), DB_QUOTA_BYTES // 1024 // 1024,
+            row.app_id, "REVOKED" if over else "restored", _mb(size), limit // 1024 // 1024,
         )
     elif over:
         result = admin.set_read_only(row.app_id, True, app_password, **extra)
@@ -96,12 +97,13 @@ def _poll_db(session: Session, row: models.AppDatabase, admin: MySQLAdmin) -> bo
 def apply_storage_state(session: Session, row: models.AppStorage, store: ObjectStore, size: int) -> bool:
     """Record `size`, and flip the bucket key read-only / read-write if the over-cap state changed.
     Returns True if over. Does NOT revoke old keys (see `revoke_stale_keys`)."""
-    over = size > STORAGE_QUOTA_BYTES
+    limit = resources.storage_quota_bytes(row.app)
+    over = size > limit
     new_creds = None
     if over != row.over_quota:
         log.warning(
             "quota: app %s storage write access %s (%s, limit %d MB)",
-            row.app_id, "REVOKED" if over else "restored", _mb(size), STORAGE_QUOTA_BYTES // 1024 // 1024,
+            row.app_id, "REVOKED" if over else "restored", _mb(size), limit // 1024 // 1024,
         )
         new_creds = store.set_read_only(row.app_id, over)
         row.over_quota = over
@@ -183,6 +185,25 @@ def poll_quotas(
                 session.rollback()
                 log.warning("quota: storage check/enforcement failed for app %s: %s", app_id, _summary(exc))
     log.info("quota poll: %d dbs, %d buckets checked, %d over limit", dbs, buckets, over_n)
+
+
+def check_app_quota(
+    session: Session, app: models.App, *, mysql_admin_factory: Callable[[Any], MySQLAdmin], object_store: Optional[ObjectStore],
+) -> None:
+    """Run this one app's DB + storage quota check now (used after an admin changes its quotas, so a raised limit
+    restores a revoked app immediately instead of at the next poll). Failures are logged; the poll retries."""
+    if app.database is not None:
+        try:
+            _poll_db(session, app.database, mysql_admin_factory(app.database.server))
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            log.warning("quota: db check failed for app %s: %s", app.id, _summary(exc))
+    if app.storage is not None and object_store is not None:
+        try:
+            _poll_storage(session, app.storage, object_store)
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            log.warning("quota: storage check failed for app %s: %s", app.id, _summary(exc))
 
 
 def capacity_summary(session: Session) -> list[dict]:

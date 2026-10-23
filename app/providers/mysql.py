@@ -23,7 +23,7 @@ import logging
 import re
 import secrets
 import string
-from typing import Any
+from typing import Any, Optional
 
 import pymysql
 import pymysql.cursors
@@ -129,7 +129,7 @@ class MySQLAdminClient(MySQLAdmin):
 
         return self._creds(app_id, password)
 
-    def set_user_connection_limit(self, app_id: int) -> None:
+    def set_user_connection_limit(self, app_id: int, limit: Optional[int] = None) -> None:
         """Idempotent ALTER USER ... WITH MAX_USER_CONNECTIONS <config value> so existing app users pick up a raised
         cap. No-op in procedure mode (the proc set the limit at provision time)."""
         db_user = _validate_identifier(_db_user(app_id))
@@ -140,7 +140,7 @@ class MySQLAdminClient(MySQLAdmin):
             try:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"ALTER USER '{db_user}'@'%' WITH MAX_USER_CONNECTIONS {int(config.MAX_DB_USER_CONNECTIONS)}"
+                        f"ALTER USER '{db_user}'@'%' WITH MAX_USER_CONNECTIONS {int(limit or config.MAX_DB_USER_CONNECTIONS)}"
                     )
             finally:
                 conn.close()

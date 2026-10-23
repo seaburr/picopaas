@@ -106,7 +106,7 @@ def deploy_spec(
         if _active_app_count(db, current_user.id) >= eff:
             raise HTTPException(status_code=403, detail=app_limit_message(eff))
 
-    run_as_uid, digest = _check_image_cap(registry, spec.image)
+    run_as_uid, digest = _check_image_cap(registry, spec.image, app)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
 
     if created:
@@ -124,15 +124,17 @@ def deploy_spec(
             want_storage=spec.resources.storage,
             health_check_enabled=spec.healthCheck.enabled,
             health_check_path=spec.healthCheck.path,
+            health_check_timeout_seconds=spec.healthCheck.timeoutSeconds,
             status="pending",
         )
         db.add(app)
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
-            (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.db_engine, app.want_storage, app.health_check_enabled, app.health_check_path)
+            (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.db_engine, app.want_storage, app.health_check_enabled, app.health_check_path,
+             app.health_check_timeout_seconds)
             != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.db_engine, spec.resources.storage,
-                spec.healthCheck.enabled, spec.healthCheck.path)
+                spec.healthCheck.enabled, spec.healthCheck.path, spec.healthCheck.timeoutSeconds)
         )
         app.image = spec.image
         app.image_digest = digest
@@ -144,6 +146,7 @@ def deploy_spec(
         app.want_storage = spec.resources.storage
         app.health_check_enabled = spec.healthCheck.enabled
         app.health_check_path = spec.healthCheck.path
+        app.health_check_timeout_seconds = spec.healthCheck.timeoutSeconds
         app.env_vars.clear()
         db.flush()
 
