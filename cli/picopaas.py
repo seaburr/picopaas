@@ -17,6 +17,7 @@ class CliError(Exception):
 
 
 TIMEOUT_S = 30
+_TRANSPORT: Optional[httpx.BaseTransport] = None  # tests inject one for the presigned-URL transfer
 _VERBOSE = False
 # What the UI calls these states (the API keeps the raw values).
 _STATUS_WORDS = {"error": "failed", "pending": "queued"}
@@ -230,6 +231,61 @@ def cmd_storage_delete(c, args) -> None:
     else:
         print("Writes are restored; the app restarts to pick up the new keys.")
 
+def _presign(c, a: dict, body: dict) -> dict:
+    return _request(c, "POST", f"/apps/{a['id']}/storage/presign", json=body).json()
+
+
+def _chunks(f, size: int = 1024 * 1024):
+    while True:
+        b = f.read(size)
+        if not b:
+            return
+        yield b
+
+
+def cmd_storage_upload(c, args) -> None:
+    a = _find_app(c, args.name)
+    try:
+        size = os.path.getsize(args.file)
+    except OSError as exc:
+        raise CliError(f"Can't read {args.file}: {exc.strerror or exc}")
+    if size == 0:
+        raise CliError(f"{args.file} is empty; nothing to upload.")
+    key = args.key or os.path.basename(args.file)
+    p = _presign(c, a, {"method": "PUT", "key": key, "content_length": size})
+    headers = dict(p.get("headers") or {})
+    headers["Content-Length"] = str(size)
+    # The presigned URL is signed and points at Spaces, so it gets a plain client with no PicoPaaS token.
+    with httpx.Client(timeout=None, transport=_TRANSPORT) as raw, open(args.file, "rb") as f:
+        try:
+            resp = raw.put(p["url"], content=_chunks(f), headers=headers)
+        except httpx.HTTPError as exc:
+            raise CliError(f"Upload failed ({exc.__class__.__name__}). Request a new link by running the command again.")
+    if resp.status_code >= 300:
+        raise CliError(f"Upload was rejected by the storage service ({resp.status_code}). "
+                       "The link may have expired or the file size changed; try again.")
+    print(f"Uploaded {args.file} ({_mb(size)} MB) to {a['name']}'s bucket as {p.get('key', key)}.")
+
+
+def cmd_storage_download(c, args) -> None:
+    a = _find_app(c, args.name)
+    p = _presign(c, a, {"method": "GET", "key": args.key})
+    out = args.output or os.path.basename(args.key.rstrip("/")) or "download"
+    total = 0
+    with httpx.Client(timeout=None, transport=_TRANSPORT) as raw:
+        try:
+            with raw.stream("GET", p["url"]) as resp:
+                if resp.status_code >= 300:
+                    raise CliError("No such object, or the link was rejected" f" ({resp.status_code}). Check the key.")
+                with open(out, "wb") as f:
+                    for b in resp.iter_bytes():
+                        f.write(b)
+                        total += len(b)
+        except httpx.HTTPError as exc:
+            raise CliError(f"Download failed ({exc.__class__.__name__}). Try again.")
+    print(f"Downloaded {args.key} ({_mb(total)} MB) to {out}.")
+
+
 def _mb(n) -> str:
     return f"{n / 1024 / 1024:.1f}"
 
@@ -428,6 +484,18 @@ def build_parser() -> argparse.ArgumentParser:
     g2.add_argument("--prefix", help="delete only objects whose key starts with this")
     g2.add_argument("--all", action="store_true", help="delete every object in the bucket")
     sd.set_defaults(fn=cmd_storage_delete)
+    sg = sub.add_parser("storage", help="upload to or download from an app's storage bucket")
+    ssub = sg.add_subparsers(dest="storage_command", required=True)
+    up = ssub.add_parser("upload", help="upload a local file (streamed; limited by the bucket's remaining quota)")
+    up.add_argument("name", help="the app's name")
+    up.add_argument("file", help="local file to upload")
+    up.add_argument("--key", help="object key (default: the file's name)")
+    up.set_defaults(fn=cmd_storage_upload)
+    dl = ssub.add_parser("download", help="download one object")
+    dl.add_argument("name", help="the app's name")
+    dl.add_argument("key", help="object key")
+    dl.add_argument("-o", "--output", help="local file (default: the key's last segment)")
+    dl.set_defaults(fn=cmd_storage_download)
     lg = sub.add_parser("logs", help="print an app's recent logs")
     lg.add_argument("name", help="the app's name")
     lg.add_argument("--tail", type=int, default=200, help="lines per pod (1 to 1000, default 200)")
@@ -466,7 +534,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None, transport: Optional[httpx.BaseTransport] = None) -> int:
-    global _VERBOSE
+    global _VERBOSE, _TRANSPORT
+    _TRANSPORT = transport
     args = build_parser().parse_args(argv)
     _VERBOSE = args.verbose
     try:

@@ -30,6 +30,8 @@ Output is plain text for people, so scripts should check the exit code (0 ok, 1 
 | `export NAME [-o FILE]` | Print the app as a YAML spec. |
 | `usage NAME` | Show database and storage usage. |
 | `rotate NAME --db` or `--storage` | Rotate the database password or bucket keys. |
+| `storage upload NAME FILE [--key K]` | Upload a file to the app's bucket (default key: the file name). |
+| `storage download NAME KEY [-o FILE]` | Download one object. |
 | `storage-delete NAME --prefix P` or `--all` | Delete objects from the app's bucket. |
 | `domain NAME [--set HOST \| --verify \| --remove]` | Manage the custom domain. |
 | `delete NAME --yes` | Permanently delete the app. |
@@ -128,6 +130,12 @@ neither says so.
 `rotate NAME --db` or `--storage` replaces the database password or the bucket access keys. It prints
 `Rotated the database password for NAME. The app is restarting.` (or `Rotated the storage bucket keys for ...`).
 If the database or bucket is still being created, or the app doesn't have one, it fails with a 409 explanation.
+
+## storage upload / download
+
+`storage upload NAME FILE [--key K]` streams a local file into the app's bucket through a presigned link (the CLI never sees bucket
+credentials). The size must fit in the bucket's remaining quota and the bucket must not be over its cap. `storage download NAME KEY
+[-o FILE]` streams one object to disk (a read-only API key works). Needs a full-scope key for upload.
 
 ## storage-delete
 

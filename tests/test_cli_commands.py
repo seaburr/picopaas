@@ -221,3 +221,47 @@ def test_every_command_has_help(capsys):
         with pytest.raises(SystemExit):
             picopaas.main([sub, "-h"])
         assert "usage: picopaas" in capsys.readouterr().out
+
+
+def test_storage_upload_streams_to_presigned_url(monkeypatch, capsys, tmp_path):
+    f = tmp_path / "bundle.tar.gz"
+    f.write_bytes(b"x" * 3000)
+    got = {}
+
+    def presign(req):
+        got["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"url": "https://pp-5.spaces.test/site/bundle.tar.gz?sig=1", "method": "PUT",
+                                         "headers": {"Content-Length": "3000"}, "key": "site/bundle.tar.gz"})
+
+    def put(req):
+        got["put"] = (req.headers.get("content-length"), len(req.read()), "authorization" in req.headers)
+        return httpx.Response(200)
+
+    code, out, _, _ = run(["storage", "upload", "demo", str(f), "--key", "site/bundle.tar.gz"],
+                          {("POST", "/apps/5/storage/presign"): presign, ("PUT", "/site/bundle.tar.gz"): put},
+                          monkeypatch, capsys)
+    assert code == 0 and "Uploaded" in out and "site/bundle.tar.gz" in out
+    assert got["body"] == {"method": "PUT", "key": "site/bundle.tar.gz", "content_length": 3000}
+    assert got["put"] == ("3000", 3000, False)  # no PicoPaaS token leaks to the storage host
+
+
+def test_storage_upload_errors(monkeypatch, capsys, tmp_path):
+    code, _, err, _ = run(["storage", "upload", "demo", str(tmp_path / "nope")], {}, monkeypatch, capsys)
+    assert code == 1 and "Can't read" in err
+    f = tmp_path / "a"
+    f.write_bytes(b"x")
+    code, _, err, _ = run(["storage", "upload", "demo", str(f)],
+                          {("POST", "/apps/5/storage/presign"): httpx.Response(413, json={"detail": "only 0 bytes remain"})},
+                          monkeypatch, capsys)
+    assert code == 1 and "remain" in err
+
+
+def test_storage_download(monkeypatch, capsys, tmp_path):
+    out_file = tmp_path / "out.bin"
+    routes = {("POST", "/apps/5/storage/presign"): httpx.Response(200, json={"url": "https://pp-5.spaces.test/a/b.bin?sig=1", "method": "GET", "headers": {}, "key": "a/b.bin"}),
+              ("GET", "/a/b.bin"): httpx.Response(200, content=b"hello")}
+    code, out, _, _ = run(["storage", "download", "demo", "a/b.bin", "-o", str(out_file)], routes, monkeypatch, capsys)
+    assert code == 0 and out_file.read_bytes() == b"hello" and "Downloaded" in out
+    routes[("GET", "/a/b.bin")] = httpx.Response(404)
+    code, _, err, _ = run(["storage", "download", "demo", "a/b.bin", "-o", str(out_file)], routes, monkeypatch, capsys)
+    assert code == 1 and "No such object" in err
