@@ -37,9 +37,10 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Image size | 512 MB compressed |
 | MySQL or PostgreSQL database | 50 MB (writes revoked over it) |
 | Storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
-| Apps per user | 1 by default (an administrator can raise it) |
+| Outbound bandwidth | 20 Mbit/s per app (about 2.5 MB/s), counting everything the app sends, HTTP responses to visitors included |
+| Apps per user | 1 by default (`app_limit`; an administrator can raise it). Hard cap of 5 active apps per account, administrators included (`MAX_APPS_PER_USER`) |
 
-These are defaults. A platform administrator can override them per app, up to these ceilings: 1000m CPU, 2 GB memory, 3 replicas, 25 database connections, 2 GB scratch disk, 1 GB database, 50 GB bucket and 2 GB image.
+These are defaults. A platform administrator can override them per app, up to these ceilings: 1000m CPU, 2 GB memory, 3 replicas, 25 database connections, 2 GB scratch disk, 1 GB database, 50 GB bucket, 2 GB image and 160 Mbit/s outbound bandwidth (20 MB/s).
 
 ## Architecture
 

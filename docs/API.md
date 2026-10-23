@@ -100,7 +100,7 @@ reset and informational only (the server does not block other calls); the UI sho
   database server with a free slot; draining and full servers don't count). `db_engines` lists the engines that have room
   now, a subset of `["mysql", "pg"]` (`databases` is true when it is non-empty); use it for the engine picker. `storage` is true when the platform has bucket
   credentials configured. Hide the matching checkbox when false.
-- `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb, ephemeral_mi,
+- `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb, ephemeral_mi, egress_mbit,
   override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform defaults (`image_mb`, `db_mb`, `bucket_mb`
   and `ephemeral_mi` (the scratch disk) are per-app defaults an administrator can raise) and the CPU/memory range an
   administrator may override per app.
@@ -132,7 +132,7 @@ image_digest, auto_update, image_checked_at, image_update_error, want_db, db_eng
 `custom_domain` is null when none is attached, else `{host, status (pending|active|error), verified_at, error, challenge_host, challenge_token, cname_target}` — the last three are the DNS records the user must create. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`, `root_image`, `config`, `quota`, `env_invalid`, `unreadable_secrets`, `db_capacity`, `db_failed`, `storage_failed`, `unknown`); it is null unless `status` is `error`.
 `quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, storage every 5 min), no live calls. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, ephemeral_limit_mi, db_max_connections, db_quota_mb,
-storage_quota_mb, image_size_mb, overridden, exceeds_platform_caps, defaults}`: the effective per-app values (platform
+storage_quota_mb, image_size_mb, egress_mbit, overridden, exceeds_platform_caps, defaults}`: the effective per-app values (platform
 defaults unless an administrator overrode them) and `defaults`, the platform default of each field for this app's DB engine.
 Each `env` item: `{key, value, is_secret, undecryptable}`. Secret values are returned as `********`. If a stored
 value cannot be decrypted (platform key changed) `undecryptable` is true and `value` is empty.
@@ -271,13 +271,14 @@ All return 404 for an unknown or deleted app.
 | `db_quota_mb` | 1 to 1024 | 50 |
 | `storage_quota_mb` | 1 to 51200 | 100 |
 | `image_size_mb` | 1 to 2048 | 512 |
+| `egress_mbit` (outbound bandwidth, Mbit/s) | 1 to 160 | 20 |
 
 422 if a request exceeds its limit (CPU or memory). Response (`AdminAppOut`): `id, name, hostname, status, owner_id,
 owner_email, image, created_at, replicas, want_db, want_storage, db_engine (null without a database), platform_host,
 custom_domain (the host string or null), exceeds_platform_caps, restarts_app, resources`. `resources` holds the
 effective value of every field above plus `overridden`, `exceeds_platform_caps` and `defaults` (the platform default of
 each field for this app's engine). `exceeds_platform_caps` and `restarts_app` are set only on the PATCH response;
-`restarts_app` is true when the change alters the pod spec (CPU, memory, scratch disk) so pods roll. Changing a quota
+`restarts_app` is true when the change alters the pod spec (CPU, memory, scratch disk, outbound bandwidth) so pods roll. Changing a quota
 re-checks usage immediately (a raised quota restores a read-only database or bucket right away).
 `AppOut.quota.*.limit_bytes` and `/apps/{id}/database|storage/usage` reflect the app's effective quotas.
 

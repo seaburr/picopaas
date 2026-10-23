@@ -31,10 +31,11 @@ administrator restores the account.
 | User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
 | Image size | Summed compressed layers at most **512 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422` ("Couldn't find that image, or it's private..."). |
-| CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi) and runs one replica. Only a platform administrator can raise CPU, memory, replicas (1 to 3), scratch disk, database connections or quotas for a specific app; ask them if you need more. |
+| CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi) and runs one replica. Only a platform administrator can raise CPU, memory, replicas (1 to 3), scratch disk, outbound bandwidth, database connections or quotas for a specific app; ask them if you need more. |
+| Outbound bandwidth | **20 Mbit/s** (about 2.5 MB/s) per app, enforced on the pod. It applies to everything your app sends, including HTTP responses to visitors, so a download-heavy app is throttled. Inbound traffic is not capped. A platform administrator can raise it per app (up to 160 Mbit/s). |
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
-| Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too. Over the limit gives `403` ("You've reached your limit of N apps..."). |
+| Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too (`app_limit` is the per-user setting, default 1; the hard max is the ceiling for it). Over the limit gives `403` ("You've reached your limit of N apps..."). |
 | Database | Optional database, your choice of MySQL or PostgreSQL (see section 5a), 50 MB. |
 | Storage | Optional storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |

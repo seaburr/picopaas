@@ -117,7 +117,8 @@ Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav b
 
 - **Users:** approve `pending` signups, suspend or unsuspend (suspending scales all their apps to zero), reset a
   password (shown once; the user must change it), delete, and set the per-user app limit. The platform-wide hard max is
-  5 apps per account (`MAX_APPS_PER_USER`). The admin account cannot be suspended or deleted.
+  5 active apps per account (`MAX_APPS_PER_USER`, default 5), which applies to administrators too. The per-user app limit
+  (`app_limit`) defaults to 1 and you can raise it up to that hard max, never above. The admin account cannot be suspended or deleted.
 - **App limits (Apps tab, sliders icon):** override an app's resources within these ceilings.
 
   | Setting | Ceiling |
@@ -129,8 +130,11 @@ Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav b
   | DB quota | up to 1 GB |
   | Bucket quota | up to 50 GB |
   | Image size | up to 2 GB |
+  | Outbound bandwidth | 1 to 160 Mbit/s (default 20, `EGRESS_BANDWIDTH_MBIT`) |
 
-  Changing CPU, memory or scratch disk restarts the app's pods. Raising a quota restores an over-quota app at the next
+  Outbound bandwidth is a per-pod cap (Cilium bandwidth manager, pod annotation `kubernetes.io/egress-bandwidth`) on everything
+  the pod sends, HTTP responses to visitors included; raise it for download-heavy apps.
+  Changing CPU, memory, scratch disk or outbound bandwidth restarts the app's pods. Raising a quota restores an over-quota app at the next
   poll. Replicas must be stateless: each app has one ClusterIP Service and no per-pod addressing, so clustered apps
   are not supported.
 - **App actions:** suspend, unsuspend, delete, and a fixed short address (`<label>.picopaas.xyz`, set on the app's

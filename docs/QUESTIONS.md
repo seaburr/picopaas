@@ -7,8 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Abuse hardening: approve a per-pod outbound bandwidth cap and an Acceptable Use section? (raised 2026-10-22, see docs/PENTEST.md "Abuse hardening review (2026-10-22)").** I already blocked more outbound ports (telnet, SMB/NetBIOS, RDP, IRC, chargen, plus UDP amplification ports SNMP/SSDP/memcached/CLDAP/rpcbind) and reserved ranges (CGNAT, multicast, loopback); SSH, NTP and DNS stay open on purpose. Two things need your call: (a) cap each app's outbound traffic at about 5 Mbit/s using the Cilium bandwidth manager that is already on (free; I suggest yes), and (b) add a short Acceptable Use paragraph to the terms page plus a public abuse-contact page (I need your wording). Optional: an automatic "many destinations per minute" flagger using Hubble. -- _your answer:_ Yes, that sounds perfect. We'll certainly need to document that outbound traffic ceiling in our documentation. This probably should also be able to overridden by a platform administrator, if possible, like our other things. Ceiling? IDK 20MBps?
-
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
@@ -18,8 +16,6 @@ background on each item if you want it.
   which costs per app (a 1 GiB managed instance is ~$15/mo). **Accepted for now.** Revisit if PicoPaaS moves toward
   app-specific hosting or a tenant that cares about name confidentiality shows up. Optional: Claude can test on a
   throwaway database exactly how much DO lets us revoke. — _your answer:_
-
-- **FYI: a hard cap of 5 active apps per account (admins included) now exists** (`MAX_APPS_PER_USER`, app/config.py). You may want to mention it in bootstrap.md. Yes, document it and the default value.
 
 - **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
   secret holds an **account-wide** DO API token and a **full-access** Spaces key, so a code-execution bug in the API reaches
@@ -79,6 +75,11 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-22: **Abuse hardening (answered).** Bandwidth cap: implemented as a per-pod outbound cap, default 20 Mbit/s,
+  platform-admin override 1 to 160 Mbit/s (`egress_mbit`), documented. Acceptable Use + abuse page: Chas "I trust you on
+  the language", so Claude is drafting the terms section and the abuse page.
+- 2026-10-22: **FYI: 5 active apps per account, admins included (`MAX_APPS_PER_USER`).** Documented in README, USER_GUIDE
+  and ADMIN_GUIDE; bootstrap.md left for Chas to edit.
 - 2026-10-22: **PostgreSQL support (answered and shipped).** Chas approved DO Managed PostgreSQL on the cheapest SKU
   (`db-s-1vcpu-1gb`, $15.15/mo, baseline now ≈ $75.30/mo), alongside MySQL rather than replacing it, with the two-stage
   quota trade-off accepted. The spike confirmed what `doadmin` can do. It's live: the `primary-pg` database server is registered, and n8n (app 110) passed

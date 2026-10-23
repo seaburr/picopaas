@@ -5,6 +5,11 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [main] DONE: live e2e tests/e2e/test_live.py test_10_* (admin raises DB quota / bucket quota / scratch disk -> over-limit probe app recovers) 3/3 PASSED on prod (7.5 min, throwaway apps deleted). Docs nav fix per Chas screenshots: removed 'Admin guide' from the top navbar (desktop+mobile); docs tab now 'Admin', tabs wrap, sidebar lg:w-80.
+- 2026-10-22 [backend-dev] DONE (uncommitted): per-pod outbound bandwidth cap. Pod annotation kubernetes.io/egress-bandwidth "<n>M" (default config.EGRESS_BANDWIDTH_MBIT=20, env-overridable); App.egress_mbit nullable + migration e8b2c5d7a914 (single head on d4a7b9c1e3f5); admin PATCH egress_mbit 1..160 (OVERRIDE_EGRESS_MIN/MAX_MBIT), in resources.POD_FIELDS so restarts_app true; ResourcesOut.egress_mbit + defaults.egress_mbit; /auth/config limits.egress_mbit. Docs: README, USER_GUIDE, ADMIN_GUIDE, API, OPERATIONS (bandwidth + 5-apps hard cap), QUESTIONS resolved, PENTEST row. Tests: tests/test_egress_bandwidth.py.
+- 2026-10-22 [backend-dev] START: per-pod outbound bandwidth cap (egress_mbit) + docs for it and MAX_APPS_PER_USER.
+- 2026-10-22 [frontend-dev] DONE (uncommitted): terms of use, acceptable use, report abuse added as sections of frontend/public/privacy.html (anchors #terms, #report-abuse; no backend route change needed), linked from landing footer, App.vue footer, RegisterView (existing accept checkbox kept + "By requesting access you agree" line). Contact reuses existing abuse@picopaas.xyz. Admin egress_mbit field in types, ResourcesDialog (restart trigger, help text), AdminView summary.
+- 2026-10-22 [frontend-dev] START: Terms of use / AUP / report abuse; admin egress_mbit field.
 - 2026-10-22 [backend-dev] DONE (uncommitted): unit-test coverage pass, total 92% -> 93% (463 -> 408 missed stmts), suite 1088 passed (excl. tests/e2e, tests/pentest). New tests/test_coverage_gaps.py (cli retry/ago/validation helpers, quota failure + commit-rollback + stale-key branches, image_check cap/ref helpers/registry errors/watcher, db_host_metrics parse/credential/401/unreachable, mysql/postgres pure helpers, admin conn-limit apply failure, spec healthCheck.timeoutSeconds bounds). No bugs found. Remaining low coverage is live-infra provider code (kube/mysql/postgres/spaces/registry clients).
 - 2026-10-22 [backend-dev] START: unit-test coverage pass (pytest-cov baseline 92%).
 - 2026-10-22 [backend-dev] START: audit docs/API.md against the code (routes, auth, schemas).
@@ -715,3 +720,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: app health/settings two-page UI and n8n recipe caveats committed and pushed; gitleaks clean. No findings.
 - 2026-10-22 [scm-security] START: commit/push Chas test-feedback batch (admin limits, egress hardening, CLI, admin guide, web, site, docs), watch CI.
 - 2026-10-22 [scm-security] DONE: test-feedback batch committed and pushed; gitleaks clean. No findings.
+- 2026-10-22 [scm-security] START: commit/push bandwidth cap, terms/AUP site, nav fix, e2e, docs; watch CI.
+- 2026-10-22 [scm-security] DONE: bandwidth cap/site/nav/e2e/docs committed and pushed; gitleaks clean. No findings.
