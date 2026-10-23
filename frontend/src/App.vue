@@ -20,20 +20,22 @@ const reload = () => window.location.reload()
 </script>
 
 <template>
-  <DevBanner slim />
-  <PasswordBanner />
-  <div v-if="crashed" role="alert" class="mx-auto max-w-md px-4 py-16 text-center">
-    <h1 class="page-title">Something went wrong</h1>
-    <p class="help">The page failed to load. Reloading usually fixes it.</p>
-    <button type="button" class="btn-primary mt-4" @click="reload">Reload</button>
+  <div class="flex min-h-screen flex-col">
+    <DevBanner slim />
+    <PasswordBanner />
+    <div v-if="crashed" role="alert" class="mx-auto max-w-md px-4 py-16 text-center">
+      <h1 class="page-title">Something went wrong</h1>
+      <p class="help">The page failed to load. Reloading usually fixes it.</p>
+      <button type="button" class="btn-primary mt-4" @click="reload">Reload</button>
+    </div>
+    <div v-else class="flex-1"><RouterView /></div>
+    <footer v-if="auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-500">
+      <a href="/privacy" class="hover:text-zinc-300">Privacy</a>
+      <a href="/privacy#terms" class="hover:text-zinc-300">Terms</a>
+      <a href="/privacy#report-abuse" class="hover:text-zinc-300">Report abuse</a>
+      <RouterLink to="/guide" class="hover:text-zinc-300">Docs</RouterLink>
+      <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-zinc-300">Blog</a>
+    </footer>
   </div>
-  <RouterView v-else />
-  <footer v-if="auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-500">
-    <a href="/privacy" class="hover:text-zinc-300">Privacy</a>
-    <a href="/privacy#terms" class="hover:text-zinc-300">Terms</a>
-    <a href="/privacy#report-abuse" class="hover:text-zinc-300">Report abuse</a>
-    <RouterLink to="/guide" class="hover:text-zinc-300">Docs</RouterLink>
-    <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-zinc-300">Blog</a>
-  </footer>
   <ToastHost />
 </template>

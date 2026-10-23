@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [main] DONE: live UI check after 7db4507 (docs tabs fit, no navbar Admin guide, admin Open-app + limits dialog w/ engine-aware defaults and scroll, apps list engine, settings width, privacy/landing). Fixes: footer pinned to page bottom (App.vue flex column; it floated under the banner while pages loaded); Settings header shows the primary host (custom/platform host) instead of the generated hostname.
 - 2026-10-22 [main] DONE: live e2e tests/e2e/test_live.py test_10_* (admin raises DB quota / bucket quota / scratch disk -> over-limit probe app recovers) 3/3 PASSED on prod (7.5 min, throwaway apps deleted). Docs nav fix per Chas screenshots: removed 'Admin guide' from the top navbar (desktop+mobile); docs tab now 'Admin', tabs wrap, sidebar lg:w-80.
 - 2026-10-22 [backend-dev] DONE (uncommitted): per-pod outbound bandwidth cap. Pod annotation kubernetes.io/egress-bandwidth "<n>M" (default config.EGRESS_BANDWIDTH_MBIT=20, env-overridable); App.egress_mbit nullable + migration e8b2c5d7a914 (single head on d4a7b9c1e3f5); admin PATCH egress_mbit 1..160 (OVERRIDE_EGRESS_MIN/MAX_MBIT), in resources.POD_FIELDS so restarts_app true; ResourcesOut.egress_mbit + defaults.egress_mbit; /auth/config limits.egress_mbit. Docs: README, USER_GUIDE, ADMIN_GUIDE, API, OPERATIONS (bandwidth + 5-apps hard cap), QUESTIONS resolved, PENTEST row. Tests: tests/test_egress_bandwidth.py.
 - 2026-10-22 [backend-dev] START: per-pod outbound bandwidth cap (egress_mbit) + docs for it and MAX_APPS_PER_USER.
@@ -722,3 +723,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: test-feedback batch committed and pushed; gitleaks clean. No findings.
 - 2026-10-22 [scm-security] START: commit/push bandwidth cap, terms/AUP site, nav fix, e2e, docs; watch CI.
 - 2026-10-22 [scm-security] DONE: bandwidth cap/site/nav/e2e/docs committed and pushed; gitleaks clean. No findings.
+- 2026-10-22 [scm-security] START: commit/push footer pin + settings header address; watch CI.

@@ -9,7 +9,7 @@ import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { listTemplates } from '../api/templates'
-import { SAMPLE_APP } from '../composables/appUi'
+import { SAMPLE_APP, primaryHost } from '../composables/appUi'
 import { envKeyError } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
@@ -278,7 +278,7 @@ async function onSubmit() {
             <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : 'New app' }}</h1>
             <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
           </div>
-          <HostLink v-if="loadedApp" :hostname="loadedApp.hostname" class="mt-1" />
+          <HostLink v-if="loadedApp" :hostname="primaryHost(loadedApp)" class="mt-1" />
           <p v-if="!isEdit" class="help">
             Deploy a public Docker image. You'll get an https URL as soon as the app is created.
             <RouterLink to="/templates" class="link">Browse templates</RouterLink>
