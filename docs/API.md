@@ -295,7 +295,7 @@ temporary password once and sets `must_change_password`). They use the app's `DA
 
 `GET /admin/audit?limit=100` (1 to 1000, newest first): `[{id, at, actor_email, action, target_type, target_id, detail}]`.
 
-`GET /admin/audit/export?format=csv|json` (default `csv`): download of up to 50,000 rows, newest first, same fields as above, as an attachment named `picopaas-audit-YYYYMMDD.csv|json`. CSV cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'` (spreadsheet formula injection). Each download is audited as `audit.export`. Admin only.
+`GET /admin/audit/export?format=csv|json` (default `csv`): download of up to 50,000 rows, newest first, same fields as above, as an attachment named `picopaas-audit-YYYYMMDD.csv|json`. CSV cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'` (spreadsheet formula injection). The response is streamed (same shape as before; JSON is one array). Each download is audited as `audit.export` before streaming starts (`rows=` is the count to be sent, capped at 50,000). Rows older than `AUDIT_RETENTION_DAYS` (default 90; 0 = keep forever) are deleted daily by the leader, which writes one `audit.purge` row (actor `system`, detail `cutoff=<iso> rows=<n>`). Admin only.
 
 ### Database servers
 

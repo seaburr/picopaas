@@ -104,6 +104,7 @@ module.
 | `DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`, `EPHEMERAL_LIMIT_MI` | Default per-pod CPU, memory and scratch disk. |
 | `EGRESS_BANDWIDTH_MBIT` | Default per-pod outbound cap. |
 | `MAX_APPS_PER_USER`, `MAX_REPLICAS` | Hard ceilings for apps per account and replicas per app. |
+| `AUDIT_RETENTION_DAYS` | Audit log retention in days (default 90). The leader deletes older rows daily and records one `audit.purge` entry (actor `system`) when it removed any. `0` or negative keeps everything. |
 | `DB_QUOTA_POLL_SECONDS`, `STORAGE_QUOTA_POLL_SECONDS`, `IMAGE_WATCH_MINUTES`, `METRICS_SAMPLE_SECONDS`, `METRICS_RETENTION_POINTS` | Job cadences and history depth. |
 | `MAX_NODES` | Display only: the node ceiling shown on the Health page. Set it to your autoscaler maximum. |
 
@@ -206,7 +207,9 @@ shouldn't lock you out of the platform.
 - **Last-admin protection**: the platform refuses (409) to demote, suspend or delete the last active administrator.
   Administrators can't be suspended or deleted directly; demote them first.
 - **Audit**: promotions and demotions are logged (`user.promote`, `user.demote`). **Admin → Audit** downloads the full
-  log as CSV or JSON, and each download is logged too (`audit.export`).
+  log (up to 50,000 newest rows) as CSV or JSON, streamed, and each download is logged too (`audit.export`).
+  Rows older than `AUDIT_RETENTION_DAYS` (default 90) are deleted daily (`audit.purge`); download the export
+  regularly if you need history beyond that window.
 
 ### Break-glass recovery
 

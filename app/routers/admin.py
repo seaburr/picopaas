@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
@@ -502,27 +502,66 @@ def _csv_safe(v) -> str:
     return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
+_EXPORT_BATCH = 1000
+
+
+def _audit_export_rows(bind, upper_id: int, limit: int):
+    """Yield audit rows as plain tuples, newest first, in keyset batches by id. Opens its own session: FastAPI
+    0.115 tears down yield-dependency sessions before a StreamingResponse body is sent."""
+    from sqlalchemy.orm import sessionmaker
+
+    cols = [getattr(models.AuditLog, k) for k in _AUDIT_FIELDS]
+    session = sessionmaker(bind=bind, autoflush=False, expire_on_commit=False)()
+    try:
+        last, left = upper_id + 1, limit
+        while left > 0:
+            batch = session.query(*cols).filter(models.AuditLog.id < last).order_by(
+                models.AuditLog.id.desc()).limit(min(_EXPORT_BATCH, left)).all()
+            if not batch:
+                break
+            for row in batch:
+                yield tuple(row)
+            last = batch[-1][0]
+            left -= len(batch)
+            session.expire_all()
+    finally:
+        session.close()
+
+
+def _audit_export_stream(bind, upper_id: int, limit: int, fmt: str):
+    if fmt == "json":
+        first = True
+        for row in _audit_export_rows(bind, upper_id, limit):
+            item = {k: (v.isoformat() if k == "at" else v) for k, v in zip(_AUDIT_FIELDS, row)}
+            yield ("[\n" if first else ",\n") + json.dumps(item)
+            first = False
+        yield "\n]" if not first else "[]"
+        return
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_AUDIT_FIELDS)
+    for n, row in enumerate(_audit_export_rows(bind, upper_id, limit), 1):
+        w.writerow([_csv_safe(v.isoformat() if k == "at" else v) for k, v in zip(_AUDIT_FIELDS, row)])
+        if n % 200 == 0:
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+    yield buf.getvalue()
+
+
 @router.get("/audit/export")
 def export_audit(format: Literal["csv", "json"] = Query("csv"), db: Session = Depends(get_db),
                  admin: models.User = Depends(require_platform_admin)):
-    """Download the audit log (newest first, at most 50,000 rows) as CSV or JSON."""
-    rows = db.query(models.AuditLog).order_by(models.AuditLog.id.desc()).limit(AUDIT_EXPORT_MAX).all()
-    data = [AuditOut.model_validate(r) for r in rows]
+    """Download the audit log (newest first, at most 50,000 rows) as CSV or JSON, streamed."""
+    upper = db.query(func.max(models.AuditLog.id)).scalar() or 0
+    count = db.query(func.count(models.AuditLog.id)).filter(models.AuditLog.id <= upper).scalar() or 0
+    rows = min(count, AUDIT_EXPORT_MAX)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    if format == "json":
-        body = json.dumps([d.model_dump(mode="json") for d in data], indent=1)
-        media = "application/json"
-    else:
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(_AUDIT_FIELDS)
-        for d in data:
-            w.writerow([_csv_safe(d.at.isoformat() if k == "at" else getattr(d, k)) for k in _AUDIT_FIELDS])
-        body = buf.getvalue()
-        media = "text/csv; charset=utf-8"
-    audit.record(db, admin, "audit.export", "audit", None, f"format={format} rows={len(data)}")
-    return Response(body, media_type=media,
-                    headers={"Content-Disposition": f'attachment; filename="picopaas-audit-{stamp}.{format}"'})
+    # Audited BEFORE streaming (a streamed response can't add it afterwards); not part of this download.
+    audit.record(db, admin, "audit.export", "audit", None, f"format={format} rows={rows}")
+    media = "application/json" if format == "json" else "text/csv; charset=utf-8"
+    return StreamingResponse(_audit_export_stream(db.get_bind(), upper, AUDIT_EXPORT_MAX, format), media_type=media,
+                             headers={"Content-Disposition": f'attachment; filename="picopaas-audit-{stamp}.{format}"'})
 
 
 @router.get("/audit", response_model=List[AuditOut])

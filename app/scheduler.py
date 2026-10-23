@@ -186,6 +186,24 @@ def metrics_sample_job() -> None:
         session.close()
 
 
+def audit_purge_job() -> None:
+    """Leader-only daily: delete audit rows older than AUDIT_RETENTION_DAYS (0 = keep forever)."""
+    if config.AUDIT_RETENTION_DAYS <= 0 or not try_acquire_leader():
+        return
+    from app import audit
+
+    session = SessionLocal()
+    try:
+        n = audit.purge_old(session, config.AUDIT_RETENTION_DAYS)
+        if n:
+            log.info("audit purge: deleted %d rows", n)
+    except Exception:
+        session.rollback()
+        log.exception("audit purge failed")
+    finally:
+        session.close()
+
+
 def _read_ca() -> str | None:
     """PEM text from the file at MYSQL_SSL_CA, or None if unset/unreadable."""
     path = os.environ.get("MYSQL_SSL_CA") or config.MYSQL_SSL_CA
@@ -340,6 +358,8 @@ def start_scheduler() -> BackgroundScheduler:
                   id="health")
     sched.add_job(metrics_sample_job, "interval", seconds=config.METRICS_SAMPLE_SECONDS, max_instances=1,
                   coalesce=True, id="metrics_sample", next_run_time=now + timedelta(seconds=45))
+    sched.add_job(audit_purge_job, "interval", hours=24, max_instances=1, coalesce=True, id="audit_purge",
+                  next_run_time=now + timedelta(minutes=5))
     health.start_background(get_kube)
     sched.start()
     return sched

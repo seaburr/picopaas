@@ -1,7 +1,9 @@
 """Audit log helper. Never raises into the request path; never put secrets in `detail`."""
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import models
@@ -36,3 +38,29 @@ def record(
             db.rollback()
         except Exception:
             pass
+
+
+PURGE_BATCH = 5000
+
+
+def purge_old(db: Session, days: int, now: Optional[datetime] = None, batch: int = PURGE_BATCH) -> int:
+    """Delete audit rows older than `days` in id batches (portable to MySQL and SQLite). days <= 0 keeps all.
+    Returns rows deleted; writes one `audit.purge` row (actor system) when that is > 0."""
+    if days <= 0:
+        return 0
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    cutoff = now - timedelta(days=days)
+    total = 0
+    while True:
+        ids = list(db.execute(
+            select(models.AuditLog.id).where(models.AuditLog.at < cutoff).order_by(models.AuditLog.id).limit(batch)
+        ).scalars())
+        if not ids:
+            break
+        db.execute(delete(models.AuditLog).where(models.AuditLog.id.in_(ids)))
+        db.commit()
+        total += len(ids)
+    if total:
+        record(db, None, "audit.purge", "audit", None, f"cutoff={cutoff.isoformat()} rows={total}",
+               actor_email="system")
+    return total

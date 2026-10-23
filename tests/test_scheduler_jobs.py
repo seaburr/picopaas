@@ -92,7 +92,7 @@ def test_jobs_do_nothing_when_not_leader(monkeypatch):
     monkeypatch.setattr(scheduler, "try_acquire_leader", lambda: False)
     monkeypatch.setattr(scheduler, "SessionLocal", lambda: pytest.fail("a non-leader must not open a session"))
     for job in (scheduler.reconcile_job, scheduler.db_quota_job, scheduler.storage_quota_job,
-                scheduler.quota_job, scheduler.image_watch_job, scheduler.metrics_sample_job):
+                scheduler.quota_job, scheduler.image_watch_job, scheduler.metrics_sample_job, scheduler.audit_purge_job):
         job()
 
 
@@ -339,7 +339,7 @@ def test_start_scheduler_registers_all_jobs_once_each(monkeypatch):
     monkeypatch.setattr(health, "start_background", lambda getter: started.append("health"))
     sched = scheduler.start_scheduler()
     assert isinstance(sched, FakeSched) and started == ["health", True]
-    assert set(jobs) == {"reconcile", "quota_db", "quota_storage", "image_watch", "health", "metrics_sample"}
+    assert set(jobs) == {"reconcile", "quota_db", "quota_storage", "image_watch", "health", "metrics_sample", "audit_purge"}
     for fn, trigger, kw in jobs.values():
         assert trigger == "interval" and kw["max_instances"] == 1 and kw["coalesce"] is True  # never overlap itself
     assert jobs["reconcile"][2]["seconds"] == 15 and jobs["reconcile"][0] is scheduler.reconcile_job
