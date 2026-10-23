@@ -403,3 +403,18 @@ class FakeRegistry(Registry):
         return ImageInfo(
             self.image_size_bytes(image_ref), self.users.get(image_ref, self.default_user), self._digest(image_ref)
         )
+
+
+class FakeDbServerChecker:
+    """Records calls; `error` (a message) makes the next checks fail with DbServerCheckError."""
+
+    def __init__(self, error: Optional[str] = None) -> None:
+        self.error = error
+        self.calls: list[dict] = []
+
+    def check(self, *, engine, host, port, user, password, ca_cert) -> None:
+        from app.providers.dbcheck import DbServerCheckError
+
+        self.calls.append(dict(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert))
+        if self.error:
+            raise DbServerCheckError(f"Couldn't connect to {host}:{port} as {user}: {self.error}")

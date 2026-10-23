@@ -305,8 +305,8 @@ temporary password once and sets `must_change_password`). They use the app's `DA
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
 | GET | `/admin/db-servers` | none | List of `DbServer`. |
-| POST | `/admin/db-servers` | `{name, host, port=3306, engine="mysql"\|"pg", admin_user, admin_password, max_databases, ca_cert?}` | 201 `DbServer` (status `active`). The port default is 3306 whatever the engine, so send 5432 for `pg`. `ca_cert` must be PEM (422). 409 if the name exists. The admin password is stored encrypted and never returned. |
-| PATCH | `/admin/db-servers/{server_id}` | any of `{status, max_databases, ca_cert}` (`ca_cert: ""` clears it) | `DbServer`. 404 if unknown. `engine` can't be changed. |
+| POST | `/admin/db-servers` | `{name, host, port=3306, engine="mysql"\|"pg", admin_user, admin_password, max_databases, ca_cert?}` | 201 `DbServer` (status `active`). The port default is 3306 whatever the engine, so send 5432 for `pg`. `ca_cert` must be PEM (422). 409 if the name exists. The admin password is stored encrypted and never returned. Before saving, the platform connects as `admin_user` (TLS, `ca_cert` as in provisioning, 5 s timeout) and runs `SELECT 1`; on failure 422 with a classified detail (`Couldn't connect to host:port as user: authentication failed` / `connection timed out` / `connection refused` / `TLS handshake failed` / `host name could not be resolved`) and nothing is saved. |
+| PATCH | `/admin/db-servers/{server_id}` | any of `{status, max_databases, ca_cert, admin_password}` (`ca_cert: ""` clears it; `admin_password` is write-only, min 1 char) | `DbServer`. 404 if unknown. `engine` can't be changed. Changing `admin_password` or `ca_cert` runs the same connection check as create (422 on failure, nothing saved, old password kept); the new password is stored encrypted, never returned, and the audit row says `admin_password=changed` without the value. Cached health metrics for the server are dropped. |
 
 ### Health
 

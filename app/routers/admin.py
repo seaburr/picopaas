@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session, joinedload
 from app import audit, config, crypto, health, models, naming, quota, resources, schemas
 from app.config import APP_DOMAIN
 from app.db import get_db
-from app.dependencies import get_kube, require_platform_admin
+from app.dependencies import get_db_server_checker, get_kube, require_platform_admin
+from app.providers.dbcheck import DbServerCheckError
 from app.schemas import ResourcesOut
 from app.routers.apps import get_mysql_admin_factory, get_object_store
 from app.security import hash_password
@@ -120,6 +121,7 @@ class DbServerPatch(BaseModel):
     status: Optional[Literal["active", "draining", "full"]] = None
     max_databases: Optional[int] = Field(default=None, gt=0)
     ca_cert: Optional[str] = Field(default=None, max_length=20000)  # "" clears it
+    admin_password: Optional[str] = Field(default=None, min_length=1)  # write-only; verified before it is stored
 
     _check_ca = field_validator("ca_cert")(_validate_ca_pem)
 
@@ -600,9 +602,19 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube),
     return {**health.build(db, kube, servers, mysql_admin_factory), **health.db_counts(db)}
 
 
+def _check_connection(checker, *, engine, host, port, user, password, ca_cert) -> None:
+    try:
+        checker.check(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert)
+    except DbServerCheckError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)
 def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
-                     admin: models.User = Depends(require_platform_admin)):
+                     admin: models.User = Depends(require_platform_admin),
+                     checker=Depends(get_db_server_checker)):
+    _check_connection(checker, engine=payload.engine, host=payload.host, port=payload.port,
+                      user=payload.admin_user, password=payload.admin_password, ca_cert=payload.ca_cert)
     server = models.DbServer(
         name=payload.name, host=payload.host, port=payload.port, admin_user=payload.admin_user,
         admin_password_encrypted=crypto.encrypt(payload.admin_password),
@@ -622,10 +634,21 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
 
 @router.patch("/db-servers/{server_id}", response_model=DbServerOut)
 def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depends(get_db),
-                    admin: models.User = Depends(require_platform_admin)):
+                    admin: models.User = Depends(require_platform_admin),
+                    checker=Depends(get_db_server_checker)):
     server = db.get(models.DbServer, server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="We can't find that database server. Refresh the list.")
+    new_ca = payload.ca_cert if "ca_cert" in payload.model_fields_set else server.ca_cert
+    ca_changed = "ca_cert" in payload.model_fields_set and (new_ca or None) != (server.ca_cert or None)
+    new_pw = payload.admin_password
+    if new_pw is not None or ca_changed:
+        # Verify first; nothing is saved (old password and CA stay) unless the server accepts the new settings.
+        _check_connection(checker, engine=server.engine, host=server.host, port=server.port, user=server.admin_user,
+                          password=new_pw if new_pw is not None else crypto.decrypt(server.admin_password_encrypted),
+                          ca_cert=new_ca or None)
+    if new_pw is not None:
+        server.admin_password_encrypted = crypto.encrypt(new_pw)
     if payload.status is not None:
         server.status = payload.status
     if payload.max_databases is not None:
@@ -634,7 +657,10 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
         server.ca_cert = payload.ca_cert
     db.commit()
     db.refresh(server)
+    if new_pw is not None or ca_changed:
+        health.invalidate_db_server(server.id)  # drop cached metrics/errors from the old credentials
     changed = sorted(payload.model_fields_set)
     audit.record(db, admin, "dbserver.update", "db_server", server.id,
-                 "fields=" + ",".join(changed) + (f" status={payload.status}" if payload.status else ""))
+                 "fields=" + ",".join(changed) + (f" status={payload.status}" if payload.status else "")
+                 + (" admin_password=changed" if new_pw is not None else ""))
     return _server_out(db, server)

@@ -36,6 +36,13 @@ def get_kube():
     return _kube_client
 
 
+def get_db_server_checker():
+    """Real connection checker for admin db-server create/rotate (tests override with FakeDbServerChecker)."""
+    from app.providers.dbcheck import RealDbServerChecker
+
+    return RealDbServerChecker()
+
+
 def get_registry() -> Registry:
     return _registry_client
 

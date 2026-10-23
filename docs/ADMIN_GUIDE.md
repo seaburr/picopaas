@@ -150,6 +150,13 @@ Register a server in **Admin > Servers > Add server** (or `POST /admin/db-server
 password, `max_databases` and the CA PEM. The engine is set when the server is created. A server is also registered
 automatically at start from the `BOOTSTRAP_*` variables.
 
+- **Connection check:** on create (and when the admin password or CA changes) the platform connects with the given
+  credentials and runs `SELECT 1` (5 s timeout) before saving. A failure returns a short reason (authentication failed,
+  timed out, refused, TLS handshake failed, host not found) and nothing is saved.
+- **Rotate the admin password:** change it on the database server first, then use the lock button on the server row
+  (Admin > Database servers) or `PATCH /admin/db-servers/{id}` with `{"admin_password": "..."}`. The platform verifies
+  the new password and only then stores it (encrypted); if the check fails the old password stays. Running apps are
+  unaffected (they use their own per-app credentials); the reconciler reads the stored password on every use.
 - **Placement:** a new app database goes to the active server of its engine with the most free slots. With none free
   the app goes to **Failed** ("No database space is free"), and retries by itself once you add or free space.
 - **Drain:** set a server to **Draining** to stop new placements. Existing databases stay; moving a database between

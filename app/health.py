@@ -33,6 +33,13 @@ _background = False  # True once start_background() ran: requests then never blo
 _db_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 
 
+def invalidate_db_server(server_id: int) -> None:
+    """Forget cached per-server metrics (e.g. after the admin password or CA changed)."""
+    with _lock:
+        _db_cache.pop(server_id, None)
+        _host_cache.pop(server_id, None)
+
+
 def _server_metrics(db: Session, server_id: int, factory) -> dict[str, Any]:
     now = time.monotonic()
     with _lock:

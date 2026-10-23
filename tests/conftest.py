@@ -18,9 +18,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
-from app.dependencies import get_registry
+from app.dependencies import get_db_server_checker, get_registry
 from app.main import app
-from app.providers.fake import FakeRegistry
+from app.providers.fake import FakeDbServerChecker, FakeRegistry
 
 DEFAULT_PASSWORD = "correct-horse-battery"
 
@@ -57,6 +57,7 @@ def make_client(db_session):
     app.dependency_overrides[get_registry] = lambda: FakeRegistry(
         default_size_bytes=DEFAULT_FAKE_IMAGE_SIZE_BYTES
     )
+    app.dependency_overrides[get_db_server_checker] = lambda: FakeDbServerChecker()
     clients = []
 
     def _make() -> TestClient:
