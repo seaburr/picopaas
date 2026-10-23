@@ -23,6 +23,39 @@ class PodSection:
 
 
 @dataclass
+class PodInfo:
+    """Metadata of one pod, for the pod picker. `rollout` is the pod-template-hash (or None); `current` is set by
+    `mark_current`."""
+    name: str
+    created_at: Optional[Any] = None  # datetime (tz-aware UTC) or None
+    phase: Optional[str] = None
+    ready: bool = False
+    current: bool = False
+    terminating: bool = False
+    rollout: Optional[str] = None
+
+
+def mark_current(infos: list["PodInfo"]) -> list["PodInfo"]:
+    """current = running+ready, not terminating, and part of the newest rollout (the pod-template-hash of the
+    newest-created non-terminating pod). Without hashes: the running+ready pod(s) created most recently."""
+    live = [i for i in infos if not i.terminating]
+    stamp = lambda i: i.created_at.timestamp() if i.created_at is not None else 0.0  # noqa: E731
+    newest = max(live, key=stamp, default=None)
+    for i in infos:
+        i.current = False
+    if newest is not None and newest.rollout:
+        for i in live:
+            i.current = i.rollout == newest.rollout and i.phase == "Running" and i.ready
+    else:
+        good = [i for i in live if i.phase == "Running" and i.ready]
+        if good:
+            top = max(stamp(i) for i in good)
+            for i in good:
+                i.current = stamp(i) == top
+    return infos
+
+
+@dataclass
 class PodLogs:
     """Logs of an app's pods. `sections` has one entry per pod read (all pods, or just the requested one);
     `pods` lists every available pod name (so a UI can offer a picker). `pod`/`lines` are the flat view:
@@ -33,17 +66,21 @@ class PodLogs:
     note: Optional[str] = None
     pods: list[str] = field(default_factory=list)
     sections: list[PodSection] = field(default_factory=list)
+    pod_info: list[PodInfo] = field(default_factory=list)
 
     @classmethod
-    def from_sections(cls, sections: list[PodSection], pods: list[str], note: Optional[str] = None) -> "PodLogs":
+    def from_sections(cls, sections: list[PodSection], pods: list[str], note: Optional[str] = None,
+                      pod_info: Optional[list[PodInfo]] = None) -> "PodLogs":
+        pod_info = pod_info or []
         if len(sections) == 1:
             s = sections[0]
-            return cls(pod=s.pod, lines=list(s.lines), note=s.note or note, pods=pods, sections=sections)
+            return cls(pod=s.pod, lines=list(s.lines), note=s.note or note, pods=pods, sections=sections,
+                       pod_info=pod_info)
         lines: list[str] = []
         for s in sections:
             lines.append(f"=== pod {s.pod} ===")
             lines += s.lines if s.lines else [f"({s.note or 'no output'})"]
-        return cls(pod=None, lines=lines, note=note, pods=pods, sections=sections)
+        return cls(pod=None, lines=lines, note=note, pods=pods, sections=sections, pod_info=pod_info)
 
 
 class KubeProvider(ABC):
@@ -101,6 +138,11 @@ class KubeProvider(ABC):
         """Logs of the app container of every pod (or only `pod`, which must be one of the app's pods; raises
         LookupError otherwise) in an APP namespace (never the platform namespace); `tail` applies per pod.
         Includes the previous container's last lines when a pod's container restarted."""
+        raise NotImplementedError
+
+    def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
+        """Kubernetes Events about `pod` in an APP namespace, oldest first: [{"at": datetime|None (UTC), "type",
+        "reason", "count": int, "message"}]. Raises LookupError if the pod isn't in that namespace."""
         raise NotImplementedError
 
     @abstractmethod

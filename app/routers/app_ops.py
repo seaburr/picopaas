@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,14 @@ class PodLogsOut(BaseModel):
     restarts: int = 0
 
 
+class PodInfoOut(BaseModel):
+    name: str
+    created_at: Optional[datetime] = None
+    phase: Optional[str] = None
+    ready: bool = False
+    current: bool = False  # running+ready and part of the newest rollout; false for old/terminating/crashlooping pods
+
+
 class LogsOut(BaseModel):
     """`lines`/`pod` are the flat view (pod is null when several pods are merged; lines are grouped under
     "=== pod <name> ===" headers). `pods` lists every pod you can pass as ?pod=; `sections` is per-pod."""
@@ -36,6 +45,7 @@ class LogsOut(BaseModel):
     note: Optional[str] = None
     pods: List[str] = []
     sections: List[PodLogsOut] = []
+    pod_info: List[PodInfoOut] = []  # one per entry of `pods`
 
 
 def _get_app_or_404(db: Session, app_id: int, user: models.User) -> models.App:
@@ -71,8 +81,53 @@ def app_logs(
         return LogsOut(lines=[], pod=None, note="Couldn't read the logs right now. Try again in a moment.")
     return LogsOut(
         lines=result.lines, pod=result.pod, note=result.note, pods=result.pods,
+        pod_info=[PodInfoOut(name=i.name, created_at=i.created_at, phase=i.phase, ready=i.ready, current=i.current)
+                  for i in result.pod_info],
         sections=[PodLogsOut(pod=x.pod, lines=x.lines, note=x.note, restarts=x.restarts) for x in result.sections],
     )
+
+
+EVENTS_NOTE = "Kubernetes keeps events for only about 1 hour, so older events are gone."
+
+
+def _iso(dt: Optional[datetime]) -> str:
+    return dt.isoformat().replace("+00:00", "Z") if dt else "-"
+
+
+def _one_line(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+@router.get("/{app_id}/pods/{pod}/events")
+def app_pod_events(
+    app_id: int,
+    pod: str,
+    format: str = Query("text", pattern="^(text|json)$"),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+    kube: KubeProvider = Depends(get_kube),
+):
+    """Kubernetes Events about one pod, oldest first, as a text download (or `?format=json`)."""
+    app = _get_app_or_404(db, app_id, user)
+    namespace = k8s_manifests.namespace_name(app.id)  # from the app id only
+    try:
+        events = kube.pod_events(namespace, pod)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Pod not found.")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("app %s: reading pod events failed: %s", app.id, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Couldn't read the pod events right now. Try again in a moment.")
+    if format == "json":
+        return [{"at": e.get("at"), "type": e.get("type"), "reason": e.get("reason"),
+                 "count": e.get("count"), "message": e.get("message")} for e in events]
+    lines = [f"# {EVENTS_NOTE}"]
+    lines += [f"{_iso(e.get('at'))}  {_one_line(e.get('type') or '')}  {_one_line(e.get('reason') or '')}  "
+              f"x{e.get('count') or 1}  {_one_line(e.get('message') or '')}" for e in events]
+    if not events:
+        lines.append("(no events)")
+    slug = "".join(c if c.isalnum() or c in "-_." else "-" for c in (app.name or str(app.id))) or str(app.id)
+    fname = f"{slug}-{''.join(c if c.isalnum() or c in '-_.' else '-' for c in pod)}-events.txt"
+    return PlainTextResponse("\n".join(lines) + "\n", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 class PodUsage(BaseModel):

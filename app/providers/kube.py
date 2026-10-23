@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from app.providers.base import KubeProvider, PodLogs, PodSection
+from app.providers.base import KubeProvider, PodInfo, PodLogs, PodSection, mark_current
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +113,31 @@ def pod_events(pod: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _as_dict(obj: Any) -> dict[str, Any]:
     return obj if isinstance(obj, dict) else obj.to_dict()
+
+
+def _aware_ts(v: Any) -> datetime | None:
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        try:
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if v.tzinfo is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return v.astimezone(timezone.utc)
+
+
+def _pod_info(pod: dict[str, Any]) -> PodInfo:
+    meta = pod.get("metadata") or {}
+    st = pod.get("status") or {}
+    conds = {c.get("type"): c.get("status") for c in st.get("conditions") or []}
+    return PodInfo(
+        name=meta.get("name"), created_at=_aware_ts(meta.get("creationTimestamp") or meta.get("creation_timestamp")),
+        phase=st.get("phase"), ready=conds.get("Ready") == "True",
+        terminating=bool(meta.get("deletionTimestamp") or meta.get("deletion_timestamp")),
+        rollout=(meta.get("labels") or {}).get("pod-template-hash"),
+    )
 
 
 class KubeClientProvider(KubeProvider):
@@ -281,11 +306,32 @@ class KubeClientProvider(KubeProvider):
             return PodLogs(pod=None, lines=[], note="No running pod yet.")
         pods = sorted(pods, key=lambda p: p["metadata"]["name"])[:MAX_LOG_PODS]
         names = [p["metadata"]["name"] for p in pods]
+        info = mark_current([_pod_info(p) for p in pods])
         if pod is not None:
             if pod not in names:  # only names we just listed are ever passed to the log API
                 raise LookupError(pod)
             pods = [p for p in pods if p["metadata"]["name"] == pod]
-        return PodLogs.from_sections([self._pod_section(namespace, p, tail) for p in pods], names)
+        return PodLogs.from_sections([self._pod_section(namespace, p, tail) for p in pods], names, pod_info=info)
+
+    def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
+        if not namespace.startswith("app-"):
+            raise ValueError("not an app namespace")
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        if pod not in [(p.get("metadata") or {}).get("name") for p in pods]:
+            raise LookupError(pod)
+        evs = self.core.list_namespaced_event(namespace=namespace, field_selector=f"involvedObject.name={pod}").items
+        out = []
+        for e in evs:
+            d = _as_dict(e)
+            io = d.get("involved_object") or d.get("involvedObject") or {}
+            if io.get("name") != pod:
+                continue
+            at = (d.get("last_timestamp") or d.get("lastTimestamp") or d.get("event_time") or d.get("eventTime")
+                  or (d.get("metadata") or {}).get("creation_timestamp"))
+            out.append({"at": _aware_ts(at), "type": d.get("type") or "", "reason": d.get("reason") or "",
+                        "count": int(d.get("count") or 1), "message": d.get("message") or ""})
+        out.sort(key=lambda x: x["at"].timestamp() if x["at"] else 0.0)
+        return out
 
     def _pod_section(self, namespace: str, pod: dict[str, Any], tail: int) -> PodSection:
         name = pod["metadata"]["name"]

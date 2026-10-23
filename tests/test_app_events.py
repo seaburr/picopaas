@@ -86,7 +86,7 @@ def test_provider_lists_pods_once_and_only_app_namespaces():
 def test_same_eviction_over_many_sweeps_is_one_event(session):
     app = _running_app(session)
     kube = FakeKubeProvider()
-    kube.pod_events[k8s_manifests.namespace_name(app.id)] = [_ev("u1:evicted", "disk")]
+    kube.restart_events[k8s_manifests.namespace_name(app.id)] = [_ev("u1:evicted", "disk")]
     for _ in range(4):
         _sweep(session, kube)
     rows = _events(session, app)
@@ -100,7 +100,7 @@ def test_each_kind_message(session):
     kube = FakeKubeProvider()
     ns = k8s_manifests.namespace_name(app.id)
     t = _utcnow()
-    kube.pod_events[ns] = [
+    kube.restart_events[ns] = [
         _ev("a", "disk", t - timedelta(minutes=3)), _ev("b", "evicted", t - timedelta(minutes=2)),
         _ev("c", "oom", t - timedelta(minutes=1)), _ev("d", "crashed", t, code=7),
     ]
@@ -117,7 +117,7 @@ def test_only_newest_20_kept_and_not_readded(session):
     kube = FakeKubeProvider()
     ns = k8s_manifests.namespace_name(app.id)
     t = _utcnow() - timedelta(hours=1)
-    kube.pod_events[ns] = [_ev(f"k{i}", "crashed", t + timedelta(minutes=i), code=1) for i in range(25)]
+    kube.restart_events[ns] = [_ev(f"k{i}", "crashed", t + timedelta(minutes=i), code=1) for i in range(25)]
     _sweep(session, kube)
     rows = _events(session, app)
     assert len(rows) == 20
@@ -132,7 +132,7 @@ def test_events_not_recorded_for_non_running_apps(session):
     app.error_retryable = False
     session.commit()
     kube = FakeKubeProvider()
-    kube.pod_events[k8s_manifests.namespace_name(app.id)] = [_ev("u1:evicted", "disk")]
+    kube.restart_events[k8s_manifests.namespace_name(app.id)] = [_ev("u1:evicted", "disk")]
     _sweep(session, kube)
     assert _events(session, app) == []
 

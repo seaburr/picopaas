@@ -125,8 +125,8 @@ def test_admin_routes_forbidden_for_non_admin(make_client):
 def test_platform_admin_cannot_be_suspended_or_deleted(make_client):
     admin, _, _ = _setup(make_client)
     aid = next(u["id"] for u in admin.get("/admin/users").json() if u["role"] == "platform_admin")
-    assert admin.post(f"/admin/users/{aid}/suspend").status_code == 400
-    assert admin.delete(f"/admin/users/{aid}").status_code == 400
+    assert admin.post(f"/admin/users/{aid}/suspend").status_code == 409  # last active admin
+    assert admin.delete(f"/admin/users/{aid}").status_code == 409
     assert admin.get("/auth/me").json()["status"] == "active"
 
 

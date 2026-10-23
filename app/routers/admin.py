@@ -1,9 +1,13 @@
+import csv
+import io
+import json
 import logging
 import secrets
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
@@ -154,8 +158,15 @@ def _get_user_or_404(db: Session, user_id: int) -> models.User:
     return user
 
 
-def _protect_platform_admin(user: models.User) -> None:
+def _active_admin_count(db: Session) -> int:
+    return (db.query(models.User)
+            .filter(models.User.role == "platform_admin", models.User.status == "active").count())
+
+
+def _protect_platform_admin(user: models.User, db: Optional[Session] = None) -> None:
     if user.is_platform_admin:
+        if db is not None and user.status == "active" and _active_admin_count(db) <= 1:
+            raise HTTPException(status_code=409, detail="This is the last active administrator. Promote another user first.")
         raise HTTPException(status_code=400, detail="The main administrator account can't be suspended or deleted.")
 
 
@@ -181,7 +192,7 @@ def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
 def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
-    _protect_platform_admin(user)
+    _protect_platform_admin(user, db)
     user.status = "suspended"
     for a in _live_apps(db, user.id):
         if a.status != "suspended":  # already admin-suspended apps stay individually suspended
@@ -210,6 +221,32 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.Us
     return _user_out(db, user)
 
 
+@router.post("/users/{user_id}/promote", response_model=AdminUserOut)
+def promote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+    user = _get_user_or_404(db, user_id)
+    if user.status != "active":
+        raise HTTPException(status_code=409, detail=f"Only active users can be promoted (this user is {user.status}).")
+    if user.is_platform_admin:
+        raise HTTPException(status_code=409, detail="This user is already an administrator. Refresh the list.")
+    user.role = "platform_admin"
+    db.commit()
+    audit.record(db, admin, "user.promote", "user", user.id)
+    return _user_out(db, user)
+
+
+@router.post("/users/{user_id}/demote", response_model=AdminUserOut)
+def demote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+    user = _get_user_or_404(db, user_id)
+    if not user.is_platform_admin:
+        raise HTTPException(status_code=409, detail="This user isn't an administrator. Refresh the list.")
+    if user.status == "active" and _active_admin_count(db) <= 1:
+        raise HTTPException(status_code=409, detail="This is the last active administrator. Promote another user first.")
+    user.role = "user"
+    db.commit()
+    audit.record(db, admin, "user.demote", "user", user.id)
+    return _user_out(db, user)
+
+
 @router.post("/users/{user_id}/reset-password", response_model=schemas.TemporaryPasswordOut)
 def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     """Set a random temporary password (shown once, never stored in clear or logged). The user is flagged
@@ -226,7 +263,7 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.Us
 @router.delete("/users/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
-    _protect_platform_admin(user)
+    _protect_platform_admin(user, db)
     now = datetime.now(timezone.utc)
     for a in _live_apps(db, user.id):
         a.deleted_at = now  # the reconciler tears these down
@@ -444,6 +481,39 @@ def admin_delete_app(app_id: int, db: Session = Depends(get_db), admin: models.U
     db.commit()
     audit.record(db, admin, "app.delete", "app", a.id, "by admin")
     return None
+
+
+AUDIT_EXPORT_MAX = 50_000
+_AUDIT_FIELDS = ["id", "at", "actor_email", "action", "target_type", "target_id", "detail"]
+
+
+def _csv_safe(v) -> str:
+    """Neutralise spreadsheet formula injection: cells starting with = + - @ tab or CR get a leading quote."""
+    text = "" if v is None else str(v)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+@router.get("/audit/export")
+def export_audit(format: Literal["csv", "json"] = Query("csv"), db: Session = Depends(get_db),
+                 admin: models.User = Depends(require_platform_admin)):
+    """Download the audit log (newest first, at most 50,000 rows) as CSV or JSON."""
+    rows = db.query(models.AuditLog).order_by(models.AuditLog.id.desc()).limit(AUDIT_EXPORT_MAX).all()
+    data = [AuditOut.model_validate(r) for r in rows]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    if format == "json":
+        body = json.dumps([d.model_dump(mode="json") for d in data], indent=1)
+        media = "application/json"
+    else:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(_AUDIT_FIELDS)
+        for d in data:
+            w.writerow([_csv_safe(d.at.isoformat() if k == "at" else getattr(d, k)) for k in _AUDIT_FIELDS])
+        body = buf.getvalue()
+        media = "text/csv; charset=utf-8"
+    audit.record(db, admin, "audit.export", "audit", None, f"format={format} rows={len(data)}")
+    return Response(body, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="picopaas-audit-{stamp}.{format}"'})
 
 
 @router.get("/audit", response_model=List[AuditOut])

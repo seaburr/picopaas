@@ -6,7 +6,9 @@ from typing import Any, Optional
 
 from app.providers.base import (
     ImageInfo,
+    PodInfo,
     PodLogs,
+    mark_current,
     PodSection,
     KubeProvider,
     MySQLAdmin,
@@ -33,8 +35,30 @@ class FakeKubeProvider(KubeProvider):
         self.pod_lines: dict[str, dict[str, list[str]]] = {}  # ns -> {pod name: log lines} (multi-pod)
         self.log_calls: list[tuple[str, int]] = []
         self.used_limits: dict[str, Optional[dict[str, int]]] = {}
-        self.pod_events: dict[str, list[dict[str, Any]]] = {}  # ns -> events (shape: KubeProvider.app_pod_events)
+        self.restart_events: dict[str, list[dict[str, Any]]] = {}  # ns -> events (shape: KubeProvider.app_pod_events)
         self.pod_event_calls = 0
+        # ns -> {pod: PodInfo}: canned pod metadata for pod_logs(); pods without an entry get Running/ready/now.
+        self.pod_meta: dict[str, dict[str, PodInfo]] = {}
+        # ns -> {pod: [event dicts]} for pod_events() (shape: KubeProvider.pod_events)
+        self.k8s_events: dict[str, dict[str, list[dict[str, Any]]]] = {}
+
+    def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
+        known = set(self.pod_lines.get(namespace, {})) | set(self.pod_meta.get(namespace, {}))
+        canned = self.logs.get(namespace)
+        if canned is not None and canned.pod:
+            known.add(canned.pod)
+        if pod not in known:
+            raise LookupError(pod)
+        evs = list(self.k8s_events.get(namespace, {}).get(pod, []))
+        return sorted(evs, key=lambda e: e["at"].timestamp() if e.get("at") else 0.0)
+
+    def _infos(self, namespace: str, names: list[str]) -> list[PodInfo]:
+        import datetime as dt
+        base = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        meta = self.pod_meta.get(namespace, {})
+        infos = [meta.get(n) or PodInfo(name=n, created_at=base + dt.timedelta(minutes=i), phase="Running", ready=True)
+                 for i, n in enumerate(names)]
+        return mark_current(infos)
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -88,7 +112,7 @@ class FakeKubeProvider(KubeProvider):
 
     def app_pod_events(self) -> dict[str, list[dict[str, Any]]]:
         self.pod_event_calls += 1
-        return {ns: list(evs) for ns, evs in self.pod_events.items()}
+        return {ns: list(evs) for ns, evs in self.restart_events.items()}
 
     def pending_hint(self, namespace: str) -> str:
         return self.hints.get(namespace, "none")
@@ -101,11 +125,14 @@ class FakeKubeProvider(KubeProvider):
             if pod is not None and pod not in multi:
                 raise LookupError(pod)
             chosen = [pod] if pod is not None else names
-            return PodLogs.from_sections([PodSection(pod=n, lines=multi[n][-tail:]) for n in chosen], names)
+            return PodLogs.from_sections([PodSection(pod=n, lines=multi[n][-tail:]) for n in chosen], names,
+                                         pod_info=self._infos(namespace, names))
         out = self.logs.get(namespace, PodLogs(pod=None, lines=[], note="No running pod yet."))
         if out.pod and not out.sections:  # canned single-pod logs
             out.pods = [out.pod]
             out.sections = [PodSection(pod=out.pod, lines=out.lines, note=out.note)]
+        if out.pod and not out.pod_info:
+            out.pod_info = self._infos(namespace, [out.pod])
         return out
 
 

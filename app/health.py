@@ -270,5 +270,9 @@ def db_counts(db: Session) -> dict[str, Any]:
             "apps_total": total, "by_status": by_status,
             "with_db": db.query(func.count(A.id)).filter(live, A.want_db.is_(True)).scalar() or 0,
             "with_storage": db.query(func.count(A.id)).filter(live, A.want_storage.is_(True)).scalar() or 0,
+            "by_db_engine": {
+                "mysql": db.query(func.count(A.id)).filter(live, A.want_db.is_(True), A.db_engine == "mysql").scalar() or 0,
+                "postgres": db.query(func.count(A.id)).filter(live, A.want_db.is_(True), A.db_engine == "pg").scalar() or 0,
+            },
         },
     }

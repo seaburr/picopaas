@@ -254,7 +254,7 @@ def test_logs_endpoint_authz_tail_cap_and_note(make_client, kube):
     register_and_login(c, "o@example.com")
     app_id = _create(c)
     r = c.get(f"/apps/{app_id}/logs")
-    assert r.status_code == 200 and r.json() == {"lines": [], "pod": None, "note": "No running pod yet.", "pods": [], "sections": []}
+    assert r.status_code == 200 and r.json() == {"lines": [], "pod": None, "note": "No running pod yet.", "pods": [], "sections": [], "pod_info": []}
     assert kube.log_calls[-1] == (f"app-{app_id}", 200)
     kube.logs[f"app-{app_id}"] = PodLogs(pod="app-1-abc", lines=["a", "b"])
     assert c.get(f"/apps/{app_id}/logs?tail=99999").json()["lines"] == ["a", "b"]

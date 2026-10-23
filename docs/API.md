@@ -23,13 +23,13 @@ everywhere a user is accepted except where marked "session only".
 | POST | `/apps/{app_id}/rotate-credentials` | owner |
 | PUT, DELETE | `/apps/{app_id}/domain` | owner |
 | POST | `/apps/{app_id}/domain/verify` | owner |
-| GET | `/apps/{app_id}/logs`, `/events`, `/metrics-history`, `/image-history` | owner or admin |
+| GET | `/apps/{app_id}/logs`, `/pods/{pod}/events`, `/events`, `/metrics-history`, `/image-history` | owner or admin |
 | GET | `/apps/{app_id}/database/usage`, `/storage/usage` | owner or admin |
 | POST | `/apps/{app_id}/storage/delete` | owner or admin |
 | POST | `/apps/{app_id}/restart`, `/check-image`, `/rollback` | owner or admin |
-| GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/db-servers`, `/admin/health`, `/admin/docs/admin-guide` | admin |
+| GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/docs/admin-guide` | admin |
 | PATCH | `/admin/users/{user_id}` | admin |
-| POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password` | admin |
+| POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote` | admin |
 | DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
 | POST | `/admin/apps/{app_id}/suspend`, `/unsuspend` | admin |
 | PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin |
@@ -151,7 +151,8 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | GET | `/apps/{app_id}/storage/usage` | none | Live `{size_bytes, limit_bytes, over_quota, objects, top_prefixes[{prefix, size_bytes, objects}]}` (top 5 first-path-segment prefixes). 404 if no bucket. Owner or admin. |
 | POST | `/apps/{app_id}/storage/delete` | `{"prefix": "..."}` or `{"all": true}` (exactly one; 422 otherwise) | `{deleted, size_bytes, truncated, over_quota}`. Deletes with the platform's credentials (an over-cap app's own key is read-only), at most 5000 objects per call (`truncated` = more remain). Re-measures; if now under the cap the read-write key is restored immediately. Audit-logged as `app.storage.delete`. Owner or admin. |
 | GET | `/apps/{app_id}/events` | none | Recent events, newest first, at most 20: `[{at, kind, message}]`. `kind` is `disk` (over the app's local scratch disk, 250 MB by default), `evicted` (other eviction), `oom` (out of memory) or `crashed` (non-zero exit; the message has the code) or `rollback` (a new image failed to start and the previous version was restored). Recorded once per occurrence by the reconciler. Owner or admin; others get 404. |
-| GET | `/apps/{app_id}/logs?tail=N&pod=NAME` | none | `{lines[], pod, note, pods[], sections[{pod, lines[], note, restarts}]}`. Multi-pod aware: with no `pod`, every pod is read; `sections` is per pod, `pods` lists the names you can pass as `?pod=` (unknown name: 404), and `lines` is the flat view grouped under `=== pod NAME ===` headers (`pod` is null when several pods are merged, the name when one). `tail` is per pod, 1 or more, default 200, capped at 1000. `lines` is empty and `note` explains why when there is no pod or the logs can't be read. Owner or admin. |
+| GET | `/apps/{app_id}/logs?tail=N&pod=NAME` | none | `{lines[], pod, note, pods[], sections[{pod, lines[], note, restarts}], pod_info[{name, created_at, phase, ready, current}]}`. `pod_info` has one entry per pod in `pods`; `current` is true for running, ready pods of the newest rollout (false for old, terminating or crash-looping pods). Multi-pod aware: with no `pod`, every pod is read; `sections` is per pod, `pods` lists the names you can pass as `?pod=` (unknown name: 404), and `lines` is the flat view grouped under `=== pod NAME ===` headers (`pod` is null when several pods are merged, the name when one). `tail` is per pod, 1 or more, default 200, capped at 1000. `lines` is empty and `note` explains why when there is no pod or the logs can't be read. Owner or admin. |
+| GET | `/apps/{app_id}/pods/{pod}/events?format=text\|json` | none | Kubernetes Events about one pod, oldest first. Default `text/plain` download (`Content-Disposition: attachment; filename="<app-name>-<pod>-events.txt"`): a first `#` line noting Kubernetes keeps events only about 1 hour, then one line per event: `<ISO time>  <type>  <reason>  x<count>  <message>`. `?format=json` returns `[{at, type, reason, count, message}]`. 404 if the pod isn't one of the app's pods. Owner or admin. |
 | GET | `/apps/{app_id}/metrics-history` | none | `{points[{ts, cpu_m, mem_mi, pods, per_pod{POD:{cpu_m,mem_mi}}}], cpu_limit_m, mem_limit_mi, replicas, pods, cpu_capacity_m, mem_capacity_mi}`. Point `cpu_m`/`mem_mi` are SUMS over `pods` pods; `cpu_limit_m`/`mem_limit_mi` are PER POD. Draw usage against `cpu_capacity_m`/`mem_capacity_mi` (= max(replicas, latest pods) x per-pod limit); a past point's own capacity is `point.pods x` per-pod limit. `per_pod` is empty on older samples. Owner or admin. |
 | POST | `/apps/{app_id}/restart` | none | `App`. Owner or admin. 409 if suspended. Re-resolves the image tag first ("pull latest"); a new image that fails the checks is skipped and the old one restarted (`image_update_error` is set). |
 | POST | `/apps/{app_id}/check-image` | none | `App`. Owner or admin. Re-resolves the tag now and redeploys if it changed and passes the checks. 502 if the registry can't be reached; 409 if suspended. |
@@ -239,7 +240,9 @@ Admins can also read and operate on any app through the `/apps/{app_id}/...` rou
 | POST | `/admin/users/{user_id}/suspend` | none | `AdminUser`. Suspends their apps too. 400 for the main administrator. |
 | POST | `/admin/users/{user_id}/unsuspend` | none | `AdminUser`. 409 unless suspended; apps suspended with the account come back. |
 | POST | `/admin/users/{user_id}/reset-password` | none | `{temporary_password}`, shown once; sets `must_change_password`. |
-| DELETE | `/admin/users/{user_id}` | none | 204. Revokes their API keys and deletes their apps. 400 for the main administrator. |
+| POST | `/admin/users/{user_id}/promote` | none | `AdminUser` with `role: platform_admin`. 409 unless the user is `active`, or if they are already an administrator. Audited as `user.promote`. |
+| POST | `/admin/users/{user_id}/demote` | none | `AdminUser` with `role: user`. 409 if they aren't an administrator, or if it would leave zero active administrators. Demoting yourself works only when another active administrator exists. Audited as `user.demote`. |
+| DELETE | `/admin/users/{user_id}` | none | 204. Revokes their API keys and deletes their apps. 400 for any administrator (demote first); 409 for the last active administrator. |
 
 All user routes return 404 for an unknown or deleted user. Each action is audited.
 
@@ -282,9 +285,17 @@ each field for this app's engine). `exceeds_platform_caps` and `restarts_app` ar
 re-checks usage immediately (a raised quota restores a read-only database or bucket right away).
 `AppOut.quota.*.limit_bytes` and `/apps/{id}/database|storage/usage` reflect the app's effective quotas.
 
+### Recovery CLI
+
+Not an HTTP API. Break-glass commands, run in the API pod (`kubectl exec -it deploy/<api> -- python -m app.manage ...`):
+`grant-admin <email>` (promote an existing user and activate them), `list-admins`, `reset-password <email>` (prints a
+temporary password once and sets `must_change_password`). They use the app's `DATABASE_URL` and audit as actor `manage-cli`.
+
 ### Audit log
 
 `GET /admin/audit?limit=100` (1 to 1000, newest first): `[{id, at, actor_email, action, target_type, target_id, detail}]`.
+
+`GET /admin/audit/export?format=csv|json` (default `csv`): download of up to 50,000 rows, newest first, same fields as above, as an attachment named `picopaas-audit-YYYYMMDD.csv|json`. CSV cells starting with `=`, `+`, `-`, `@`, tab or CR get a leading `'` (spreadsheet formula injection). Each download is audited as `audit.export`. Admin only.
 
 ### Database servers
 
@@ -303,7 +314,7 @@ re-checks usage immediately (a raised quota restores a read-only database or buc
 max_nodes, pods_total}, nodes[], apps[] (per app: status, pods, restarts, CPU and memory used, per-pod limits,
 replicas, aggregate capacity, pod_usage[]), platform[] (pods in the platform namespaces), db_servers[] (`DbServer`
 plus live metrics), users{total, active, pending, suspended}, pending_users[], workloads{apps_total, by_status, with_db,
-with_storage}`. The cluster snapshot is cached about 15 seconds; `warming` is true until the first one lands.
+with_storage, by_db_engine{mysql, postgres}}`. The cluster snapshot is cached about 15 seconds; `warming` is true until the first one lands.
 
 ### Admin guide
 
