@@ -7,6 +7,12 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Approve persistent volumes (request 0007)?** Lets an app mount one DigitalOcean block-storage volume (needed for your
+  WordPress blog). $0 static, $0.10/GiB/mo per volume (1 GiB min, billed even if the app is stopped); worst case with
+  defaults about $1/mo. Each deploy of a volume app has about a minute of downtime. Background and the two decisions
+  (enable on this instance, size/count defaults): `docs/requests/0007-persistent-volumes.md`. **Default if unanswered:
+  stays disabled.** — _your answer:_
+
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
@@ -39,6 +45,12 @@ background on each item if you want it.
   only, so a leaked key can't mint more or change scope. Pick the tier on the API-keys page. See `docs/API.md`.
 
 ## To-dos (only you can do these)
+
+- [ ] **Make the GHCR package `picopaas-example-wordpress` public after its first build.** New GHCR packages are private by
+      default and the cluster pulls anonymously, so deploys fail with an image-pull error until this is done. Go to
+      https://github.com/users/seaburr/packages/container/picopaas-example-wordpress/settings, then **Change visibility**,
+      choose **Public**, confirm. (The package only exists after the examples workflow has built it once. The ledger does not
+      record how `picopaas-example-ghost` was made public, only that it became anonymously pullable; same steps apply.)
 
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
       second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.

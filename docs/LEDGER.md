@@ -5,6 +5,12 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [wp-expert] DONE (uncommitted): WordPress hardening pass: WP-CLI auto-install with once-printed random admin password, installer 403, 503 until configured, 8 required salt secrets, DB TLS flag, core served from image path without a volume, wordpress added to examples.yml matrix + weekly schedule. Rebuilt and retested locally (read-only, uid 10001, cap-drop ALL, MySQL 8.4 TLS).
+- 2026-10-23 [wp-expert] START: follow-up hardening (auto-install, salts, TLS, no-volume core path, examples.yml, README).
+- 2026-10-23 [infra-ops] DONE (uncommitted): docs/requests/0007-persistent-volumes.md (PENDING; $0 static, $0.10/GiB/mo, 15 vols/node, worst case ~$1/mo), QUESTIONS.md open question + GHCR wordpress-public to-do. Nothing provisioned. StorageClass reclaim/expansion NOT verified live (kubectl context was not DOKS).
+- 2026-10-23 [infra-ops] START: request 0007 persistent volumes (docs only, no apply).
+- 2026-10-23 [wp-expert] DONE (uncommitted): docs/research/wordpress-requirements.md (site inventory, runtime design, REQ-0..15) and examples/wordpress/ (Dockerfile, nginx, php-fpm, php.ini, entrypoint, wp-config template, README). PHP pinned 8.5.12 (CVE-2026-109618/-109619 fixed), WP 7.1.3. Built and run locally read-only/non-root: boots, installs against a MySQL container, 119 MB compressed. Not deployed.
+- 2026-10-23 [wp-expert] START: WordPress requirements doc and non-root nginx+php-fpm example image (no deploy, no commit).
 - 2026-10-23 [scm-security] DONE: db-server password rotation + UI pushed; gitleaks clean. Security note: admin_password write-only, verified before storing, audit logs value-free. No findings.
 - 2026-10-23 [scm-security] START: commit/push db-server password rotation + check, UI dialog, ledger; watch CI/deploy.
 - 2026-10-23 [backend-dev] DONE (uncommitted): db-server admin password rotation + connection check. PATCH admin_password (write-only, verified then stored encrypted, audit `admin_password=changed`), create/PATCH(password or ca_cert) run SELECT 1 via injectable get_db_server_checker (app/providers/dbcheck.py real, FakeDbServerChecker, conftest default ok); 422 classified detail. health.invalidate_db_server drops cached metrics. UI: Change password dialog in AdminView. Tests: tests/test_db_server_check.py. Docs: API.md, ADMIN_GUIDE.
