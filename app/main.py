@@ -12,7 +12,7 @@ from sqlalchemy import or_
 from app import config
 from app import models
 from app.db import Base, engine, get_db
-from app.routers import admin, api_keys, app_ops, apps, auth, spec, templates, usage
+from app.routers import admin, admin_docs, api_keys, app_ops, apps, auth, spec, templates, usage
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
 # create_all is a no-op against tables that already exist, which keeps the SQLite
@@ -47,6 +47,7 @@ app.include_router(api_keys.router)
 app.include_router(spec.router)
 app.include_router(templates.router)
 app.include_router(admin.router)
+app.include_router(admin_docs.router)
 
 
 @app.get("/healthz")

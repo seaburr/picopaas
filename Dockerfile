@@ -29,6 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 COPY alembic/ ./alembic/
+# Served to admins by GET /admin/docs/admin-guide (app/routers/admin_docs.py).
+COPY docs/ADMIN_GUIDE.md ./docs/ADMIN_GUIDE.md
 COPY alembic.ini ./
 COPY entrypoint.sh ./
 COPY --from=frontend-build /static ./static
