@@ -7,10 +7,10 @@ the dynamic client so any kind (incl. CRDs) works with no per-kind code.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.providers.base import KubeProvider, PodInfo, PodLogs, PodSection, mark_current
+from app.providers.base import FINISHED_PHASES, KubeProvider, PodInfo, PodLogs, PodSection, mark_current, select_log_pods
 
 log = logging.getLogger(__name__)
 
@@ -304,14 +304,41 @@ class KubeClientProvider(KubeProvider):
         pods = [p for p in pods if not (p.get("metadata") or {}).get("deletionTimestamp")] or pods
         if not pods:
             return PodLogs(pod=None, lines=[], note="No running pod yet.")
-        pods = sorted(pods, key=lambda p: p["metadata"]["name"])[:MAX_LOG_PODS]
-        names = [p["metadata"]["name"] for p in pods]
-        info = mark_current([_pod_info(p) for p in pods])
+        by_name = {p["metadata"]["name"]: p for p in pods}
+        # Live pods only (current first); a finished/Evicted pod shows up only when nothing live exists.
+        info = select_log_pods(mark_current([_pod_info(p) for p in pods]))[:MAX_LOG_PODS]
+        names = [i.name for i in info]
+        pods = [by_name[n] for n in names]
         if pod is not None:
             if pod not in names:  # only names we just listed are ever passed to the log API
                 raise LookupError(pod)
             pods = [p for p in pods if p["metadata"]["name"] == pod]
         return PodLogs.from_sections([self._pod_section(namespace, p, tail) for p in pods], names, pod_info=info)
+
+    def delete_finished_pods(self, older_than: timedelta) -> int:
+        """Delete Succeeded/Failed pods (Evicted pods are Failed and the kubelet only GCs them past
+        terminated-pod-gc-threshold, default 12500) finished more than `older_than` ago. App namespaces only."""
+        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get()).get("items", [])
+        cutoff = datetime.now(timezone.utc) - older_than
+        res = self.dyn.resources.get(api_version="v1", kind="Pod")
+        n = 0
+        for pod in pods:
+            meta, st = pod.get("metadata") or {}, pod.get("status") or {}
+            ns = meta.get("namespace") or ""
+            if not ns.startswith("app-") or st.get("phase") not in FINISHED_PHASES or not meta.get("name"):
+                continue
+            ends = [_aware_ts((((c.get("state") or {}).get("terminated")) or {}).get("finishedAt"))
+                    for c in st.get("containerStatuses") or []]
+            ended = max((e for e in ends if e), default=None) or _aware_ts(st.get("startTime")) \
+                or _aware_ts(meta.get("creationTimestamp"))
+            if ended is None or ended > cutoff:
+                continue
+            try:
+                res.delete(name=meta["name"], namespace=ns)
+                n += 1
+            except Exception as exc:  # noqa: BLE001 - already gone / forbidden: try again next sweep
+                log.warning("delete finished pod %s/%s failed: %s", ns, meta["name"], type(exc).__name__)
+        return n
 
     def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
         if not namespace.startswith("app-"):

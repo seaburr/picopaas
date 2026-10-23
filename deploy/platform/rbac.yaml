@@ -38,6 +38,12 @@ rules:
     resources: ["resourcequotas", "limitranges", "secrets", "services"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Delete finished (Succeeded/Failed, e.g. Evicted) pods so they don't pile up (kubelet GC threshold is 12500).
+  # Namespaced on purpose: the cluster-wide role stays read-only for pods.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+
   # The app's Deployment (server-side apply = patch; get_status lists them).
   - apiGroups: ["apps"]
     resources: ["deployments"]
@@ -71,7 +77,7 @@ rules:
     verbs: ["bind"]
     resourceNames: ["picopaas-app-ns"]
 
-  # Pod status only — no delete, no exec/attach/portforward subresources. Cluster-wide: app_pod_events() and the admin
+  # Pod status only — no delete (finished-pod delete lives in picopaas-app-ns), no exec/attach/portforward subresources. Cluster-wide: app_pod_events() and the admin
   # health snapshot list pods across all namespaces.
   - apiGroups: [""]
     resources: ["pods"]

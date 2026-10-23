@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any, Optional
 
 
@@ -53,6 +54,20 @@ def mark_current(infos: list["PodInfo"]) -> list["PodInfo"]:
             for i in good:
                 i.current = stamp(i) == top
     return infos
+
+
+FINISHED_PHASES = ("Succeeded", "Failed")
+
+
+def select_log_pods(infos: list["PodInfo"]) -> list["PodInfo"]:
+    """What the pod picker / merged logs show: live (non-finished) pods only, current first, then Running, then
+    newest. Finished (Succeeded/Failed, e.g. Evicted) pods are dropped unless nothing live exists, in which case
+    only the newest finished one is kept so crash logs stay reachable. Call after mark_current."""
+    stamp = lambda i: i.created_at.timestamp() if i.created_at is not None else 0.0  # noqa: E731
+    live = [i for i in infos if i.phase not in FINISHED_PHASES]
+    if not live:
+        return sorted(infos, key=lambda i: (-stamp(i), i.name))[:1]
+    return sorted(live, key=lambda i: (not i.current, i.phase != "Running", -stamp(i), i.name))
 
 
 @dataclass
@@ -132,6 +147,11 @@ class KubeProvider(ABC):
         event = {"key": str (stable per occurrence: pod uid + restartCount/finishedAt), "at": naive-UTC datetime,
         "kind": "disk" | "evicted" | "oom" | "crashed", "exit_code": int | None}."""
         return {}
+
+    def delete_finished_pods(self, older_than: timedelta) -> int:
+        """Delete Succeeded/Failed (e.g. Evicted) pods that finished more than `older_than` ago, in APP namespaces
+        only. Returns how many were deleted. Callers record restart events first (they are read from pod status)."""
+        return 0
 
     @abstractmethod
     def pod_logs(self, namespace: str, tail: int, pod: Optional[str] = None) -> "PodLogs":

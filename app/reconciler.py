@@ -179,6 +179,7 @@ EVENT_MESSAGES = {
     "crashed": "Restarted: your app exited with code {code}. Check the logs.",
 }
 EVENTS_KEPT = 20
+FINISHED_POD_MAX_AGE = timedelta(hours=1)  # Succeeded/Failed (Evicted) app pods older than this are deleted
 LAST_EVENT_MAX_AGE = timedelta(hours=24)
 
 
@@ -755,6 +756,14 @@ def reconcile_all(
         except Exception as exc:  # noqa: BLE001 - events are informational; never break the sweep
             session.rollback()
             log.warning("recording app events failed: %s", _kube_error_summary(exc))
+            events_ok = False
+        else:
+            events_ok = True
+        if events_ok:  # only after the restart/eviction events were stored: they are read from the pod status
+            try:
+                kube.delete_finished_pods(FINISHED_POD_MAX_AGE)
+            except Exception as exc:  # noqa: BLE001 - housekeeping; never break the sweep
+                log.warning("finished pod cleanup failed: %s", _kube_error_summary(exc))
 
     not_cleaned_up = (
         session.execute(

@@ -9,6 +9,7 @@ from app.providers.base import (
     PodInfo,
     PodLogs,
     mark_current,
+    select_log_pods,
     PodSection,
     KubeProvider,
     MySQLAdmin,
@@ -37,6 +38,8 @@ class FakeKubeProvider(KubeProvider):
         self.used_limits: dict[str, Optional[dict[str, int]]] = {}
         self.restart_events: dict[str, list[dict[str, Any]]] = {}  # ns -> events (shape: KubeProvider.app_pod_events)
         self.pod_event_calls = 0
+        self.cleanup_calls: list[Any] = []  # delete_finished_pods(older_than) calls
+        self.cleanup_result = 0
         # ns -> {pod: PodInfo}: canned pod metadata for pod_logs(); pods without an entry get Running/ready/now.
         self.pod_meta: dict[str, dict[str, PodInfo]] = {}
         # ns -> {pod: [event dicts]} for pod_events() (shape: KubeProvider.pod_events)
@@ -58,7 +61,7 @@ class FakeKubeProvider(KubeProvider):
         meta = self.pod_meta.get(namespace, {})
         infos = [meta.get(n) or PodInfo(name=n, created_at=base + dt.timedelta(minutes=i), phase="Running", ready=True)
                  for i, n in enumerate(names)]
-        return mark_current(infos)
+        return select_log_pods(mark_current(infos))
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -114,6 +117,10 @@ class FakeKubeProvider(KubeProvider):
         self.pod_event_calls += 1
         return {ns: list(evs) for ns, evs in self.restart_events.items()}
 
+    def delete_finished_pods(self, older_than: Any) -> int:
+        self.cleanup_calls.append(older_than)
+        return self.cleanup_result
+
     def pending_hint(self, namespace: str) -> str:
         return self.hints.get(namespace, "none")
 
@@ -121,12 +128,13 @@ class FakeKubeProvider(KubeProvider):
         self.log_calls.append((namespace, tail))
         multi = self.pod_lines.get(namespace)
         if multi:  # multi-pod fixture: {pod name: lines}; tail applies per pod, like the real provider
-            names = sorted(multi)
-            if pod is not None and pod not in multi:
+            info = self._infos(namespace, sorted(multi))  # live pods only, current first (like the real provider)
+            names = [i.name for i in info]
+            if pod is not None and pod not in names:
                 raise LookupError(pod)
             chosen = [pod] if pod is not None else names
             return PodLogs.from_sections([PodSection(pod=n, lines=multi[n][-tail:]) for n in chosen], names,
-                                         pod_info=self._infos(namespace, names))
+                                         pod_info=info)
         out = self.logs.get(namespace, PodLogs(pod=None, lines=[], note="No running pod yet."))
         if out.pod and not out.sections:  # canned single-pod logs
             out.pods = [out.pod]

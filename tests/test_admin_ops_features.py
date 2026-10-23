@@ -72,7 +72,7 @@ def test_logs_pod_info(owner, kube):
         "web-b": PodInfo(name="web-b", created_at=T0 + dt.timedelta(hours=1), phase="Running", ready=True, rollout="y"),
     }
     body = owner.get(f"/apps/{aid}/logs").json()
-    assert body["pods"] == ["web-a", "web-b"]
+    assert body["pods"] == ["web-b", "web-a"]
     info = {i["name"]: i for i in body["pod_info"]}
     assert set(info["web-a"]) == {"name", "created_at", "phase", "ready", "current"}
     assert info["web-a"]["current"] is False and info["web-b"]["current"] is True

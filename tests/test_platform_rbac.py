@@ -128,6 +128,9 @@ def test_reconciler_reads_deletes_and_status_calls_are_allowed(roles, docs):
     # get_status / get_used_limits / pending_hint / pod_logs / app_pod_events / cluster_snapshot
     assert ok("list", "", "pods", "app-7") and ok("get", "", "pods", "app-7") and ok("list", "", "pods")
     assert ok("get", "", "pods/log", "app-7")
+    assert ok("delete", "", "pods", "app-7")  # finished-pod cleanup, app namespaces only
+    assert not _allowed(roles, docs, "delete", "", "pods", "kube-system", bound_namespaces=b)
+    assert not _allowed(roles, docs, "delete", "", "pods")  # not cluster-wide
     assert ok("list", "", "events", "app-7")  # pod_events (download)
     assert ok("list", "apps", "deployments", "app-7") and ok("get", "apps", "deployments", "app-7")
     assert ok("list", "", "nodes") and ok("list", "metrics.k8s.io", "nodes") and ok("list", "metrics.k8s.io", "pods")

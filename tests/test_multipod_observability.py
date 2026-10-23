@@ -35,16 +35,16 @@ def test_logs_all_pods_grouped_and_per_pod_tail(owner, kube):
     aid = owner.post("/apps", json=APP).json()["id"]
     kube.pod_lines[f"app-{aid}"] = {"web-b": ["b1", "b2", "b3"], "web-a": ["a1", "a2", "a3"]}
     d = owner.get(f"/apps/{aid}/logs?tail=2").json()
-    assert d["pods"] == ["web-a", "web-b"] and d["pod"] is None
-    assert [(s["pod"], s["lines"]) for s in d["sections"]] == [("web-a", ["a2", "a3"]), ("web-b", ["b2", "b3"])]
-    assert d["lines"] == ["=== pod web-a ===", "a2", "a3", "=== pod web-b ===", "b2", "b3"]
+    assert d["pods"] == ["web-b", "web-a"] and d["pod"] is None
+    assert [(s["pod"], s["lines"]) for s in d["sections"]] == [("web-b", ["b2", "b3"]), ("web-a", ["a2", "a3"])]
+    assert d["lines"] == ["=== pod web-b ===", "b2", "b3", "=== pod web-a ===", "a2", "a3"]
 
 
 def test_logs_pick_one_pod_and_unknown_is_404(owner, kube):
     aid = owner.post("/apps", json=APP).json()["id"]
     kube.pod_lines[f"app-{aid}"] = {"web-a": ["a1"], "web-b": ["b1"]}
     d = owner.get(f"/apps/{aid}/logs?pod=web-b").json()
-    assert d["pod"] == "web-b" and d["lines"] == ["b1"] and d["pods"] == ["web-a", "web-b"]
+    assert d["pod"] == "web-b" and d["lines"] == ["b1"] and d["pods"] == ["web-b", "web-a"]
     assert owner.get(f"/apps/{aid}/logs?pod=nope").status_code == 404
 
 

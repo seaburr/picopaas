@@ -121,6 +121,7 @@ function podLabel(name: string) {
   const i = podMeta.value.get(name)
   if (!i) return name
   if (i.current) return `${name} (current)`
+  if (i.phase === 'Succeeded' || i.phase === 'Failed') return `${name} (finished, ${i.phase.toLowerCase()})`
   return `${name} (old${i.phase && i.phase !== 'Running' ? ', ' + i.phase.toLowerCase() : ''})`
 }
 const eventsPod = computed(() => podSel.value || ((logs.value?.pods?.length ?? 0) <= 1 ? logs.value?.pod || '' : ''))
