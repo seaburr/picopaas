@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: volumes enablement committed bd1f0a0; gitleaks clean; bootstrap NOT run (Chas applies). No findings.
+- 2026-10-23 [scm-security] START: commit/push volumes enablement (request 0007), watch CI/deploy.
+- 2026-10-23 [infra-ops] DONE (uncommitted): bootstrap.yml adds "Check volume StorageClass" step and VOLUMES_ENABLED=1 in picopaas-env; ci-cd.md and infrastructure.md updated. Not applied: run `gh workflow run bootstrap.yml` (after scm commits/pushes) to enable.
+- 2026-10-23 [infra-ops] START: wire VOLUMES_ENABLED=1 into bootstrap workflow (request 0007 APPROVED).
 - 2026-10-23 [scm-security] DONE: persistent volumes (db2f35f), UI, wordpress fix committed and pushed; gitleaks clean. Findings tracked in docs/PENTEST.md.
 - 2026-10-23 [scm-security] START: commit/push persistent volumes (disabled), UI, wordpress hardening; watch CI/deploy/examples.
 - 2026-10-23 [backend-dev] DONE (uncommitted): pentest fixes. (1) volumes capacity count FOR UPDATE; (2) apply_request keeps current size when request <= current (spec/PATCH/default), still 422 above user cap; (3) WordPress nginx limit_req on /wp-login.php (10r/m, burst 5, 429; real_ip from XFF was already set), README note, image rebuilt and smoke-tested read-only/uid 10001/cap-drop ALL (nginx -t ok, 429 after burst, per-IP). PENTEST items 3/4 marked fixed.
