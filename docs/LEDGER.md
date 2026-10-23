@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [scm-security] START: commit/push roadmap persistent-volumes plan and n8n recipe/example tweaks; watch CI.
+- 2026-10-22 [scm-security] DONE: roadmap commit and n8n recipe commit pushed; gitleaks clean via pre-commit hook, no secret values. No findings.
 - 2026-10-22 [frontend-dev] START: replace tabs with two pages: app health (/apps/:id) and Settings (/apps/:id/edit = spec form + AppSettingsPanel).
 - 2026-10-22 [frontend-dev] DONE (uncommitted): AppDetailView header has one primary Settings button (always shown); AppFormView edit mode = Deployment form + new components/AppSettingsPanel.vue (domain/credentials/short address/delete, same logic, emits update:app, only loadedApp refreshed) + App health button; deleted AppTabs.vue and AppSettingsView.vue; /apps/:id/settings redirects to /edit. typecheck + build clean.
 - 2026-10-22 [frontend-dev] START: split per-app UI into Overview / Edit / Settings (new /apps/:id/settings).

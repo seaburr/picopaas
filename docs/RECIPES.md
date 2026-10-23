@@ -557,6 +557,21 @@ The database would then go read-only and n8n would stop working. Keep the histor
 
 Watch the database bar on the app page. If it climbs, lower the two numbers.
 
+### Three more settings, from n8n's own startup warnings
+
+- `N8N_PROXY_HOPS=1`. The app sits behind Traefik, which sets `X-Forwarded-For`. Without this, n8n logs
+  `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, and its login rate-limiter sees every visitor as the proxy's IP, so one
+  person's failed logins can lock everyone out.
+- `N8N_COMMUNITY_PACKAGES_ENABLED=false`. Community nodes installed from the UI live in the user folder and vanish
+  on the next restart, while workflows that use them stay in the database and break. Turning installs off avoids
+  that trap.
+- **If you change the app's address, update `N8N_HOST`, `WEBHOOK_URL` and `N8N_EDITOR_BASE_URL` too.** n8n uses
+  them to build webhook and OAuth callback URLs. If they point at an old name, the URLs n8n shows you are dead links.
+
+The **Code node runs JavaScript only.** The image has no Python, so n8n logs that it couldn't start the Python task
+runner, and Python code fails. n8n 2.x also warns that the built-in task-runner mode is deprecated. The
+recommended "external" mode needs a second container, which PicoPaaS doesn't support, so ignore that warning.
+
 ### The public URL and the rest of the env
 
 - `N8N_HOST` (bare host, e.g. `n8n.picopaas.xyz`), `N8N_PROTOCOL=https`, `N8N_PORT=5678`,

@@ -55,6 +55,11 @@ env:
   EXECUTIONS_DATA_MAX_AGE: "72"
   EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
 
+  # Behind Traefik (one proxy hop): lets n8n's login rate-limiter see real client IPs.
+  N8N_PROXY_HOPS: "1"
+  # Community nodes installed from the UI live in the (ephemeral) user folder and vanish on restart.
+  N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+
   # --- Optional footprint trimming (per the live env). ---
   N8N_RUNNERS_ENABLED: "false"
   N8N_DIAGNOSTICS_ENABLED: "false"
