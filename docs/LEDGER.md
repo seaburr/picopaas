@@ -5,6 +5,9 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: wordpress updater fix e41f752, rehearsal docs 4d09192 pushed; gitleaks clean, no findings. CI/examples results follow in next line.
+- 2026-10-23 [scm-security] START: commit/push wordpress updater fix + rehearsal docs; watch CI and examples workflow.
+- 2026-10-23 [wp-expert] DONE (uncommitted docs + image tweak): live restore onto throwaway app 152 succeeded (image :afefe81, 1 GiB volume, presigned upload). Public checks pass, restart skipped restore, bundle deleted, WP_RESTORE unset. Found: stale .maintenance after restart during background update; fixed in examples/wordpress (wp-config AUTOMATIC_UPDATER_DISABLED default, entrypoint clears .maintenance) - needs republish. Notes in docs/deployment/runbooks.md and examples/wordpress/MIGRATION.md.
 - 2026-10-23 [scm-security] DONE: presigned storage d62ce44, CLI fce0c8d, docs f24a196, ledger 3006d32 pushed; CI, image, examples, deploy green; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit/push presigned storage transfer, CLI, docs, ledger; watch CI/deploy.
 - 2026-10-23 [backend-dev] DONE (uncommitted): presigned object transfer (REQ-8). POST /apps/{id}/storage/presign (PUT with signed Content-Length, not POST policy: Spaces S3-compat docs don't list POST Object), ObjectStore.presign (real+fake), read-scope exemption for presign route in dependencies.py, CLI `storage upload|download`, tests/test_storage_presign.py + CLI tests, docs API/USER_GUIDE/CLI/MIGRATION.
