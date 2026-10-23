@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: db-server password rotation + UI pushed; gitleaks clean. Security note: admin_password write-only, verified before storing, audit logs value-free. No findings.
+- 2026-10-23 [scm-security] START: commit/push db-server password rotation + check, UI dialog, ledger; watch CI/deploy.
+- 2026-10-23 [backend-dev] DONE (uncommitted): db-server admin password rotation + connection check. PATCH admin_password (write-only, verified then stored encrypted, audit `admin_password=changed`), create/PATCH(password or ca_cert) run SELECT 1 via injectable get_db_server_checker (app/providers/dbcheck.py real, FakeDbServerChecker, conftest default ok); 422 classified detail. health.invalidate_db_server drops cached metrics. UI: Change password dialog in AdminView. Tests: tests/test_db_server_check.py. Docs: API.md, ADMIN_GUIDE.
+- 2026-10-23 [backend-dev] START: db-server admin password rotation + connection check (Chas approved).
 - 2026-10-23 [scm-security] DONE: audit retention 919b52d + ledger 6069afb pushed; CI, image, deploy green; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit audit retention + export, ledger; push, watch CI/deploy.
 - 2026-10-23 [backend-dev] DONE (uncommitted): audit retention + streamed export (db-scaling #4). config AUDIT_RETENTION_DAYS (90; <=0 keeps), audit.purge_old (id batches of 5000, audit.purge row), scheduler.audit_purge_job (leader-only, daily, first run +5 min); /admin/audit/export now StreamingResponse (keyset batches of 1000 in its own session, tuples, audit.export written first with capped COUNT, excludes itself). Tests: tests/test_audit_retention.py. Docs updated. Keyset listing still open.
