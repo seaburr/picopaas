@@ -273,6 +273,26 @@ class SpacesStore(ObjectStore):
             raise ObjectStoreError(f"delete objects failed: {exc}") from exc
         return {"deleted": deleted, "truncated": truncated}
 
+    def presign(self, app_id: int, method: str, key: str, expires_seconds: int,
+                content_length: Optional[int] = None) -> dict[str, Any]:
+        bucket = self._find_bucket(app_id)
+        if bucket is None:
+            raise ObjectStoreError("bucket not found")
+        params: dict[str, Any] = {"Bucket": bucket, "Key": key}
+        headers: dict[str, str] = {}
+        if method == "PUT":
+            if content_length is None:
+                raise ObjectStoreError("content_length is required for PUT")
+            params["ContentLength"] = content_length
+            headers["Content-Length"] = str(content_length)
+        try:
+            url = self._s3.generate_presigned_url(
+                "put_object" if method == "PUT" else "get_object", Params=params,
+                ExpiresIn=expires_seconds, HttpMethod=method)
+        except (BotoCoreError, ClientError) as exc:
+            raise ObjectStoreError(str(exc)) from exc
+        return {"url": url, "headers": headers}
+
     def _swap_key(self, app_id: int, old: dict[str, Any], permission: str) -> dict[str, Any]:
         grants = old.get("grants") or []
         if not grants:

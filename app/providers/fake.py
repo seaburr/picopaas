@@ -280,7 +280,8 @@ class FakeObjectStore(ObjectStore):
         self.read_only: dict[int, bool] = {}
         self.objects: dict[int, dict[str, int]] = {}  # key -> size, via put_object
         self.valid_keys: dict[int, set[str]] = {}  # access keys currently accepted by "Spaces"
-        self.fail: set[str] = set()  # inject failures: "create", "revoke", "delete_key"
+        self.fail: set[str] = set()  # inject failures: "create", "revoke", "delete_key", "presign"
+        self.presigned: list[dict[str, Any]] = []
 
     def create_bucket_and_key(self, app_id: int) -> dict[str, Any]:
         creds = {
@@ -330,6 +331,17 @@ class FakeObjectStore(ObjectStore):
             del objs[k]
         self.sizes[app_id] = sum(objs.values())
         return {"deleted": len(doomed), "truncated": len(keys) > len(doomed)}
+
+    def presign(self, app_id: int, method: str, key: str, expires_seconds: int,
+                content_length: Optional[int] = None) -> dict[str, Any]:
+        if "presign" in self.fail:
+            raise ObjectStoreError("injected presign failure")
+        bucket = self.creds[app_id]["bucket"] if app_id in self.creds else f"pp-{app_id}"
+        headers = {"Content-Length": str(content_length)} if method == "PUT" else {}
+        self.presigned.append({"app_id": app_id, "method": method, "key": key, "expires": expires_seconds,
+                               "content_length": content_length})
+        return {"url": f"https://{bucket}.atl1.digitaloceanspaces.com/{key}?X-Amz-Signature=fakesig",
+                "headers": headers}
 
     def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
         """Like the real store: no-op (None) if unchanged, else swaps the key and returns new creds."""

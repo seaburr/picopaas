@@ -289,6 +289,14 @@ class ObjectStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def presign(self, app_id: int, method: str, key: str, expires_seconds: int,
+                content_length: Optional[int] = None) -> dict[str, Any]:
+        """Presigned URL (method GET or PUT) for ONE object in the app's own bucket, signed with the platform
+        credentials (never returned). For PUT, `content_length` is signed into the URL so Spaces rejects any
+        other body size. Returns {"url": str, "headers": {name: value the client must send}}."""
+        raise NotImplementedError
+
+    @abstractmethod
     def set_read_only(self, app_id: int, read_only: bool) -> Optional[dict[str, Any]]:
         """Make the app's key read-only (or restore readwrite). Spaces grants are
         immutable, so this may replace the key: returns the NEW creds when the key

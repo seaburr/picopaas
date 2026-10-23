@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
@@ -88,13 +89,19 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
     return None
 
 
+_PRESIGN_PATH = re.compile(r"^(/api)?/apps/\d+/storage/presign/?$")
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
     user = _user_from_request(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="You're logged out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked.")
     # Read-only keys can authenticate anywhere but may only make non-mutating requests. Enforced at this single
     # choke point so it covers app, admin and spec routes alike (every authenticated route depends on this).
-    if getattr(request.state, "api_scope", "full") == "read" and request.method not in SAFE_METHODS:
+    # POST /apps/{id}/storage/presign is a POST that can be a pure read (GET presign); the route itself
+    # rejects PUT presigns for read-scope keys.
+    if (getattr(request.state, "api_scope", "full") == "read" and request.method not in SAFE_METHODS
+            and not _PRESIGN_PATH.match(request.url.path)):
         raise HTTPException(
             status_code=403,
             detail="This API key is read-only. Create a full-access key to make changes.",

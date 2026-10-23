@@ -323,6 +323,18 @@ s3.put_object(Bucket=os.environ["S3_BUCKET"], Key="hello.txt", Body=b"hi")
 
 The key works for your bucket only. `storage.endpoint` already includes `https://`.
 
+### Uploading files to your bucket
+
+You never need the bucket keys to move files in or out from your own machine. With an API key (a read-only key can download only):
+
+```bash
+picopaas storage upload myapp ./site.tar.gz --key restore/site.tar.gz
+picopaas storage download myapp restore/site.tar.gz -o site.tar.gz
+```
+
+The CLI asks PicoPaaS for a short-lived link (10 minutes) for that one object and streams the file directly to storage. An upload is
+refused if it would not fit in the bucket's remaining quota, or while the bucket is over its cap (see Recovering from over-cap).
+
 ## 7a. Persistent volume
 
 Normally an app's local disk is scratch space and is wiped on every restart. A persistent volume is a small disk that

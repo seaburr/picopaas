@@ -26,6 +26,7 @@ everywhere a user is accepted except where marked "session only".
 | GET | `/apps/{app_id}/logs`, `/pods/{pod}/events`, `/events`, `/metrics-history`, `/image-history` | owner or admin |
 | GET | `/apps/{app_id}/database/usage`, `/storage/usage` | owner or admin |
 | POST | `/apps/{app_id}/storage/delete` | owner or admin |
+| POST | `/apps/{app_id}/storage/presign` | owner or admin; PUT needs a full-scope key |
 | POST | `/apps/{app_id}/restart`, `/check-image`, `/rollback` | owner or admin |
 | GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/docs/admin-guide` | admin |
 | PATCH | `/admin/users/{user_id}` | admin |
@@ -332,3 +333,19 @@ with_storage, by_db_engine{mysql, postgres}}`. The cluster snapshot is cached ab
 |---|---|---|---|
 | GET | `/admin/docs/admin-guide` | none | `{"markdown": "<docs/ADMIN_GUIDE.md>"}`. 404 if the guide isn't in this build. |
 
+
+## Presigned object transfer
+
+`POST /apps/{app_id}/storage/presign` body `{"method": "PUT"|"GET", "key": "...", "content_length": int, "expires_seconds": int}`
+returns `{"url", "method", "headers", "expires_at", "key"}`. The bucket is always the app's own; bucket credentials are never
+returned (the URL is signed for that one bucket and key). `key` is 1 to 512 characters, no leading `/`, no `..`, no backslash or
+control characters; repeated `/` collapse and the normalised `key` is echoed back. `expires_seconds` defaults to 600, max 3600.
+For `PUT`, `content_length` (bytes) is required and is signed into the URL: send the body with exactly that `Content-Length` (use
+the returned `headers`) or the storage service rejects it. A size above the bucket's remaining quota gives 413. Errors: 404 (no
+such app, not yours, or no bucket), 409 (bucket is over its cap and read-only, or full), 403 (read-scope API key asked for a PUT;
+GET is allowed), 422 (bad key, expiry or missing size), 429 (30 presigns per minute per user, per process). Every presign is
+audited as `storage.presign` (`method`, `key`, `size`; never the URL).
+
+```bash
+curl -X PUT -H "Content-Length: 3000" --data-binary @bundle.tar.gz "$URL"
+```

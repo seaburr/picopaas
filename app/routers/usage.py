@@ -5,9 +5,14 @@ for it (with the platform's own credentials), re-measures, and restores the read
 the bucket is back under its cap, rather than waiting for the next poll.
 """
 import logging
-from typing import List, Optional
+import re
+import time
+import unicodedata
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
+from typing import Deque, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
@@ -54,6 +59,100 @@ class StorageDeleteOut(BaseModel):
     size_bytes: int
     truncated: bool = False
     over_quota: bool = False
+
+
+# --- presigned object transfer (REQ-8) ----------------------------------------------------------------------
+PRESIGN_DEFAULT_SECONDS = 600
+PRESIGN_MAX_SECONDS = 3600
+PRESIGN_PER_MINUTE = 30
+RESERVED_KEY_PREFIXES: tuple = ()  # the platform keeps no marker objects in app buckets today
+_presign_hits: Dict[int, Deque[float]] = defaultdict(deque)
+
+
+def _rate_limit_presign(user_id: int) -> None:
+    """Best-effort per-process cap on presigns per user per minute."""
+    now = time.monotonic()
+    q = _presign_hits[user_id]
+    while q and now - q[0] > 60:
+        q.popleft()
+    if len(q) >= PRESIGN_PER_MINUTE:
+        raise HTTPException(status_code=429, detail="Too many transfer links requested. Wait a minute and try again.")
+    q.append(now)
+
+
+def normalise_key(key: str) -> str:
+    key = unicodedata.normalize("NFC", key)
+    if not 1 <= len(key) <= 512:
+        raise ValueError("Object key must be 1 to 512 characters.")
+    if key.startswith("/") or "\\" in key or any(unicodedata.category(c) == "Cc" for c in key):
+        raise ValueError("Object key can't start with '/', contain a backslash or control characters.")
+    if re.search(r"\.\.", key):
+        raise ValueError("Object key can't contain '..'.")
+    key = re.sub(r"/{2,}", "/", key)
+    if any(key.startswith(p) for p in RESERVED_KEY_PREFIXES):
+        raise ValueError("That key prefix is reserved by the platform.")
+    return key
+
+
+class PresignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    method: Literal["PUT", "GET"]
+    key: str
+    content_length: Optional[int] = Field(default=None, ge=1)
+    expires_seconds: int = Field(default=PRESIGN_DEFAULT_SECONDS, ge=1, le=PRESIGN_MAX_SECONDS)
+
+    @model_validator(mode="after")
+    def _check(self):
+        self.key = normalise_key(self.key)
+        if self.method == "PUT" and self.content_length is None:
+            raise ValueError("content_length (bytes) is required for PUT.")
+        return self
+
+
+class PresignOut(BaseModel):
+    url: str
+    method: str
+    headers: Dict[str, str] = {}
+    expires_at: datetime
+    key: str
+
+
+@router.post("/{app_id}/storage/presign", response_model=PresignOut)
+def storage_presign(
+    app_id: int,
+    body: PresignIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+    object_store: ObjectStore = Depends(get_object_store),
+):
+    app = _get_app_or_404(db, app_id, user)
+    row = app.storage
+    if row is None:
+        raise HTTPException(status_code=404, detail="This app has no storage bucket.")
+    if body.method == "PUT":
+        if getattr(request.state, "api_scope", "full") == "read":
+            raise HTTPException(status_code=403, detail="This API key is read-only. Create a full-access key to upload.")
+        if row.over_quota:
+            raise HTTPException(status_code=409, detail="Your bucket is over its size cap and read-only. Delete objects first (picopaas storage-delete).")
+    _rate_limit_presign(user.id)
+    try:
+        if body.method == "PUT":
+            limit = resources.storage_quota_bytes(app)
+            remaining = limit - object_store.bucket_size_bytes(app.id)
+            if remaining <= 0:
+                raise HTTPException(status_code=409, detail="Your bucket is at its size cap. Delete objects first.")
+            if body.content_length > remaining:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"That file is {body.content_length} bytes but only {remaining} bytes remain in your bucket quota.")
+        signed = object_store.presign(app.id, body.method, body.key, body.expires_seconds, body.content_length)
+    except ObjectStoreError:
+        raise HTTPException(status_code=502, detail="Couldn't create the transfer link right now. Try again in a moment.")
+    audit.record(db, user, "storage.presign", "app", app.id,
+                 f"method={body.method} key={body.key[:150]} size={body.content_length if body.content_length else '-'}")
+    return PresignOut(url=signed["url"], method=body.method, headers=signed.get("headers", {}),
+                      expires_at=datetime.now(timezone.utc) + timedelta(seconds=body.expires_seconds), key=body.key)
 
 
 @router.get("/{app_id}/database/usage", response_model=UsageOut)
