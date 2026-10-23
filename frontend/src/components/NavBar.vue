@@ -66,7 +66,6 @@ function skip(e: Event) {
               Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black" :aria-label="`${pending} pending`">{{ pending }}</span>
             </RouterLink>
             <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
-            <RouterLink to="/guide/admin" class="nav-link" active-class="" exact-active-class="nav-active">Admin guide</RouterLink>
           </div>
         </nav>
       </div>
@@ -115,7 +114,6 @@ function skip(e: Event) {
             Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black">{{ pending }} pending</span>
           </RouterLink>
           <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
-          <RouterLink to="/guide/admin" class="nav-link" active-class="" exact-active-class="nav-active">Admin guide</RouterLink>
         </template>
       </div>
       <div class="mt-3 flex gap-2 border-t border-pico-border pt-3">

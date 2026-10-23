@@ -23,7 +23,7 @@ const auth = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'platform_admin')
 const DOCS = computed<Record<string, { title: string }>>(() => ({
   ...PUBLIC_DOCS,
-  ...(isAdmin.value ? { admin: { title: 'Admin guide' } } : {}),
+  ...(isAdmin.value ? { admin: { title: 'Admin' } } : {}),
 }))
 
 const route = useRoute()
@@ -138,13 +138,13 @@ function onClick(e: MouseEvent) {
   <div class="min-h-screen">
     <NavBar />
     <div id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 md:flex md:gap-8 md:py-6">
-      <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 lg:w-72 md:self-start md:overflow-y-auto">
-        <nav aria-label="Documents" class="mb-3 flex border-b border-pico-border text-sm">
+      <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 lg:w-80 md:self-start md:overflow-y-auto">
+        <nav aria-label="Documents" class="mb-3 flex flex-wrap border-b border-pico-border text-sm">
           <RouterLink
             v-for="(d, k) in DOCS"
             :key="k"
             :to="`/guide/${k}`"
-            class="-mb-px flex-1 border-b-2 px-3 py-2 text-center md:flex-none"
+            class="-mb-px flex-1 whitespace-nowrap border-b-2 px-2.5 py-2 text-center md:flex-none"
             :class="doc === k ? 'border-accent-light font-semibold text-white' : 'border-transparent text-zinc-300 hover:text-white'"
             :aria-current="doc === k ? 'page' : undefined"
           >{{ d.title }}</RouterLink>
