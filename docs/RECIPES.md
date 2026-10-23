@@ -197,7 +197,7 @@ server certificate against a specific CA. Full CA-*verified* TLS would need a PE
 container, which PicoPaaS doesn't offer (there's no config-file or volume mount). Encrypted-but-unverified to
 the in-platform MySQL is the honest tradeoff here.
 
-### Keep the connection pool under the cap
+### Connection pool cap
 
 Each database user may hold at most **10 connections**. Size Grafana's pool below that so a restart or a surge
 doesn't trip the limit:
@@ -236,9 +236,9 @@ leave `GF_SECURITY_ADMIN_PASSWORD` in the spec's `secrets:` list (name only) and
 dashboard's secret editor or the API — never in the YAML file. Open the app's URL and log in as your admin
 user.
 
-### Single replica only — HA/clustering is not supported on PicoPaaS
+### Single replica only
 
-Run Grafana at **one replica**. PicoPaaS gives each app a single ClusterIP Service on the app port, and nothing
+HA and clustering are not supported on PicoPaaS. Run Grafana at **one replica**. PicoPaaS gives each app a single ClusterIP Service on the app port, and nothing
 that lets one pod discover and address the others individually. Multi-replica setups that need pods to gossip
 with named peers — Grafana's 2+ replica HA with unified-alerting memberlist, for example — have no way to find
 each other, so they don't work. This is intentional and out of scope: the platform does not offer
@@ -277,9 +277,9 @@ That's the whole story — no CA file to mount and no skip-verify to reason abou
 where the driver forces a CA-path workaround. Shlink's PDO MySQL layer negotiates an encrypted connection
 directly from this one flag.
 
-### The public URL — a bare host, not a full URL
+### The public URL
 
-Shlink's `DEFAULT_DOMAIN` is the domain your short URLs are built on, and it must be a **bare host** (no scheme,
+It must be a bare host, not a full URL. Shlink's `DEFAULT_DOMAIN` is the domain your short URLs are built on, and it must be a **bare host** (no scheme,
 no path) — e.g. `shlink.<domain>`. This is the one place you **cannot** use `${{ app.url }}`: that ref resolves
 to a full `https://...` URL, which Shlink would fold into malformed short links. Use your reserved subdomain's
 bare hostname instead (ask an admin for a reserved subdomain; see the Ghost recipe). Then tell Shlink it's
@@ -304,7 +304,7 @@ curl -fsS https://shlink.<domain>/rest/v3/short-urls \
   -d '{"longUrl": "https://example.com/some/very/long/link"}'
 ```
 
-### Keep the connection pool under the cap
+### Connection pool cap
 
 Each database user may hold at most **10 connections**. Shlink runs a web worker pool and a background task
 worker pool, each of which opens DB connections, so keep both small:
@@ -343,7 +343,7 @@ it's up, then drive it with the REST API using your key.
 
 Short URLs and visit stats live in MySQL, so they survive restarts.
 
-## Directus (headless CMS) on MySQL + S3
+## Directus on MySQL + S3
 
 The files are in `examples/directus/` in the repo (`README.md`, `directus.yaml`).
 [Directus](https://directus.io/) is an open-source headless CMS and data platform. It runs on PicoPaaS backed by
@@ -359,9 +359,9 @@ cap), and is configured entirely through environment variables. Point PicoPaaS s
 port `8055`. Pin a version (`:12.4.1`), not `:latest`. Request **both** a database (`db: true`) and a bucket
 (`storage: true`), and leave `auto_update: false`.
 
-### Point it at the platform MySQL — with CA-verified TLS
+### Point it at MySQL (CA-verified)
 
-Directus takes its database config as individual env vars, so map the platform refs one-to-one:
+This connection uses CA-verified TLS. Directus takes its database config as individual env vars, so map the platform refs one-to-one:
 
 - `DB_CLIENT=mysql`
 - `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_DATABASE=${{ db.name }}`, `DB_USER=${{ db.user }}`
@@ -389,7 +389,7 @@ Directus stores uploaded files through an S3 driver, pointed at the platform's S
 
 No path-style flag is needed for Spaces — the default virtual-hosted addressing works.
 
-### The two required secrets, the admin, and the rest
+### Secrets and admin
 
 - `KEY` and `SECRET` — two required random strings Directus needs for signing and encryption. **Generate them
   once and keep them stable** across deploys: rotating them invalidates sessions and breaks data encrypted at
@@ -398,7 +398,7 @@ No path-style flag is needed for Spaces — the default virtual-hosted addressin
 - `PUBLIC_URL=${{ app.url }}` — Directus's public URL, resolved at deploy time to this app's own host.
 - `TELEMETRY=false` — turn off the outbound phone-home (tenant egress is restricted anyway).
 
-### `HOME=/tmp` and `PM2_HOME=/tmp/.pm2` are required
+### Required `HOME` and `PM2_HOME`
 
 Set both, or the app never serves:
 
@@ -447,7 +447,7 @@ Directus is a clean demonstration of the full stack: it runs **non-root**, needs
 **PK-clean** (no `sql_require_primary_key` collision), and uses **MySQL and the Spaces bucket together** — so
 both your content and your uploads survive restarts.
 
-## n8n (workflow automation) on PostgreSQL
+## n8n on PostgreSQL
 
 The files are in `examples/n8n/` in the repo (`README.md`, `n8n.yaml`). [n8n](https://n8n.io/) is an
 open-source workflow-automation tool. It's PicoPaaS's **first PostgreSQL-backed recipe**, and the proof that
@@ -466,26 +466,26 @@ through environment variables. Point PicoPaaS straight at the public image. Pin 
 healthCheck: { enabled: true, path: /healthz }
 ```
 
-### Choosing the Postgres engine — the new `db_engine` selector
+### Choosing the engine
 
-This is the recipe that introduces the engine selector. Request a database and set the engine to `pg`:
+This recipe introduces the `db_engine` selector. Request a database and set the engine to `pg`:
 
 ```yaml
 resources:
   db: true
-  db_engine: pg   # mysql (default) | pg
+  db_engine: pg   # mysql | pg
 ```
 
 `db_engine: pg` tells PicoPaaS to back the app with **PostgreSQL** instead of MySQL. The platform
 **auto-provisions a per-app Postgres database and role** (exactly as it does for MySQL — a dedicated
 `app_<id>` database and login role, isolated from every other tenant), and the same `${{ db.* }}` refs
 resolve to the Postgres connection details. The engine is **immutable** once the app has a database (to
-switch, create a new app). The default stays `mysql`, so existing specs are unaffected. n8n is Postgres-first,
+switch, create a new app). MySQL and PostgreSQL are equal choices (a spec that omits `db_engine` still gets MySQL, so older specs are unaffected). n8n is Postgres-first,
 which is why it's the recipe that exercises this path.
 
-### Point it at the managed Postgres — with CA-verified TLS
+### Point it at Postgres (TLS)
 
-n8n takes its database config as individual env vars, so map the platform refs one-to-one:
+The connection uses CA-verified TLS. n8n takes its database config as individual env vars, so map the platform refs one-to-one:
 
 - `DB_TYPE=postgresdb`
 - `DB_POSTGRESDB_HOST=${{ db.host }}`, `DB_POSTGRESDB_PORT=${{ db.port }}`,
@@ -501,16 +501,16 @@ Our managed Postgres requires TLS, and n8n's Postgres driver takes the CA conten
 - `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=true` — **CA-verified** TLS (the server cert is validated against that
   CA), cleaner than the Grafana skip-verify dance and matching Directus's MySQL `DB_SSL__CA` approach.
 
-### Keep the connection pool under the Postgres cap
+### Postgres pool cap
 
 Managed Postgres is tighter than MySQL here. Each per-app role gets a **CONNECTION LIMIT of 5** (not 10): the
 cheapest 1 GB Postgres node has only ~22 usable connections total. Size n8n's pool well under it:
 
 - `DB_POSTGRESDB_POOL_SIZE=2`
 
-### Pin the encryption key — required, so credentials survive restarts
+### Pin the encryption key
 
-n8n encrypts stored credentials with `N8N_ENCRYPTION_KEY`. The scratch disk is wiped on every restart, so if
+Pinning is required so credentials survive restarts. n8n encrypts stored credentials with `N8N_ENCRYPTION_KEY`. The scratch disk is wiped on every restart, so if
 the key isn't pinned, a restart regenerates it and **every saved credential becomes undecryptable**:
 
 - `N8N_ENCRYPTION_KEY` — set it as a **secret**, generate it once, and keep it stable across deploys. This is
@@ -527,9 +527,9 @@ The image's default HOME isn't writable as the non-root UID, so n8n can't create
 and dies on boot. Pointing it at `/tmp` (writable for any UID) fixes it. This is the n8n equivalent of
 Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line.
 
-### What lives outside Postgres, and is lost on restart
+### What is lost on restart
 
-n8n's docs say to keep the user folder on a persistent volume, and PicoPaaS apps have no volumes. We looked inside
+Here is what lives outside Postgres. n8n's docs say to keep the user folder on a persistent volume, and PicoPaaS apps have no volumes. We looked inside
 `/tmp/.n8n` on the live instance. Your workflows, credentials, users and execution history are in Postgres and
 survive restarts (verified). These are what live in the folder instead:
 
@@ -545,7 +545,7 @@ but uses the 50 MB database quota (see below). The S3 mode needs an n8n Enterpri
 **light automation that doesn't handle files**, such as webhooks, API calls and notifications. It doesn't suit file
 pipelines.
 
-### Fitting in the 50 MB database: prune executions
+### Prune executions (50 MB)
 
 n8n's schema alone uses about **16 MB** of the 50 MB quota, measured with one workflow and almost no runs. By default
 n8n keeps 14 days or 10,000 executions of history. A workflow on a frequent schedule would fill the rest within days.
@@ -557,7 +557,9 @@ The database would then go read-only and n8n would stop working. Keep the histor
 
 Watch the database bar on the app page. If it climbs, lower the two numbers.
 
-### Three more settings, from n8n's own startup warnings
+### Startup-warning settings
+
+Three more settings, taken from n8n's own startup warnings:
 
 - `N8N_PROXY_HOPS=1`. The app sits behind Traefik, which sets `X-Forwarded-For`. Without this, n8n logs
   `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, and its login rate-limiter sees every visitor as the proxy's IP, so one
@@ -572,7 +574,7 @@ The **Code node runs JavaScript only.** The image has no Python, so n8n logs tha
 runner, and Python code fails. n8n 2.x also warns that the built-in task-runner mode is deprecated. The
 recommended "external" mode needs a second container, which PicoPaaS doesn't support, so ignore that warning.
 
-### The public URL and the rest of the env
+### Public URL and env
 
 - `N8N_HOST` (bare host, e.g. `n8n.picopaas.xyz`), `N8N_PROTOCOL=https`, `N8N_PORT=5678`,
   `WEBHOOK_URL=https://<host>/`, `N8N_EDITOR_BASE_URL=https://<host>` — n8n wants these set to its own public
@@ -580,9 +582,9 @@ recommended "external" mode needs a second container, which PicoPaaS doesn't sup
   the Ghost recipe).
 - `GENERIC_TIMEZONE=UTC`.
 
-### Memory: n8n needs an admin override to ~512 MiB
+### Memory override
 
-This is the honest caveat. n8n **OOMs at the 384 MiB default cap**, so it needs an **admin resource override to
+n8n needs an admin override to ~512 MiB. This is the honest caveat. n8n **OOMs at the 384 MiB default cap**, so it needs an **admin resource override to
 ~512 MiB** (we verified 512 MiB holds; n8n used ~338 MiB at idle). Memory isn't a spec field — ask an admin to
 raise the limit for the app, the same control that raises CPU.
 
@@ -626,7 +628,7 @@ data that survives restarts.
 - **No outbound SMTP.** Disable features that send email, or they will error.
 - **Fit the caps:** 512 MB image, 200m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
 
-## Apps we evaluated (and what didn't fit)
+## Apps we evaluated
 
 Not every popular app runs on PicoPaaS, and we'd rather tell you up front than have you hit the wall yourself.
 Two things define the shape of what fits: **images must run as a non-root numeric UID**, and the managed

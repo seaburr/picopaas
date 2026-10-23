@@ -31,13 +31,15 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 
 | What | Cap |
 |---|---|
-| CPU | 100m limit (64m request) |
+| CPU | 200m limit (64m request) |
 | Memory | 384 MB limit (128 MB request) |
 | Scratch disk | 250 MB (pod is evicted over it) |
 | Image size | 512 MB compressed |
 | MySQL or PostgreSQL database | 50 MB (writes revoked over it) |
 | Storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
 | Apps per user | 1 by default (an administrator can raise it) |
+
+These are defaults. A platform administrator can override them per app, up to these ceilings: 1000m CPU, 2 GB memory, 3 replicas, 25 database connections, 2 GB scratch disk, 1 GB database, 50 GB bucket and 2 GB image.
 
 ## Architecture
 

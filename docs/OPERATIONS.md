@@ -235,6 +235,18 @@ peers — Grafana's 2+ replica HA with unified-alerting memberlist, for example 
 can't form a cluster and will misbehave at >1 replica. Only scale out apps that are stateless behind the single
 Service (all shared state in the DB/bucket). Such apps run single-pod; see the Grafana recipe in `RECIPES.md`.
 
+## Per-app limit overrides (admin only)
+
+`PATCH /admin/apps/{id}/resources` can raise (or lower) one app's scratch disk (64 to 2048 Mi), DB connections (1 to 25),
+DB quota (1 to 1024 MB; Chas gave no ceiling, 1024 chosen), bucket quota (1 to 51200 MB) and image size cap (1 to 2048 MB);
+the ceilings are named constants in `app/config.py` (`OVERRIDE_*`). Null resets to the platform default.
+- Scratch disk, CPU and memory flow into the pod limits, LimitRange and ResourceQuota and requeue the app (pods roll).
+- Quotas are enforced by the quota poll with the per-app value (PostgreSQL stage 2 is at `PG_HARD_CAP_RATIO` x that value).
+  Changing a quota also runs that app's check right away, so a raise restores a read-only database or bucket at once
+  (PostgreSQL stage 2 drops back to stage 1, or to normal if now under the cap; stage 1 re-grants CONNECT).
+- DB connection caps are applied immediately and re-applied by every reconcile sweep. Not applied in MySQL procedure mode.
+- The image cap is checked at deploy and by the image watcher; a larger image already running is not affected.
+
 ## 10. Admin API reference
 
 | Method | Path | Body | Response / notes |
@@ -247,7 +259,7 @@ Service (all shared state in the DB/bucket). Such apps run single-pod; see the G
 | POST | `/admin/users/{id}/unsuspend` | none | User `active`; apps suspended through the user go back to `pending`. 409 if the user is not suspended. |
 | DELETE | `/admin/users/{id}` | none | 204. Soft-deletes the user, their apps (reconciler tears down) and revokes their API keys. 400 for the platform admin. |
 | GET | `/admin/apps` | none | All live apps: `{id, name, hostname, status, owner_id, owner_email, image, created_at, resources}`. |
-| PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi}` (ints; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
+| PATCH | `/admin/apps/{id}/resources` | any of `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, ephemeral_limit_mi, db_max_connections, db_quota_mb, storage_quota_mb, image_size_mb}` (ints; ranges in API.md; `null` resets a field to the default) | Updated admin app. CPU must be 10 to 1000m and memory 32 to 2048Mi. 422 if a request is above its limit. Sets the app to `pending` so it redeploys (a suspended app picks it up when unsuspended). Audited as `app.resources`. |
 | PUT | `/admin/apps/{id}/replicas` | `{"replicas": int}` (1 to `MAX_REPLICAS`, default 3) | `App` (includes `replicas`). 422 outside the range or on extra fields. Requeues the app (`pending`); a suspended app stays suspended at 0 pods and picks the count up on unsuspend. Audited as `app.replicas`. See "Replicas" below. |
 | PUT | `/admin/apps/{id}/platform-host` | `{"subdomain": "blog"}` | `App`. Gives the app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one (served on the wildcard cert; no per-host cert). One lowercase DNS label; reserved labels (`platform`, `www`, `api`, `lb`, `app`, `apps`, `admin`, `*`, ...) and platform hosts are 422; a label already used by another app is 409. Requeues the app. `App.platform_subdomain` / `platform_host` expose it. |
 | DELETE | `/admin/apps/{id}/platform-host` | none | `App`. Clears the fixed host and requeues. |

@@ -31,11 +31,11 @@ administrator restores the account.
 | User | The image must not run as root. `root`, `0` or an empty `USER` is rejected with 422. A named non-root user (for example `USER app`) is run as UID 10001, so files the image owns as that user may not be writable. Baking in a numeric `USER` (for example `USER 10001`) avoids that. |
 | Image size | Summed compressed layers at most **512 MB** (checked against the registry manifest on create and update). |
 | Image visibility | Public images only. A missing or private image gives `422` ("Couldn't find that image, or it's private..."). |
-| CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi). One replica. An admin can raise CPU up to 1000m for a specific app. |
+| CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi) and runs one replica. Only a platform administrator can raise CPU, memory, replicas (1 to 3), scratch disk, database connections or quotas for a specific app; ask them if you need more. |
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too. Over the limit gives `403` ("You've reached your limit of N apps..."). |
-| Database | Optional database (MySQL or PostgreSQL), 50 MB. |
+| Database | Optional database, your choice of MySQL or PostgreSQL (see section 5a), 50 MB. |
 | Storage | Optional storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |
 | Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
@@ -56,13 +56,15 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 1. Open **Apps**, then **New app**, and stay on the **Form** tab.
 2. Enter a name, image and container port.
-3. Tick **Database** and **Storage** if you need them. You can't change these after you create the app.
+3. Tick **Database** and **Storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
-5. Optional: open **Advanced: health check** and turn it on.
+5. Optional: open **Advanced: health check**, turn it on, and set the path and (optionally) a timeout.
 6. Click **Create app**.
 
-Editing an app (image, port, env, health check) redeploys it. The app page has **Rotate database password** and
-**Rotate storage keys** buttons under **Credentials**.
+Each app has two pages. **App health** (`/apps/:id`) shows status, resource usage, quotas, logs, recent events and
+versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, health check) plus **Custom domain**,
+the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button on each page links to
+the other. Saving the deployment form redeploys the app.
 
 ### 3b. YAML in the UI
 
@@ -158,10 +160,11 @@ secrets:
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
 | `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
-| `resources.db` | boolean | no | `false` | Provisions a database (MySQL by default; see `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
-| `resources.db_engine` | string | no | `mysql` | `mysql` or `pg`. Chooses the database engine for `db: true`: `pg` gives you a managed **PostgreSQL** database instead of MySQL. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. |
+| `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
+| `resources.db_engine` | string | no | see note | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a storage bucket. Same removal rule. |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
+| `healthCheck.timeoutSeconds` | integer | no | blank | 1 to 90. Probe timeout for both probes; blank uses the platform values (see section 8). `periodSeconds` is raised to at least the timeout. |
 | `healthCheck.path` | string | no | `/healthz` | Starts with `/`, at most 255 characters. Allowed: letters, digits and `._~!$&()*+,;=:@/%-`. No `..` segments (also `%2e%2e`), spaces or quotes. |
 | `env` | map string to string | no | `{}` | Keys match `^[A-Z_][A-Z0-9_]*$`. Values must be strings (quote numbers and booleans: `"1.0"`, `"true"`). |
 | `secrets` | list of strings | no | `[]` | Names only; values never go in the file. No duplicates, and a name may not also be in `env`. Names follow the same key rule as `env`. |
@@ -178,7 +181,7 @@ Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
   health check off.
 - Secret values are encrypted at rest and shown as `********` in API responses.
 
-## 5. Env vars, secrets and `${{ }}` references
+## 5. Env vars and references
 
 Your env vars (plain or secret) reach your container as environment variables. Changing them redeploys (restarts)
 the app.
@@ -208,9 +211,29 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 
 You pick your own variable names. The platform does not inject `DATABASE_URL` and friends by itself.
 
-## 6. Connecting to your database (TLS)
+## 5a. Choosing a DB engine
 
-The database server requires TLS, so map the CA certificate and the TLS flag. The refs are the same for both engines; pick the client block for your engine (`resources.db_engine`, MySQL by default):
+MySQL and PostgreSQL are equal choices on PicoPaaS: pick whichever your app supports best. Set `resources.db_engine`
+(`mysql` or `pg`) in the spec or choose it in the form. The engine is fixed after the database is created; to switch,
+create a new app and move your data. If a spec omits `db_engine`, the platform provisions MySQL (kept for older specs).
+
+| | MySQL | PostgreSQL |
+|---|---|---|
+| Spec value | `mysql` | `pg` |
+| Connections per app | **10** (`MAX_USER_CONNECTIONS`) | **5** (role `CONNECTION LIMIT`) |
+| Over the 50 MB quota | Write privileges are revoked and sessions closed; reads, `DELETE`, `TRUNCATE`, `DROP` keep working. Writes return within about a minute of dropping under the cap. | Stage 1 at 50 MB: the role goes read-only and sessions are closed (your app can still `DELETE`, `TRUNCATE`, `DROP`). Stage 2 at 2x the cap (100 MB): `CONNECT` is revoked until the size is back under the cap. |
+| TLS | Required, CA-verified (`${{ db.ca_cert }}`) | Required, CA-verified (`sslmode=verify-full`) |
+| Extensions | Not applicable | Trusted extensions only (for example `pgcrypto`, `citext`, `pg_trgm`); extensions that need superuser or file access are blocked |
+| Primary keys | The managed server enforces `sql_require_primary_key=ON`: every table needs a primary key, or `CREATE TABLE` fails | No such requirement |
+| Other limits | none | Statement and idle-in-transaction timeouts of 60 s |
+| Recipes | Ghost, Grafana, Shlink, Directus | n8n |
+
+Both engines run on managed servers in the same private network; the `${{ db.* }}` refs are identical. Check your app's
+documentation for which engines it supports, and keep its connection pool at or below the cap for the engine you pick.
+
+## 6. Database connections
+
+The database server requires TLS, so map the CA certificate and the TLS flag. The refs are the same for both engines; pick the client block for your engine (`resources.db_engine`):
 
 ```yaml
 resources: { db: true }
@@ -272,7 +295,7 @@ conn = psycopg.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"
 
 **Connection limit (MySQL).** Your database user is capped at 10 simultaneous connections (platform setting `MAX_DB_USER_CONNECTIONS`). If your app uses a connection pool, keep its maximum size at or below this, otherwise MySQL returns `exceeded the 'max_user_connections' resource`. For example, set Knex/Ghost `pool.max` to 10 or less.
 
-## 7. Connecting to the storage bucket (S3-compatible)
+## 7. Storage bucket (S3)
 
 ```yaml
 resources: { storage: true }
@@ -300,7 +323,8 @@ The key works for your bucket only. `storage.endpoint` already includes `https:/
 
 ## 8. Health checks
 
-Health checks are off by default. Without one, the app counts as ready once your port accepts a TCP connection, and there is no liveness probe.
+Health checks are off by default. With them off, the platform uses a single TCP readiness probe (initial delay 2 s,
+period 5 s): the app counts as ready once your port accepts a connection, and there is no liveness probe.
 
 With `healthCheck.enabled: true`, the platform sends an HTTP GET to `path` on your port. A 2xx or 3xx response is healthy.
 
@@ -308,6 +332,12 @@ With `healthCheck.enabled: true`, the platform sends an HTTP GET to `path` on yo
 |---|---|---|---|---|
 | Readiness | 5 s | 10 s | 3 s | 3 (pod removed from traffic) |
 | Liveness | 30 s | 20 s | 5 s | 3 (container restarted) |
+
+**Timeout.** Set `healthCheck.timeoutSeconds` (1 to 90; blank keeps the table above) if your app answers slowly, for
+example a slow-starting or CPU-throttled app. The value applies to both probes. If it is larger than a probe's period,
+the period is raised to match (period is at least the timeout). The other values (delay, period, failure threshold)
+are fixed for now and may become adjustable later. An app that needs longer than the liveness window (30 s plus three
+failed 20 s probes) to start should leave the health check off.
 
 Changing the health check redeploys the app. Make sure the path returns 2xx or 3xx, or the app never becomes ready.
 
@@ -336,7 +366,7 @@ a new one, and it deploys normally.
 
 ## 9. Credential rotation
 
-Rotate the database password or the storage keys from the **Credentials** section of the app page, with
+Rotate the database password or the storage keys from the **Danger zone** on the app's **Settings** page, with
 `picopaas rotate NAME --db` (or `--storage`), or with `POST /apps/{id}/rotate-credentials` and
 `{"target": "db"}` or `{"target": "storage"}`. The old credentials stop working, and the app restarts with the new ones,
 so expect a short interruption.
@@ -359,18 +389,19 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 
 | Resource | Limit | At the limit |
 |---|---|---|
-| Database | 50 MB | Writes that add data are blocked (INSERT, UPDATE, CREATE and ALTER are revoked) and your open database connections are closed, so your app reconnects read-only. SELECT, DELETE, TRUNCATE and DROP keep working so you can clean up. Writes come back automatically within about a minute of usage dropping under 50 MB. See "Recovering from an over-cap resource" below. |
-| Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it, so reads keep working but writes fail and **your app cannot delete objects itself**. Free space through the platform (see "Recovering from an over-cap resource" below). The read-write key comes back right away once you are under 100 MB. |
+| Database | 50 MB | Behaviour depends on the engine (section 5a). MySQL: INSERT, UPDATE, CREATE and ALTER are revoked and open connections are closed, so your app reconnects read-only. PostgreSQL: the role is made read-only and sessions are closed; at 2x the cap `CONNECT` is revoked. Either way SELECT, DELETE, TRUNCATE and DROP work so you can clean up, and writes come back automatically within about a minute of usage dropping under 50 MB. See "Recovering from over-cap" below. |
+| Bucket | 100 MB | The key is swapped for a read-only one and the app restarts with it, so reads keep working but writes fail and **your app cannot delete objects itself**. Free space through the platform (see "Recovering from over-cap" below). The read-write key comes back right away once you are under 100 MB. |
 | Image | 512 MB | Deploy is rejected. |
 | Scratch disk | 250 MB | The pod is evicted and restarted. Kubernetes starts a replacement pod within seconds, so the app usually stays **Running**; a "Restarted" notice appears on the app page (see "Recent events"). Files on the container filesystem or in `/tmp` are lost on restart. |
 
-### Recovering from an over-cap resource
+### Recovering from over-cap
 
-- **Database:** free space with `TRUNCATE TABLE t` or `DROP TABLE t` (or `DELETE`, but InnoDB keeps the freed pages, so the
-  reported size may not shrink until you `TRUNCATE` or `DROP` or run `OPTIMIZE TABLE`). Within about a minute the platform
+- **Database:** free space with `TRUNCATE TABLE t` or `DROP TABLE t` (or `DELETE`, but InnoDB on MySQL keeps the freed
+  pages, so the reported size may not shrink until you `TRUNCATE`, `DROP` or run `OPTIMIZE TABLE`; on PostgreSQL use
+  `VACUUM FULL` or `TRUNCATE`). On PostgreSQL a session your app keeps open may stay read-only; reconnect it. Within about a minute the platform
   re-measures and restores writes. You don't need to click anything. `GET /apps/{id}/database/usage` shows the live size.
-- **Storage:** your app only holds a read-only key while over the cap, so delete through the platform instead: on the app
-  page click **Free up space** (delete everything, or everything under a prefix), run
+- **Storage:** your app only holds a read-only key while over the cap, so delete through the platform instead: on the **App
+  health** page click **Free up space** (delete everything, or everything under a prefix), run
   `picopaas storage-delete <app> --prefix uploads/old/` (or `--all`), or call `POST /apps/{id}/storage/delete` with
   `{"prefix": "..."}` or `{"all": true}`. Each call deletes up to 5000 objects. Repeat it if the response says `truncated`. As soon
   as the bucket is back under 100 MB the read-write key is restored and the app restarts to pick it up.
@@ -395,7 +426,7 @@ domain and we'll issue a free TLS certificate for it automatically.
 and `DELETE /apps/{id}/domain`; same effect either way). Don't hand-edit the underlying routing: the platform manages
 it and will revert manual changes.
 
-1. On the app's page, open **Custom domain**, enter a subdomain you control (e.g. `blog.example.com`) and click
+1. On the app's **Settings** page, open **Custom domain**, enter a subdomain you control (e.g. `blog.example.com`) and click
    **Add domain**. Apex domains (bare `example.com`) can't be used unless your DNS provider supports CNAME
    flattening/ALIAS — use a subdomain.
 2. Create the **two DNS records** shown:
@@ -424,12 +455,12 @@ Deleting an app removes its namespace, database and storage bucket.
 
 ### Viewing logs
 
-The app page shows the last 200 lines of your container's output. Click **Refresh logs**, or tick **Auto-refresh**.
+The **App health** page shows the last 200 lines of your container's output. Click **Refresh logs**, or tick **Auto-refresh**.
 Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). Logs are only available while a pod exists.
 
 ### Resource usage
 
-The app page has a **Resource usage** panel with CPU and memory sparklines: one point a minute, about the last 3 hours,
+The **App health** page has a **Resource usage** panel with CPU and memory sparklines: one point a minute, about the last 3 hours,
 drawn against your limits and turning amber near them. The same data is at `GET /apps/{id}/metrics-history`. Use it
 to tell a CPU-bound app (the 200m limit throttles rather than kills) from one nearing the 384 MB memory limit.
 
@@ -451,13 +482,14 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | Stuck in **Deploying** | Readiness isn't passing. Check the health check path, the port, and that the app starts within a few seconds. After 10 minutes the app moves to **Failed** with the reason. |
 | **Failed** with a message | Read the message and the logs on the app page. The platform retries automatically (see section 12). To retry now, click **Restart** or save the app. |
 | "My app restarted" (a **Restarted ...** notice on the app page, or a gap in the logs) | Open **Recent events** on the app page (or `GET /apps/{id}/events`, or `picopaas status`). It says why: more than 250 MB of local disk (files, `/tmp`, logs; local files are lost, so keep files in the storage bucket), out of memory (384 MB limit; reduce memory use), or the app exited with a code (check the logs; the previous container's last lines are shown above the current ones). The notice stays on the app page for 24 hours; the last 20 events are kept. |
-| TLS error from your database | Use the CA certificate from `${{ db.ca_cert }}`. See the strict-flag note in section 6. |
-| Database writes fail with a read-only or permission error | You hit the 50 MB cap. The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
+| TLS error from your database | Use the CA certificate from `${{ db.ca_cert }}`. For MySQL on Python 3.13, see the strict-flag note in section 6. |
+| Database writes fail with a read-only or permission error | You hit the 50 MB cap (on PostgreSQL, past 100 MB `CONNECT` is refused). The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
 | Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Click **Free up space** (or run `picopaas storage-delete`). Your app's own key is read-only and can't delete. |
 | The app restarts with "used more than 250 MB of local disk" | The app wrote too much to the container filesystem, `/tmp` or logs. Store files in the storage bucket and log less. |
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
-| `User ... has exceeded the 'max_user_connections' resource` | Your pool is bigger than the per-app MySQL connection cap (10). Lower the pool's max size. |
-| PostgreSQL: `too many connections for role "app_<id>"` | The equivalent limit on PostgreSQL is the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
+| `User ... has exceeded the 'max_user_connections' resource` | MySQL: your pool is bigger than the per-app connection cap (10). Lower the pool's max size. |
+| PostgreSQL: `too many connections for role "app_<id>"` | Your pool is bigger than the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
+| MySQL: `Table must have a primary key` (`sql_require_primary_key`) | The managed MySQL server requires a primary key on every table. Add one to the migration, or use PostgreSQL if the app can't. |
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |
 
