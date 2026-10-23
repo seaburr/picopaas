@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Pencil, Trash2 } from 'lucide-vue-next'
+import { Eye, EyeOff, Pencil, Trash2 } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { computed, reactive, watch } from 'vue'
 import { envKeyError, REF_TIPS, refLabel, SUGGESTED_KEYS } from '../composables/envKeys'
@@ -18,6 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [EnvVar[]] }>()
 // placeholder (app/schemas.py MASKED_VALUE), so untouched secret rows are re-sent as that same placeholder.
 interface Row extends EnvVar {
   touched: boolean
+  peek?: boolean // show the typed secret value (never offered for the saved mask)
 }
 
 let nextId = 0
@@ -138,17 +139,31 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input mono bg-pico-panel/50" />
             <IconButton :icon="Pencil" :label="`Change secret ${row.key}`" @click="startChangingSecret(i)" />
           </div>
-          <input
-            v-else
-            v-model="row.value"
-            :type="row.is_secret ? 'password' : 'text'"
-            placeholder="value"
-            autocomplete="off"
-            :aria-label="`Value for ${row.key || 'variable ' + (i + 1)}`"
-            :aria-invalid="!!valueMsg(i) || undefined"
-            class="input mono bg-pico-panel"
-            @focus="activeIndex = i"
-          />
+          <div v-else class="relative">
+            <input
+              v-model="row.value"
+              :type="row.is_secret && !row.peek ? 'password' : 'text'"
+              placeholder="value"
+              autocomplete="off"
+              :aria-label="`Value for ${row.key || 'variable ' + (i + 1)}`"
+              :aria-invalid="!!valueMsg(i) || undefined"
+              :class="['input mono bg-pico-panel', row.is_secret ? 'pr-9' : '']"
+              @focus="activeIndex = i"
+            />
+            <button
+              v-if="row.is_secret"
+              type="button"
+              class="btn-icon btn-icon-sm absolute right-0.5 top-0.5"
+              :aria-pressed="!!row.peek"
+              :aria-label="row.peek ? `Hide value for ${row.key || 'variable ' + (i + 1)}` : `Show value for ${row.key || 'variable ' + (i + 1)}`"
+              :title="row.peek ? 'Hide value' : 'Show value'"
+              @mousedown.prevent
+              @click="row.peek = !row.peek"
+            >
+              <EyeOff v-if="row.peek" :size="16" aria-hidden="true" />
+              <Eye v-else :size="16" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <div class="flex items-center justify-between gap-2 sm:justify-end">

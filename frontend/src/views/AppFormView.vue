@@ -36,6 +36,7 @@ const form = reactive({
   want_storage: false,
   health_check_enabled: false,
   health_check_path: '/healthz',
+  health_check_timeout: '' as number | string, // blank = platform default
   auto_update: true,
 })
 const isDigestRef = computed(() => form.image.includes('@'))
@@ -101,6 +102,7 @@ onMounted(async () => {
       form.want_storage = app.want_storage
       form.health_check_enabled = app.health_check_enabled ?? false
       form.health_check_path = app.health_check_path || '/healthz'
+      form.health_check_timeout = app.health_check_timeout_seconds ?? ''
       form.auto_update = app.auto_update ?? true
       env.value = app.env
       document.title = `Settings · ${app.name} · PicoPaaS`
@@ -131,6 +133,14 @@ onMounted(async () => {
       error.value = "Couldn't load the template."
     }
   }
+})
+
+const timeoutValue = computed<number | null>(() => (String(form.health_check_timeout).trim() === '' ? null : Number(form.health_check_timeout)))
+const timeoutError = computed(() => {
+  if (fieldErrors.value.health_check_timeout_seconds) return fieldErrors.value.health_check_timeout_seconds
+  if (!form.health_check_enabled || timeoutValue.value === null) return ''
+  const t = timeoutValue.value
+  return Number.isInteger(t) && t >= 1 && t <= 90 ? '' : 'Timeout must be a whole number from 1 to 90.'
 })
 
 const pathError = computed(() => {
@@ -189,7 +199,7 @@ async function onSubmit() {
     error.value = 'Some fields need attention.'
     return showError()
   }
-  if (pathError.value) return
+  if (pathError.value || timeoutError.value) return
   if (envInvalid.value) {
     error.value = 'Fix the highlighted environment variable names.'
     return showError()
@@ -205,6 +215,7 @@ async function onSubmit() {
         port,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
+        health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
         env: envOut,
       })
@@ -220,6 +231,7 @@ async function onSubmit() {
         want_storage: form.want_storage,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
+        health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
         env: envOut,
       })
@@ -249,7 +261,7 @@ async function onSubmit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-4">
+    <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-6xl sm:px-6' : 'max-w-2xl']">
       <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
@@ -306,7 +318,7 @@ async function onSubmit() {
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
       <form class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
-        <fieldset :disabled="suspended" class="space-y-4">
+        <fieldset :disabled="suspended" :class="['space-y-4', isEdit ? 'max-w-3xl' : '']">
           <div>
             <label for="f-name" class="label">Name</label>
             <input
@@ -416,7 +428,7 @@ async function onSubmit() {
             <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" :errors="envErrors" />
           </div>
 
-          <details class="rounded-md border border-pico-border bg-pico-card px-3 py-2" :open="form.health_check_enabled || !!pathError">
+          <details class="rounded-md border border-pico-border bg-pico-card px-3 py-2" :open="form.health_check_enabled || !!pathError || !!timeoutError">
             <summary class="cursor-pointer text-sm text-zinc-200">Advanced: health check</summary>
             <div class="mt-3 space-y-3">
               <div>
@@ -444,6 +456,24 @@ async function onSubmit() {
                 />
                 <p v-if="pathError" class="field-error" role="alert">{{ pathError }}</p>
                 <p id="hc-path-help" class="help">Must start with /. Default /healthz.</p>
+              </div>
+              <div>
+                <label for="hc-timeout" class="label">Timeout (seconds)</label>
+                <input
+                  id="hc-timeout"
+                  v-model="form.health_check_timeout"
+                  type="number"
+                  min="1"
+                  max="90"
+                  inputmode="numeric"
+                  placeholder="default"
+                  :disabled="!form.health_check_enabled"
+                  aria-describedby="hc-timeout-help"
+                  :aria-invalid="!!timeoutError || undefined"
+                  class="input mono !w-32"
+                />
+                <p v-if="timeoutError" class="field-error" role="alert">{{ timeoutError }}</p>
+                <p id="hc-timeout-help" class="help">How long a single probe may take before it counts as failed (max 90s). Blank = default (3s readiness, 5s liveness).</p>
               </div>
             </div>
           </details>

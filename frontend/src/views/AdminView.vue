@@ -8,7 +8,7 @@ import StatusBadge from '../components/StatusBadge.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listAudit, listDbServers, listUsers,
-  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
+  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { dbEngineLabel } from '../composables/appUi'
@@ -17,7 +17,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Ban, Check, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Ban, Check, ExternalLink, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -227,20 +227,37 @@ async function addServer() {
 // ---- app resources ----
 const resApp = ref<AdminApp | null>(null)
 const resError = ref('')
-async function saveResources(body: ResourcesPatch) {
+async function saveResources(body: ResourcesPatch, replicas: number | null) {
   if (!resApp.value) return
   resError.value = ''
   try {
-    await patchAppResources(resApp.value.id, body)
-    toast.success(`Resources updated for ${resApp.value.name}.`)
+    const r = await patchAppResources(resApp.value.id, body)
+    if (replicas !== null) await setAppReplicas(resApp.value.id, replicas)
+    toast.success(`Limits updated for ${resApp.value.name}.${r.restarts_app ? ' Pods are restarting.' : ''}`)
     resApp.value = null
     await load()
   } catch (e) {
-    resError.value = msg(e, "Couldn't update resources. Try again.")
+    resError.value = msg(e, "Couldn't update limits. Try again.")
   }
 }
+// Open app: custom domain, then platform host, then the generated hostname.
+const appHost = (a: AdminApp) => a.custom_domain || a.platform_host || a.hostname
 const resSummary = (a: AdminApp) =>
-  a.resources ? `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi` : ''
+  `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi`
+// Compact list of the non-cpu/mem limits that differ from this app's platform defaults.
+const overrideSummary = (a: AdminApp) => {
+  const r = a.resources
+  const d = r.defaults
+  const gb = (n: number) => (n >= 1024 ? `${+(n / 1024).toFixed(1)}G` : `${n}M`)
+  const out: string[] = []
+  if (a.replicas > 1) out.push(`x${a.replicas}`)
+  if (r.ephemeral_limit_mi !== d.ephemeral_limit_mi) out.push(`disk ${gb(r.ephemeral_limit_mi)}`)
+  if (a.want_db && r.db_max_connections !== d.db_max_connections) out.push(`${r.db_max_connections} conns`)
+  if (a.want_db && r.db_quota_mb !== d.db_quota_mb) out.push(`db ${gb(r.db_quota_mb)}`)
+  if (a.want_storage && r.storage_quota_mb !== d.storage_quota_mb) out.push(`bucket ${gb(r.storage_quota_mb)}`)
+  if (r.image_size_mb !== d.image_size_mb) out.push(`img ${gb(r.image_size_mb)}`)
+  return out.join(' · ')
+}
 
 const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
@@ -387,11 +404,13 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                     <span v-else class="text-zinc-400">default</span>
                     <span v-if="a.resources.exceeds_platform_caps" class="text-amber-300">exceeds caps</span>
                   </div>
+                  <div v-if="overrideSummary(a)" class="mono truncate text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
                 </template>
                 <span v-else class="text-zinc-400">-</span>
               </div>
               <div class="flex gap-0.5 lg:justify-end">
-                <IconButton :icon="SlidersHorizontal" :label="`Edit resources for ${a.name}`" sm @click="resError = ''; resApp = a" />
+                <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="`https://${appHost(a)}`" />
+                <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="resError = ''; resApp = a" />
                 <IconButton v-if="a.status === 'suspended'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
                 <IconButton v-else :icon="Ban" :label="`Suspend ${a.name}`" sm @click="askApp('suspend', a)" />
                 <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askApp('delete', a)" />

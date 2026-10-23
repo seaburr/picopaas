@@ -9,7 +9,7 @@ import IconButton from '../components/IconButton.vue'
 import { Pencil, RotateCw, ScrollText, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
-import { eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
+import { dbEngineLabel, eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -109,7 +109,7 @@ function overCapTip(app: App) {
 
 function meta(app: App) {
   const bits = [app.image, `port ${app.port}`]
-  const extras = [app.want_db ? 'database' : '', app.want_storage ? 'storage' : ''].filter(Boolean)
+  const extras = [app.want_db ? `database (${dbEngineLabel(app.db_engine)})` : '', app.want_storage ? 'storage' : ''].filter(Boolean)
   if (extras.length) bits.push(extras.join(' + '))
   return bits
 }

@@ -1,4 +1,4 @@
-import type { App, AdminApp, AppResources, ResourcesPatch, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
+import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
 import { apiFetch } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -30,7 +30,7 @@ export const listAudit = (limit = 100) => apiFetch<AuditEntry[]>(`/admin/audit?l
 export const getHealth = () => apiFetch<ClusterHealth>('/admin/health')
 
 export const patchAppResources = (id: number, body: ResourcesPatch) =>
-  apiFetch<AppResources>(`/admin/apps/${id}/resources`, { method: 'PATCH', body: JSON.stringify(body) })
+  apiFetch<ResourcesPatchResult>(`/admin/apps/${id}/resources`, { method: 'PATCH', body: JSON.stringify(body) })
 
 // Backend: POST /admin/users/{id}/reset-password -> { temporary_password } (shown once).
 export const resetUserPassword = (id: number) =>
@@ -41,3 +41,8 @@ export const setPlatformHost = (id: number, subdomain: string) =>
   apiFetch<App>(`/admin/apps/${id}/platform-host`, { method: 'PUT', body: JSON.stringify({ subdomain }) })
 export const clearPlatformHost = (id: number) =>
   apiFetch<App>(`/admin/apps/${id}/platform-host`, { method: 'DELETE' })
+
+export const setAppReplicas = (id: number, replicas: number) =>
+  apiFetch<unknown>(`/admin/apps/${id}/replicas`, { method: 'PUT', body: JSON.stringify({ replicas }) })
+
+export const getAdminGuide = () => apiFetch<{ markdown: string }>('/admin/docs/admin-guide')

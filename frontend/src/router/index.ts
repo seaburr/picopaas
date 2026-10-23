@@ -9,6 +9,7 @@ const router = createRouter({
   },
   routes: [
     { path: '/guide', redirect: '/guide/user' },
+    { path: '/guide/admin', component: () => import('../views/GuideView.vue'), meta: { title: 'Admin guide', requiresAuth: true, requiresAdmin: true } },
     { path: '/guide/:doc(user|api|cli|recipes)', component: () => import('../views/GuideView.vue'), meta: { title: 'Docs' } }, // public, no auth
     { path: '/pending', component: () => import('../views/AccountStatusView.vue'), meta: { requiresAuth: true, title: 'Account status' } },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { title: 'Log in' } },
@@ -54,7 +55,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.loaded) await auth.load()
-  if (to.path.startsWith('/guide')) return
+  if (to.path.startsWith('/guide') && !to.meta.requiresAuth) return
   if (to.meta.requiresAuth && !auth.user) {
     return to.fullPath === '/' ? '/login' : { path: '/login', query: { next: to.fullPath } }
   }

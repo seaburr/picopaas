@@ -261,18 +261,6 @@ const suspended = computed(() => app.value.status === 'suspended')
             </div>
           </section>
 
-          <section v-if="hasAddons" class="card card-pad" aria-labelledby="h-cred">
-            <h2 id="h-cred" class="section-title">Credentials</h2>
-            <p class="help">
-              Rotating generates new credentials and the old ones stop working immediately. The app restarts to pick up the new ones, so expect a short
-              interruption.
-            </p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button v-if="app.want_db" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'db'">Rotate database password</button>
-              <button v-if="app.want_storage" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate storage keys</button>
-            </div>
-          </section>
-
           <section v-if="isAdmin" class="card card-pad" aria-labelledby="h-sub">
             <h2 id="h-sub" class="section-title mb-1">Short address <span class="badge-info ml-1 align-middle">Admin</span></h2>
             <p class="help">
@@ -298,6 +286,15 @@ const suspended = computed(() => app.value.status === 'suspended')
                 Delete this app{{ hasAddons ? ', its database and storage bucket' : '' }}. This can't be undone.
               </p>
               <button type="button" class="btn-danger shrink-0" @click="deleteOpen = true">Delete app…</button>
+            </div>
+            <div v-if="hasAddons" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <p class="min-w-0 text-sm text-zinc-300">
+                Rotate credentials: new ones are generated and the old ones stop working immediately. The app restarts to pick them up, so expect a short interruption.
+              </p>
+              <div class="flex shrink-0 flex-wrap gap-2">
+                <button v-if="app.want_db" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'db'">Rotate database password</button>
+                <button v-if="app.want_storage" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate storage keys</button>
+              </div>
             </div>
             <div v-if="cdom" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="min-w-0 text-sm text-zinc-300">

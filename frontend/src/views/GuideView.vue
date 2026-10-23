@@ -8,17 +8,44 @@ import apiMd from '@docs/API.md?raw'
 import cliMd from '@docs/CLI.md?raw'
 import recipesMd from '@docs/RECIPES.md?raw'
 import NavBar from '../components/NavBar.vue'
+import { getAdminGuide } from '../api/admin'
+import { useAuthStore } from '../stores/auth'
 
-const DOCS = {
+const PUBLIC_DOCS = {
   user: { title: 'User guide', md: userMd },
   api: { title: 'API', md: apiMd },
   cli: { title: 'CLI', md: cliMd },
   recipes: { title: 'Recipes', md: recipesMd },
 } as const
-type DocKey = keyof typeof DOCS
+type DocKey = keyof typeof PUBLIC_DOCS | 'admin'
+
+const auth = useAuthStore()
+const isAdmin = computed(() => auth.user?.role === 'platform_admin')
+const DOCS = computed<Record<string, { title: string }>>(() => ({
+  ...PUBLIC_DOCS,
+  ...(isAdmin.value ? { admin: { title: 'Admin guide' } } : {}),
+}))
 
 const route = useRoute()
-const doc = computed<DocKey>(() => (route.params.doc as DocKey) || 'user')
+const doc = computed<DocKey>(() => (route.path === '/guide/admin' ? 'admin' : (route.params.doc as DocKey) || 'user'))
+
+// The admin guide is never bundled: fetched from the admin-only endpoint.
+const adminMd = ref('')
+const adminLoading = ref(false)
+const adminError = ref('')
+async function loadAdmin() {
+  adminLoading.value = true
+  adminError.value = ''
+  try {
+    adminMd.value = (await getAdminGuide()).markdown
+  } catch (e) {
+    adminError.value = e instanceof Error ? e.message : 'Failed to load the admin guide'
+  } finally {
+    adminLoading.value = false
+  }
+}
+watch(doc, (d) => { if (d === 'admin' && !adminMd.value) void loadAdmin() }, { immediate: true })
+const currentMd = computed(() => (doc.value === 'admin' ? adminMd.value : PUBLIC_DOCS[doc.value].md))
 const navOpen = ref(false)
 
 const slug = (t: string) =>
@@ -60,7 +87,7 @@ const rendered = computed(() => {
       },
     },
   })
-  const html = DOMPurify.sanitize(m.parse(DOCS[doc.value].md, { async: false }) as string)
+  const html = DOMPurify.sanitize(m.parse(currentMd.value, { async: false }) as string)
   return { html, toc }
 })
 
@@ -111,7 +138,7 @@ function onClick(e: MouseEvent) {
   <div class="min-h-screen">
     <NavBar />
     <div id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 md:flex md:gap-8 md:py-6">
-      <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 md:self-start md:overflow-y-auto">
+      <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 lg:w-72 md:self-start md:overflow-y-auto">
         <nav aria-label="Documents" class="mb-3 flex border-b border-pico-border text-sm">
           <RouterLink
             v-for="(d, k) in DOCS"
@@ -147,14 +174,21 @@ function onClick(e: MouseEvent) {
             v-for="t in rendered.toc"
             :key="t.id"
             :href="`#${t.id}`"
-            class="block truncate rounded border-l-2 px-2 py-1 hover:text-white"
-            :class="[t.level === 3 ? 'pl-5 text-xs' : '', activeId === t.id ? 'border-accent-light bg-pico-card/60 font-medium text-white' : 'border-transparent text-zinc-300']"
+            class="block rounded border-l-2 px-2 py-1 leading-snug hover:text-white"
+            :class="[t.level === 3 ? 'ml-3 text-xs' : '', activeId === t.id ? 'border-accent-light bg-pico-card/60 font-medium text-white' : 'border-transparent text-zinc-300']"
             :aria-current="activeId === t.id ? 'location' : undefined"
             @click.prevent="go(t.id)"
           >{{ t.text }}</a>
         </nav>
       </aside>
-      <article class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
+      <div v-if="doc === 'admin' && (adminLoading || adminError || !adminMd)" class="mt-4 min-w-0 flex-1 md:mt-0">
+        <p v-if="adminLoading" class="help" role="status">Loading admin guide...</p>
+        <div v-else-if="adminError" role="alert">
+          <p class="text-red-400">{{ adminError }}</p>
+          <button type="button" class="btn-secondary btn-sm mt-2" @click="loadAdmin">Retry</button>
+        </div>
+      </div>
+      <article v-else class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
     </div>
   </div>
 </template>

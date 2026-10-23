@@ -66,6 +66,7 @@ function skip(e: Event) {
               Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black" :aria-label="`${pending} pending`">{{ pending }}</span>
             </RouterLink>
             <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
+            <RouterLink to="/guide/admin" class="nav-link" active-class="" exact-active-class="nav-active">Admin guide</RouterLink>
           </div>
         </nav>
       </div>
@@ -74,7 +75,7 @@ function skip(e: Event) {
         <RouterLink v-if="auth.user" to="/account" class="nav-link max-w-[16rem]" active-class="nav-active" :title="`${auth.user.email} - account settings`">
           <span class="xl:hidden">Account</span><span class="hidden truncate xl:inline">{{ auth.user.email }}</span>
         </RouterLink>
-        <a href="/privacy" class="nav-link hidden lg:inline-flex">Privacy</a>
+        <a v-if="!auth.user" href="/privacy" class="nav-link hidden lg:inline-flex">Privacy</a>
         <button v-if="auth.user" type="button" class="btn-secondary btn-sm" @click="onLogout">Log out</button>
         <template v-else>
           <RouterLink to="/login" class="btn-secondary btn-sm">Log in</RouterLink>
@@ -107,13 +108,14 @@ function skip(e: Event) {
           <RouterLink to="/keys" class="nav-link" active-class="nav-active" exact-active-class="nav-active">API keys</RouterLink>
         </template>
         <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
-        <a href="/privacy" class="nav-link">Privacy</a>
+        <a v-if="!auth.user" href="/privacy" class="nav-link">Privacy</a>
         <template v-if="isAdmin">
           <p class="mt-2 px-2.5 text-xs font-medium uppercase tracking-wide text-zinc-400">Administration</p>
           <RouterLink to="/admin" class="nav-link" active-class="" exact-active-class="nav-active">
             Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black">{{ pending }} pending</span>
           </RouterLink>
           <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
+          <RouterLink to="/guide/admin" class="nav-link" active-class="" exact-active-class="nav-active">Admin guide</RouterLink>
         </template>
       </div>
       <div class="mt-3 flex gap-2 border-t border-pico-border pt-3">

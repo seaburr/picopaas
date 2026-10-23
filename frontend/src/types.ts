@@ -122,6 +122,7 @@ export interface App {
   created_at: string
   health_check_enabled: boolean
   health_check_path: string
+  health_check_timeout_seconds?: number | null
   env: EnvVar[]
   retry_at?: string | null
   last_event?: AppEvent | null // newest restart event, only if under 24h old
@@ -140,13 +141,23 @@ export interface CustomDomain {
   cname_target: string
 }
 
-export interface AppResources {
+export interface ResourceValues {
   cpu_request_m: number
   cpu_limit_m: number
   mem_request_mi: number
   mem_limit_mi: number
+  ephemeral_limit_mi: number
+  db_max_connections: number
+  db_quota_mb: number
+  storage_quota_mb: number
+  image_size_mb: number
+}
+
+// Effective values (override or platform default) plus the platform defaults for this app's engine.
+export interface AppResources extends ResourceValues {
   overridden: boolean
   exceeds_platform_caps: boolean
+  defaults: ResourceValues
 }
 
 export interface ResourcesPatch {
@@ -154,6 +165,18 @@ export interface ResourcesPatch {
   cpu_limit_m?: number | null
   mem_request_mi?: number | null
   mem_limit_mi?: number | null
+  // null = platform default
+  db_max_connections?: number | null
+  ephemeral_limit_mi?: number | null
+  db_quota_mb?: number | null
+  storage_quota_mb?: number | null
+  image_size_mb?: number | null
+}
+
+// PATCH /admin/apps/{id}/resources returns the updated AdminApp.
+export interface ResourcesPatchResult extends AdminApp {
+  restarts_app: boolean
+  exceeds_platform_caps: boolean
 }
 
 export interface AppCreatePayload {
@@ -165,6 +188,7 @@ export interface AppCreatePayload {
   want_storage: boolean
   health_check_enabled?: boolean
   health_check_path?: string
+  health_check_timeout_seconds?: number | null
   auto_update?: boolean
   env: EnvVar[]
 }
@@ -177,6 +201,7 @@ export interface AppUpdatePayload {
   port?: number
   health_check_enabled?: boolean
   health_check_path?: string
+  health_check_timeout_seconds?: number | null
   auto_update?: boolean
   env?: EnvVar[]
 }
@@ -250,7 +275,13 @@ export interface AdminApp {
   owner_email: string
   image: string
   created_at: string
-  resources?: AppResources
+  replicas: number
+  want_db: boolean
+  want_storage: boolean
+  db_engine: 'mysql' | 'pg' | null
+  platform_host: string | null
+  custom_domain: string | null // host only (not the CustomDomain object the app endpoints return)
+  resources: AppResources
 }
 
 export interface AuditEntry {

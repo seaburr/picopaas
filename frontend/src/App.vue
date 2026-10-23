@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onErrorCaptured, ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
+import { useAuthStore } from './stores/auth'
 import DevBanner from './components/DevBanner.vue'
 import PasswordBanner from './components/PasswordBanner.vue'
 import ToastHost from './components/ToastHost.vue'
@@ -13,6 +14,7 @@ onErrorCaptured((err) => {
   return false
 })
 const route = useRoute()
+const auth = useAuthStore()
 watch(() => route.fullPath, () => (crashed.value = false))
 const reload = () => window.location.reload()
 </script>
@@ -26,5 +28,10 @@ const reload = () => window.location.reload()
     <button type="button" class="btn-primary mt-4" @click="reload">Reload</button>
   </div>
   <RouterView v-else />
+  <footer v-if="auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-500">
+    <a href="/privacy" class="hover:text-zinc-300">Privacy</a>
+    <RouterLink to="/guide" class="hover:text-zinc-300">Docs</RouterLink>
+    <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-zinc-300">Blog</a>
+  </footer>
   <ToastHost />
 </template>
