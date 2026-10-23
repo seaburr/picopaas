@@ -1,7 +1,7 @@
 # PicoPaaS: Claude Code Context
 
 A tiny Heroku-like PaaS for throwaway projects: one Docker image per app, env vars/secrets, and optional
-MySQL DB (50MB) and Spaces bucket (100MB). Caps: 100m CPU, 384MB RAM, 256MB image (single source: app/config.py). Runs on DigitalOcean (DOKS + Spaces).
+MySQL DB (50MB) and Spaces bucket (100MB). Caps: 100m CPU, 384MB RAM, 512MB image (single source: app/config.py). Runs on DigitalOcean (DOKS + Spaces).
 
 **`bootstrap.md` is the non-negotiable contract. Read it before doing anything.** Then read:
 - `docs/LEDGER.md`: what's done and what's next (start at "Now / Next")
