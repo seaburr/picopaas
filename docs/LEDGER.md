@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: committed 2bc87dc (perf db scaling P1) and 2beeb17 (docs); gitleaks clean; pushing, CI/deploy status to follow.
+- 2026-10-23 [scm-security] START: commit db-scaling P1 + docs, push, watch CI/deploy, verify migration a7c1e9b3d5f2.
+- 2026-10-23 [backend-dev] DONE (uncommitted): db-scaling P1 1-4. Pool env knobs (DB_POOL_SIZE/MAX_OVERFLOW/TIMEOUT/RECYCLE, MySQL only, defaults 5/5/10/1800); app_databases.db_conn_limit_applied so ALTER USER runs only on change (cleared on credential rotation); selectinload in reconciler running query + list_apps, joinedload owner in admin apps, one batched app_events query; indexes + FK index=True. Migration a7c1e9b3d5f2 (single head). Tests: tests/test_db_scaling.py. Docs: ADMIN_GUIDE, deployment/infrastructure, research/db-scaling status. Item 5 untouched (on hold).
+- 2026-10-23 [backend-dev] START: db-scaling P1 items 1-4 (pool sizing, conn-limit applied marker, eager loading, indexes).
 - 2026-10-23 [scm-security] DONE: 5 chunks committed (dfc3f6b, 3f67eea, a1195d6, 0a1983e, 67d8681) + ledger reorder; gitleaks clean; see push/CI status in next line.
 - 2026-10-23 [scm-security] START: commit chunks (CSRF/last-admin, RBAC events, coverage tests, pod picker UI, db-scaling research), push, watch CI/deploy.
 - 2026-10-23 [security-reviewer] DONE: CSRF guard (same-site tenant subdomains), last-admin FOR UPDATE, admin gate requires active; PENTEST.md section; tests added. Uncommitted.
