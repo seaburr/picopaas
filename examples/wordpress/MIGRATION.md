@@ -73,10 +73,19 @@ Old plugins and themes written for PHP 7 can fatal on 8.x (removed functions suc
 deprecation). Find them in the logs after the restore. Deactivate the fatal ones with `WP_RESTORE_DEACTIVATE=slug1,slug2` (also works later:
 WP-CLI with `--skip-plugins`). Do not edit plugin or theme files in this repo; replace or drop the plugin.
 
+## 7a. Boot actions for after the restore
+Idempotent env-driven actions, run on every boot once WordPress is installed (all via WP-CLI, plugins and themes skipped):
+- `WP_REMOVE_PLUGINS=slug1,slug2`: deactivate and delete plugins that break on current PHP or that you no longer want (for example Jetpack). Names must match `[a-z0-9-]+`; must-use plugins are never touched. Prefer this over `WP_RESTORE_DEACTIVATE` when you want the files gone from the volume.
+- `WP_RESET_PASSWORD_USER=<login|email|id>` with `WP_RESET_PASSWORD_NONCE=<any string>`: sets a random password, printed once in the app logs. Use it when you cannot log in and mail is not configured, since the lost-password email cannot be sent (SMTP is blocked). A marker (a database option keyed by user and nonce) stops repeated resets on restart; change the nonce to reset again. Change the password after login and remove the variables.
+- `WP_CLEAR_LOGIN_LOCKOUTS=1`: clears Limit Login Attempts Reloaded lockouts and retry counters, in case the migrated site locked your IP. Remove it afterwards.
+
 ## 8. Rollback
 Nothing touches the old server. To redo: stop the app, delete the marker (`rm /var/www/html/.picopaas-restored`, needs a shell on the volume)
 or simply delete the app (the volume, DB and bucket go with it) and start again. To go back to the old site, leave DNS pointing at it until you
 have verified everything; lower the TTL a day before cutover.
+
+## 8a. If you cannot log in after the restore
+Check in this order: (1) the stored hash format: WordPress 6.8+ `$wp$2y$` bcrypt and legacy `$P$` phpass both verify on current WordPress and PHP (tested); so a hash is rarely the problem. (2) Plugins that take over login: Jetpack's Protect, Account Protection and SSO modules depend on the WordPress.com connection, which breaks when the site URL changes, and some require email codes that cannot be sent; remove such plugins with `WP_REMOVE_PLUGINS`. (3) Brute-force lockouts: `WP_CLEAR_LOGIN_LOCKOUTS=1`. (4) Reset the password with `WP_RESET_PASSWORD_USER`. Client IP: lockout plugins must see the real visitor IP (the image trusts `X-Forwarded-For` from private ranges).
 
 ## 9. Cleanup
 - Delete the bundle objects from the bucket as soon as the restore succeeds (`restore/*`): they contain user data.

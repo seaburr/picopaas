@@ -129,6 +129,10 @@ Full procedure, bundle preparation, sizing and rollback: [MIGRATION.md](MIGRATIO
 | `WP_RESTORE_DB_KEY` / `_CONTENT_KEY` / `_EXTRA_KEY` | `restore/db.sql.gz` / `restore/wp-content.tar.gz` / `restore/extra.tar.gz` | Object keys of the bundle (extra is optional) |
 | `WP_RESTORE_DEACTIVATE` | unset | Comma list of plugin slugs to deactivate after the restore (plugins that fatal on current PHP) |
 | `WORDPRESS_DB_CA_CERT` | unset | `${{ db.ca_cert }}`; lets the restore's mariadb client verify the DB certificate |
+| `WP_REMOVE_PLUGINS` | unset | Comma list of plugin slugs (`[a-z0-9-]+`) to deactivate and delete from `wp-content/plugins` on boot. Must-use plugins are never touched. Idempotent |
+| `WP_CLEAR_LOGIN_LOCKOUTS` | unset | `1` clears Limit Login Attempts Reloaded lockouts and retry counters on boot |
+| `WP_RESET_PASSWORD_USER` / `WP_RESET_PASSWORD_NONCE` | unset | Login, email or ID of a user whose password is reset once: a random password is generated in the container and printed once to the app logs as `WORDPRESS PASSWORD RESET for <login> (shown once, change it after login): ...`. Restarts do not reset again; change the nonce (any string) to reset again. Use when mail (lost-password email) is not set up |
+| `WORDPRESS_AUTOMATIC_UPDATES` | `false` | `true` re-enables background core/plugin/theme updates (off by default; a restart during one leaves a maintenance flag) |
 | `WORDPRESS_AUTO_UPDATE_CORE` | `false` | Core updates come from new images |
 | `WORDPRESS_DEBUG` | `false` | WP_DEBUG (logged, never displayed) |
 

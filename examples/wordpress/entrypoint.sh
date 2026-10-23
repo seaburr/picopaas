@@ -151,6 +151,51 @@ restore_flow() {
   log "restore: step 6/6 done, marker written to $MARKER"
 }
 
+# 3c. Boot actions (idempotent, WP-CLI with plugins and themes skipped). Run each boot once WordPress is installed.
+wpq() { php -d memory_limit=256M /usr/local/bin/wp --path="$WP_ROOT" --allow-root --skip-plugins --skip-themes "$@"; }
+post_boot_actions() {
+  # WP_REMOVE_PLUGINS=slug,slug : deactivate and delete plugins from wp-content/plugins (never must-use plugins).
+  if [ -n "${WP_REMOVE_PLUGINS:-}" ]; then
+    for p in $(echo "$WP_REMOVE_PLUGINS" | tr ',' ' '); do
+      case "$p" in ''|*[!a-z0-9-]*) log "remove-plugins: ignoring invalid name (allowed: a-z 0-9 -)"; continue ;; esac
+      if [ -d "$WP_ROOT/wp-content/plugins/$p" ]; then
+        wpq plugin deactivate "$p" >/dev/null 2>&1 || true
+        if wpq plugin delete "$p" >/dev/null 2>&1; then log "remove-plugins: deactivated and deleted $p"; else log "remove-plugins: could not delete $p"; fi
+      else
+        log "remove-plugins: $p not present, nothing to do"
+      fi
+    done
+  fi
+  # WP_CLEAR_LOGIN_LOCKOUTS=1 : clear Limit Login Attempts Reloaded lockouts and retry counters.
+  if [ "${WP_CLEAR_LOGIN_LOCKOUTS:-0}" = "1" ]; then
+    for o in limit_login_retries limit_login_retries_valid; do wpq option delete "$o" >/dev/null 2>&1 || true; done
+    wpq option update limit_login_lockouts '[]' --format=json >/dev/null 2>&1 || true
+    log "clear-lockouts: cleared Limit Login Attempts lockouts and retry counters"
+  fi
+  # WP_RESET_PASSWORD_USER=<login|email|id> : set a new random password once per (user, WP_RESET_PASSWORD_NONCE).
+  if [ -n "${WP_RESET_PASSWORD_USER:-}" ]; then
+    key=$(printf '%s|%s' "$WP_RESET_PASSWORD_USER" "${WP_RESET_PASSWORD_NONCE:-}" | sha256sum | cut -c1-32)
+    if [ "$(wpq option get picopaas_pwreset_done 2>/dev/null || true)" = "$key" ]; then
+      log "reset-password: already done for this user and nonce; change WP_RESET_PASSWORD_NONCE to reset again"
+    else
+      uid=$(wpq user get "$WP_RESET_PASSWORD_USER" --field=ID 2>/dev/null || true)
+      if [ -z "$uid" ]; then
+        log "reset-password: no such user (looked up by login, email and id); nothing changed"
+      else
+        login=$(wpq user get "$uid" --field=user_login 2>/dev/null || echo "$uid")
+        RPW=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)
+        if wpq user update "$uid" --user_pass="$RPW" --skip-email >/dev/null 2>&1; then
+          wpq option update picopaas_pwreset_done "$key" >/dev/null 2>&1 || true
+          echo "WORDPRESS PASSWORD RESET for $login (shown once, change it after login): $RPW" >&2
+        else
+          log "reset-password: update FAILED; nothing changed"
+        fi
+        RPW=""
+      fi
+    fi
+  fi
+}
+
 # 4. First-boot install with WP-CLI (the web installer is blocked in nginx, so nobody can take over an empty site).
 install_flow() {
   wp_cli() { php -d memory_limit=256M /usr/local/bin/wp --path="$WP_ROOT" --allow-root "$@"; }
@@ -170,6 +215,7 @@ install_flow() {
     restore_flow || { set_state "WordPress restore failed or refused, see the app logs"; return 0; }
   fi
   if wp_cli core is-installed 2>/dev/null; then
+    post_boot_actions
     set_state ""; log "WordPress is installed; serving"; return 0
   fi
   if [ -z "${WP_URL:-}" ] || [ -z "${WP_ADMIN_EMAIL:-}" ]; then
@@ -182,6 +228,7 @@ install_flow() {
   if wp_cli core install --url="$WP_URL" --title="${WP_TITLE:-WordPress}" --admin_user="${WP_ADMIN_USER:-admin}" \
        --admin_password="$PW" --admin_email="$WP_ADMIN_EMAIL" --skip-email >/tmp/wp-install.log 2>&1; then
     echo "WORDPRESS ADMIN PASSWORD (shown once, change it after login): user=${WP_ADMIN_USER:-admin} password=$PW" >&2
+    post_boot_actions
     set_state ""
     log "WordPress installed at $WP_URL"
   else
