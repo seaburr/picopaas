@@ -80,7 +80,7 @@ def test_cluster_wide_role_has_no_app_resource_writes(roles):
     for rule in roles["picopaas-reconciler"]:
         res = set(rule.get("resources", []))
         assert not res & (APP_NS_WORKLOAD_RESOURCES | {"secrets", "services", "resourcequotas", "limitranges"}), rule
-        if res & {"pods", "pods/log", "nodes"}:
+        if res & {"pods", "pods/log", "events", "nodes"}:
             assert set(rule["verbs"]) <= {"get", "list"}, rule  # read-only
 
 
@@ -88,7 +88,7 @@ def test_cluster_wide_role_is_exactly_the_documented_set(roles):
     got = {(g, r) for rule in roles["picopaas-reconciler"] for g in rule["apiGroups"] for r in rule["resources"]}
     assert got == {
         ("", "namespaces"), ("rbac.authorization.k8s.io", "rolebindings"), ("rbac.authorization.k8s.io", "clusterroles"),
-        ("", "pods"), ("", "pods/log"), ("", "nodes"), ("metrics.k8s.io", "nodes"), ("metrics.k8s.io", "pods"),
+        ("", "pods"), ("", "pods/log"), ("", "events"), ("", "nodes"), ("metrics.k8s.io", "nodes"), ("metrics.k8s.io", "pods"),
     }
     bind = [r for r in roles["picopaas-reconciler"] if "clusterroles" in r["resources"]]
     assert bind == [{"apiGroups": ["rbac.authorization.k8s.io"], "resources": ["clusterroles"], "verbs": ["bind"],
@@ -128,6 +128,7 @@ def test_reconciler_reads_deletes_and_status_calls_are_allowed(roles, docs):
     # get_status / get_used_limits / pending_hint / pod_logs / app_pod_events / cluster_snapshot
     assert ok("list", "", "pods", "app-7") and ok("get", "", "pods", "app-7") and ok("list", "", "pods")
     assert ok("get", "", "pods/log", "app-7")
+    assert ok("list", "", "events", "app-7")  # pod_events (download)
     assert ok("list", "apps", "deployments", "app-7") and ok("get", "apps", "deployments", "app-7")
     assert ok("list", "", "nodes") and ok("list", "metrics.k8s.io", "nodes") and ok("list", "metrics.k8s.io", "pods")
     # RoleBinding bootstrap in a brand-new namespace (nothing bound yet) + the `bind` it needs

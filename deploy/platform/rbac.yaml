@@ -82,6 +82,11 @@ rules:
     resources: ["pods/log"]
     verbs: ["get"]
 
+  # Kubernetes Events for GET /apps/{id}/pods/{pod}/events (read-only; the API only lists app-<id> namespaces).
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+
   # Read-only, for GET /admin/health (admin dashboard): node capacity + usage from metrics.k8s.io.
   - apiGroups: [""]
     resources: ["nodes"]
