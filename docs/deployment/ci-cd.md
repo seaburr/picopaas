@@ -37,4 +37,4 @@ Stored as GitHub repo secrets (write-only; keep your own copy in a password mana
 Platform pod env (k8s Secret `picopaas-env`): `FERNET_KEY` (+ optional `FERNET_KEYS_PREVIOUS`), `DATABASE_URL`,
 `DIGITALOCEAN_TOKEN`, `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`, `BOOTSTRAP_DB_*`, `BOOTSTRAP_PG_*`. Other
 knobs set at bootstrap: `MYSQL_EGRESS_MODE`/`MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR`, `MYSQL_SSL_CA`, `INGRESS_CLASS`
-(traefik), `INGRESS_NAMESPACE` (traefik), `APP_DOMAIN`, `MAX_NODES` (2).
+(traefik), `INGRESS_NAMESPACE` (traefik), `APP_DOMAIN`, `MAX_NODES` (2), `VOLUMES_ENABLED` (1, request 0007; the bootstrap step "Check volume StorageClass" fails if `do-block-storage` reclaimPolicy is not Delete and warns if expansion is off). Changing the secret changes the env-checksum annotation, so the platform pods roll on the next bootstrap or deploy.

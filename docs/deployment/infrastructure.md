@@ -96,3 +96,12 @@ connections against the per-app limit of 5); 100 Spaces buckets per account. The
 new paid resource go through `docs/requests/`.
 
 `MAX_NODES` (2) is set at bootstrap and is display-only; the real cap is `max_nodes` in Terraform.
+
+## Persistent volumes (request 0007, enabled 2026-10-23)
+
+`VOLUMES_ENABLED=1` is set at bootstrap in `picopaas-env`. Apps that ask for `resources.volume` get one RWO PVC on
+StorageClass `do-block-storage` (DOKS default, `dobs.csi.digitalocean.com`, reclaimPolicy Delete, allowVolumeExpansion
+true; verified by Chas and re-checked on every bootstrap). Deleting an app deletes its PVC and the DO volume. Caps:
+1 GiB per volume for users, 20 GiB admin override, `VOLUMES_MAX_TOTAL=10`; at most 15 attached per node. Volumes are
+grow-only and not backed up. Cost: $0 static, $0.10/GiB/mo per volume while it exists (worst case with defaults about
+$1/mo), not included in the $75.30 baseline.

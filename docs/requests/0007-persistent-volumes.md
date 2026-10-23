@@ -46,11 +46,16 @@ nothing; money is only spent after Chas approves and the flag is turned on. Desi
 
 ## Decision needed (Chas)
 
-- [ ] **Approve enabling on this instance.** Enabling sets `VOLUMES_ENABLED=1` in the platform pod env. Per
+- [x] **Approve enabling on this instance.** Enabling sets `VOLUMES_ENABLED=1` in the platform pod env. Per
       `docs/deployment/ci-cd.md`, platform knobs are set at bootstrap into the `picopaas-env` Secret / deployment env (same
       place as `MAX_NODES`, `APP_DOMAIN`), so it is added to the bootstrap/deploy manifests and applied by the `bootstrap`
       and `deploy` workflows. It stays off until that line merges.
-- [ ] **Approve defaults:** ordinary users max **1 GiB** per volume, platform-admin override up to **20 GiB**, and
+- [x] **Approve defaults:** ordinary users max **1 GiB** per volume, platform-admin override up to **20 GiB**, and
       **10 volumes total** (`VOLUMES_MAX_TOTAL`) across the platform.
 
 Approval line (Chas fills in): `APPROVED: <variant> on <date>` / `DECLINED`.
+
+APPROVED: enable with the defaults above on 2026-10-23 (Chas in chat: "Send it").
+
+StorageClass verified live by Chas 2026-10-23: `do-block-storage` (default class, `dobs.csi.digitalocean.com`),
+`reclaimPolicy: Delete`, `allowVolumeExpansion: true`, `volumeBindingMode: Immediate`.

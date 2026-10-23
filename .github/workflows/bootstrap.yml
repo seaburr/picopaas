@@ -255,6 +255,24 @@ jobs:
             echo "::notice::managed PostgreSQL $PG_CLUSTER_NAME not found; skipping BOOTSTRAP_PG_*"
           fi
 
+      # Request 0007 (persistent volumes): the feature is only safe if deleting a PVC deletes the DO volume (else orphaned
+      # volumes keep billing at $0.10/GiB/mo) and PVCs can be grown. Verify before VOLUMES_ENABLED=1 goes into picopaas-env.
+      - name: Check volume StorageClass
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          sc=$(kubectl get storageclass do-block-storage -o json)
+          policy=$(jq -r '.reclaimPolicy // "unset"' <<<"$sc")
+          expand=$(jq -r '.allowVolumeExpansion // false' <<<"$sc")
+          echo "do-block-storage: reclaimPolicy=$policy allowVolumeExpansion=$expand"
+          if [ "$policy" != "Delete" ]; then
+            echo "::error::do-block-storage reclaimPolicy is $policy, not Delete; deleted apps would leave billing volumes behind (request 0007)"
+            exit 1
+          fi
+          if [ "$expand" != "true" ]; then
+            echo "::warning::do-block-storage does not allow volume expansion; admin volume grow will fail (request 0007)"
+          fi
+
       - name: Platform secrets (picopaas-env, picopaas-db-ca)
         if: steps.gate.outputs.run == 'true'
         env:
@@ -328,6 +346,7 @@ jobs:
             --from-literal=APP_DOMAIN="$DOMAIN" \
             --from-literal=RECONCILER_ENABLED=1 \
             --from-literal=MAX_NODES=2 \
+            --from-literal=VOLUMES_ENABLED=1 \
             --from-literal=MYSQL_EGRESS_MODE=cidr \
             --from-literal=MYSQL_SSL_CA=/etc/picopaas/db-ca/ca.crt \
             --from-literal=MYSQL_EGRESS_CIDR="$VPC_CIDR" \

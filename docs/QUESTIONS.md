@@ -7,12 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Approve persistent volumes (request 0007)?** Lets an app mount one DigitalOcean block-storage volume (needed for your
-  WordPress blog). $0 static, $0.10/GiB/mo per volume (1 GiB min, billed even if the app is stopped); worst case with
-  defaults about $1/mo. Each deploy of a volume app has about a minute of downtime. Background and the two decisions
-  (enable on this instance, size/count defaults): `docs/requests/0007-persistent-volumes.md`. **Default if unanswered:
-  stays disabled.** — _your answer:_
-
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
@@ -46,7 +40,7 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] **Make the GHCR package `picopaas-example-wordpress` public after its first build.** New GHCR packages are private by
+- [x] **Make the GHCR package `picopaas-example-wordpress` public after its first build.** _(Claude 2026-10-23: already anonymously pullable — HTTP 200 on the manifest without credentials; nothing to do.)_ New GHCR packages are private by
       default and the cluster pulls anonymously, so deploys fail with an image-pull error until this is done. Go to
       https://github.com/users/seaburr/packages/container/picopaas-example-wordpress/settings, then **Change visibility**,
       choose **Public**, confirm. (The package only exists after the examples workflow has built it once. The ledger does not
@@ -87,6 +81,9 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-23: **Persistent volumes (request 0007): APPROVED 2026-10-23.** Enabled on this instance with the defaults (1 GiB users,
+  20 GiB admin override, 10 volumes total). `VOLUMES_ENABLED=1` is wired into the bootstrap workflow; takes effect when Chas runs it.
+  See `docs/requests/0007-persistent-volumes.md`.
 - 2026-10-23: **Audit export via API keys (answered: leave as-is).** A read-scope key owned by an admin can still
   download `/admin/audit/export`; no change (docs/PENTEST.md 2026-10-23 #6).
 - 2026-10-22: **Abuse hardening (answered).** Bandwidth cap: implemented as a per-pod outbound cap, default 20 Mbit/s,
