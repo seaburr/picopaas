@@ -44,8 +44,10 @@ Verify: `gzip -dc db.sql.gz | grep -n -E 'GTID_PURGED|SQL_LOG_BIN|DEFINER'` show
 1. Deploy the vanilla app from README.md with `resources: { db: true, storage: true }`, a volume `{size_gi, mount_path: /var/www/html}`, and
    the eight salt secrets. Let the automatic first install finish (note: it generates an admin you will not use; the restore replaces all
    users with the old site's).
-2. Upload the bundle to the app's bucket (credentials from the app's storage settings / API) with any S3 client, to the keys
-   `restore/db.sql.gz`, `restore/wp-content.tar.gz`, optionally `restore/extra.tar.gz` (or set `WP_RESTORE_*_KEY`).
+2. Upload the bundle with the CLI (no bucket credentials needed), to the keys `restore/db.sql.gz`, `restore/wp-content.tar.gz`,
+   optionally `restore/extra.tar.gz` (or set `WP_RESTORE_*_KEY`):
+   `picopaas storage upload myapp ./db.sql.gz --key restore/db.sql.gz` (repeat per file). Each file must fit in the bucket's remaining
+   quota (ask an admin to raise `storage_quota_mb` for large bundles).
 3. Set `WP_RESTORE: "1"`, `WP_RESTORE_S3_ENDPOINT: ${{ storage.endpoint }}`, `_REGION`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY` from the
    `${{ storage.* }}` references, `WORDPRESS_DB_CA_CERT: ${{ db.ca_cert }}`, optionally `WP_RESTORE_DEACTIVATE` (section 7), and `WP_URL`
    set to the **new** public URL. Redeploy.
