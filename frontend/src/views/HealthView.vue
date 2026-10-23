@@ -187,7 +187,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
           <div v-if="data.users" :class="card">
             <div class="text-xs text-zinc-400">Users</div>
             <div class="text-lg font-semibold text-white">{{ data.users.total }}</div>
-            <div class="text-xs text-zinc-400">{{ data.users.active }} active · {{ data.users.suspended }} suspended</div>
+            <div class="text-xs text-zinc-400">{{ data.users.active }} active · {{ data.users.suspended }} suspended · {{ data.users.admins ?? 0 }} {{ (data.users.admins ?? 0) === 1 ? 'admin' : 'admins' }}</div>
           </div>
           <div v-if="data.users" :class="[card, data.users.pending > 0 ? 'border-amber-500/40' : '']">
             <div class="text-xs text-zinc-400">Pending approval</div>

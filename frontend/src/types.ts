@@ -360,7 +360,7 @@ export interface ClusterHealth {
   apps: HealthApp[]
   platform: HealthPlatform[]
   db_servers: DbServer[]
-  users?: { total: number; active: number; pending: number; suspended: number }
+  users?: { total: number; active: number; pending: number; suspended: number; admins?: number }
   pending_users?: { id: number; email: string; created_at: string }[]
   workloads?: {
     apps_total: number

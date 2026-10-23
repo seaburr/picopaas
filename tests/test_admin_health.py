@@ -125,7 +125,8 @@ def test_platform_counts(make_client, kube, db_session):
     from app import models
     admin = _admin(make_client)
     d = admin.get("/admin/health").json()
-    assert d["users"] == {"total": 0, "active": 0, "pending": 0, "suspended": 0}  # platform_admin excluded
+    # Counts match the Admin users list: every non-deleted account, admins included.
+    assert d["users"] == {"total": 1, "active": 1, "pending": 0, "suspended": 0, "admins": 1}
     base = datetime(2026, 1, 1)
     for i in range(22):
         db_session.add(models.User(email=f"p{i}@x.io", password_hash="x", role="user", status="pending",
@@ -134,7 +135,7 @@ def test_platform_counts(make_client, kube, db_session):
         db_session.add(models.User(email=f"{st}{len(db_session.new)}@x.io", password_hash="x", role="user", status=st))
     db_session.commit()
     d = admin.get("/admin/health").json()  # not stale despite cache
-    assert d["users"] == {"total": 25, "active": 2, "pending": 22, "suspended": 1}
+    assert d["users"] == {"total": 26, "active": 3, "pending": 22, "suspended": 1, "admins": 1}
     pend = d["pending_users"]
     assert len(pend) == 20 and pend[0]["email"] == "p21@x.io" and pend[1]["email"] == "p20@x.io"
     assert set(pend[0]) == {"id", "email", "created_at"}
