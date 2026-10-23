@@ -406,9 +406,9 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </div>
             <p v-if="logsError" class="text-sm text-zinc-400">{{ logsError }}</p>
             <template v-else-if="logs">
-              <div v-if="(logs.pods?.length ?? 0) > 1" class="mb-1 flex items-center gap-2 text-xs text-zinc-300">
+              <div v-if="(logs.pods?.length ?? 0) > 1" class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-300">
                 <label for="log-pod">Pod</label>
-                <select id="log-pod" v-model="podSel" class="input mono w-auto py-0.5" @change="loadLogs">
+                <select id="log-pod" v-model="podSel" class="input mono w-auto min-w-0 max-w-full py-0.5" @change="loadLogs">
                   <option value="">All pods ({{ logs.pods!.length }})</option>
                   <option v-for="p in logs.pods" :key="p" :value="p">{{ podLabel(p) }}</option>
                 </select>
