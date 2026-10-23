@@ -78,7 +78,8 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--pp-accent);outline-
 .gh-card-meta,.gh-card-meta *,.gh-card-date,.gh-card-author{color:var(--pp-muted)!important;font-size:1.4rem!important}
 .gh-card-tag{color:var(--pp-accent)!important;font-family:var(--pp-mono)}
 .gh-card-image{background:var(--pp-card)!important;border-radius:8px;overflow:hidden}
-.gh-container.is-list .gh-card,.gh-container.is-grid .gh-card{border-bottom:1px solid var(--pp-border);padding-bottom:28px}
+/* the theme already draws a divider between cards (.gh-card+.gh-card:before); no extra border here */
+.gh-container.is-list .gh-card,.gh-container.is-grid .gh-card{padding-bottom:28px}
 
 /* ---- non-subscribe buttons (kg-btn etc.) ---- */
 .gh-button,.kg-btn,.kg-button-card a.kg-btn{background:var(--pp-primary)!important;color:#fff!important;border-radius:6px!important;font-weight:600;box-shadow:none!important}
