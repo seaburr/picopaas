@@ -493,8 +493,10 @@ def test_egress_ports_exclude_exactly_the_smtp_ports(monkeypatch):
         return s
 
     tcp = covered(k8s._internet_egress_ports())
-    assert tcp == set(range(1, 65536)) - set(k8s.SMTP_PORTS)
+    extra = {x for lo, hi in k8s.ABUSE_TCP_RANGES for x in range(lo, hi + 1)}
+    assert tcp == set(range(1, 65536)) - set(k8s.SMTP_PORTS) - extra
     assert any(p["protocol"] == "UDP" for p in k8s._internet_egress_ports())
     # Adjacent / leading blocked ports (exercises the range-skipping branches).
     monkeypatch.setattr(k8s, "SMTP_PORTS", (1, 2, 25, 26, 65535))
+    monkeypatch.setattr(k8s, "ABUSE_TCP_RANGES", ())
     assert covered(k8s._internet_egress_ports()) == set(range(1, 65536)) - {1, 2, 25, 26, 65535}

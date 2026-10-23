@@ -7,6 +7,8 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Abuse hardening: approve a per-pod outbound bandwidth cap and an Acceptable Use section? (raised 2026-10-22, see docs/PENTEST.md "Abuse hardening review (2026-10-22)").** I already blocked more outbound ports (telnet, SMB/NetBIOS, RDP, IRC, chargen, plus UDP amplification ports SNMP/SSDP/memcached/CLDAP/rpcbind) and reserved ranges (CGNAT, multicast, loopback); SSH, NTP and DNS stay open on purpose. Two things need your call: (a) cap each app's outbound traffic at about 5 Mbit/s using the Cilium bandwidth manager that is already on (free; I suggest yes), and (b) add a short Acceptable Use paragraph to the terms page plus a public abuse-contact page (I need your wording). Optional: an automatic "many destinations per minute" flagger using Hubble. -- _your answer:_ Yes, that sounds perfect. We'll certainly need to document that outbound traffic ceiling in our documentation. This probably should also be able to overridden by a platform administrator, if possible, like our other things. Ceiling? IDK 20MBps?
+
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
