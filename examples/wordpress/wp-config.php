@@ -52,6 +52,9 @@ if ( picopaas_env( 'WP_URL' ) ) {
 define( 'DISABLE_WP_CRON', true );
 define( 'DISALLOW_FILE_EDIT', true );
 define( 'FS_METHOD', 'direct' );
+// Background updates (core/plugins/themes via cron) are off by default: a restart in the middle of one leaves .maintenance behind
+// (visitors get 'Briefly unavailable' for up to 10 minutes). Update from the dashboard, or set WORDPRESS_AUTOMATIC_UPDATES=true.
+define( 'AUTOMATIC_UPDATER_DISABLED', 'true' !== picopaas_env( 'WORDPRESS_AUTOMATIC_UPDATES', 'false' ) );
 define( 'WP_AUTO_UPDATE_CORE', 'true' === picopaas_env( 'WORDPRESS_AUTO_UPDATE_CORE', 'false' ) ? true : false );
 define( 'WP_TEMP_DIR', '/tmp' );
 define( 'WP_DEBUG', 'true' === picopaas_env( 'WORDPRESS_DEBUG', 'false' ) );

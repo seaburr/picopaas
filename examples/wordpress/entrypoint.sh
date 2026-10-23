@@ -53,6 +53,8 @@ else
   WP_ROOT="$SEED"
   log "no volume at $VOLUME_DIR: serving WordPress from the image at $WP_ROOT (uploads/plugins are ephemeral)"
 fi
+# A restart means no update is running: clear a stale maintenance flag left by an interrupted update.
+rm -f "$WP_ROOT/.maintenance" 2>/dev/null || true
 mkdir -p "$WP_ROOT/wp-content/uploads" "$WP_ROOT/wp-content/plugins" "$WP_ROOT/wp-content/themes" 2>/dev/null || true
 export WP_ROOT
 echo "root $WP_ROOT;" > /tmp/nginx-root.conf
