@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: audit retention 919b52d + ledger 6069afb pushed; CI, image, deploy green; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit audit retention + export, ledger; push, watch CI/deploy.
 - 2026-10-23 [backend-dev] DONE (uncommitted): audit retention + streamed export (db-scaling #4). config AUDIT_RETENTION_DAYS (90; <=0 keeps), audit.purge_old (id batches of 5000, audit.purge row), scheduler.audit_purge_job (leader-only, daily, first run +5 min); /admin/audit/export now StreamingResponse (keyset batches of 1000 in its own session, tuples, audit.export written first with capped COUNT, excludes itself). Tests: tests/test_audit_retention.py. Docs updated. Keyset listing still open.
 - 2026-10-23 [backend-dev] START: audit retention + streamed export (db-scaling #4).
