@@ -9,6 +9,9 @@ on:
       - "examples/**"
       - ".github/workflows/examples.yml"
   workflow_dispatch:
+  # Weekly rebuild so base-image security patches (php/alpine/nginx) are picked up without a code change.
+  schedule:
+    - cron: "17 6 * * 1"
 
 permissions:
   contents: read
@@ -19,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [ghost, status]
+        app: [ghost, status, wordpress]
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.4.0
 
@@ -43,6 +46,8 @@ jobs:
           context: examples/${{ matrix.app }}
           platforms: linux/amd64
           push: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           build-args: WITH_S3=1
           tags: |
             ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:latest
