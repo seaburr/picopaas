@@ -272,3 +272,48 @@ def test_09_storage_quota_reads_survive_and_delete_endpoint_recovers(user, quota
     user.wait_rollout(app["id"])  # the restored read-write key rolls out immediately, not at the next poll
     poll(_writes_work(app, "s3"), 600, 15, desc="S3 writes to be restored after the platform delete")
     assert user.get_app(app["id"])["quota"]["storage"]["over_quota"] is False
+
+
+# 10 (slow) an admin raising a limit restores an over-limit app -----------------------------------------
+# Lower the app's own limit, push it over, then put the limit back (null = platform default) and check the app
+# recovers. Raising a quota rechecks that app at once, so recovery shouldn't wait for the next poll.
+def _set_limits(admin, app, **fields):
+    return admin.ok("PATCH", f"/admin/apps/{app['id']}/resources", json=fields)
+
+
+@SLOW_ONLY
+def test_10_db_quota_raise_restores_writes(admin, user, quota_probe):
+    app = quota_probe
+    _set_limits(admin, app, db_quota_mb=5)
+    get_json(app_url(app, "/db/fill?mb=10"), ok_only=False)
+    poll(_writes_fail(app, "db"), DB_POLL_TIMEOUT, 10, desc="DB writes to be revoked over a 5 MB override")
+    out = _set_limits(admin, app, db_quota_mb=None)
+    assert out["restarts_app"] is False and out["resources"]["db_quota_mb"] == 50
+    poll(_writes_work(app, "db"), 90, 5, desc="DB writes to be restored right after the quota was raised")
+    assert user.get_app(app["id"])["quota"]["db"]["over_quota"] is False
+
+
+@SLOW_ONLY
+def test_10_storage_quota_raise_restores_writes(admin, user, quota_probe):
+    app = quota_probe
+    _set_limits(admin, app, storage_quota_mb=2)
+    get_json(app_url(app, "/s3/fill?mb=4"), ok_only=False)
+    poll(_writes_fail(app, "s3"), STORAGE_POLL_TIMEOUT, 15, desc="S3 writes to be revoked over a 2 MB override")
+    _set_limits(admin, app, storage_quota_mb=None)
+    user.wait_rollout(app["id"])  # the read-write key is restored by the PATCH and rolled out
+    poll(_writes_work(app, "s3"), 600, 15, desc="S3 writes to be restored after the quota was raised")
+    assert user.get_app(app["id"])["quota"]["storage"]["over_quota"] is False
+
+
+@SLOW_ONLY
+def test_10_scratch_disk_raise_lets_the_app_write_more(admin, user, quota_probe):
+    app = quota_probe
+    out = _set_limits(admin, app, ephemeral_limit_mi=64)
+    assert out["restarts_app"] is True
+    user.wait_rollout(app["id"])
+    get_json(app_url(app, "/disk/fill?mb=100"), ok_only=False)  # over 64 Mi: the pod is evicted and replaced
+    out = _set_limits(admin, app, ephemeral_limit_mi=None)
+    assert out["restarts_app"] is True and out["resources"]["ephemeral_limit_mi"] == 250
+    user.wait_rollout(app["id"])
+    r = poll(lambda: get_json(app_url(app, "/disk/fill?mb=100")), 300, 10, desc="100 MB scratch write after raise")
+    assert r["written_mb"] == 100
