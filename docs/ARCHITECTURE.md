@@ -1,6 +1,6 @@
 # PicoPaaS Architecture
 
-Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). This is a design record: §1 and `docs/OPERATIONS.md` have the current numbers.
+Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). This is a design record: §1 and `docs/deployment/` have the current numbers.
 Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
@@ -242,7 +242,7 @@ New questions go in `docs/QUESTIONS.md`. Decided so far:
 passwords). The session signing key is derived from it unless `SECRET_KEY` is set. The key lives in the GitHub repo
 secret `PICOPAAS_FERNET_KEY`; `bootstrap.yml` writes it into `picopaas-env`. It must never be generated per cluster:
 a cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is
-implemented; see `docs/OPERATIONS.md` §3.
+implemented; see `docs/deployment/runbooks.md`.
 
 ## Auth throttling and security headers
 - `/auth/login` and `/auth/register` are throttled by `app/ratelimit.py` using the `auth_throttle` table (fixed windows, hashed keys), so the limit holds across replicas. Login: 10 failures per email / 15 min (primary control, no IP dependence; applies identically to unknown emails; success clears it) and 100 per client IP. Register: 40 attempts per client IP / hour. 429 + `Retry-After`. Store errors fail open (logged). API-key traffic is not throttled here.

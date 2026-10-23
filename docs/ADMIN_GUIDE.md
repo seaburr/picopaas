@@ -1,190 +1,335 @@
 # Administering PicoPaaS
 
-This guide is for platform admins (role `platform_admin`). It is the short, task-oriented version. Deep detail lives in
-[OPERATIONS.md](OPERATIONS.md) (admin API reference, key rotation, disaster recovery), the manual runbook in
-`deploy/README.md`, and the design record in [ARCHITECTURE.md](ARCHITECTURE.md). App-owner docs are in the
-[User Guide](USER_GUIDE.md). It contains no secret values: tokens, keys and kubeconfig contents live in GitHub
-secrets and Kubernetes Secrets.
+This guide is for anyone running their own PicoPaaS: it covers what the platform needs, how to configure and scale it,
+and how to look after it. It is generic. Instance-specific facts (domain, cloud account, node sizes, workflow names)
+belong in your own deployment notes; the reference deployment keeps its notes in the repo under
+`docs/deployment/`. App-owner docs are in the [User Guide](USER_GUIDE.md), HTTP routes in [API.md](API.md), and the
+design record in [ARCHITECTURE.md](ARCHITECTURE.md). This guide contains no secret values; keep tokens, keys and
+kubeconfig contents in your secret store.
 
-## Architecture at a glance
+## How it works
 
 ```
-*.picopaas.xyz (A records) -> DO load balancer -> Traefik (ns traefik, wildcard cert from cert-manager)
-   platform.picopaas.xyz -> platform (ns picopaas-system, 2 replicas: API + UI; one leader runs the reconciler)
-   <generated-host>.picopaas.xyz -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
-Managed MySQL (DO, NYC3, private VPC)       platform DB + one database/user per MySQL app
-Managed PostgreSQL (DO, NYC3, private VPC)  one database + role per PostgreSQL app
-Spaces (ATL1)                               one bucket + key per app, plus the platform bucket
-Images: GHCR   State: Terraform Cloud (state only)
+*.<your-domain> (wildcard DNS) -> load balancer -> ingress controller (wildcard cert from cert-manager)
+   platform.<your-domain> -> platform (API + UI; 1 or more replicas; one leader runs the reconciler)
+   <generated-host>.<your-domain> -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
+MySQL and/or PostgreSQL server(s)   platform database + one database and user per app
+S3-compatible storage               one bucket + key per storage-enabled app (and a platform bucket)
+Container registry                  images are pulled by the cluster; the platform never builds
 ```
 
-- The platform is one Python/Vue service. With `RECONCILER_ENABLED=1` it runs four jobs: reconcile every 15 s, database
-  quota poll every 60 s, storage quota poll every 5 min, image watcher every 10 min. A lock (`GET_LOCK` on MySQL)
-  keeps replicas from double-running.
-- The reconciler turns app rows into Kubernetes objects and re-applies any app whose rendered manifest changed. If an
-  `app-<id>` namespace disappears (cluster rebuilt) it recreates it.
-- All platform state (users, apps, env, DB/bucket rows) is in the platform MySQL database, which survives the cluster.
-- The first registered user is the administrator. Later signups stay `pending` until you approve them.
+- The platform is one Python/Vue service. Users and apps are rows in the platform database; a **reconciler** turns
+  those rows into Kubernetes objects (one namespace per app) and keeps them converged.
+- With `RECONCILER_ENABLED=1` the process runs scheduled jobs: reconcile every 15 s, database quota poll (60 s), storage
+  quota poll (5 min), image watcher (10 min) and a metrics sampler. A database lock (`GET_LOCK` on MySQL) lets several
+  platform replicas run while only the leader acts.
+- The reconciler re-applies any app whose rendered manifest changed, and recreates the namespace of any running app
+  that has gone missing (for example after a cluster rebuild).
+- All platform state lives in the platform database, not in the cluster. Rebuild the cluster and the apps come back.
+- The first registered user becomes the platform administrator. Later signups stay `pending` until an admin approves.
+- Tenants never get cluster access. Each app is one container image, optional database and optional bucket.
 
-## The DOKS cluster
+## Requirements
 
-| Item | Value |
+| Need | Notes |
 |---|---|
-| Cluster | `picopaas-nyc3`, non-HA control plane (do not enable HA: +$40/mo) |
-| Node pool | `picopaas-pool-default`, `s-2vcpu-4gb-amd`, 1 node, autoscaler up to `max_nodes` (2) |
-| Region | NYC3 for compute and databases; Spaces stays in ATL1 |
-| Upgrades | `auto_upgrade` and `surge_upgrade` on; maintenance window Sunday 04:00. Node recycling means a brief blip. |
-| API access | Public by default; `control_plane_allowed_cidrs` restricts it. The reconciler runs in-cluster and needs no entry. |
+| Kubernetes cluster | Network policies must be enforced (a CNI such as Cilium). Cilium's bandwidth manager is needed for the per-pod outbound cap. |
+| Ingress controller | Traefik is what the manifests in `deploy/` assume (`INGRESS_CLASS`, `INGRESS_NAMESPACE`). |
+| cert-manager | Wildcard certificate by DNS-01 for the generated hosts; per-host HTTP-01 certificates for custom domains. |
+| metrics-server | Optional but needed for CPU/memory on the Health page. |
+| SQL server(s) | MySQL 8 and/or PostgreSQL 13+, with TLS, an admin account that can create databases and users, reachable from the cluster. MySQL and PostgreSQL are equal choices; run one or both. |
+| Object storage | S3-compatible, able to create buckets and per-bucket access keys. A provider-specific key API is used for provisioning (the reference deployment uses DigitalOcean Spaces). |
+| Container registry | Reachable from the nodes. Public images need nothing more. |
+| DNS and a domain | A wildcard record to the load balancer and a name for the platform itself. |
+| Network | Pod egress to the database port(s), the storage endpoint and the registry. |
 
-Namespaces: `traefik`, `cert-manager`, `picopaas-system` (the platform), `app-<id>` (one per app), and
-`picopaas-data` only for the in-cluster MySQL variant. Traefik is installed with Helm (values in `deploy/traefik/`),
-and cert-manager issues the wildcard cert by DNS-01 and per-host certs for custom domains by HTTP-01.
+Any cloud works if it provides the above. The reference deployment runs on DigitalOcean (managed Kubernetes, managed
+databases, Spaces); the Terraform and manifests in the repo show one way to wire it.
 
-Where things live:
+## Configuration
 
-| What | Where |
+The platform reads environment variables once at start. `app/config.py` is the single source of truth for every
+default and ceiling; the tables below describe the knobs, not values. Outside `ENVIRONMENT=dev`, `FERNET_KEY` is
+required.
+
+**Core and secrets**
+
+| Variable | Purpose |
 |---|---|
-| Terraform (cluster, DBs, VPC, firewall, DNS, bucket) | `infra/` |
-| Traefik, cert-manager, metrics-server values; platform manifests and RBAC | `deploy/` |
-| Platform secrets | k8s Secret `picopaas-env` in `picopaas-system`; DB CAs in `picopaas-db-ca` |
-| Workflows | `.github/workflows/` |
+| `ENVIRONMENT` | `dev` (default) allows insecure fixed keys and SQLite. Use anything else in production. |
+| `DATABASE_URL` | The platform's own metadata database (MySQL in production). |
+| `FERNET_KEY` | Encrypts every stored secret. The JWT signing key is derived from it. |
+| `FERNET_KEYS_PREVIOUS` | Comma-separated older keys, for rotation. |
+| `SECRET_KEY` | Optional explicit JWT key; normally derived from `FERNET_KEY`. |
+| `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
+| `RATE_LIMIT_ENABLED` | Login and signup rate limiting; on by default. |
 
-To get a kubeconfig, run `doctl kubernetes cluster kubeconfig save picopaas-nyc3` with your own DO token. Never
-commit the result.
+**Names and domains**
 
-The platform ServiceAccount is deliberately narrow: only a per-namespace RoleBinding lets it write inside `app-*`, and
-an admission policy blocks bindings elsewhere. Details: `deploy/README.md` (RBAC section).
+| Variable | Purpose |
+|---|---|
+| `APP_DOMAIN` | Base domain for generated app hosts. Set it to your own. |
+| `PLATFORM_HOST`, `APEX_HOST`, `LEGACY_HOSTS` | Host of the platform UI/API, the bare domain, and extra hosts that redirect to the platform. |
+| `CUSTOM_DOMAINS_ENABLED` | Allow owners to attach their own domains. |
+| `CUSTOM_DOMAIN_CNAME_TARGET`, `CUSTOM_DOMAIN_CHALLENGE_LABEL`, `CUSTOM_DOMAIN_ISSUER` | The CNAME owners point at, the TXT label for verification, and the cert-manager issuer used for per-host certificates. |
+| `INGRESS_CLASS`, `INGRESS_NAMESPACE` | Which ingress controller apps attach to. |
+
+**Database servers**
+
+| Variable | Purpose |
+|---|---|
+| `BOOTSTRAP_DB_HOST`, `_PORT`, `_USER`, `_PASSWORD` | If all are set and no MySQL server is registered, a server named `primary` is created and kept in sync on later starts. |
+| `BOOTSTRAP_PG_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `BOOTSTRAP_PG_CA` | The same for a PostgreSQL server. The CA is a file path to a PEM. |
+| `MYSQL_SSL_CA` | CA file path for the bootstrapped MySQL server. |
+| `MYSQL_EGRESS_MODE`, `MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR` | How tenant NetworkPolicies reach the database: `in-cluster` (a pod in the data namespace) or `cidr` (the network that holds a managed server). |
+| `MYSQL_ADMIN_USE_PROCEDURES` | `1` when the MySQL admin user works through stored procedures (in-cluster variant). |
+| `MAX_DB_USER_CONNECTIONS`, `PG_MAX_DB_USER_CONNECTIONS` | Per-app connection cap for each engine. |
+| `PG_HARD_CAP_RATIO`, `PG_STATEMENT_TIMEOUT_MS`, `PG_IDLE_TX_TIMEOUT_MS` | PostgreSQL second-stage quota multiple and session timeouts. |
+| `DB_METRICS_ENABLED`, `DB_METRICS_PORT`, `DB_METRICS_CA`, `MANAGED_DB_DISK_MB` | Optional host metrics scrape (off by default) and disk size for the Health page percentage. |
+
+**Storage provisioning**
+
+`SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY` and `SPACES_REGION` identify the S3 account that creates buckets;
+`DIGITALOCEAN_TOKEN` is needed on that provider to mint per-bucket keys. Other providers need a matching provider
+module.
+
+**Caps and polling**
+
+| Variable | Purpose |
+|---|---|
+| `DB_QUOTA_BYTES`, `STORAGE_QUOTA_BYTES` | Default database and bucket quota per app. |
+| `MAX_IMAGE_SIZE_BYTES` | Largest image accepted. |
+| `DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`, `EPHEMERAL_LIMIT_MI` | Default per-pod CPU, memory and scratch disk. |
+| `EGRESS_BANDWIDTH_MBIT` | Default per-pod outbound cap. |
+| `MAX_APPS_PER_USER`, `MAX_REPLICAS` | Hard ceilings for apps per account and replicas per app. |
+| `DB_QUOTA_POLL_SECONDS`, `STORAGE_QUOTA_POLL_SECONDS`, `IMAGE_WATCH_MINUTES`, `METRICS_SAMPLE_SECONDS`, `METRICS_RETENTION_POINTS` | Job cadences and history depth. |
+| `MAX_NODES` | Display only: the node ceiling shown on the Health page. Set it to your autoscaler maximum. |
+
+After changing caps, running apps pick up new container limits, LimitRange and ResourceQuota on the next reconcile
+(pods restart once). Existing databases and buckets over a lowered quota are limited at the next poll; images over a
+lowered cap keep running but cannot be redeployed until they shrink.
+
+## Secrets and keys
+
+| Secret | Purpose |
+|---|---|
+| `FERNET_KEY` | The one platform key. Encrypts env var values, app database passwords, bucket secret keys and database-server admin passwords. |
+| Storage and cloud credentials | Used by the platform to provision buckets and keys. |
+| Database admin credentials | One per registered server, stored encrypted. |
+
+Keep an off-cluster copy of `FERNET_KEY`. Lose it and all stored ciphertext is unreadable. A wrong key does not stop
+the reconciler: affected apps go to **Failed** ("Your saved secrets can't be read") and owners re-enter secrets or
+rotate credentials. Deleting apps never needs the old ciphertext.
+
+**Rotate `FERNET_KEY`:**
+
+1. Generate a key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and
+   store it.
+2. Put the old key in `FERNET_KEYS_PREVIOUS` (comma-separated) and the new one in `FERNET_KEY`.
+3. Restart the platform. It decrypts with the new key, then the previous ones, and re-encrypts every stored value to
+   the new key. The log line `fernet rotation: rotated=... unchanged=... skipped_undecryptable=...` shows counts only.
+4. When a later start reports `rotated=0` and nothing skipped, drop the previous keys.
+
+Rotating also signs everyone out, because the JWT key is derived from it. Rotate a single app's database password and
+bucket keys from the app's Settings (**Rotate credentials**); the owner can do it.
 
 ## Database servers
 
-PicoPaaS offers two engines as equal choices: managed MySQL and managed PostgreSQL. Each app picks one at creation
-(`resources.db_engine`, fixed afterwards).
+Each app picks one engine at creation (`db_engine`), fixed afterwards. Both are first-class.
 
 | | MySQL | PostgreSQL |
 |---|---|---|
-| Server | DO managed, `db-s-1vcpu-1gb`, 8.4 | DO managed, `db-s-1vcpu-1gb`, 17 |
-| Per-app cap | `MAX_USER_CONNECTIONS` 10 (`MAX_DB_USER_CONNECTIONS`) | role `CONNECTION LIMIT` 5 (`PG_MAX_DB_USER_CONNECTIONS`) |
-| Capacity | about 76 connections total; 25 databases per server | about 22 usable connections; 25 databases per server |
-| Quota (50 MB) | write privileges revoked, sessions killed | stage 1 read-only default, stage 2 `REVOKE CONNECT` at 2x (`PG_HARD_CAP_RATIO`) |
+| Per-app connection cap | `MAX_USER_CONNECTIONS` (`MAX_DB_USER_CONNECTIONS`) | role `CONNECTION LIMIT` (`PG_MAX_DB_USER_CONNECTIONS`) |
+| Quota over the cap | write privileges revoked, sessions killed | stage 1 read-only default, stage 2 `REVOKE CONNECT` at `PG_HARD_CAP_RATIO` times the quota |
 | TLS | required, CA verified | required, CA verified |
 
-Add a server in **Admin > Servers > Add server** (or `POST /admin/db-servers`): name, host, port, admin user, admin
-password, `max_databases`, and the CA PEM. The engine is set when the server is created. A new paid server needs a
-request in `docs/requests/`. The two managed servers are registered automatically at start from `BOOTSTRAP_DB_*` and
-`BOOTSTRAP_PG_*` (written by the `bootstrap` workflow), with CAs from the `picopaas-db-ca` Secret.
+Register a server in **Admin > Servers > Add server** (or `POST /admin/db-servers`): name, host, port, admin user, admin
+password, `max_databases` and the CA PEM. The engine is set when the server is created. A server is also registered
+automatically at start from the `BOOTSTRAP_*` variables.
 
-- **Placement:** a new app database goes to the active server of its engine with the most free slots. With none free,
-  the app goes to **Failed** ("No database space is free") and retries by itself.
-- **Drain:** set a server to **Draining** to stop new placements. Existing databases stay; moving them is not built.
-- **Capacity:** the Health page flags a server at 80% of `max_databases`, and shows live connections and data size.
-- **Egress:** the tenant NetworkPolicy allows the database VPC CIDR (`MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR`) on the
-  server's port (25060 on DO), not only the app's own server (see Accepted risks).
-- **Backups:** DO takes daily backups of both managed clusters (restore from the DO control panel, new cluster). The
-  in-cluster MySQL variant uses a nightly dump (see `deploy/README.md`, "MySQL restore").
-- **MySQL note:** DO enforces `sql_require_primary_key=ON`, so apps whose migrations create tables without a key
-  (for example Wiki.js) fail on MySQL. We keep that default.
+- **Placement:** a new app database goes to the active server of its engine with the most free slots. With none free
+  the app goes to **Failed** ("No database space is free"), and retries by itself once you add or free space.
+- **Drain:** set a server to **Draining** to stop new placements. Existing databases stay; moving a database between
+  servers is not built.
+- **Capacity:** size `max_databases` to the server's connection budget (per-app caps times databases must fit the
+  server's `max_connections`). The Health page flags a server at 80% of `max_databases` and shows live connections and
+  data size.
+- **Egress:** tenant NetworkPolicies allow the network of the database server(s) on the server port (see Security).
+- **Managed-provider quirks:** some providers force `sql_require_primary_key=ON` on MySQL, so apps whose migrations
+  create keyless tables fail there. Choose PostgreSQL for those apps.
+- **In-cluster MySQL:** supported (`MYSQL_EGRESS_MODE=in-cluster`, `MYSQL_ADMIN_USE_PROCEDURES=1`); the manifests are in
+  `deploy/mysql/`, including a nightly dump job. Prefer a managed server if your provider has one.
 
-## Spaces
+## Object storage
 
-One Spaces subscription covers the platform bucket and one bucket plus key per storage-enabled app (ATL1). DO limits an
-account to 100 buckets, so roughly 100 storage apps is the wall. The storage quota poll runs every 5 min: over the
-cap, the app's key is swapped for a read-only one and the app restarts; owners free space through the platform
-(**Free up space**). Credentials for provisioning (`SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`) are in
-`picopaas-env`.
-
-## Deploys and CI
-
-All workflows live in `.github/workflows/`. Most are manual (`workflow_dispatch`).
-
-| Workflow | Use |
-|---|---|
-| `ci` | Automatic: gitleaks, terraform validate, kubeconform, tests, frontend. |
-| `image` | Automatic on main: builds `ghcr.io/seaburr/picopaas:<short sha>`. |
-| `deploy` | Rolls a platform version (input `sha`); also runs after a successful `image`. |
-| `terraform` | Plan/apply DO infra (untick `apply` for plan only). |
-| `bootstrap` | New or rebuilt cluster, or changed add-ons/secrets. Idempotent. |
-| `diag` | Prints nodes, pods, events and masked logs for a namespace. |
-
-Order for a new environment: `terraform`, `bootstrap`, register the first user, run the E2E and pentest suites.
-
-Rollback: re-run `deploy` with an earlier `sha` (every image is tagged by commit). Database migrations run at start
-and only move forward, so prefer a forward fix when a migration shipped. For a one-off, `kubectl -n picopaas-system
-rollout undo deploy/picopaas` also works.
+One bucket and one access key per storage-enabled app. Check your provider's bucket-per-account limit; it is the
+ceiling for storage apps. The storage poll lists each bucket: over its quota, the app's key is swapped for a read-only
+one and the app restarts, and owners free space with **Free up space**. Raising the quota restores the app.
 
 ## The admin UI
 
 Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav bar.
 
-- **Users:** approve `pending` signups, suspend or unsuspend (suspending scales all their apps to zero), reset a
-  password (shown once; the user must change it), delete, and set the per-user app limit. The platform-wide hard max is
-  5 active apps per account (`MAX_APPS_PER_USER`, default 5), which applies to administrators too. The per-user app limit
-  (`app_limit`) defaults to 1 and you can raise it up to that hard max, never above. The admin account cannot be suspended or deleted.
-- **App limits (Apps tab, sliders icon):** override an app's resources within these ceilings.
+- **Users:** approve `pending` signups; suspend or unsuspend (suspending scales all the user's apps to zero); reset a
+  password (shown once, the user must change it); delete; set the per-user app limit. The hard max is
+  `MAX_APPS_PER_USER` active apps per account, administrators included. The per-user `app_limit` defaults to 1 and
+  can be raised up to that max, never above. The platform administrator cannot be suspended or deleted.
+- **Apps:** suspend, unsuspend, delete, open the app, change limits (sliders icon, below) and set replicas.
+- **Platform host:** give an app a fixed short address `<label>.<your-domain>` besides its generated one. It is served
+  by the wildcard certificate. Reserved labels (`platform`, `www`, `api`, `lb`, `admin`, ...) are refused and a label
+  can belong to one app.
+- **Servers:** register, drain or update database servers (above).
+- **Audit:** newest first. It records registrations, failed logins, password changes and resets, API key changes, app
+  create/update/delete/restart/rotate, image updates, limit and replica changes, user approvals, suspensions and
+  deletions, and server changes. It never stores secrets; `detail` is capped at 255 characters. Action names:
+  `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`, `user.reset_password`,
+  `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`, `apikey.revoke`,
+  `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`, `app.resources`,
+  `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`.
+- **Health:** nodes, per-app readiness, restarts, CPU and memory against capacity (needs metrics-server), platform
+  pods, and database server capacity. Managed databases usually do not expose host CPU or disk externally; use your
+  provider's console for those.
 
-  | Setting | Ceiling |
-  |---|---|
-  | CPU / memory (per pod) | CPU 10 to 1000m, memory 32 to 2048Mi |
-  | Replicas | 1 to 3 (`MAX_REPLICAS`) |
-  | DB connections | up to 25 |
-  | Scratch disk | up to 2 GB |
-  | DB quota | up to 1 GB |
-  | Bucket quota | up to 50 GB |
-  | Image size | up to 2 GB |
-  | Outbound bandwidth | 1 to 160 Mbit/s (default 20, `EGRESS_BANDWIDTH_MBIT`) |
+Every admin action is also an HTTP route under `/admin`; see [API.md](API.md).
 
-  Outbound bandwidth is a per-pod cap (Cilium bandwidth manager, pod annotation `kubernetes.io/egress-bandwidth`) on everything
-  the pod sends, HTTP responses to visitors included; raise it for download-heavy apps.
-  Changing CPU, memory, scratch disk or outbound bandwidth restarts the app's pods. Raising a quota restores an over-quota app at the next
-  poll. Replicas must be stateless: each app has one ClusterIP Service and no per-pod addressing, so clustered apps
-  are not supported.
-- **App actions:** suspend, unsuspend, delete, and a fixed short address (`<label>.picopaas.xyz`, set on the app's
-  Settings page).
-- **Audit:** newest first, recording registrations, failed logins, approvals, suspensions, app changes, limit
-  overrides and server changes. It never stores secrets.
-- **Health page:** nodes, per-app readiness, restarts and CPU/memory against capacity, platform pods, and database
-  server capacity. It needs metrics-server (installed by `bootstrap`). DO does not expose host CPU/disk for managed
-  databases externally; use the DO control panel Insights tab.
+## Admins and recovery
+
+The first account to register becomes an administrator. Keep at least two: one person locked out of their account
+shouldn't lock you out of the platform.
+
+- **Promote**: **Admin → Users → Make admin** on any active user. Pending or suspended users must be approved or
+  unsuspended first. Administrators have no app limit.
+- **Demote**: **Remove admin** returns an administrator to a normal account. You can demote yourself only while
+  another active administrator exists.
+- **Last-admin protection**: the platform refuses (409) to demote, suspend or delete the last active administrator.
+  Administrators can't be suspended or deleted directly; demote them first.
+- **Audit**: promotions and demotions are logged (`user.promote`, `user.demote`). **Admin → Audit** downloads the full
+  log as CSV or JSON, and each download is logged too (`audit.export`).
+
+### Break-glass recovery
+
+If no administrator can log in (lost password, departed admin), use the recovery CLI inside an API pod. It talks to
+the platform database directly, so it needs cluster access, not a login:
+
+```bash
+kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage list-admins
+kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage grant-admin you@example.com
+kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage reset-password you@example.com
+```
+
+- `list-admins` prints each administrator's id, email and status.
+- `grant-admin <email>` makes an existing user an administrator and activates them if pending or suspended.
+- `reset-password <email>` prints a one-time temporary password; the user must change it at next login.
+
+Each command records an audit entry with actor `manage-cli`. Whoever holds cluster credentials can make themselves
+an administrator this way, so treat kubeconfig access as admin access.
+
+## Quotas and enforcement
+
+Defaults come from `app/config.py`; an admin can override most per app.
+
+| Resource | Enforced by |
+|---|---|
+| CPU, memory, scratch disk | Pod limits, a LimitRange and a ResourceQuota in the app namespace. A pod over its scratch disk is evicted. |
+| Image size | Checked at deploy and by the image watcher. A larger image already running is unaffected. |
+| Database size | Quota poll (60 s). See the engine table above. |
+| Bucket size | Quota poll (5 min). The key is swapped for a read-only one. |
+| Outbound bandwidth | Per-pod cap through the `kubernetes.io/egress-bandwidth` annotation and Cilium. It covers everything the pod sends, HTTP responses included. |
+| Apps per account | `MAX_APPS_PER_USER` hard max, with a lower per-user `app_limit`. |
+
+**Per-app overrides** (Apps tab, sliders icon, or `PATCH /admin/apps/{id}/resources`). Ceilings are constants in
+`app/config.py` (`OVERRIDE_*`):
+
+| Setting | Range |
+|---|---|
+| CPU / memory (per pod) | CPU 10 to 1000m, memory 32 to 2048Mi |
+| Replicas | 1 to `MAX_REPLICAS` |
+| DB connections | 1 to 25 |
+| Scratch disk | 64 to 2048 MiB |
+| DB quota | 1 to 1024 MB |
+| Bucket quota | 1 to 51200 MB |
+| Image size | 1 to 2048 MB |
+| Outbound bandwidth | 1 to 160 Mbit/s |
+
+Clear a field to return to the default. Changing CPU, memory, scratch disk or outbound bandwidth rolls the app's pods.
+Changing a quota runs that app's check immediately, so raising it restores a read-only database or bucket at once.
+Connection caps apply immediately and on each reconcile sweep (not in MySQL procedure mode).
+
+**Replicas** are an admin setting. The ResourceQuota is sized for the replicas plus one rolling-update surge pod; each
+replica gets the full per-pod limits and all replicas share the app's one database and bucket, not local disk. An
+extra NetworkPolicy lets an app's own pods talk to each other. Replicas must be stateless: an app has one ClusterIP
+Service and no per-pod addressing, so clustered or gossip apps that need named peers are not supported.
+
+## Scaling
+
+- **More compute:** add nodes (or raise the autoscaler maximum and set `MAX_NODES` to match). Apps request a small
+  CPU/memory slice and are capped higher, so density is set by requests: node allocatable divided by the default
+  request, minus the platform and add-ons. Plan for a handful of apps per small node; check the Health page, since
+  capacity is reported against the limits.
+- **More databases:** register another server of the same engine and raise capacity by `max_databases`. Keep
+  per-app connection caps times databases within each server's connection limit; the connection budget, not disk, is
+  usually the first wall (especially on small PostgreSQL servers).
+- **More buckets:** limited by your provider's bucket-per-account cap.
+- **Platform replicas:** run two or more for availability. Only the lock holder runs the reconciler and quota jobs, so
+  extra replicas add API capacity and failover, not reconcile speed. Run a PodDisruptionBudget once you have two nodes.
+- **Single node:** recycling a node (provider upgrades, autoscaling) causes a brief blip, and all platform replicas
+  share that node. Spread across nodes for real availability.
+- **Costs and caps:** every new paid resource should be budgeted before you add it.
+
+## Backups and upgrades
+
+- **Platform database:** the most important data. Use your provider's daily backups or your own dumps and test a
+  restore. The in-cluster MySQL manifests include a nightly dump job.
+- **App databases:** same servers, same backups. A restore brings back every tenant database on that server.
+- **Object storage:** buckets are not backed up by the platform; tell owners.
+- **Key copy:** keep `FERNET_KEY` and the provider credentials in a secret manager.
+- **Upgrades:** build and publish a new platform image, then roll the Deployment. Migrations (Alembic) run at start and
+  only move forward, so prefer a forward fix when a migration has shipped. `kubectl rollout undo` works for a rollback
+  that has no migration. Cluster upgrades recycle nodes; pick a quiet window.
+- **Migrations:** `alembic upgrade head` with the same environment as the platform, or let the start-up do it.
 
 ## Runbooks
 
-**Stuck deploy.** Open the app's page for the status message and logs. A rollout not ready after 10 minutes fails
-with a reason, then retries after 1, 5, 15, then every 60 minutes. For platform problems run `diag`
-(`namespace`, `selector`). Typical causes: image pull failure, wrong port, a health check path that never returns 2xx,
-no free database slot, unreadable secrets (wrong Fernet key). **Restart** or saving the app retries immediately.
+**Stuck deploy.** Open the app's page for its status message and logs. A rollout not ready after 10 minutes fails with a
+reason, then retries after 1, 5, 15, then every 60 minutes. For platform problems read the platform pod logs and
+events. Typical causes: image pull failure, wrong port, a health check path that never returns 2xx, no free database
+slot, unreadable secrets (wrong Fernet key). **Restart**, or saving the app, retries at once.
 
-**Over-quota app.** The app shows an over-cap badge. The owner frees space (`TRUNCATE`/`DROP`, **Free up space**
-for buckets). To unblock them yourself, raise the quota in the app limits (it restores the app at the next poll, within
-a minute for databases). A PostgreSQL app past 2x the cap has had `CONNECT` revoked; it comes back once the size falls
-below the cap or the quota is raised.
+**Over-quota app.** The app shows an over-cap badge. The owner frees space (`TRUNCATE`/`DROP`, **Free up space** for
+buckets). To unblock them yourself, raise the quota in the app's limits. A PostgreSQL app past the stage-2 multiple has
+had `CONNECT` revoked; it returns once the size falls below the cap or the quota is raised.
 
-**Rotate platform secrets.**
-- `FERNET_KEY`: set the new value as repo secret `PICOPAAS_FERNET_KEY`, then run `bootstrap`. The old key is kept in
-  `FERNET_KEYS_PREVIOUS` and every stored ciphertext is re-encrypted at start. It also logs everyone out (the JWT key
-  is derived from it). Keep your own copy: GitHub secrets are write-only. Procedure: OPERATIONS.md, "Key management".
-- DO token or Spaces keys: update the GitHub secret, then run `bootstrap` (rewrites `picopaas-env`).
-- A single app's DB password or bucket keys: the owner uses **Rotate credentials** in the Danger zone of Settings.
+**Unknown hosts and suspended apps.** An unknown host under your domain hits a low-priority catch-all Ingress and gets
+the platform's 404 page. A suspended app has its Ingress removed (the Deployment stays at zero replicas), so its host
+falls through to the same catch-all, which answers 503 with a suspended page.
 
-**Teardown and restore.** Deleting an app removes its namespace, database and bucket. To rebuild a lost cluster run
-`terraform`, then `bootstrap`; the platform recreates every running app from the database (the namespace sweep). A
-leftover load balancer from the old cluster is deleted by `bootstrap`. If a managed database was lost, restore it from
-DO backups first. Full steps: OPERATIONS.md, "Disaster recovery".
+**Teardown and rebuild.** Deleting an app removes its namespace, database and bucket. After rebuilding a lost cluster,
+install the add-ons, point DNS at the new load balancer and start the platform with the same database and keys: the
+reconciler recreates every running app from the database. Delete a stale load balancer left by the old cluster if
+names clash. If a database server was lost, restore it from backup first. Verify with `/healthz`, a login, the Health
+page and one app.
 
-## Cost model
+## Security model
 
-Baseline about $75.30 per month: node $28, MySQL $15.15, PostgreSQL $15.15, load balancer $12, Spaces $5. The
-autoscaler's second node adds $28 while it exists (about $103.30 worst case). Apps cost about nothing for the first 8 to
-12 per node. `infra/variables.tf` is the source of truth for sizes; the full table is in ARCHITECTURE.md section 1.
-Any new paid resource needs a request in `docs/requests/` with what, why and cost.
+- **Tenant isolation:** each app has its own namespace with default-deny NetworkPolicies, then allows ingress from the
+  ingress controller, DNS, the public internet and the database port. The internet allowance excludes private,
+  link-local and reserved ranges and common abuse ports.
+- **Pods:** run non-root with no privilege escalation; images that name a user are forced to a fixed UID.
+- **Platform ServiceAccount:** writes inside `app-*` namespaces only through per-namespace RoleBindings, with an
+  admission policy blocking bindings elsewhere. See `deploy/README.md` for the RBAC details.
+- **Secrets:** Fernet-encrypted at rest; shown to their owner only. The audit log never stores them.
+- **Accounts:** signups need admin approval; login and signup are rate limited; passwords are hashed.
+- **Databases:** each app gets its own database and user with a connection cap, TLS required and the CA verified.
 
-## Accepted risks
+**Accepted risks.** Review these for your own threat model; the test notes are in [PENTEST.md](PENTEST.md).
 
-- One node: recycling causes brief downtime, and both platform replicas share it.
-- The platform ServiceAccount can still create, patch and delete Namespaces cluster-wide.
-- Shared database subnet: tenant egress allows the whole VPC CIDR on the database port. Valid credentials are still
-  needed to get in.
-- PostgreSQL trusted extensions (`dblink`, `postgres_fdw`) can open outbound TCP from the database server, but need
-  credentials on the target. Tenants can also read other apps' database and role names on PostgreSQL (not data).
+- A single node means node recycling causes brief downtime.
+- The platform ServiceAccount can create, patch and delete Namespaces cluster-wide, and can read Secrets cluster-wide.
+- If database servers share a network, tenant egress allows that whole network on the database port. Valid credentials
+  are still needed; narrowing to each server's address means pinning managed IPs.
+- On PostgreSQL, a tenant owns schema `public`, so trusted extensions such as `dblink` and `postgres_fdw` can open
+  outbound TCP from the database server. They still need credentials on the target. Tenants can also read other apps'
+  database and role names (not data or password hashes).
 - A failed database or bucket delete during app deletion is logged and ignored, so provider-side orphans are possible.
-- Public Kubernetes API unless `control_plane_allowed_cidrs` is set.
-
-The list is tracked in OPERATIONS.md section 9 and `docs/PENTEST.md`.
+- A public Kubernetes API unless your provider lets you restrict it to known networks.
+- Storage credential theft is not a goal of the platform's isolation.

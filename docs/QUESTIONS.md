@@ -86,7 +86,7 @@ background on each item if you want it.
   the acceptance test, which included surviving a restart. The pentest found no cross-tenant data access or privilege
   escalation. Chas accepted F1 (all database servers share one `/24` that tenant egress allows, so a tenant can open TCP
   to the other engine's server, though it can't authenticate) and F2 (trusted `dblink`/`postgres_fdw` let a tenant probe
-  the network from the database server). Both are recorded in OPERATIONS.md §9. F3 is still open above. Request 0006 is
+  the network from the database server). Both are recorded in docs/deployment/runbooks.md (Accepted risks). F3 is still open above. Request 0006 is
   IMPLEMENTED.
 - 2026-10-21: **Release-blogger API key (answered).** The key needed is a Ghost **Admin API** credential (`<id>:<secret>`);
   a Custom Integration Admin API key or a **Staff Access Token** both work (JWT signed with the secret, `kid`=id, audience

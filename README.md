@@ -6,7 +6,7 @@ subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
-Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Operations](docs/OPERATIONS.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
+Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Admin guide](docs/ADMIN_GUIDE.md) | [Deployment](docs/deployment/README.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
 
 ## Features
 
@@ -201,4 +201,4 @@ cd frontend && npm install && npm run dev
 ```
 
 Outside `ENVIRONMENT=dev`, set `FERNET_KEY` (the JWT key is derived from it). See [CLAUDE.md](CLAUDE.md) for the full
-list of env vars and [docs/OPERATIONS.md](docs/OPERATIONS.md) for running the live platform.
+list of env vars and [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) for running a platform and [docs/deployment/](docs/deployment/README.md) for the live instance.

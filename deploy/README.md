@@ -13,7 +13,7 @@ below for the managed-MySQL + LB variant: Traefik, cert-manager and metrics-serv
 DNS A records `*` and `picopaas` -> LB IP (it owns them; leave Terraform `wildcard_lb_ip` empty), the
 `digitalocean-dns` / `picopaas-env` / `picopaas-db-ca` secrets, the platform `picopaas` database + user on the managed
 cluster, issuers/certificate, platform workload at the current short-sha image, and a `/healthz` check. It is safe to
-re-run: the platform DB password is read back, never rotated. FERNET_KEY (repo secret `PICOPAAS_FERNET_KEY`) is the only platform key; the JWT signing key is derived from it. If it changed, the previous key is kept in `FERNET_KEYS_PREVIOUS` (max 3) and the platform re-encrypts stored data at startup (docs/OPERATIONS.md "Key management"). The manual steps
+re-run: the platform DB password is read back, never rotated. FERNET_KEY (repo secret `PICOPAAS_FERNET_KEY`) is the only platform key; the JWT signing key is derived from it. If it changed, the previous key is kept in `FERNET_KEYS_PREVIOUS` (max 3) and the platform re-encrypts stored data at startup (docs/deployment/runbooks.md "Rotate the key"). The manual steps
 below remain the reference (and the path for the in-cluster / no-LB variants).
 
 ## Bring-up runbook (in order)

@@ -11,7 +11,7 @@ Docs and their sources of truth:
 - `docs/USER_GUIDE.md` (app owners), `docs/RECIPES.md` (verified app recipes, `examples/`), `docs/CLI.md`
   (`cli/picopaas.py`), `docs/API.md` (`app/routers/*.py`, `app/schemas.py`; list routes with
   `python -c "from app.main import app; ..."` and check `app.openapi()`), `docs/ADMIN_GUIDE.md` (platform admins;
-  served in-app behind admin auth, never bundled), `docs/OPERATIONS.md` (deep ops detail).
+  served in-app behind admin auth, never bundled), `docs/deployment/` (this instance's infra, CI and runbooks; keep it out of the generic guide).
 - Limits and defaults come from `app/config.py` and `app/resources.py`, never from memory.
 
 Style rules (from Chas's feedback):
@@ -20,7 +20,7 @@ Style rules (from Chas's feedback):
 - Every documented command/endpoint must exist; every real one must be documented. No implying the CLI connects to
   databases or buckets (it's an HTTP client only).
 - No secret values, tokens, kubeconfig contents or internal IPs. Never compare PicoPaaS to Heroku.
-- Prefer linking to `OPERATIONS.md`/`ARCHITECTURE.md` over duplicating them.
+- Prefer linking to `ADMIN_GUIDE.md`/`ARCHITECTURE.md` over duplicating them.
 
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Edit only docs
 (and README) unless asked. Append ledger START/DONE lines. End with a summary of what was missing or wrong.
