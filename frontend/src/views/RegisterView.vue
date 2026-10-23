@@ -63,9 +63,14 @@ async function onSubmit() {
             <input :id="acceptId" v-model="form.accept" type="checkbox" required class="check mt-0.5" />
             <label :for="acceptId">
               I agree to the
-              <a href="/privacy" target="_blank" rel="noopener" class="link">Privacy Policy &amp; Acceptable Use</a>
+              <a href="/privacy" target="_blank" rel="noopener" class="link">Privacy Policy</a> and the
+              <a href="/privacy#terms" target="_blank" rel="noopener" class="link">Terms of use</a>
+              (including Acceptable Use)
             </label>
           </div>
+          <p class="-mt-1 text-xs text-zinc-400">
+            By requesting access you agree to the <a href="/privacy#terms" target="_blank" rel="noopener" class="link">Terms of use</a>.
+          </p>
           <div v-if="error" class="alert-error whitespace-pre-line" role="alert">{{ error }}</div>
           <button type="submit" :disabled="loading || !form.accept" class="btn-primary btn-block">
             {{ loading ? 'Sending request…' : 'Request access' }}
@@ -76,7 +81,7 @@ async function onSubmit() {
         </p>
       </div>
       <p class="mt-4 text-center text-xs text-zinc-400">
-        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a>
+        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a> · <a href="/privacy#terms" class="link">Terms</a> · <a href="/privacy#report-abuse" class="link">Report abuse</a>
       </p>
     </div>
   </div>

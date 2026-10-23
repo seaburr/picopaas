@@ -30,6 +30,8 @@ const reload = () => window.location.reload()
   <RouterView v-else />
   <footer v-if="auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-500">
     <a href="/privacy" class="hover:text-zinc-300">Privacy</a>
+    <a href="/privacy#terms" class="hover:text-zinc-300">Terms</a>
+    <a href="/privacy#report-abuse" class="hover:text-zinc-300">Report abuse</a>
     <RouterLink to="/guide" class="hover:text-zinc-300">Docs</RouterLink>
     <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-zinc-300">Blog</a>
   </footer>
