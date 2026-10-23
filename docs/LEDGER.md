@@ -5,6 +5,11 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] START: commit/push presigned storage transfer, CLI, docs, ledger; watch CI/deploy.
+- 2026-10-23 [backend-dev] DONE (uncommitted): presigned object transfer (REQ-8). POST /apps/{id}/storage/presign (PUT with signed Content-Length, not POST policy: Spaces S3-compat docs don't list POST Object), ObjectStore.presign (real+fake), read-scope exemption for presign route in dependencies.py, CLI `storage upload|download`, tests/test_storage_presign.py + CLI tests, docs API/USER_GUIDE/CLI/MIGRATION.
+- 2026-10-23 [backend-dev] START: presigned object transfer for an app's own bucket (REQ-8), CLI storage upload/download.
+- 2026-10-23 [wp-expert] BLOCKED: app 152 now runs image :afefe81 with storage + 1 GiB volume at /var/www/html + bucket quota request + CPU 500m, vanilla site up. Restore not started: no API path to put objects into an app bucket (credentials are only exposed to the app container via ${{ storage.* }}; no presign/upload/creds endpoint; storage/delete and usage only). Options sent to coordinator. Bundle still in scratch.
+- 2026-10-23 [wp-expert] START: live restore of the backup bundle onto throwaway app 152 (image :afefe81).
 - 2026-10-23 [scm-security] DONE: WordPress restore ff57289, docs a29f255, ledger afefe81 pushed; CI, image, examples, deploy green; image ghcr.io/seaburr/picopaas-example-wordpress:afefe81 (sha256:7c3c898a48bba36c4666fcf880a1123c82102207b6123b9b9cd049e6590e0c49). gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit/push WordPress restore-on-boot, migration docs, ledger; watch CI + examples.
 - 2026-10-23 [wp-expert] DONE (uncommitted, partial): restore-on-boot in examples/wordpress (WP_RESTORE, mariadb client, SigV4 via curl), examples/wordpress/MIGRATION.md, docs/research/wordpress-backups.md, RECIPES link. Local rehearsal passed (posts, theme, uploads, kab download, install.php 403; one PHP 7-era plugin fatals on PHP 8.5, deactivated via WP_RESTORE_DEACTIVATE). Waiting on image publish before steps on app 152 (bundle kept in scratch until then).
