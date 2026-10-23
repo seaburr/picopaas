@@ -724,3 +724,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] START: commit/push bandwidth cap, terms/AUP site, nav fix, e2e, docs; watch CI.
 - 2026-10-22 [scm-security] DONE: bandwidth cap/site/nav/e2e/docs committed and pushed; gitleaks clean. No findings.
 - 2026-10-22 [scm-security] START: commit/push footer pin + settings header address; watch CI.
+- 2026-10-22 [release-blogger] DONE: published 8 posts (release-managed-postgresql, release-n8n-on-postgresql, release-directus-on-mysql-and-s3, release-docs-overhaul, release-cli-ten-new-commands, release-api-limits-timeouts-engines, release-abuse-hardening-egress-bandwidth-terms, release-app-page-health-and-settings). Uncommitted ledger line for scm-security.
+- 2026-10-22 [scm-security] DONE: footer pin/settings header committed (85b0891), CI/image/deploy green; gitleaks clean. No findings.
