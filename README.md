@@ -1,6 +1,6 @@
 # PicoPaaS
 
-A tiny Heroku-style PaaS for quick throwaway projects. You give it one Docker image, add env vars and secrets,
+A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
 and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 

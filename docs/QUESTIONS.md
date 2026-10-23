@@ -12,7 +12,7 @@ background on each item if you want it.
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
   run, but we can't seal them: they're shared catalogs owned by the cluster superuser, DO's `doadmin` isn't superuser,
   and even with superuser the names leak through `pg_stat_activity`, `pg_shdepend` and error-message differences. Shared
-  PG platforms (Supabase, RDS, Heroku's shared tiers) accept this. The only real seal is one database instance per app,
+  PG platforms (Supabase, RDS, other shared hosting tiers) accept this. The only real seal is one database instance per app,
   which costs per app (a 1 GiB managed instance is ~$15/mo). **Accepted for now.** Revisit if PicoPaaS moves toward
   app-specific hosting or a tenant that cares about name confidentiality shows up. Optional: Claude can test on a
   throwaway database exactly how much DO lets us revoke. — _your answer:_

@@ -101,7 +101,7 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 
 ## Backlog (free, common on other PaaS)
 - Scheduled jobs (cron) per app — a k8s CronJob running the app image with a command.
-- One-off run (`picopaas run <app> -- <cmd>`) — a short-lived Job with the app's env, à la `heroku run`.
+- One-off run (`picopaas run <app> -- <cmd>`) — a short-lived Job with the app's env.
 - Outbound deploy webhooks (Slack/Discord) — reuse the registry SSRF guard for the user URL.
 - Build from a Dockerfile/source in-cluster (kaniko/BuildKit Job → GHCR). Highest-impact (removes the
   "bring a prebuilt public image" barrier) but the one item that adds real node CPU/disk at build time, so

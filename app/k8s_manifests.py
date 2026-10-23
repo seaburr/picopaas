@@ -527,7 +527,7 @@ def deployment_manifest(
                 "periodSeconds": 5,
             }
         }
-    # Heroku-style PORT. An explicit container `env` entry beats `envFrom`, so only add it
+    # Conventional PORT env var. An explicit container `env` entry beats `envFrom`, so only add it
     # when the user's own env doesn't define PORT (user value wins).
     port_env: dict[str, Any] = (
         {} if "PORT" in (user_env or {}) else {"env": [{"name": "PORT", "value": str(port)}]}
