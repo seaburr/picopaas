@@ -33,6 +33,8 @@ php.net for security releases. Digest of 8.5.12 on 2026-10-22 for the record:
 An uninstalled WordPress would let anyone finish the web installer and become admin. So:
 
 - `/wp-admin/install.php` and `/wp-admin/setup-config.php` always return 403 in nginx.
+- `/wp-login.php` is rate limited per client IP (10 requests/min, burst 5, then HTTP 429). The client IP comes from
+  `X-Forwarded-For` (trusted only from private ranges, `real_ip_recursive on`), so it is the visitor, not the proxy.
 - On start the entrypoint waits for the database, and if WordPress is not installed it runs `wp core install` (WP-CLI)
   with `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_EMAIL`. The admin password is generated inside the container,
   never read from env, and printed **once** to the app logs on a line like:
