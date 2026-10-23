@@ -30,15 +30,10 @@ const router = createRouter({
     {
       path: '/apps/:id/edit',
       component: () => import('../views/AppFormView.vue'),
-      meta: { requiresAuth: true, title: 'Edit app' },
-      props: true,
-    },
-    {
-      path: '/apps/:id(\\d+)/settings',
-      component: () => import('../views/AppSettingsView.vue'),
       meta: { requiresAuth: true, title: 'App settings' },
       props: true,
     },
+    { path: '/apps/:id(\\d+)/settings', redirect: (to) => `/apps/${to.params.id}/edit` },
     { path: '/templates', component: () => import('../views/TemplatesView.vue'), meta: { requiresAuth: true, title: 'Templates' } },
     { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true, title: 'API keys' } },
     {

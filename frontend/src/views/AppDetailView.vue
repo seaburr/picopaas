@@ -6,8 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import AppTabs from '../components/AppTabs.vue'
-import { Download, PackageSearch, RefreshCw, RotateCw, Settings } from 'lucide-vue-next'
+import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
@@ -332,13 +331,9 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <div class="flex items-center gap-2">
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
             <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
-            <RouterLink v-if="!suspended" :to="`/apps/${app.id}/edit`" class="btn-primary">Edit</RouterLink>
-            <button v-else type="button" class="btn-primary" disabled title="Suspended. Contact the administrator to restore.">Edit</button>
-            <IconButton :icon="Settings" label="Settings" :to="`/apps/${app.id}/settings`" />
+            <RouterLink :to="`/apps/${app.id}/edit`" class="btn-primary">Settings</RouterLink>
           </div>
         </header>
-
-        <AppTabs :id="app.id" active="overview" :suspended="suspended" />
 
         <div class="space-y-3">
           <section class="card card-pad" aria-labelledby="h-status">

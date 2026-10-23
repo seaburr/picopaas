@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppTabs from '../components/AppTabs.vue'
+import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
@@ -103,7 +103,7 @@ onMounted(async () => {
       form.health_check_path = app.health_check_path || '/healthz'
       form.auto_update = app.auto_update ?? true
       env.value = app.env
-      document.title = `Edit ${app.name} · PicoPaaS`
+      document.title = `Settings · ${app.name} · PicoPaaS`
     } catch (e) {
       error.value = e instanceof ApiError ? e.message : "Couldn't load this app."
     } finally {
@@ -162,6 +162,12 @@ function onField(name: string) {
 async function showError() {
   await nextTick()
   errorBox.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+// Only loadedApp changes, so unsaved form fields are untouched.
+function onPanelUpdate(a: App) {
+  loadedApp.value = a
+  suspended.value = a.status === 'suspended'
 }
 
 const busyLabel = computed(() => (!isEdit.value || form.image !== originalImage.value ? 'Checking image…' : 'Saving…'))
@@ -248,25 +254,26 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
         <RouterLink v-if="loadedApp" :to="`/apps/${loadedApp.id}`" class="link">{{ loadedApp.name }}</RouterLink>
-        <span aria-hidden="true"> / </span>Edit
+        <span aria-hidden="true"> / </span>Settings
       </nav>
       <nav v-else class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
-      <div class="mb-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Edit app') : 'New app' }}</h1>
-          <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
+      <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : 'New app' }}</h1>
+            <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
+          </div>
+          <HostLink v-if="loadedApp" :hostname="loadedApp.hostname" class="mt-1" />
+          <p v-if="!isEdit" class="help">
+            Deploy a public Docker image. You'll get an https URL as soon as the app is created.
+            <RouterLink to="/templates" class="link">Browse templates</RouterLink>
+          </p>
         </div>
-        <HostLink v-if="loadedApp" :hostname="loadedApp.hostname" class="mt-1" />
-        <p v-if="!isEdit" class="help">
-          Deploy a public Docker image. You'll get an https URL as soon as the app is created.
-          <RouterLink to="/templates" class="link">Browse templates</RouterLink>
-        </p>
+        <RouterLink v-if="isEdit && loadedApp" :to="`/apps/${loadedApp.id}`" class="btn-secondary">App health</RouterLink>
       </div>
-
-      <AppTabs v-if="isEdit && loadedApp" :id="loadedApp.id" active="edit" />
 
       <p v-if="templateNote" class="alert-info mb-3">
         <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
@@ -295,7 +302,9 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link ml-1">Back to apps</RouterLink>
       </div>
 
-      <form v-else class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
+      <template v-else>
+      <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
+      <form class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
         <fieldset :disabled="suspended" class="space-y-4">
           <div>
@@ -455,6 +464,12 @@ async function onSubmit() {
           </div>
         </div>
       </form>
+
+      <section v-if="isEdit && loadedApp" class="mt-6" aria-labelledby="h-other">
+        <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
+        <AppSettingsPanel :app="loadedApp" @update:app="onPanelUpdate" />
+      </section>
+      </template>
     </main>
   </div>
 </template>

@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import AppTabs from '../components/AppTabs.vue'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
-import CopyButton from '../components/CopyButton.vue'
-import DeleteAppDialog from '../components/DeleteAppDialog.vue'
-import HostLink from '../components/HostLink.vue'
-import NavBar from '../components/NavBar.vue'
-import StatusBadge from '../components/StatusBadge.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
+import CopyButton from './CopyButton.vue'
+import DeleteAppDialog from './DeleteAppDialog.vue'
 import { clearCustomDomain, rotateCredentials, setCustomDomain, verifyCustomDomain } from '../api/apps'
 import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -16,30 +12,21 @@ import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import type { App } from '../types'
 
-const props = defineProps<{ id: string }>()
+// Settings not in the YAML spec: custom domain, credentials, short address, delete.
+const props = defineProps<{ app: App }>()
+const emit = defineEmits<{ 'update:app': [app: App] }>()
 const router = useRouter()
 const store = useAppsStore()
 const auth = useAuthStore()
 const toast = useToastStore()
 
-const app = ref<App | null>(null)
-const loadError = ref('')
-const notFound = ref(false)
-
-async function loadApp(quiet = false) {
-  try {
-    app.value = await store.fetchOne(Number(props.id))
-    if (app.value) {
-      store.upsert(app.value)
-      document.title = `Settings · ${app.value.name} · PicoPaaS`
-    }
-    loadError.value = ''
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) notFound.value = true
-    else if (!quiet || !app.value) loadError.value = e instanceof ApiError ? e.message : "Couldn't load this app."
-  }
+// Local view of the app; actions replace it and notify the parent.
+const app = ref<App>(props.app)
+watch(() => props.app, (a) => { app.value = a })
+function setApp(a: App) {
+  app.value = a
+  emit('update:app', a)
 }
-onMounted(loadApp)
 onBeforeUnmount(stopDomainPoll)
 
 // Credentials
@@ -47,13 +34,13 @@ const rotating = ref<'db' | 'storage' | null>(null)
 const rotateBusy = ref(false)
 async function confirmRotate() {
   const target = rotating.value
-  if (!target || !app.value) return
+  if (!target) return
   rotateBusy.value = true
   try {
     await rotateCredentials(app.value.id, target)
     toast.success(target === 'db' ? 'Database password rotated. Restarting the app to pick it up.' : 'Storage keys rotated. Restarting the app to pick them up.')
     rotating.value = null
-    await loadApp(true)
+    setApp(await store.fetchOne(app.value.id))
   } catch (e) {
     toast.error(`Couldn't rotate: ${e instanceof ApiError ? e.message : 'unknown error'}`)
     rotating.value = null
@@ -77,7 +64,7 @@ async function saveSub() {
   subBusy.value = true
   subError.value = ''
   try {
-    app.value = await setPlatformHost(app.value.id, subInput.value.trim().toLowerCase())
+    setApp(await setPlatformHost(app.value.id, subInput.value.trim().toLowerCase()))
     store.upsert(app.value)
     toast.success(`Now also served at ${app.value.platform_host}.`)
   } catch (e) {
@@ -91,7 +78,7 @@ async function clearSub() {
   subBusy.value = true
   subError.value = ''
   try {
-    app.value = await clearPlatformHost(app.value.id)
+    setApp(await clearPlatformHost(app.value.id))
     store.upsert(app.value)
     toast.success('Short address removed.')
   } catch (e) {
@@ -111,7 +98,7 @@ async function saveDomain() {
   if (!app.value || !newDomain.value.trim()) return
   domainBusy.value = true
   try {
-    app.value = await setCustomDomain(app.value.id, newDomain.value.trim())
+    setApp(await setCustomDomain(app.value.id, newDomain.value.trim()))
     newDomain.value = ''
     toast.success('Domain added. Create the two DNS records below, then verify.')
   } catch (e) {
@@ -124,7 +111,7 @@ async function verifyDomain(auto = false) {
   if (!app.value) return
   if (!auto) verifyBusy.value = true
   try {
-    app.value = await verifyCustomDomain(app.value.id)
+    setApp(await verifyCustomDomain(app.value.id))
     if (app.value.custom_domain?.status === 'active') {
       if (!auto) toast.success('Verified. Issuing the certificate and serving your domain.')
       else toast.success(`${app.value.custom_domain.host} is verified. Your certificate is on its way.`)
@@ -174,7 +161,7 @@ async function removeDomain() {
   clearingDomain.value = true
   stopDomainPoll()
   try {
-    app.value = await clearCustomDomain(app.value.id)
+    setApp(await clearCustomDomain(app.value.id))
     toast.success('Custom domain removed.')
   } catch (e) {
     toast.error(`Couldn't remove the domain: ${e instanceof ApiError ? e.message : 'unknown error'}`)
@@ -203,47 +190,12 @@ async function confirmDelete() {
   }
 }
 
-const hasAddons = computed(() => !!app.value && (app.value.want_db || app.value.want_storage))
-const suspended = computed(() => app.value?.status === 'suspended')
+const hasAddons = computed(() => app.value.want_db || app.value.want_storage)
+const suspended = computed(() => app.value.status === 'suspended')
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-
-    <main id="main" tabindex="-1" class="mx-auto max-w-3xl px-4 py-4 sm:px-6">
-      <div v-if="notFound" class="card card-pad text-center">
-        <p class="section-title">App not found</p>
-        <p class="help">It may have been deleted.</p>
-        <RouterLink to="/apps" class="btn-secondary mt-4">Back to apps</RouterLink>
-      </div>
-
-      <div v-else-if="loadError && !app" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
-        <span>{{ loadError }}</span>
-        <button type="button" class="btn-secondary btn-sm" @click="loadApp()">Retry</button>
-      </div>
-
-      <div v-else-if="!app" class="space-y-3" aria-busy="true" aria-label="Loading app">
-        <div class="h-6 w-48 animate-pulse rounded bg-pico-panel" />
-        <div class="h-32 animate-pulse rounded bg-pico-panel" />
-      </div>
-
-      <template v-else>
-        <nav class="meta mb-2" aria-label="Breadcrumb">
-          <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>
-          <RouterLink :to="`/apps/${app.id}`" class="link">{{ app.name }}</RouterLink><span aria-hidden="true"> / </span>Settings
-        </nav>
-
-        <header class="mb-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <h1 class="page-title break-all">{{ app.name }}</h1>
-            <StatusBadge :status="app.status" />
-          </div>
-          <HostLink :hostname="app.hostname" class="mt-1" />
-        </header>
-
-        <AppTabs :id="app.id" active="settings" :suspended="suspended" />
-
+  <div>
         <div class="space-y-3">
           <section class="card card-pad" aria-labelledby="h-domain">
             <h2 id="h-domain" class="section-title mb-1">Custom domain</h2>
@@ -356,9 +308,6 @@ const suspended = computed(() => app.value?.status === 'suspended')
           </section>
 
         </div>
-      </template>
-    </main>
-
     <ConfirmDialog
       :open="rotating !== null"
       :title="rotating === 'db' ? 'Rotate database password' : 'Rotate storage keys'"
