@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0d0d14">
 <title>PicoPaaS: tiny hosting for throwaway projects</title>
-<meta name="description" content="Run a Docker container on the web in a minute: a public image, a port, an HTTPS URL, and an optional MySQL database and S3-compatible storage bucket.">
+<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, and an S3-compatible bucket. A small, approval-only platform for hobby and throwaway projects.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -41,32 +41,32 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.picopaas.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.picopaas.xyz/login">Log in</a></nav></div></header>
 <main class="w" id="main">
 <section class="hero">
-<p class="eyebrow">docker image in, https url out</p>
-<h1>Tiny hosting for throwaway projects</h1>
-<p>Run a Docker container on the web in a minute. Give us a public image and a port; you get an HTTPS URL, plus an optional MySQL database and S3-compatible storage bucket. Built for demos, experiments, and class projects.</p>
+<p class="eyebrow">container hosting for hobby projects</p>
+<h1>Ship a container. Get a URL, a database, and a bucket.</h1>
+<p>Point PicoPaaS at a public Docker image and a port. You get an HTTPS address within about a minute, and can add a managed PostgreSQL or MySQL database and an S3-compatible bucket with a checkbox each. Made for demos, experiments, and class projects.</p>
 <div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a><a class="btn s" href="https://platform.picopaas.xyz/login">Log in</a></div>
 <p class="sub">Images must be public and run as non-root. Access is approved manually.</p>
 </section>
 <section>
 <h2>What it is</h2>
 <div class="grid">
-<div class="card"><h3>One container</h3><p>Bring any public Docker image and tell us its port. Set env vars and encrypted secrets in the dashboard, YAML, or CLI.</p></div>
-<div class="card"><h3>Optional database and storage</h3><p>Tick a box to get a private MySQL database and an S3-compatible bucket. Map their connection details to env vars for your app.</p></div>
-<div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain and an automatic Let&rsquo;s Encrypt certificate.</p></div>
+<div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets in the dashboard, a YAML spec, the CLI, or the API with API keys.</p></div>
+<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database and credentials (50 MB), reached over TLS with a CA you can verify. An S3-compatible bucket (100 MB) is optional too. Wire both into env vars.</p></div>
+<div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate. Bring your own domain if you prefer.</p></div>
 </div>
 <h3 style="margin:28px 0 8px;font-size:16px">Also included</h3>
 <ul class="inc">
-<li><strong>Templates.</strong> Ghost, an nginx static-site starter and a podinfo sample API prefill the new-app form.</li>
-<li><strong>Rollback.</strong> The last few image versions are kept; roll back in one click. A new image that fails to start is automatically reverted to the last working one.</li>
-<li><strong>Resource history.</strong> Recent CPU and memory usage per app, shown as sparklines.</li>
-<li><strong>Logs and restarts.</strong> View and download logs, restart from the dashboard. Images are pinned by digest; floating tags like <code>:latest</code> are re-checked and redeployed when they change.</li>
+<li><strong>Tested recipes.</strong> Step-by-step guides for Ghost, Grafana, Shlink, Directus, n8n (on PostgreSQL) and a Gatus status page, each verified on the platform. Ghost and an nginx static site are also one-click starters.</li>
+<li><strong>Safe deploys.</strong> Images are pinned by digest, the last few versions are kept for one-click rollback, and a new image that fails to start is reverted to the last working one. Floating tags like <code>:latest</code> are re-checked and redeployed when they change.</li>
+<li><strong>Visibility.</strong> Live status, downloadable logs, restarts, and recent CPU and memory history as sparklines.</li>
+<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform: separate network policy, per-app database users and bucket keys, and enforced resource and storage quotas.</li>
 </ul>
 </section>
 <section>
 <h2>How it works</h2>
 <div class="grid">
 <div class="card"><span class="n">1</span><h3>Request access</h3><p>Sign up with your email. If approved, a platform admin will reach out, usually within a day.</p></div>
-<div class="card"><span class="n">2</span><h3>Create an app</h3><p>Image, port, env vars, and a database or bucket if you need one.</p></div>
+<div class="card"><span class="n">2</span><h3>Create an app</h3><p>Image, port, env vars, and a PostgreSQL or MySQL database or bucket if you need one.</p></div>
 <div class="card"><span class="n">3</span><h3>Open your URL</h3><p>Live in about a minute over HTTPS. Edit the config to redeploy.</p></div>
 </div>
 <p class="pre"><strong style="color:#fff">You&rsquo;ll need</strong> a public Docker image that doesn&rsquo;t run as root.</p>
@@ -86,7 +86,7 @@ https://&lt;generated-name&gt;.picopaas.xyz</pre>
 <tr><td>Memory per app</td><td>384 MB</td></tr>
 <tr><td>Scratch disk per app</td><td>250 MB</td></tr>
 <tr><td>Image size</td><td>512 MB</td></tr>
-<tr><td>Database (MySQL)</td><td>50 MB</td></tr>
+<tr><td>Database (PostgreSQL or MySQL)</td><td>50 MB</td></tr>
 <tr><td>Storage bucket (S3-compatible)</td><td>100 MB</td></tr>
 </table>
 <div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
