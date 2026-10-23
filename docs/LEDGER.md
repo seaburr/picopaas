@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: WordPress restore ff57289, docs a29f255, ledger afefe81 pushed; CI, image, examples, deploy green; image ghcr.io/seaburr/picopaas-example-wordpress:afefe81 (sha256:7c3c898a48bba36c4666fcf880a1123c82102207b6123b9b9cd049e6590e0c49). gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit/push WordPress restore-on-boot, migration docs, ledger; watch CI + examples.
 - 2026-10-23 [wp-expert] DONE (uncommitted, partial): restore-on-boot in examples/wordpress (WP_RESTORE, mariadb client, SigV4 via curl), examples/wordpress/MIGRATION.md, docs/research/wordpress-backups.md, RECIPES link. Local rehearsal passed (posts, theme, uploads, kab download, install.php 403; one PHP 7-era plugin fatals on PHP 8.5, deactivated via WP_RESTORE_DEACTIVATE). Waiting on image publish before steps on app 152 (bundle kept in scratch until then).
 - 2026-10-23 [wp-expert] START: restore an existing-site backup onto throwaway app 152 (restore-on-boot in examples/wordpress, bundle in scratch, local rehearsal, then app 152). No commit.
