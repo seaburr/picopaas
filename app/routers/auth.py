@@ -173,6 +173,7 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
             db_mb=DB_QUOTA_BYTES // (1024 * 1024),
             bucket_mb=STORAGE_QUOTA_BYTES // (1024 * 1024),
             ephemeral_mi=EPHEMERAL_LIMIT_MI,
+            egress_mbit=config.EGRESS_BANDWIDTH_MBIT,
             override=schemas.LimitOverride(
                 cpu_min_m=resources.CPU_MIN_M, cpu_max_m=resources.CPU_MAX_M,
                 mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=resources.MEM_MAX_MI,

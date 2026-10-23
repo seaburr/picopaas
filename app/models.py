@@ -135,6 +135,7 @@ class App(Base):
     db_quota_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     storage_quota_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     image_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    egress_mbit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # User-set probe timeout in seconds (1..90); NULL = readiness 3s / liveness 5s.
     health_check_timeout_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Platform-admin-set Deployment replica count (1..config.MAX_REPLICAS); 0 is applied separately when suspended.

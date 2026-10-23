@@ -10,7 +10,7 @@ from tests.conftest import register_and_login
 APP = {"name": "demo", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
 _BASE = {"cpu_request_m": 64, "cpu_limit_m": 200, "mem_request_mi": 128, "mem_limit_mi": 384,
          "ephemeral_limit_mi": 250, "db_max_connections": 10, "db_quota_mb": 50, "storage_quota_mb": 100,
-         "image_size_mb": 512}
+         "image_size_mb": 512, "egress_mbit": 20}
 DEFAULTS = {**_BASE, "overridden": False, "exceeds_platform_caps": False, "defaults": _BASE}
 
 

@@ -255,6 +255,7 @@ const overrideSummary = (a: AdminApp) => {
   if (a.want_db && r.db_max_connections !== d.db_max_connections) out.push(`${r.db_max_connections} conns`)
   if (a.want_db && r.db_quota_mb !== d.db_quota_mb) out.push(`db ${gb(r.db_quota_mb)}`)
   if (a.want_storage && r.storage_quota_mb !== d.storage_quota_mb) out.push(`bucket ${gb(r.storage_quota_mb)}`)
+  if (r.egress_mbit !== d.egress_mbit) out.push(`${d.egress_mbit}→${r.egress_mbit} Mbit/s`)
   if (r.image_size_mb !== d.image_size_mb) out.push(`img ${gb(r.image_size_mb)}`)
   return out.join(' · ')
 }

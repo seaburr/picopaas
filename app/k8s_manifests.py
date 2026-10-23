@@ -23,6 +23,7 @@ from app.config import (
     DEFAULT_MEM_LIMIT_MI,
     DEFAULT_MEM_REQUEST_MI,
     EPHEMERAL_LIMIT_MI,
+    EGRESS_BANDWIDTH_MBIT,
     EPHEMERAL_REQUEST_MI,
     INGRESS_CLASS,
     INGRESS_NAMESPACE,
@@ -494,6 +495,8 @@ def deployment_manifest(
     # Changing env (e.g. rotated creds) changes this annotation, which rolls the pod;
     # envFrom alone never restarts a running pod.
     pod_annotations = {"picopaas.io/env-checksum": env_checksum} if env_checksum else {}
+    # Outbound bandwidth cap enforced by the Cilium bandwidth manager (includes responses to visitors). Changing it rolls pods.
+    pod_annotations["kubernetes.io/egress-bandwidth"] = f"{e.get('egress_mbit') or EGRESS_BANDWIDTH_MBIT}M"
     if restart_nonce:  # POST /apps/{id}/restart: a new nonce changes the pod template, so the pod rolls
         pod_annotations["picopaas.io/restart-nonce"] = restart_nonce
     if health_check_enabled:

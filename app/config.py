@@ -155,6 +155,10 @@ OVERRIDE_EPHEMERAL_MIN_MI, OVERRIDE_EPHEMERAL_MAX_MI = 64, 2048
 OVERRIDE_DB_QUOTA_MIN_MB, OVERRIDE_DB_QUOTA_MAX_MB = 1, 1024
 OVERRIDE_STORAGE_QUOTA_MIN_MB, OVERRIDE_STORAGE_QUOTA_MAX_MB = 1, 51200
 OVERRIDE_IMAGE_SIZE_MIN_MB, OVERRIDE_IMAGE_SIZE_MAX_MB = 1, 2048
+# Per-pod outbound bandwidth cap (Cilium bandwidth manager, pod annotation kubernetes.io/egress-bandwidth), in Mbit/s.
+# Applies to everything the pod sends, including HTTP responses to visitors. Ceiling 160 Mbit/s = 20 MB/s.
+EGRESS_BANDWIDTH_MBIT = int(os.environ.get("EGRESS_BANDWIDTH_MBIT", 20))
+OVERRIDE_EGRESS_MIN_MBIT, OVERRIDE_EGRESS_MAX_MBIT = 1, 160
 # User-set health-check probe timeout (seconds); unset = readiness 3s / liveness 5s.
 HEALTH_TIMEOUT_MIN_S, HEALTH_TIMEOUT_MAX_S = 1, 90
 

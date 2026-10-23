@@ -151,6 +151,7 @@ export interface ResourceValues {
   db_quota_mb: number
   storage_quota_mb: number
   image_size_mb: number
+  egress_mbit: number
 }
 
 // Effective values (override or platform default) plus the platform defaults for this app's engine.
@@ -171,6 +172,7 @@ export interface ResourcesPatch {
   db_quota_mb?: number | null
   storage_quota_mb?: number | null
   image_size_mb?: number | null
+  egress_mbit?: number | null
 }
 
 // PATCH /admin/apps/{id}/resources returns the updated AdminApp.

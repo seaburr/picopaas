@@ -369,6 +369,8 @@ class AppResourcesPatch(BaseModel):
         default=None, ge=config.OVERRIDE_STORAGE_QUOTA_MIN_MB, le=config.OVERRIDE_STORAGE_QUOTA_MAX_MB)
     image_size_mb: Optional[int] = Field(
         default=None, ge=config.OVERRIDE_IMAGE_SIZE_MIN_MB, le=config.OVERRIDE_IMAGE_SIZE_MAX_MB)
+    egress_mbit: Optional[int] = Field(
+        default=None, ge=config.OVERRIDE_EGRESS_MIN_MBIT, le=config.OVERRIDE_EGRESS_MAX_MBIT)
 
 
 def _res_str(a: models.App) -> str:

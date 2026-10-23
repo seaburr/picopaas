@@ -22,7 +22,7 @@ CPU_MIN_M, CPU_MAX_M = 10, 1000
 MEM_MIN_MI, MEM_MAX_MI = 32, 2048
 
 # Pod-spec fields: changing one rolls the pods (Deployment resources / LimitRange / quota).
-POD_FIELDS = ("cpu_request_m", "cpu_limit_m", "mem_request_mi", "mem_limit_mi", "ephemeral_limit_mi")
+POD_FIELDS = ("cpu_request_m", "cpu_limit_m", "mem_request_mi", "mem_limit_mi", "ephemeral_limit_mi", "egress_mbit")
 # Everything a platform admin can override per app (NULL = platform default).
 FIELDS = POD_FIELDS + ("db_max_connections", "db_quota_mb", "storage_quota_mb", "image_size_mb")
 
@@ -63,6 +63,11 @@ def ephemeral_limit_mi(app: Any) -> int:
     return _g(app, "ephemeral_limit_mi") or config.EPHEMERAL_LIMIT_MI
 
 
+def config_egress() -> int:
+    from app import config
+    return config.EGRESS_BANDWIDTH_MBIT
+
+
 def effective(app: Any) -> dict[str, int]:
     """Effective values for an App row (or None for all defaults). A request is clamped to the limit."""
     g = lambda name: _g(app, name)  # noqa: E731
@@ -78,6 +83,7 @@ def effective(app: Any) -> dict[str, int]:
         "db_quota_mb": db_quota_bytes(app) // _MIB,
         "storage_quota_mb": storage_quota_bytes(app) // _MIB,
         "image_size_mb": image_size_bytes(app) // _MIB,
+        "egress_mbit": _g(app, "egress_mbit") or config_egress(),
     }
 
 

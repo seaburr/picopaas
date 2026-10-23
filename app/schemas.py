@@ -134,6 +134,7 @@ class Limits(BaseModel):
     db_mb: int
     bucket_mb: int
     ephemeral_mi: int
+    egress_mbit: int = 20
     override: LimitOverride
 
 
@@ -222,6 +223,7 @@ class ResourcesOut(BaseModel):
     db_quota_mb: int
     storage_quota_mb: int
     image_size_mb: int
+    egress_mbit: int
     overridden: bool = False
     exceeds_platform_caps: bool = False
     defaults: Optional[dict[str, int]] = None  # platform default of every overridable field (for this app's engine)

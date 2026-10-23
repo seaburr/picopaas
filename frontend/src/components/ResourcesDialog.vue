@@ -24,9 +24,10 @@ const fields: { key: Key; label: string; unit: string; min: number; max: number 
 ]
 
 // Extra limits (null = platform default). `unit` is MiB or MB; `max` is the backend ceiling.
-type XKey = 'ephemeral_limit_mi' | 'db_max_connections' | 'db_quota_mb' | 'storage_quota_mb' | 'image_size_mb'
+type XKey = 'ephemeral_limit_mi' | 'db_max_connections' | 'db_quota_mb' | 'storage_quota_mb' | 'image_size_mb' | 'egress_mbit'
 const xFields: { key: XKey; label: string; unit: string; min: number; max: number; show: 'all' | 'db' | 'storage'; restart?: boolean }[] = [
   { key: 'ephemeral_limit_mi', label: 'Scratch disk', unit: 'MiB', min: 64, max: 2048, show: 'all', restart: true },
+  { key: 'egress_mbit', label: 'Outbound bandwidth', unit: 'Mbit/s', min: 1, max: 160, show: 'all', restart: true },
   { key: 'image_size_mb', label: 'Max image size', unit: 'MB', min: 1, max: 2048, show: 'all' },
   { key: 'db_max_connections', label: 'DB connections', unit: '', min: 1, max: 25, show: 'db' },
   { key: 'db_quota_mb', label: 'DB quota', unit: 'MB', min: 1, max: 1024, show: 'db' },
@@ -40,7 +41,7 @@ const visibleX = computed(() =>
 )
 
 const vals = reactive<Record<Key, string>>({ cpu_request_m: '', cpu_limit_m: '', mem_request_mi: '', mem_limit_mi: '' })
-const xvals = reactive<Record<XKey, string>>({ ephemeral_limit_mi: '', db_max_connections: '', db_quota_mb: '', storage_quota_mb: '', image_size_mb: '' })
+const xvals = reactive<Record<XKey, string>>({ ephemeral_limit_mi: '', db_max_connections: '', db_quota_mb: '', storage_quota_mb: '', image_size_mb: '', egress_mbit: '' })
 const replicasVal = ref('')
 watch(
   () => props.app,
@@ -81,13 +82,14 @@ const exceeds = computed(
     (num('cpu_request_m') ?? 0) > CAPS.value.cpu || (num('cpu_limit_m') ?? 0) > CAPS.value.cpu ||
     (num('mem_request_mi') ?? 0) > CAPS.value.mem || (num('mem_limit_mi') ?? 0) > CAPS.value.mem,
 )
-// cpu/memory/scratch-disk changes roll the app's pods.
+// cpu/memory/scratch-disk/bandwidth changes roll the app's pods.
 const restarts = computed(() => {
   const r = props.app?.resources
   if (!r) return false
   const cpuMem = keys.some((k) => (num(k) ?? r.defaults[k]) !== r[k])
   const eph = (xnum('ephemeral_limit_mi') ?? r.defaults.ephemeral_limit_mi) !== r.ephemeral_limit_mi
-  return cpuMem || eph
+  const bw = (xnum('egress_mbit') ?? r.defaults.egress_mbit) !== r.egress_mbit
+  return cpuMem || eph || bw
 })
 
 function save() {
@@ -156,9 +158,10 @@ function reset() {
           <p class="help">{{ f.min }} to {{ human(f.max, f.unit) }}</p>
         </div>
       </div>
+      <p class="help">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers within the shown ranges.</p>
       <p v-if="restarts" class="alert-warn mt-3 text-xs" role="status">
-        Changing CPU, memory or scratch disk restarts this app: its pods are replaced in a rolling restart.
+        Changing CPU, memory, scratch disk or bandwidth restarts this app: its pods are replaced in a rolling restart.
       </p>
       <p v-if="exceeds" class="alert-warn mt-3 text-xs" role="status">
         Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }}Mi memory). The cluster may not have room to run this app.
