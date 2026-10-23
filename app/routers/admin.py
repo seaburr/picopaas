@@ -159,8 +159,11 @@ def _get_user_or_404(db: Session, user_id: int) -> models.User:
 
 
 def _active_admin_count(db: Session) -> int:
-    return (db.query(models.User)
-            .filter(models.User.role == "platform_admin", models.User.status == "active").count())
+    # FOR UPDATE on the admin rows serialises concurrent demotes on MySQL (no-op on SQLite), so two admins
+    # demoting each other at once can't both pass the "not the last admin" check.
+    return len(db.query(models.User.id)
+               .filter(models.User.role == "platform_admin", models.User.status == "active")
+               .with_for_update().all())
 
 
 def _protect_platform_admin(user: models.User, db: Optional[Session] = None) -> None:

@@ -38,6 +38,8 @@ background on each item if you want it.
   rather. Also hardened per the proposal: an API key (any tier) can't create or revoke keys — that's browser-session
   only, so a leaked key can't mint more or change scope. Pick the tier on the API-keys page. See `docs/API.md`.
 
+- **Audit export via API keys?** (security review 2026-10-23, docs/PENTEST.md #6) A read-scope key owned by an admin can download the full audit log (all user emails). Block `/admin/audit/export` for API keys (browser session only)? Default if unanswered: leave as is.
+
 ## To-dos (only you can do these)
 
 - [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the

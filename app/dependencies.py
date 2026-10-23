@@ -123,6 +123,6 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Option
 
 
 def require_platform_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
-    if not current_user.is_platform_admin:
+    if not current_user.is_platform_admin or current_user.status != "active":
         raise HTTPException(status_code=403, detail="This needs administrator access.")
     return current_user

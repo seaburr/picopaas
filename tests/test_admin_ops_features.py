@@ -222,3 +222,43 @@ def test_manage_cli(db_session, admin, owner, capsys):
     rows = db_session.query(models.AuditLog).filter_by(actor_email="manage-cli").all()
     assert {r.action for r in rows} == {"user.promote", "user.reset_password"}
     assert temp not in " ".join(r.detail or "" for r in rows)
+
+
+# --- security review 2026-10-23 ---
+
+def test_pod_events_odd_pod_names_never_reach_kube_and_filename_safe(owner, kube):
+    aid = owner.post("/apps", json=APP).json()["id"]
+    kube.pod_lines[f"app-{aid}"] = {"web-a": ["a"]}
+    for bad in ("..%2F..%2Fother", "web-a%0d%0aSet-Cookie:x", "app-1", "x%22y"):
+        assert owner.get(f"/apps/{aid}/pods/{bad}/events").status_code in (404, 422)
+
+
+def test_pod_events_filename_sanitised(owner, kube):
+    aid = owner.post("/apps", json=APP).json()["id"]
+    kube.pod_lines[f"app-{aid}"] = {'we"b\r\nX: y': ["a"]}
+    r = owner.get(f"/apps/{aid}/pods/{'we%22b%0D%0AX: y'}/events")
+    if r.status_code == 200:
+        cd = r.headers["content-disposition"]
+        assert "\r" not in cd and "\n" not in cd and cd.count('"') == 2
+
+
+def test_read_key_cannot_promote_but_admin_gate_needs_active(admin, owner, db_session):
+    key = admin.post("/api/keys", json={"scope": "read"}).json()
+    c = type(admin)(admin.app)
+    h = {"Authorization": f"Bearer {key['key']}"}
+    assert c.post(f"/admin/users/{_uid(owner)}/promote", headers=h).status_code == 403
+    me = db_session.get(models.User, _uid(admin))
+    me.status = "suspended"
+    db_session.commit()
+    assert admin.get("/admin/audit/export").status_code == 403
+
+
+def test_csrf_guard_blocks_same_site_cookie_posts(admin, owner):
+    uid = _uid(owner)
+    for hdrs in ({"Origin": "https://evil-app.picopaas.xyz"}, {"Sec-Fetch-Site": "same-site"},
+                 {"Sec-Fetch-Site": "cross-site"}):
+        r = admin.post(f"/admin/users/{uid}/promote", headers=hdrs)
+        assert r.status_code == 403 and "Cross-site" in r.json()["detail"]
+    assert owner.get("/auth/me").json()["role"] == "user"
+    ok = admin.post(f"/admin/users/{uid}/promote", headers={"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"})
+    assert ok.status_code == 200

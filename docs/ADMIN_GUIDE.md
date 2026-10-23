@@ -212,9 +212,12 @@ If no administrator can log in (lost password, departed admin), use the recovery
 the platform database directly, so it needs cluster access, not a login:
 
 ```bash
-kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage list-admins
-kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage grant-admin you@example.com
-kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage reset-password you@example.com
+manage() {
+  kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m app.manage "$@"
+}
+manage list-admins
+manage grant-admin you@example.com
+manage reset-password you@example.com
 ```
 
 - `list-admins` prints each administrator's id, email and status.
@@ -222,7 +225,8 @@ kubectl -n <platform-namespace> exec -it deploy/<api-deployment> -- python -m ap
 - `reset-password <email>` prints a one-time temporary password; the user must change it at next login.
 
 Each command records an audit entry with actor `manage-cli`. Whoever holds cluster credentials can make themselves
-an administrator this way, so treat kubeconfig access as admin access.
+an administrator this way (and can read the signing and encryption keys from the pod environment), so treat
+kubeconfig access as full platform control.
 
 ## Quotas and enforcement
 

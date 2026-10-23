@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy import or_
@@ -209,6 +209,32 @@ async def host_routing(request: Request, call_next):
         return _to_platform(request)
     if host == config.PLATFORM_HOST and path == "/privacy" and request.method in ("GET", "HEAD"):
         return _page("privacy.html") or await call_next(request)
+    return await call_next(request)
+
+
+_SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """Tenant apps live on sibling subdomains of the platform host, so they are SAME-SITE and SameSite=Lax cookies
+    are still sent on their cross-origin requests. Reject state-changing requests that authenticate by session
+    cookie (no Authorization header) unless the browser says they came from the platform's own origin."""
+    if (
+        request.method not in _SAFE_METHODS
+        and request.cookies.get(config.SESSION_COOKIE_NAME)
+        and not request.headers.get("authorization")
+    ):
+        origin = request.headers.get("origin")
+        site = request.headers.get("sec-fetch-site")
+        bad = False
+        if origin is not None:
+            from urllib.parse import urlsplit
+            bad = (urlsplit(origin).netloc.lower() != request.headers.get("host", "").lower())
+        elif site is not None and site not in ("same-origin", "none"):
+            bad = True
+        if bad:
+            return JSONResponse({"detail": "Cross-site request blocked."}, status_code=403)
     return await call_next(request)
 
 
