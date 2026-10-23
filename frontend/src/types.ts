@@ -20,6 +20,7 @@ export interface Features {
   databases: boolean
   storage: boolean
   db_engines?: string[] // engines with free capacity now: a subset of ['mysql', 'pg']
+  volumes?: boolean // persistent volumes enabled (off by default)
 }
 
 export interface Limits {
@@ -31,7 +32,16 @@ export interface Limits {
   db_mb: number
   bucket_mb: number
   ephemeral_mi?: number
+  volume_max_gi?: number
+  volume_default_gi?: number
+  volume_default_mount_path?: string
   override: { cpu_min_m: number; cpu_max_m: number; mem_min_mi: number; mem_max_mi: number }
+}
+
+export interface AppVolume {
+  size_gi: number
+  mount_path: string
+  phase: 'Pending' | 'Bound' | null
 }
 
 export type UserStatus = 'pending' | 'active' | 'suspended' | 'deleted'
@@ -129,6 +139,7 @@ export interface App {
   resources?: AppResources
   quota?: AppQuota
   custom_domain?: CustomDomain | null
+  volume?: AppVolume | null
 }
 
 export interface CustomDomain {
@@ -173,6 +184,7 @@ export interface ResourcesPatch {
   storage_quota_mb?: number | null
   image_size_mb?: number | null
   egress_mbit?: number | null
+  volume_size_gi?: number // grow-only, 1..20, app must have a volume
 }
 
 // PATCH /admin/apps/{id}/resources returns the updated AdminApp.
@@ -192,6 +204,7 @@ export interface AppCreatePayload {
   health_check_path?: string
   health_check_timeout_seconds?: number | null
   auto_update?: boolean
+  volume?: { size_gi?: number; mount_path?: string }
   env: EnvVar[]
 }
 
@@ -205,6 +218,7 @@ export interface AppUpdatePayload {
   health_check_path?: string
   health_check_timeout_seconds?: number | null
   auto_update?: boolean
+  volume?: { size_gi?: number; mount_path?: string }
   env?: EnvVar[]
 }
 
@@ -282,6 +296,7 @@ export interface AdminApp {
   want_storage: boolean
   db_engine: 'mysql' | 'pg' | null
   platform_host: string | null
+  volume?: AppVolume | null
   custom_domain: string | null // host only (not the CustomDomain object the app endpoints return)
   resources: AppResources
 }
@@ -367,6 +382,7 @@ export interface ClusterHealth {
     by_status: Partial<Record<'running' | 'deploying' | 'pending' | 'error' | 'suspended', number>>
     with_db: number
     with_storage: number
+    with_volume?: number
     by_db_engine?: { mysql: number; postgres: number }
   }
 }

@@ -76,6 +76,36 @@ watch(
     }
   },
 )
+const volumesOn = computed(() => auth.user?.features?.volumes === true)
+const volMax = computed(() => limits.value?.volume_max_gi ?? 1)
+const vol = reactive({ enabled: false, size: 1 as number | string, mount: '/data' })
+const volAttached = ref(false) // app already has a volume (can't be detached)
+const originalMount = ref('')
+const originalSize = ref(0)
+vol.size = limits.value?.volume_default_gi ?? 1
+vol.mount = limits.value?.volume_default_mount_path ?? '/data'
+// Admin-granted sizes above the user max may be re-sent unchanged.
+const volSizeError = computed(() => {
+  if (fieldErrors.value['volume.size_gi']) return fieldErrors.value['volume.size_gi']
+  if (!vol.enabled) return ''
+  const n = Number(vol.size)
+  if (!Number.isInteger(n) || n < 1) return 'Use a whole number of GiB, at least 1.'
+  if (volAttached.value && n === originalSize.value) return ''
+  return n > volMax.value ? `At most ${volMax.value} GiB.` : ''
+})
+const volMountError = computed(() => {
+  if (fieldErrors.value['volume.mount_path']) return fieldErrors.value['volume.mount_path']
+  if (!vol.enabled) return ''
+  return vol.mount.startsWith('/') && !/\s/.test(vol.mount) ? '' : 'Mount path must be absolute (start with /) and have no spaces.'
+})
+function volumePayload(): { size_gi?: number; mount_path?: string } | undefined {
+  if (!vol.enabled) return undefined
+  if (!volAttached.value) return { size_gi: Number(vol.size), mount_path: vol.mount }
+  const out: { size_gi?: number; mount_path?: string } = {}
+  if (Number(vol.size) !== originalSize.value) out.size_gi = Number(vol.size)
+  if (vol.mount !== originalMount.value) out.mount_path = vol.mount
+  return Object.keys(out).length ? out : undefined
+}
 const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket, S3-compatible`)
 const imageMb = computed(() => limits.value?.image_mb ?? 512)
 
@@ -105,6 +135,14 @@ onMounted(async () => {
       form.health_check_timeout = app.health_check_timeout_seconds ?? ''
       form.auto_update = app.auto_update ?? true
       env.value = app.env
+      if (app.volume) {
+        vol.enabled = true
+        volAttached.value = true
+        vol.size = app.volume.size_gi
+        vol.mount = app.volume.mount_path
+        originalSize.value = app.volume.size_gi
+        originalMount.value = app.volume.mount_path
+      }
       document.title = `Settings · ${app.name} · PicoPaaS`
     } catch (e) {
       error.value = e instanceof ApiError ? e.message : "Couldn't load this app."
@@ -200,6 +238,10 @@ async function onSubmit() {
     return showError()
   }
   if (pathError.value || timeoutError.value) return
+  if (volSizeError.value || volMountError.value) {
+    error.value = 'Fix the persistent volume settings.'
+    return showError()
+  }
   if (envInvalid.value) {
     error.value = 'Fix the highlighted environment variable names.'
     return showError()
@@ -217,6 +259,7 @@ async function onSubmit() {
         health_check_path: form.health_check_path,
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
+        ...(volumePayload() ? { volume: volumePayload() } : {}),
         env: envOut,
       })
       toast.success(`Saved. Redeploying ${app.name}…`)
@@ -233,6 +276,7 @@ async function onSubmit() {
         health_check_path: form.health_check_path,
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
+        ...(volumePayload() ? { volume: volumePayload() } : {}),
         env: envOut,
       })
       toast.success(`${app.name} created. Deploying, usually about a minute.`)
@@ -421,6 +465,32 @@ async function onSubmit() {
               </label>
             </div>
             <p class="help">Can't be changed after creation.</p>
+          </fieldset>
+
+          <fieldset v-if="volumesOn || volAttached">
+            <legend class="label">Persistent volume</legend>
+            <label class="flex items-start gap-2 text-sm text-zinc-200">
+              <input v-model="vol.enabled" type="checkbox" :disabled="volAttached" class="check mt-0.5" />
+              <span>Add a persistent volume <span v-if="volAttached" class="text-zinc-400">(attached; can't be removed except by deleting the app)</span></span>
+            </label>
+            <div v-if="vol.enabled" class="ml-6 mt-2 space-y-3">
+              <div class="alert-warn text-xs">
+                Forces a single replica. Each deploy or restart stops the old pod before the new one starts, so expect about a minute of downtime.
+                Volume data is not backed up. It can't be removed except by deleting the app.
+              </div>
+              <div>
+                <label for="vol-size" class="label">Size (GiB)</label>
+                <input id="vol-size" v-model="vol.size" type="number" min="1" :max="volMax" inputmode="numeric" class="input mono !w-32" :aria-invalid="!!volSizeError || undefined" />
+                <p v-if="volSizeError" class="field-error" role="alert">{{ volSizeError }}</p>
+                <p v-else class="help">1 to {{ volMax }} GiB.{{ volAttached ? ' Ask an administrator to grow it.' : '' }}</p>
+              </div>
+              <div>
+                <label for="vol-mount" class="label">Mount path</label>
+                <input id="vol-mount" v-model="vol.mount" type="text" maxlength="255" spellcheck="false" class="input mono !w-64" :aria-invalid="!!volMountError || undefined" />
+                <p v-if="volMountError" class="field-error" role="alert">{{ volMountError }}</p>
+                <p v-else-if="volAttached && vol.mount !== originalMount" class="help">Changing the mount path redeploys the app.</p>
+              </div>
+            </div>
           </fieldset>
 
           <div>

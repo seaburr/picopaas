@@ -306,6 +306,7 @@ const overrideSummary = (a: AdminApp) => {
   const gb = (n: number) => (n >= 1024 ? `${+(n / 1024).toFixed(1)}G` : `${n}M`)
   const out: string[] = []
   if (a.replicas > 1) out.push(`x${a.replicas}`)
+  if (a.volume) out.push(`vol ${a.volume.size_gi}G`)
   if (r.ephemeral_limit_mi !== d.ephemeral_limit_mi) out.push(`disk ${gb(r.ephemeral_limit_mi)}`)
   if (a.want_db && r.db_max_connections !== d.db_max_connections) out.push(`${r.db_max_connections} conns`)
   if (a.want_db && r.db_quota_mb !== d.db_quota_mb) out.push(`db ${gb(r.db_quota_mb)}`)

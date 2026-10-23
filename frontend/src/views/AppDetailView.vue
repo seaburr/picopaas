@@ -484,6 +484,13 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <dt class="meta">Storage</dt>
                 <dd class="text-zinc-200">{{ app.want_storage ? `Attached (${limits?.bucket_mb ?? 100} MB, S3-compatible)` : 'Not enabled' }}</dd>
               </div>
+              <div v-if="app.volume">
+                <dt class="meta">Persistent volume</dt>
+                <dd class="mono text-zinc-200">
+                  {{ app.volume.size_gi }} GiB at {{ app.volume.mount_path }}
+                  <span v-if="app.volume.phase" :class="[app.volume.phase === 'Bound' ? 'badge-ok' : 'badge-warn', 'ml-1']">{{ app.volume.phase }}</span>
+                </dd>
+              </div>
               <div><dt class="meta">Environment variables</dt><dd class="mono text-zinc-200">{{ app.env.length }}<span v-if="secretCount" class="text-zinc-400"> ({{ secretCount }} secret)</span></dd></div>
               <div><dt class="meta">Created</dt><dd class="mono text-zinc-200" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</dd></div>
             </dl>

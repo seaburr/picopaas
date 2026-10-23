@@ -6,9 +6,17 @@ import { useRouter } from 'vue-router'
 import { applySpec } from '../api/apps'
 import { ApiError } from '../api/client'
 import { useToastStore } from '../stores/toast'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const toast = useToastStore()
+const auth = useAuthStore()
+
+const volumeLine = () => {
+  const l = auth.user?.limits
+  return `resources: { db: false, storage: false, volume: { sizeGi: ${l?.volume_default_gi ?? 1}, mountPath: ${l?.volume_default_mount_path ?? '/data'} } }`
+}
+const example = () => EXAMPLE.replace('resources: { db: false, storage: false }', auth.user?.features?.volumes ? volumeLine() : 'resources: { db: false, storage: false }')
 
 const EXAMPLE = `apiVersion: picopaas/v1
 name: my-app              # display name only; hostname is generated
@@ -72,7 +80,7 @@ async function apply() {
           YAML spec
           <RouterLink to="/guide/user#4-yaml-spec-reference" target="_blank" class="link ml-2 text-xs font-normal">Spec reference</RouterLink>
         </label>
-        <button type="button" class="btn-secondary btn-sm" @click="spec = EXAMPLE">Load example</button>
+        <button type="button" class="btn-secondary btn-sm" @click="spec = example()">Load example</button>
       </div>
       <p class="help">The same thing as the form, as a file. Applying an existing name updates that app.</p>
       <textarea

@@ -43,12 +43,14 @@ const visibleX = computed(() =>
 const vals = reactive<Record<Key, string>>({ cpu_request_m: '', cpu_limit_m: '', mem_request_mi: '', mem_limit_mi: '' })
 const xvals = reactive<Record<XKey, string>>({ ephemeral_limit_mi: '', db_max_connections: '', db_quota_mb: '', storage_quota_mb: '', image_size_mb: '', egress_mbit: '' })
 const replicasVal = ref('')
+const volumeVal = ref('')
 watch(
   () => props.app,
   (a) => {
     for (const k of keys) vals[k] = a && a.resources[k] !== a.resources.defaults[k] ? String(a.resources[k]) : ''
     for (const f of xFields) xvals[f.key] = a && a.resources[f.key] !== a.resources.defaults[f.key] ? String(a.resources[f.key]) : ''
     replicasVal.value = a ? String(a.replicas) : ''
+    volumeVal.value = a?.volume ? String(a.volume.size_gi) : ''
   },
   { immediate: true },
 )
@@ -74,8 +76,14 @@ const replicasBad = computed(() => {
   const n = parse(v)
   return n === null || n < 1 || n > 3
 })
+const volumeBad = computed(() => {
+  const v = volumeVal.value.trim()
+  if (!props.app?.volume || v === '') return false
+  const n = parse(v)
+  return n === null || n < Math.max(1, props.app.volume.size_gi) || n > 20
+})
 const invalid = computed(
-  () => fields.some(kBad) || visibleX.value.some(xBad) || replicasBad.value,
+  () => fields.some(kBad) || visibleX.value.some(xBad) || replicasBad.value || volumeBad.value,
 )
 const exceeds = computed(
   () =>
@@ -96,6 +104,8 @@ function save() {
   if (invalid.value) return
   const body: ResourcesPatch = Object.fromEntries(keys.map((k) => [k, num(k)]))
   for (const f of visibleX.value) body[f.key] = xnum(f.key)
+  const vol = parse(volumeVal.value)
+  if (props.app?.volume && vol !== null && vol !== props.app.volume.size_gi) body.volume_size_gi = vol
   const rep = parse(replicasVal.value)
   emit('save', body, rep !== null && rep !== props.app?.replicas ? rep : null)
 }
@@ -157,6 +167,14 @@ function reset() {
           />
           <p class="help">{{ f.min }} to {{ human(f.max, f.unit) }}</p>
         </div>
+      </div>
+      <div v-if="app.volume" class="mt-3 max-w-[12rem]">
+        <label :for="`${uid}-volume`" class="label">Volume size (GiB)</label>
+        <input
+          :id="`${uid}-volume`" v-model="volumeVal" type="text" inputmode="numeric" pattern="[0-9]*"
+          :placeholder="String(app.volume.size_gi)" class="input" :aria-invalid="volumeBad ? 'true' : undefined"
+        />
+        <p class="help">Grow-only: {{ app.volume.size_gi }} to 20. Can't be shrunk.</p>
       </div>
       <p class="help">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers within the shown ranges.</p>
