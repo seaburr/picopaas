@@ -261,6 +261,11 @@ of the "current pods" view (it is only needed for the latest few points) or stor
 
 ## Prioritized fix list
 
+**Status (2026-10-23):** P1 items 1-4 are DONE (pool env knobs and sizing, applied connection limit recorded in
+`app_databases.db_conn_limit_applied`, eager loading plus batched `app_events` lookup with a query-count test, indexes
+migration `a7c1e9b3d5f2`). Item 5 (audit retention / streamed export / keyset pagination) is ON HOLD. Note: the
+`ix_app_events_app_id` and `ix_app_metric_samples_app_id` indexes were replaced by the composite ones.
+
 P1 (do soon, all S unless noted; each independent):
 1. Pool sizing and env knobs in `app/db.py` (#5) - S. Prevents burst 500s; cheap.
 2. Record applied connection limit, stop `ALTER USER` per sweep (#2) - S.

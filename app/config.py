@@ -18,6 +18,13 @@ ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 IS_DEV = ENVIRONMENT == "dev"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/picopaas.db")
+# Platform DB connection pool (per process; ignored for SQLite). Budget: DB_POOL_SIZE + DB_MAX_OVERFLOW connections
+# per API replica, times replicas (plus one pinned GET_LOCK connection each and rollout surge), must stay well under
+# the MySQL server's max_connections, which tenant app users may share.
+DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "5"))
+DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "5"))
+DB_POOL_TIMEOUT = int(os.environ.get("DB_POOL_TIMEOUT", "10"))  # seconds to wait for a free connection
+DB_POOL_RECYCLE = int(os.environ.get("DB_POOL_RECYCLE", "1800"))  # seconds; below the server's wait_timeout
 
 # Insecure, fixed values used only when ENVIRONMENT=dev and nothing else is
 # configured (local dev, tests). Never used outside of IS_DEV.

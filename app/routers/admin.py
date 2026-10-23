@@ -12,7 +12,7 @@ from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import audit, config, crypto, health, models, naming, quota, resources, schemas
 from app.config import APP_DOMAIN
@@ -296,7 +296,10 @@ def _get_app_or_404(db: Session, app_id: int) -> models.App:
 
 @router.get("/apps", response_model=List[AdminAppOut])
 def list_all_apps(db: Session = Depends(get_db)):
-    apps = db.query(models.App).filter(models.App.deleted_at.is_(None)).order_by(models.App.id).all()
+    apps = (
+        db.query(models.App).options(joinedload(models.App.owner))
+        .filter(models.App.deleted_at.is_(None)).order_by(models.App.id).all()
+    )
     return [_app_admin_out(a) for a in apps]
 
 
@@ -446,7 +449,10 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
     audit.record(db, admin, "app.resources", "app", a.id, f"{old} -> {_res_str(a)}")
     if conns_changed and a.want_db and a.database is not None:
         try:
-            mysql_admin_factory(a.database.server).set_user_connection_limit(a.id, resources.effective(a)["db_max_connections"])
+            want_limit = resources.effective(a)["db_max_connections"]
+            mysql_admin_factory(a.database.server).set_user_connection_limit(a.id, want_limit)
+            a.database.db_conn_limit_applied = want_limit
+            db.commit()
         except Exception as exc:  # noqa: BLE001 - the reconciler sweep re-applies it
             log.warning("app %s: applying db connection limit failed: %s", a.id, type(exc).__name__)
     if quota_changed:  # restore (or revoke) right away instead of at the next poll

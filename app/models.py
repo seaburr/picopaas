@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy import false as sa_false
 from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,6 +15,7 @@ def _utcnow() -> datetime:
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (Index("ix_users_status_created", "status", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -48,7 +49,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     # sha256 hex digest of the full raw key. The raw key is shown to the user
     # exactly once, at creation time, and never stored.
     hashed: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
@@ -70,6 +71,11 @@ class ApiKey(Base):
 
 class App(Base):
     __tablename__ = "apps"
+    __table_args__ = (
+        Index("ix_apps_deleted_status", "deleted_at", "status"),
+        # Leads with owner_id, so it also serves as the FK index.
+        Index("ix_apps_owner_deleted", "owner_id", "deleted_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -183,10 +189,13 @@ class AppImageHistory(Base):
 class AppEvent(Base):
     """Something that happened to a running app (restart for disk/OOM/crash). Last 20 per app are kept."""
     __tablename__ = "app_events"
-    __table_args__ = (UniqueConstraint("app_id", "dedupe_key", name="uq_app_events_dedupe"),)
+    __table_args__ = (
+        UniqueConstraint("app_id", "dedupe_key", name="uq_app_events_dedupe"),
+        Index("ix_app_events_app_at", "app_id", "at", "id"),  # leading app_id also serves as the FK index
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True, nullable=False)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
     at: Mapped[datetime] = mapped_column(nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)  # disk | evicted | oom | crashed
     message: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -197,9 +206,10 @@ class AppEvent(Base):
 class AppMetricSample(Base):
     """One CPU/memory reading for an app (leader-sampled from the health snapshot). Newest N per app are kept."""
     __tablename__ = "app_metric_samples"
+    __table_args__ = (Index("ix_app_metric_samples_app_ts", "app_id", "ts"),)  # leading app_id also serves as the FK index
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), index=True, nullable=False)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
     ts: Mapped[datetime] = mapped_column(nullable=False)
     cpu_m: Mapped[int] = mapped_column(nullable=False)
     mem_mi: Mapped[int] = mapped_column(nullable=False)
@@ -214,7 +224,7 @@ class AppEnvVar(Base):
     __table_args__ = (UniqueConstraint("app_id", "key", name="uq_app_env_vars_app_id_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), nullable=False)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), index=True, nullable=False)
     key: Mapped[str] = mapped_column(String(255), nullable=False)
     # Fernet token (ciphertext), always encrypted at rest regardless of
     # is_secret — is_secret only controls whether the plaintext is ever
@@ -264,13 +274,16 @@ class AppDatabase(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), unique=True, nullable=False)
-    db_server_id: Mapped[int] = mapped_column(ForeignKey("db_servers.id"), nullable=False)
+    db_server_id: Mapped[int] = mapped_column(ForeignKey("db_servers.id"), index=True, nullable=False)
     db_name: Mapped[str] = mapped_column(String(64), nullable=False)
     db_user: Mapped[str] = mapped_column(String(32), nullable=False)
     # Fernet token (ciphertext) — the app db user's password, via app/crypto.
     password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     size_bytes: Mapped[int] = mapped_column(default=0, nullable=False)
     over_quota: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Per-user connection cap last applied to the DB server (ALTER USER / ALTER ROLE). NULL = unknown (new row or
+    # credentials rotated): the next sweep applies the effective limit once, then records it here.
+    db_conn_limit_applied: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     app: Mapped["App"] = relationship(back_populates="database")

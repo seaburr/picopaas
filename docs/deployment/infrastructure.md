@@ -61,6 +61,17 @@ apps whose migrations create keyless tables (for example Wiki.js) fail on MySQL;
 expose host CPU or disk for managed databases externally; use the control panel Insights tab. `DB_METRICS_ENABLED` stays
 off (a live scrape fails for MySQL); a tabled feature request tracks it.
 
+Platform DB pool (`DB_POOL_SIZE=5`, `DB_MAX_OVERFLOW=5`, `DB_POOL_TIMEOUT=10`, defaults; not overridden in the manifests):
+the platform database `picopaas` lives on the same managed MySQL as the tenant databases, so its connections compete
+with them for about 76 total. Each API replica may hold 10 (5 steady, 5 burst) plus one pinned `GET_LOCK` connection;
+2 replicas plus 1 surge pod during a rollout is at most about 33, leaving roughly 43 for tenants (each tenant user is
+capped at 10). The previous SQLAlchemy defaults (5 + 10, 30 s wait) allowed 45 at peak and turned a burst into
+30-second hangs; a 10 s timeout fails fast instead. If tenant DB count grows or replicas are added, lower the pool or
+move the platform database to its own server. Per-app connection caps are applied once and recorded
+(`app_databases.db_conn_limit_applied`), not re-sent every sweep. In `MYSQL_ADMIN_USE_PROCEDURES=1` mode the cap call is a
+no-op (the procedure sets the default at creation), so admin overrides are not applied there; managed MySQL here uses direct
+`ALTER USER`, so overrides apply.
+
 ## Spaces
 
 One Spaces subscription covers the platform bucket and one bucket plus key per storage-enabled app (ATL1). DO limits an

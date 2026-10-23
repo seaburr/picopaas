@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from sqlalchemy import and_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import config, crypto, env_refs, image_check, image_history, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
@@ -190,13 +190,17 @@ def event_message(kind: str, app: models.App, exit_code: Any = None) -> str:
 def record_app_events(session: Session, apps: list[models.App], by_ns: dict[str, list[dict[str, Any]]]) -> int:
     """Store each not-yet-seen restart occurrence once (dedupe on app + pod uid/restartCount key); keep the newest 20."""
     added = 0
-    for app in apps:
+    with_pods = [a for a in apps if by_ns.get(k8s_manifests.namespace_name(a.id))]
+    existing: dict[int, list[Any]] = {a.id: [] for a in with_pods}
+    if with_pods:  # one query for every app's known events instead of one per app
+        for app_id, key, at in session.execute(
+            select(models.AppEvent.app_id, models.AppEvent.dedupe_key, models.AppEvent.at)
+            .where(models.AppEvent.app_id.in_(list(existing)))
+        ).all():
+            existing[app_id].append((key, at))
+    for app in with_pods:
         seen = by_ns.get(k8s_manifests.namespace_name(app.id)) or []
-        if not seen:
-            continue
-        rows = session.execute(
-            select(models.AppEvent.dedupe_key, models.AppEvent.at).where(models.AppEvent.app_id == app.id)
-        ).all()
+        rows = existing[app.id]
         have = {k for k, _ in rows}
         # Full: anything not newer than the oldest kept event would just be pruned again (and re-added next sweep).
         floor = min((_naive(a) for _, a in rows), default=None) if len(rows) >= EVENTS_KEPT else None
@@ -383,10 +387,14 @@ def reconcile_app(
         app.database = db_row
 
     elif sweep and app.want_db and app.database is not None:
-        # Self-heal: re-apply the per-user connection cap (picks up a raised MAX_DB_USER_CONNECTIONS or a per-app admin override).
+        # Apply the per-user connection cap only when it differs from what we last applied (new/rotated creds leave
+        # it NULL; a raised MAX_DB_USER_CONNECTIONS or an admin override changes the effective value).
+        want_limit = resources.effective(app)["db_max_connections"]
         try:
-            mysql_admin_factory(app.database.server).set_user_connection_limit(
-                app.id, resources.effective(app)["db_max_connections"])
+            if app.database.db_conn_limit_applied != want_limit:
+                mysql_admin_factory(app.database.server).set_user_connection_limit(app.id, want_limit)
+                app.database.db_conn_limit_applied = want_limit
+                session.flush()
         except Exception as exc:  # noqa: BLE001 - never break the sweep
             log.warning("app %s: set db connection limit failed: %s", app.id, _provider_error_summary(exc))
 
@@ -713,7 +721,12 @@ def reconcile_all(
 
     # Drift sweep: running apps whose rendered manifests changed (platform upgrade) get re-applied.
     running = session.execute(
-        select(models.App).where(models.App.deleted_at.is_(None), models.App.status == "running")
+        select(models.App).where(models.App.deleted_at.is_(None), models.App.status == "running").options(
+            selectinload(models.App.database).selectinload(models.AppDatabase.server),
+            selectinload(models.App.storage),
+            selectinload(models.App.env_vars),
+            selectinload(models.App.image_history),
+        )
     ).scalars().all()
     existing_ns: Optional[set[str]] = None
     if running:

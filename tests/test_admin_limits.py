@@ -88,8 +88,12 @@ def test_pg_connection_limit_default_and_applied(env, db_session):
     r = _patch(c, aid, db_max_connections=8)
     assert r.json()["resources"]["defaults"]["db_max_connections"] == 5 and r.json()["db_engine"] == "pg"
     assert pg.conn_limits[aid] == 8
-    # the reconciler sweep self-heals with the per-app value
+    # the applied value is recorded, so a sweep does not re-send it; once the marker is cleared (credential
+    # rotation / re-provision) the sweep re-applies the per-app value
     pg.conn_limits.clear()
+    db_session.expire_all()
+    db_session.get(models.App, aid).database.db_conn_limit_applied = None
+    db_session.commit()
     reconcile_all(db_session, kube=FakeKubeProvider(), mysql_admin_factory=lambda s: pg,
                   object_store=FakeObjectStore(), settings={})
     assert pg.conn_limits[aid] == 8

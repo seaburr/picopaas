@@ -58,6 +58,8 @@ required.
 |---|---|
 | `ENVIRONMENT` | `dev` (default) allows insecure fixed keys and SQLite. Use anything else in production. |
 | `DATABASE_URL` | The platform's own metadata database (MySQL in production). |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | Connections the platform keeps open to its metadata database per process (default 5) and extra connections allowed under burst (default 5). Ignored for SQLite. Size so that (pool size + overflow) x API replicas (+1 replica for rollouts, +1 pinned connection each) stays well under the database server's `max_connections`, leaving room for tenant databases if they share the server. |
+| `DB_POOL_TIMEOUT`, `DB_POOL_RECYCLE` | Seconds a request waits for a free connection before failing (default 10), and the age after which a connection is replaced (default 1800, keep below the server's `wait_timeout`). |
 | `FERNET_KEY` | Encrypts every stored secret. The JWT signing key is derived from it. |
 | `FERNET_KEYS_PREVIOUS` | Comma-separated older keys, for rotation. |
 | `SECRET_KEY` | Optional explicit JWT key; normally derived from `FERNET_KEY`. |

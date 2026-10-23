@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app import audit, config, crypto, custom_domains, image_check, models, reconciler, resources, schemas
 from app.config import APP_DOMAIN
@@ -217,6 +217,12 @@ def list_apps(
     apps = (
         db.query(models.App)
         .filter(models.App.owner_id == current_user.id, models.App.deleted_at.is_(None))
+        .options(
+            selectinload(models.App.env_vars),
+            selectinload(models.App.database),
+            selectinload(models.App.storage),
+            selectinload(models.App.events),
+        )
         .order_by(models.App.created_at.desc())
         .all()
     )
@@ -366,6 +372,7 @@ def rotate_credentials(
         old_encrypted = row.password_encrypted
         new_password = generate_password()
         row.password_encrypted = crypto.encrypt(new_password)
+        row.db_conn_limit_applied = None  # re-assert the connection cap on the next sweep
         try:
             db.commit()
         except Exception:
