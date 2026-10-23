@@ -612,6 +612,12 @@ dashboard's secret editor or the API, never in the YAML file. Ask an admin to ra
 n8n is the end-to-end proof of managed Postgres on PicoPaaS: a per-app database and role, CA-verified TLS, and
 data that survives restarts.
 
+## WordPress (nginx + PHP-FPM, volume, MySQL)
+
+A non-root WordPress image lives in `examples/wordpress/` (PHP 8.5, WordPress 7.1, WP-CLI, automatic locked-down first install,
+optional volume for the whole install, one-time restore from a backup bundle). Start with `examples/wordpress/README.md`
+for the spec and env vars, and `examples/wordpress/MIGRATION.md` to move an existing site onto PicoPaaS.
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build
