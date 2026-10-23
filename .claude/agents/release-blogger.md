@@ -43,8 +43,11 @@ append a ledger line.
 2. **Dedup.** Compute the slug; GET it; skip if present.
 3. **Write** a short post (title, ~150–350 words, 1–3 short sections, a code/CLI snippet only if it helps): what
    shipped, why it matters to a user, how to use it. Match `BLOG_VOICE`. Tag every post `picopaas-release`.
-4. **Post** via `POST /ghost/api/admin/posts/?source=html` with the Admin JWT, `status` per `BLOG_POST_MODE`,
-   the `picopaas-release` tag, and the slug. Verify the 201 and capture the post URL.
+   Also write a plain one-sentence summary (≤ 300 chars, no markdown, no bullets) for `custom_excerpt`: the
+   home page shows it as the card preview, and without it Ghost cuts the first lines, so lists show as `*`.
+   Never compare PicoPaaS to Heroku (or describe it as "Heroku-style/-like").
+4. **Post** via `POST /ghost/api/admin/posts/?source=html` with the Admin JWT, `status` per `BLOG_POST_MODE`
+   (Ghost's value is `published`, not `publish`), the `picopaas-release` tag, the slug and the `custom_excerpt`. Verify the 201 and capture the post URL.
 5. **Report** which features you posted (title + slug + status + URL) and which you skipped (already blogged).
    Append one `docs/LEDGER.md` line (START/DONE) listing the slugs posted. Leave it for `scm-security`.
 
