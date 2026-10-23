@@ -106,3 +106,14 @@ Generic steps are in [ADMIN_GUIDE.md](../ADMIN_GUIDE.md#break-glass-recovery). O
 kubectl -n picopaas-system exec -it deploy/picopaas -- python -m app.manage list-admins
 kubectl -n picopaas-system exec -it deploy/picopaas -- python -m app.manage grant-admin <email>
 ```
+
+## WordPress restore rehearsal on throwaway app 152 (2026-10-23)
+Restored a real blog backup (DB dump with audit-log data stripped, 65 MB wp-content tarball, small extra static folder) onto app 152
+(`wordpress`, image `ghcr.io/seaburr/picopaas-example-wordpress:afefe81`, 1 GiB volume at `/var/www/html`, managed MySQL, bucket quota raised
+to 150 MB, CPU 500m) using `WP_RESTORE=1` and the REQ-8 presigned upload (`picopaas storage upload`). Outcome: restore completed on the first
+try (about two minutes from redeploy to serving), posts, theme, uploads and the static download folder all 200, install.php 403, restart skipped
+the restore (marker) and uploads persisted. Bundle objects deleted afterwards (presigned GET returned 404) and `WP_RESTORE` unset. Findings:
+one abandoned PHP 7-era plugin fatals on PHP 8.5 (deactivated by `WP_RESTORE_DEACTIVATE`); a restart during a background plugin auto-update
+left a `.maintenance` flag (site showed "Briefly unavailable" until WordPress's own 10-minute expiry); fixed in the working tree by disabling background
+updaters by default and clearing the flag at boot (needs a new image publish). Presigned PUT size cap verified on real Spaces: 20-byte body against
+a 10-byte signature returned HTTP 403 SignatureDoesNotMatch. App 152 stays up until Chas deletes it.

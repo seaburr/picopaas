@@ -92,3 +92,17 @@ have verified everything; lower the TTL a day before cutover.
 - Pipelines hide failures in POSIX sh: the entrypoint checks that `siteurl` exists after import and that the tarball produced a themes directory.
 - A PHP 7-era security plugin fataled on PHP 8.5 (`create_function()` removed); everything else (theme, Jetpack, other plugins) rendered with no PHP errors.
 - Restore of a 0.3 MB (compressed) dump and a 69 MB tarball took well under two minutes locally; the volume held about 235 MB.
+
+## Rehearsal log, live run on a throwaway PicoPaaS app
+- Spec: volume 1 GiB at `/var/www/html`, managed MySQL, bucket quota raised from 100 to 150 MB, CPU 500m, image pinned by tag. Bundle uploaded with the platform's presigned
+  PUT (`picopaas storage upload`): 65 MB in about 10 s.
+- Restore (`WP_RESTORE=1`): all six steps completed on the first run in about two minutes after the redeploy; the old URL was found from the dump and 48 replacements were made.
+  Measured resource peaks were small (a few tens of millicores and about 60 MiB sampled once a minute).
+- Public checks passed: home page title and posts, `?p=` URLs, theme and plugin assets, uploaded images and an extra static download all 200; `wp-login.php` 200;
+  `install.php`, `setup-config.php`, `xmlrpc.php` 403; no PHP fatals after the one known-bad plugin was deactivated.
+- Restart: the log showed `marker ... exists, skipping`; uploads were still served from the volume.
+- Gotcha: a restart while WordPress was running a background plugin auto-update left `.maintenance` and visitors saw "Briefly unavailable for scheduled maintenance" for
+  up to ten minutes (WordPress ignores the flag after that). The image now disables background updaters by default (`WORDPRESS_AUTOMATIC_UPDATES=true` re-enables them) and
+  removes a stale `.maintenance` at boot.
+- Presigned upload size cap: a body of 20 bytes sent against a URL signed for 10 bytes was rejected by Spaces with HTTP 403 (SignatureDoesNotMatch).
+- Cleanup performed: bundle objects deleted from the bucket (a presigned GET then returned 404), restore variables removed from the spec, local copies deleted.
