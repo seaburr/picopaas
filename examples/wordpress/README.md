@@ -104,6 +104,11 @@ about 20 s at full speed). RAM 384 MB should hold (4 FPM workers, about 200 MiB 
 cap are enough for a vanilla site. The health check passes only after nginx and php-fpm are up; the 503 "installing"
 state does not affect `/healthz`. If the install is slow on a throttled pod, raise `timeoutSeconds`.
 
+## Moving an existing site here
+
+`WP_RESTORE=1` restores a database dump and a `wp-content` tarball from the app's own bucket, once, onto a mounted volume.
+Full procedure, bundle preparation, sizing and rollback: [MIGRATION.md](MIGRATION.md). Backup strategy: `docs/research/wordpress-backups.md`.
+
 ## Environment variables
 
 | Variable | Default | Meaning |
@@ -119,6 +124,11 @@ state does not affect `/healthz`. If the install is slow on a throttled pod, rai
 | `WP_ALLOW_XMLRPC` | `false` | `true` allows `/xmlrpc.php` (Jetpack needs it) |
 | `WP_CRON_ENABLED` / `WP_CRON_INTERVAL` | `true` / `300` | CLI wp-cron loop (page-load cron is off) |
 | `WP_CONFIG_MANAGED` | `true` | Volume mode: rewrite `wp-config.php` on each boot |
+| `WP_RESTORE` | unset | `1` = one-time restore from the bucket (volume required, see MIGRATION.md) |
+| `WP_RESTORE_S3_ENDPOINT` / `_REGION` / `_BUCKET` / `_ACCESS_KEY` / `_SECRET_KEY` | | Map from `${{ storage.* }}` |
+| `WP_RESTORE_DB_KEY` / `_CONTENT_KEY` / `_EXTRA_KEY` | `restore/db.sql.gz` / `restore/wp-content.tar.gz` / `restore/extra.tar.gz` | Object keys of the bundle (extra is optional) |
+| `WP_RESTORE_DEACTIVATE` | unset | Comma list of plugin slugs to deactivate after the restore (plugins that fatal on current PHP) |
+| `WORDPRESS_DB_CA_CERT` | unset | `${{ db.ca_cert }}`; lets the restore's mariadb client verify the DB certificate |
 | `WORDPRESS_AUTO_UPDATE_CORE` | `false` | Core updates come from new images |
 | `WORDPRESS_DEBUG` | `false` | WP_DEBUG (logged, never displayed) |
 

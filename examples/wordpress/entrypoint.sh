@@ -75,6 +75,80 @@ FPM=$!
 nginx -e /dev/stderr -g 'daemon off;' &
 NGX=$!
 
+
+# 3b. Optional one-time restore from the app's own bucket (WP_RESTORE=1). Volume mode only; never re-runs once the marker exists.
+s3_get() { # $1 = object key; streams to stdout
+  curl -fsS --retry 3 --aws-sigv4 "aws:amz:${WP_RESTORE_S3_REGION:-us-east-1}:s3" --user "${WP_RESTORE_S3_ACCESS_KEY}:${WP_RESTORE_S3_SECRET_KEY}" \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" "${WP_RESTORE_S3_ENDPOINT%/}/${WP_RESTORE_S3_BUCKET}/$1"
+}
+# TLS flags for the mariadb client. With WORDPRESS_DB_CA_CERT (${{ db.ca_cert }}) the server certificate is verified;
+# without it the connection is encrypted but unverified (the client's default would otherwise reject the server).
+DB_SSL_FLAGS=""
+if [ "${WORDPRESS_DB_TLS:-off}" = required ]; then
+  if [ -n "${WORDPRESS_DB_CA_CERT:-}" ]; then printf '%s\n' "$WORDPRESS_DB_CA_CERT" > /tmp/db-ca.pem; DB_SSL_FLAGS="--ssl --ssl-ca=/tmp/db-ca.pem --ssl-verify-server-cert"
+  else DB_SSL_FLAGS="--ssl --skip-ssl-verify-server-cert"; fi
+fi
+db_sql() { # runs mysql with the app DB creds (password via env, never on the command line)
+  MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mariadb --host="${WORDPRESS_DB_HOST:-localhost}" --port="${WORDPRESS_DB_PORT:-3306}" \
+    --user="$WORDPRESS_DB_USER" $DB_SSL_FLAGS \
+    --max-allowed-packet=64M --default-character-set=utf8mb4 "$@" "$WORDPRESS_DB_NAME"
+}
+restore_flow() {
+  MARKER="$WP_ROOT/.picopaas-restored"
+  [ -e "$MARKER" ] && { log "restore: marker $MARKER exists, skipping"; return 0; }
+  if [ "$WP_ROOT" != "$VOLUME_DIR" ]; then log "restore: REFUSED, no volume mounted at $VOLUME_DIR"; return 1; fi
+  for v in WP_URL WP_RESTORE_S3_ENDPOINT WP_RESTORE_S3_BUCKET WP_RESTORE_S3_ACCESS_KEY WP_RESTORE_S3_SECRET_KEY; do
+    eval "x=\${$v:-}"; [ -n "$x" ] || { log "restore: REFUSED, $v is not set"; return 1; }
+  done
+  DBKEY="${WP_RESTORE_DB_KEY:-restore/db.sql.gz}"; CKEY="${WP_RESTORE_CONTENT_KEY:-restore/wp-content.tar.gz}"; XKEY="${WP_RESTORE_EXTRA_KEY:-restore/extra.tar.gz}"
+  PFX="${WORDPRESS_TABLE_PREFIX:-wp_}"
+  log "restore: step 1/6 dropping existing tables"
+  tables=$(db_sql -N -e 'SHOW TABLES') || { log "restore: cannot connect to the database with the mariadb client"; return 1; }
+  tables=$(printf '%s\n' "$tables" | sed '/^$/d; s/.*/`&`/' | paste -sd, -)
+  if [ -n "$tables" ]; then db_sql -e "SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS $tables" || return 1; fi
+  log "restore: step 2/6 importing database dump from bucket key $DBKEY"
+  s3_get "$DBKEY" | gzip -dc | db_sql || { log "restore: DB import FAILED"; return 1; }
+  OLD_URL=$(db_sql -N -e "SELECT option_value FROM ${PFX}options WHERE option_name='siteurl'") || return 1
+  [ -n "$OLD_URL" ] || { log "restore: FAILED, no siteurl found after import (empty or truncated dump?)"; return 1; }
+  log "restore: database imported; old site URL is $OLD_URL"
+  log "restore: step 3/6 extracting wp-content from $CKEY onto the volume"
+  rm -rf "$WP_ROOT/wp-content"
+  s3_get "$CKEY" | tar -xzf - -C "$WP_ROOT" || { log "restore: wp-content extract FAILED"; return 1; }
+  if curl -fsS -o /dev/null --head --aws-sigv4 "aws:amz:${WP_RESTORE_S3_REGION:-us-east-1}:s3" --user "${WP_RESTORE_S3_ACCESS_KEY}:${WP_RESTORE_S3_SECRET_KEY}" \
+      -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" "${WP_RESTORE_S3_ENDPOINT%/}/${WP_RESTORE_S3_BUCKET}/$XKEY" 2>/dev/null; then
+    log "restore: extracting extra static files from $XKEY"
+    s3_get "$XKEY" | tar -xzf - -C "$WP_ROOT" || log "restore: extra extract failed (continuing)"
+  fi
+  [ -d "$WP_ROOT/wp-content/themes" ] || { log "restore: FAILED, wp-content archive had no themes dir"; return 1; }
+  mkdir -p "$WP_ROOT/wp-content/uploads"
+  wp_cli() { php -d memory_limit=256M /usr/local/bin/wp --path="$WP_ROOT" --allow-root "$@"; }
+  # Restore-time wp-cli calls skip plugins and themes: an old plugin that fatals on this PHP must not break the restore.
+  wpr() { wp_cli --skip-plugins --skip-themes "$@"; }
+  if [ "$OLD_URL" != "$WP_URL" ]; then
+    log "restore: step 4/6 search-replace $OLD_URL -> $WP_URL (guid column skipped)"
+    wpr search-replace "$OLD_URL" "$WP_URL" --all-tables --skip-columns=guid --report-changed-only >/tmp/sr.log 2>&1 \
+      || { log "restore: search-replace FAILED: $(tail -3 /tmp/sr.log | tr '\n' ' ')"; return 1; }
+    tail -1 /tmp/sr.log >&2
+    case "$OLD_URL" in https://*)
+      wpr search-replace "http://${OLD_URL#https://}" "$WP_URL" --all-tables --skip-columns=guid --report-changed-only >/tmp/sr.log 2>&1 && tail -1 /tmp/sr.log >&2 ;;
+    esac
+  else
+    log "restore: step 4/6 old and new URL are identical, no search-replace"
+  fi
+  # Plugins known to fatal on current PHP (comma list of plugin slugs), e.g. abandoned plugins using removed functions.
+  if [ -n "${WP_RESTORE_DEACTIVATE:-}" ]; then
+    for p in $(echo "$WP_RESTORE_DEACTIVATE" | tr ',' ' '); do
+      if wpr plugin deactivate "$p" >/dev/null 2>&1; then log "restore: deactivated plugin $p"; else log "restore: plugin $p not active or not found"; fi
+    done
+  fi
+  log "restore: step 5/6 flushing caches and transients"
+  wpr transient delete --all >/dev/null 2>&1 || true
+  wpr cache flush >/dev/null 2>&1 || true
+  rm -rf /tmp/nginx-cache/* 2>/dev/null || true
+  date -u +%FT%TZ > "$MARKER"
+  log "restore: step 6/6 done, marker written to $MARKER"
+}
+
 # 4. First-boot install with WP-CLI (the web installer is blocked in nginx, so nobody can take over an empty site).
 install_flow() {
   wp_cli() { php -d memory_limit=256M /usr/local/bin/wp --path="$WP_ROOT" --allow-root "$@"; }
@@ -89,6 +163,10 @@ install_flow() {
     [ "$tries" -le 60 ] || { log "database not reachable after 5 minutes; still retrying"; tries=0; }
     set_state "WordPress is waiting for the database"; sleep 5
   done
+  if [ "${WP_RESTORE:-0}" = "1" ]; then
+    set_state "WordPress is restoring from backup, retry in a few minutes"
+    restore_flow || { set_state "WordPress restore failed or refused, see the app logs"; return 0; }
+  fi
   if wp_cli core is-installed 2>/dev/null; then
     set_state ""; log "WordPress is installed; serving"; return 0
   fi

@@ -14,7 +14,7 @@ ARG WPCLI_SHA512=be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e61
 ARG WITH_S3=0
 
 RUN set -eux; \
-    apk add --no-cache nginx tini curl libpng libjpeg-turbo libwebp freetype libzip icu-libs libxml2; \
+    apk add --no-cache nginx tini curl mariadb-client mariadb-connector-c libpng libjpeg-turbo libwebp freetype libzip icu-libs libxml2; \
     apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev libzip-dev icu-dev; \
     docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp; \
     docker-php-ext-install -j"$(nproc)" gd mysqli exif zip intl bcmath; \
