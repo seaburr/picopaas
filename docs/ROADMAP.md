@@ -107,6 +107,30 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
   "bring a prebuilt public image" barrier) but the one item that adds real node CPU/disk at build time, so
   opt-in + quota-bounded, not strictly free.
 
+## Persistent volumes (block storage): planned (Chas, 2026-10-22)
+Today an app's only disk is its 250 MB scratch disk, which is wiped on every restart. Many self-hosted apps
+expect a persistent folder: SQLite apps (Uptime Kuma, Vaultwarden), n8n's user folder (binary data, community
+nodes, event log), and file uploads. Add an opt-in `resources.volume` that mounts one small block-storage
+volume per app.
+- **What DOKS already gives us (checked on the cluster):** the DigitalOcean block-storage CSI driver is installed,
+  and `do-block-storage` is the default StorageClass. The driver attaches and detaches the volume when the pod moves
+  to another node, so we don't write that logic. A node can attach up to 15 volumes, which is more than the
+  ~8–12 apps a node runs.
+- **Cost:** $0.10/GiB/month, billed while the volume exists, even when detached. The minimum size is 1 GiB, so
+  about $0.10/month per app. Snapshots cost $0.06/GiB/month. A request in `docs/requests/` is needed before building.
+- **What the platform has to handle:**
+  - **One copy only:** volumes are ReadWriteOnce, so a volume app runs exactly one replica.
+  - **Deploys:** they must use the `Recreate` strategy (a rolling update deadlocks on the attach), so each deploy
+    has a short gap.
+  - **Node drains:** about a minute of downtime while the volume moves.
+  - **Permissions:** `fsGroup` so the non-root UID can write.
+  - **Quotas:** a size cap per app, and a ResourceQuota on storage and PVC count.
+  - **Deletion:** the app's volume goes with the app (reclaim `Delete`).
+  - **Backups:** a snapshot policy.
+  - **Sign-off:** a pentest pass.
+- **Not a fix for n8n's database quota:** n8n's limit on PostgreSQL is the 50 MB database. A volume would fix its
+  binary data and community nodes, not that.
+
 ## Managed PostgreSQL support: shipped 2026-10-22
 Per-app PostgreSQL databases (`resources.db_engine: pg`) now run alongside MySQL on a managed `picopaas-pg-nyc3` cluster. Original design notes follow. Full feasibility, protection-by-protection
 mapping, quota design, cost and the "ditch MySQL?" analysis: [docs/requests/0006-postgresql-support.md](requests/0006-postgresql-support.md).
