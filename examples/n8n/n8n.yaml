@@ -49,6 +49,12 @@ env:
   # too high and the container OOMs. 384 heap inside a 512 MiB container (admin override) works.
   NODE_OPTIONS: "--max-old-space-size=384"
 
+  # Keep execution history inside the 50 MB database quota. n8n's schema alone is ~16 MB; the default
+  # (14 days / 10,000 runs) fills the rest within days on a frequent schedule and the DB goes read-only.
+  EXECUTIONS_DATA_SAVE_ON_SUCCESS: "none"
+  EXECUTIONS_DATA_MAX_AGE: "72"
+  EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
+
   # --- Optional footprint trimming (per the live env). ---
   N8N_RUNNERS_ENABLED: "false"
   N8N_DIAGNOSTICS_ENABLED: "false"

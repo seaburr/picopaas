@@ -527,6 +527,36 @@ The image's default HOME isn't writable as the non-root UID, so n8n can't create
 and dies on boot. Pointing it at `/tmp` (writable for any UID) fixes it. This is the n8n equivalent of
 Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line.
 
+### What lives outside Postgres, and is lost on restart
+
+n8n's docs say to keep the user folder on a persistent volume, and PicoPaaS apps have no volumes. We looked inside
+`/tmp/.n8n` on the live instance. Your workflows, credentials, users and execution history are in Postgres and
+survive restarts (verified). These are what live in the folder instead:
+
+| In `/tmp/.n8n` | What it's for | Effect of losing it on restart |
+|---|---|---|
+| `config` | Copy of the encryption key | None. `N8N_ENCRYPTION_KEY` is pinned in env. |
+| `storage/` | Binary data from executions (files flowing through workflows). n8n 2.x stores these on disk by default. | Old executions' file attachments disappear, and a workflow paused on a Wait node with a file loses it. Large files also count toward the **250 MB scratch disk**, so a workflow that moves big files can get the pod evicted. |
+| `nodes/` | Community nodes installed from the UI | They're gone after a restart. Stick to built-in nodes. |
+| `n8nEventLog.log` | Event bus log, used to recover executions interrupted by a crash | Weaker crash recovery for executions that were in flight. |
+
+There's no clean fix without volumes. Database binary mode (`N8N_DEFAULT_BINARY_DATA_MODE=database`) survives restarts
+but uses the 50 MB database quota (see below). The S3 mode needs an n8n Enterprise license. So n8n on PicoPaaS suits
+**light automation that doesn't handle files**, such as webhooks, API calls and notifications. It doesn't suit file
+pipelines.
+
+### Fitting in the 50 MB database: prune executions
+
+n8n's schema alone uses about **16 MB** of the 50 MB quota, measured with one workflow and almost no runs. By default
+n8n keeps 14 days or 10,000 executions of history. A workflow on a frequent schedule would fill the rest within days.
+The database would then go read-only and n8n would stop working. Keep the history small:
+
+- `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` saves only failed runs. Successful runs are the bulk of the history.
+- `EXECUTIONS_DATA_MAX_AGE=72` keeps history for 72 hours.
+- `EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000` caps the number of runs kept.
+
+Watch the database bar on the app page. If it climbs, lower the two numbers.
+
 ### The public URL and the rest of the env
 
 - `N8N_HOST` (bare host, e.g. `n8n.picopaas.xyz`), `N8N_PROTOCOL=https`, `N8N_PORT=5678`,

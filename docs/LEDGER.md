@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-22 [frontend-dev] START: replace tabs with two pages: app health (/apps/:id) and Settings (/apps/:id/edit = spec form + AppSettingsPanel).
+- 2026-10-22 [frontend-dev] DONE (uncommitted): AppDetailView header has one primary Settings button (always shown); AppFormView edit mode = Deployment form + new components/AppSettingsPanel.vue (domain/credentials/short address/delete, same logic, emits update:app, only loadedApp refreshed) + App health button; deleted AppTabs.vue and AppSettingsView.vue; /apps/:id/settings redirects to /edit. typecheck + build clean.
 - 2026-10-22 [frontend-dev] START: split per-app UI into Overview / Edit / Settings (new /apps/:id/settings).
 - 2026-10-22 [frontend-dev] DONE (uncommitted): new views/AppSettingsView.vue (custom domain + 20s auto-verify, credentials rotate, admin short address, danger zone/delete) MOVED out of AppDetailView; new components/AppTabs.vue (Overview/Edit/Settings, aria-current) used on all three pages incl. AppFormView edit mode; gear Settings IconButton in Overview header; route /apps/:id(\\d+)/settings. Suspension gating unchanged. typecheck + build clean; no frontend tests exist.
 - 2026-10-22 [infra-ops] START: n8n recipe — PicoPaaS's FIRST PostgreSQL-backed recipe (verified live app 110, https://n8n.picopaas.xyz) + mark request 0006 implemented.
@@ -688,3 +690,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [scm-security] DONE: engine picker 910a24f, docs pass be9c60f, n8n recipe 9658ee9 pushed; CI, image, examples, deploy all green. No security findings filed.
 - 2026-10-22 [scm-security] START: commit/push frontend app-page split and PostgreSQL pentest docs; watch CI.
 - 2026-10-22 [scm-security] DONE: frontend split committed 3eb4529; docs commit follows. gitleaks clean. No findings.
+- 2026-10-22 [scm-security] DONE: app health/settings two-page UI and n8n recipe caveats committed and pushed; gitleaks clean. No findings.
