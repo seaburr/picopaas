@@ -1,5 +1,5 @@
 import type { App, AppEvent, MetricsHistory, ImageVersion, AppCreatePayload, AppUpdatePayload, AppWithCreated } from '../types'
-import { apiFetch } from './client'
+import { apiFetch, downloadFile } from './client'
 
 // Matches app/routers/apps.py exactly (prefix "/apps").
 export const listApps = () => apiFetch<App[]>('/apps')
@@ -32,11 +32,20 @@ export const rotateCredentials = (id: number, target: 'db' | 'storage') =>
     body: JSON.stringify({ target }),
   })
 
+export interface PodInfo {
+  name: string
+  created_at: string | null
+  phase: string | null
+  ready: boolean
+  current: boolean
+}
+
 export interface AppLogs {
   lines: string[]
   pod: string | null
   note: string | null
   pods?: string[]
+  pod_info?: PodInfo[]
   sections?: { pod: string; lines: string[]; note: string | null; restarts: number }[]
 }
 
@@ -76,3 +85,6 @@ export const verifyCustomDomain = (id: number) =>
 
 export const clearCustomDomain = (id: number) =>
   apiFetch<App>(`/apps/${id}/domain`, { method: 'DELETE' })
+
+export const downloadPodEvents = (id: number, pod: string) =>
+  downloadFile(`/apps/${id}/pods/${encodeURIComponent(pod)}/events`, `${pod}-events.txt`)

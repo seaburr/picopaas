@@ -367,5 +367,6 @@ export interface ClusterHealth {
     by_status: Partial<Record<'running' | 'deploying' | 'pending' | 'error' | 'suspended', number>>
     with_db: number
     with_storage: number
+    by_db_engine?: { mysql: number; postgres: number }
   }
 }

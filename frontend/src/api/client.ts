@@ -93,3 +93,43 @@ export async function apiFetch<T = unknown>(url: string, options?: RequestInit):
   if (text === '') return undefined as T
   throw new ApiError('Unexpected response from the server (expected JSON). Reload the page and try again.', response.status)
 }
+
+// Authenticated download: fetch with the session cookie, then save the blob. Filename from Content-Disposition,
+// else fallbackName. Throws ApiError (message from FastAPI `detail`) on failure.
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(path, { cache: 'no-store', credentials: 'include' })
+  } catch {
+    throw new ApiError("Can't reach the server. Check your connection and try again.", 0)
+  }
+  if (!response.ok) {
+    let message = `Download failed (HTTP ${response.status}).`
+    try {
+      const f = formatDetail((await response.json())?.detail)
+      if (f.message) message = f.message
+    } catch {
+      // not JSON
+    }
+    if (response.status === 401 && !path.startsWith('/auth/')) onUnauthorized?.()
+    throw new ApiError(message, response.status)
+  }
+  const cd = response.headers.get('content-disposition') ?? ''
+  const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+  let name = fallbackName
+  if (m) {
+    try {
+      name = decodeURIComponent(m[1] ?? m[2] ?? '') || fallbackName
+    } catch {
+      name = m[2] ?? fallbackName
+    }
+  }
+  const url = URL.createObjectURL(await response.blob())
+  const el = document.createElement('a')
+  el.href = url
+  el.download = name
+  document.body.appendChild(el)
+  el.click()
+  el.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

@@ -6,12 +6,12 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { Download, FileText, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
+import { deleteStorageObjects, getAppEvents, downloadPodEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
 import { dbEngineLabel, eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
@@ -115,6 +115,28 @@ const logsBusy = ref(false)
 const podSel = ref('') // '' = all pods
 const autoRefresh = ref(false)
 const dlBusy = ref(false)
+const evBusy = ref(false)
+const podMeta = computed(() => new Map((logs.value?.pod_info ?? []).map((i) => [i.name, i])))
+function podLabel(name: string) {
+  const i = podMeta.value.get(name)
+  if (!i) return name
+  if (i.current) return `${name} (current)`
+  return `${name} (old${i.phase && i.phase !== 'Running' ? ', ' + i.phase.toLowerCase() : ''})`
+}
+const eventsPod = computed(() => podSel.value || ((logs.value?.pods?.length ?? 0) <= 1 ? logs.value?.pod || '' : ''))
+async function downloadEvents() {
+  const a = app.value
+  const pod = eventsPod.value
+  if (!a || !pod || evBusy.value) return
+  evBusy.value = true
+  try {
+    await downloadPodEvents(a.id, pod)
+  } catch (e) {
+    toast.error(`Couldn't download pod events: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    evBusy.value = false
+  }
+}
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
 
@@ -388,10 +410,14 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <label for="log-pod">Pod</label>
                 <select id="log-pod" v-model="podSel" class="input mono w-auto py-0.5" @change="loadLogs">
                   <option value="">All pods ({{ logs.pods!.length }})</option>
-                  <option v-for="p in logs.pods" :key="p" :value="p">{{ p }}</option>
+                  <option v-for="p in logs.pods" :key="p" :value="p">{{ podLabel(p) }}</option>
                 </select>
+                <IconButton :icon="FileText" :label="eventsPod ? 'Download pod events' : 'Download pod events (select a pod first)'" sm :disabled="!eventsPod || evBusy" @click="downloadEvents" />
               </div>
-              <p v-else-if="logs.pod" class="meta mono mb-1 truncate" :title="logs.pod">Pod {{ logs.pod }}</p>
+              <div v-else-if="logs.pod" class="mb-1 flex items-center gap-2">
+                <p class="meta mono truncate" :title="logs.pod">Pod {{ podLabel(logs.pod) }}</p>
+                <IconButton :icon="FileText" label="Download pod events" sm :disabled="evBusy" @click="downloadEvents" />
+              </div>
               <pre
                 v-if="logs.lines.length"
                 ref="logBox"

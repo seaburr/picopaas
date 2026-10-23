@@ -35,7 +35,7 @@ const busy = computed(() => props.app.status === 'deploying')
         {{ failure.reason === 'image_pull' || failure.reason === 'root_image' ? 'Edit image' : 'Edit app' }}
       </RouterLink>
       <RouterLink v-if="failure.actions.includes('logs')" :to="`/apps/${app.id}#logs`" class="btn-secondary btn-sm">
-        View logs
+        View app health
       </RouterLink>
       <button v-if="failure.actions.includes('restart')" type="button" class="btn-secondary btn-sm" :disabled="restarting" @click="$emit('restart')">
         {{ restarting ? 'Restarting…' : 'Restart' }}

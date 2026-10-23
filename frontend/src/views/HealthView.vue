@@ -204,6 +204,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
               >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</span>
             </div>
             <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with storage</div>
+            <div v-if="data.workloads.by_db_engine" class="text-xs text-zinc-400">{{ data.workloads.by_db_engine.mysql }} MySQL · {{ data.workloads.by_db_engine.postgres }} PostgreSQL</div>
           </div>
         </section>
 

@@ -7,7 +7,7 @@ import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import {
-  approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listAudit, listDbServers, listUsers,
+  approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -17,7 +17,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Ban, Check, ExternalLink, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -112,6 +112,32 @@ async function runConfirm() {
     tempPw.value = pendingTemp
     pendingTemp = null
   }
+}
+async function exportAudit(format: 'csv' | 'json') {
+  try {
+    await downloadAuditLog(format)
+  } catch (e) {
+    toast.error(`Couldn't download the audit log: ${msg(e, 'try again')}`)
+  }
+}
+// 409 detail ("would leave no active admin") goes to a toast; act() would put it in the page error banner.
+async function setAdmin(u: AdminUser, promote: boolean) {
+  try {
+    await (promote ? promoteUser(u.id) : demoteUser(u.id))
+    toast.success(promote ? `${u.email} is now a platform admin.` : `${u.email} is no longer a platform admin.`)
+  } catch (e) {
+    toast.error(msg(e, promote ? "Couldn't make admin" : "Couldn't remove admin"))
+  }
+  await load()
+}
+const activeAdmins = computed(() => users.value.filter((u) => u.role === 'platform_admin' && u.status === 'active').length)
+function demoteBlocked(u: AdminUser) {
+  return u.id === auth.user?.id && activeAdmins.value <= 1
+}
+function askAdmin(u: AdminUser, promote: boolean) {
+  confirm.value = promote
+    ? { title: `Make ${u.email} an admin`, message: 'They get full platform admin access: all users, apps, limits and audit logs.', label: 'Make admin', run: () => setAdmin(u, true) }
+    : { title: `Remove admin from ${u.email}`, message: 'They become a regular user. Their apps are kept.', label: 'Remove admin', run: () => setAdmin(u, false) }
 }
 function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) {
   if (kind === 'suspend')
@@ -355,7 +381,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-center gap-1.5">
                     <span class="truncate font-medium text-white" :title="u.email">{{ u.email }}</span>
-                    <span v-if="u.role === 'platform_admin'" class="badge-info shrink-0">Platform admin</span>
+                    <span v-if="u.role === 'platform_admin'" class="badge-info shrink-0">Admin</span>
                   </div>
                   <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
                 </div>
@@ -371,6 +397,15 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
                 </form>
                 <div class="flex gap-0.5 md:justify-end">
+                  <IconButton
+                    v-if="u.role === 'platform_admin'"
+                    :icon="ShieldOff"
+                    :label="demoteBlocked(u) ? 'Remove admin (you are the only admin)' : `Remove admin from ${u.email}`"
+                    sm
+                    :disabled="demoteBlocked(u)"
+                    @click="askAdmin(u, false)"
+                  />
+                  <IconButton v-else-if="u.status === 'active'" :icon="ShieldCheck" :label="`Make ${u.email} an admin`" sm @click="askAdmin(u, true)" />
                   <template v-if="u.role !== 'platform_admin'">
                     <IconButton v-if="u.status === 'suspended'" :icon="Play" :label="`Unsuspend ${u.email}`" sm @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')" />
                     <IconButton v-if="u.status === 'active'" :icon="Ban" :label="`Suspend ${u.email}`" sm @click="askUser('suspend', u)" />
@@ -464,7 +499,13 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </template>
 
         <!-- AUDIT -->
-        <div v-else class="card max-h-[34rem] overflow-auto">
+        <template v-else>
+        <div class="mb-2 flex items-center justify-end gap-2 text-xs text-zinc-300">
+          <span>Download full audit log</span>
+          <button type="button" class="btn-secondary btn-sm" @click="exportAudit('csv')"><Download :size="14" aria-hidden="true" /> CSV</button>
+          <button type="button" class="btn-secondary btn-sm" @click="exportAudit('json')"><Download :size="14" aria-hidden="true" /> JSON</button>
+        </div>
+        <div class="card max-h-[34rem] overflow-auto">
           <div :class="[auditGrid, 'table-th row-pad sticky top-0 hidden border-b border-pico-border bg-pico-panel']">
             <span>When</span><span>Actor</span><span>Action</span><span>Target</span><span>Detail</span>
           </div>
@@ -479,6 +520,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
             <li v-if="loaded && filteredAudit.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">No entries.</li>
           </ul>
         </div>
+        </template>
       </div>
     </main>
 

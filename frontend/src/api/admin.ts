@@ -1,5 +1,5 @@
 import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
-import { apiFetch } from './client'
+import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
 
@@ -46,3 +46,9 @@ export const setAppReplicas = (id: number, replicas: number) =>
   apiFetch<unknown>(`/admin/apps/${id}/replicas`, { method: 'PUT', body: JSON.stringify({ replicas }) })
 
 export const getAdminGuide = () => apiFetch<{ markdown: string }>('/admin/docs/admin-guide')
+
+export const promoteUser = (id: number) => apiFetch<AdminUser>(`/admin/users/${id}/promote`, { method: 'POST' })
+export const demoteUser = (id: number) => apiFetch<AdminUser>(`/admin/users/${id}/demote`, { method: 'POST' })
+
+export const downloadAuditLog = (format: 'csv' | 'json') =>
+  downloadFile(`/admin/audit/export?format=${format}`, `audit-log.${format}`)

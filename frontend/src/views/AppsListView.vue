@@ -6,7 +6,7 @@ import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
 import IconButton from '../components/IconButton.vue'
-import { Pencil, RotateCw, ScrollText, Trash2 } from 'lucide-vue-next'
+import { Pencil, RotateCw, HeartPulse, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { dbEngineLabel, eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
@@ -173,7 +173,7 @@ function meta(app: App) {
               </p>
             </div>
             <div class="flex shrink-0 items-center">
-              <IconButton :icon="ScrollText" label="View logs" :to="`/apps/${app.id}#logs`" />
+              <IconButton :icon="HeartPulse" label="View app health" :to="`/apps/${app.id}`" />
               <IconButton :icon="RotateCw" :label="app.status === 'suspended' ? 'Restart (unavailable while suspended)' : 'Restart'" :disabled="app.status === 'suspended' || restarting === app.id" @click="restart(app)" />
               <IconButton
                 :icon="Pencil"

@@ -160,9 +160,9 @@
   }
 
   .nav-link {
-    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-card/50 hover:text-white;
+    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-card/90 hover:text-white;
   }
-  /* idle (dim) -> hover (half-strength card + white) -> active (full card, medium, bright white); no underline */
+  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
   .nav-link.nav-active {
     @apply bg-pico-card font-medium text-white;
   }
