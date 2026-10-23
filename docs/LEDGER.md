@@ -5,6 +5,11 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: wordpress boot actions ba235b8 pushed; CI, image, examples, deploy green; gitleaks clean. No findings. Ledger lines committed next.
+- 2026-10-23 [scm-security] START: commit/push wordpress boot actions (ba235b8) and ledger; watch CI and examples.
+- 2026-10-23 [release-blogger] DONE: published wordpress-runs-on-picopaas (https://blog.picopaas.xyz/wordpress-runs-on-picopaas/), follow-up to wordpress-on-picopaas. Uncommitted ledger line only.
+- 2026-10-23 [release-blogger] START: blog post wordpress-runs-on-picopaas.
+- 2026-10-23 [wp-expert] DONE (uncommitted): login diagnosis for restored app 152 (dump hash is valid bcrypt, lockouts empty at dump time; Jetpack account-protection/protect modules likely) + boot actions WP_REMOVE_PLUGINS, WP_CLEAR_LOGIN_LOCKOUTS, WP_RESET_PASSWORD_USER/NONCE in examples/wordpress (README, MIGRATION.md). Tested locally (volume, restart, nonce, email lookup, invalid names). Needs republish.
 - 2026-10-23 [scm-security] DONE: wordpress updater fix e41f752, rehearsal docs 4d09192 pushed; gitleaks clean, no findings. CI/examples results follow in next line.
 - 2026-10-23 [scm-security] START: commit/push wordpress updater fix + rehearsal docs; watch CI and examples workflow.
 - 2026-10-23 [wp-expert] DONE (uncommitted docs + image tweak): live restore onto throwaway app 152 succeeded (image :afefe81, 1 GiB volume, presigned upload). Public checks pass, restart skipped restore, bundle deleted, WP_RESTORE unset. Found: stale .maintenance after restart during background update; fixed in examples/wordpress (wp-config AUTOMATIC_UPDATER_DISABLED default, entrypoint clears .maintenance) - needs republish. Notes in docs/deployment/runbooks.md and examples/wordpress/MIGRATION.md.
