@@ -30,6 +30,11 @@ const pct = computed(() => Math.min(100, st.value?.used_pct ?? 0))
 const hot = computed(() => (st.value?.used_pct ?? 0) >= 80)
 const dur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h` : `${Math.max(1, Math.floor(s / 60))}m`)
 defineExpose({ load })
+const sweep = computed(() => data.value?.sweeper ?? null)
+const cleanedText = computed(() => {
+  const c = Object.entries(sweep.value?.cleaned ?? {})
+  return c.length ? c.map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ') : 'nothing to clean'
+})
 const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
 </script>
 
@@ -64,8 +69,8 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
             </thead>
             <tbody class="text-zinc-300">
               <tr v-for="a in st!.top_apps" :key="a.app_id">
-                <td class="truncate"><span v-if="a.deleted" class="text-zinc-400" title="App deleted; backups kept until pruned">{{ a.name }} (deleted)</span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
-                <td class="truncate" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
+                <td class="break-words"><span v-if="a.deleted" class="text-zinc-400" title="App deleted; backups kept until pruned">{{ a.name }} (deleted)</span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
+                <td class="break-all" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
                 <td class="mono text-right">{{ size(a.repo_bytes) }}</td>
                 <td class="mono text-right">{{ a.cap_bytes != null ? size(a.cap_bytes) : '-' }}</td>
                 <td><span v-if="a.full" class="badge-error">full</span> <span v-if="a.admin_disabled" class="badge-warn" title="Backups locked off by an administrator">locked</span></td>
@@ -87,8 +92,8 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
             </thead>
             <tbody class="text-zinc-300">
               <tr v-for="f in data.failures" :key="f.run_id" class="align-top">
-                <td class="truncate"><span v-if="f.app_deleted" class="text-zinc-400">{{ label(f) }} (deleted)</span><RouterLink v-else :to="`/apps/${f.app_id}`" class="link">{{ label(f) }}</RouterLink></td>
-                <td class="truncate" :title="f.owner_email ?? undefined">{{ f.owner_email ?? '-' }}</td>
+                <td class="break-words"><span v-if="f.app_deleted" class="text-zinc-400">{{ label(f) }} (deleted)</span><RouterLink v-else :to="`/apps/${f.app_id}`" class="link">{{ label(f) }}</RouterLink></td>
+                <td class="break-all" :title="f.owner_email ?? undefined">{{ f.owner_email ?? '-' }}</td>
                 <td>{{ f.kind }}</td>
                 <td>{{ f.trigger }}</td>
                 <td class="mono whitespace-nowrap" :title="f.at ? stampTitle(f.at) : undefined">{{ f.at ? stamp(f.at) : '-' }}</td>
@@ -101,6 +106,14 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
         </div>
       </div>
 
+      <p v-if="sweep" class="text-xs text-zinc-400" role="status">
+        Last cleanup sweep:
+        <template v-if="sweep.last_run_at"><span class="mono" :title="stampTitle(sweep.last_run_at)">{{ stamp(sweep.last_run_at) }}</span>, {{ cleanedText }}</template>
+        <template v-else>has not run yet</template>.
+        <span v-if="sweep.errors.length" class="text-amber-300">Errors: {{ sweep.errors.join('; ') }}.</span>
+        <span v-if="sweep.orphan_repos.length" class="text-amber-300">Orphan repositories (not removed): {{ sweep.orphan_repos.join(', ') }}.</span>
+      </p>
+
       <div v-if="data.stuck.length">
         <h3 class="mb-1 text-xs font-semibold text-amber-300">Stuck ({{ data.stuck.length }})</h3>
         <div class="card overflow-x-auto border-amber-500/40">
@@ -108,8 +121,8 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
             <thead><tr><th scope="col">App</th><th scope="col">Owner</th><th scope="col">Kind</th><th scope="col">Trigger</th><th scope="col">State</th><th scope="col" class="text-right">For</th></tr></thead>
             <tbody class="text-zinc-300">
               <tr v-for="f in data.stuck" :key="f.run_id">
-                <td class="truncate"><span v-if="f.app_deleted" class="text-zinc-400">{{ label(f) }} (deleted)</span><RouterLink v-else :to="`/apps/${f.app_id}`" class="link">{{ label(f) }}</RouterLink></td>
-                <td class="truncate" :title="f.owner_email ?? undefined">{{ f.owner_email ?? '-' }}</td>
+                <td class="break-words"><span v-if="f.app_deleted" class="text-zinc-400">{{ label(f) }} (deleted)</span><RouterLink v-else :to="`/apps/${f.app_id}`" class="link">{{ label(f) }}</RouterLink></td>
+                <td class="break-all" :title="f.owner_email ?? undefined">{{ f.owner_email ?? '-' }}</td>
                 <td>{{ f.kind }}</td>
                 <td>{{ f.trigger }}</td>
                 <td>{{ f.status }}</td>

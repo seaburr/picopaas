@@ -22,7 +22,7 @@ const GB = 1024 * MB
 const isBytes = (s: PlatformSetting) => s.unit === 'bytes'
 const fmtBytes = (n: number) => (n >= GB && n % (GB / 100) === 0 ? `${+(n / GB).toFixed(2)} GB` : n >= MB ? `${+(n / MB).toFixed(1)} MB` : `${n} bytes`)
 const fmtVal = (s: PlatformSetting, v: number | boolean) =>
-  typeof v === 'boolean' ? (v ? 'on' : 'off') : isBytes(s) ? fmtBytes(v) : `${v}${s.unit ? ' ' + s.unit : ''}`
+  typeof v === 'boolean' ? (v ? 'on' : 'off') : isBytes(s) ? fmtBytes(v) : `${v}${s.unit ? ' ' + (v === 1 ? s.unit.replace(/s$/, '') : s.unit) : ''}`
 
 function seed(s: PlatformSetting) {
   const v = s.value
@@ -132,8 +132,8 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
             </p>
           </div>
           <div class="min-w-0">
-            <label v-if="s.type === 'bool'" class="check min-h-[36px]">
-              <input :id="`${uid}-${s.key}`" v-model="drafts[s.key].on" type="checkbox" />
+            <label v-if="s.type === 'bool'" class="flex min-h-[36px] items-center gap-2 text-sm text-zinc-200">
+              <input :id="`${uid}-${s.key}`" v-model="drafts[s.key].on" type="checkbox" class="check" />
               <span>{{ drafts[s.key].on ? 'On' : 'Off' }}</span>
             </label>
             <div v-else class="flex items-center gap-2">
@@ -142,10 +142,10 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
                 :aria-invalid="errorOf(s) ? 'true' : undefined" :aria-describedby="errorOf(s) ? `${uid}-${s.key}-err` : undefined"
                 @keydown.enter.prevent="canSave(g) && save(g)"
               />
-              <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input w-20 shrink-0" :aria-label="`Unit for ${s.label}`">
+              <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input !w-24 shrink-0" :aria-label="`Unit for ${s.label}`">
                 <option>MB</option><option>GB</option>
               </select>
-              <span v-else-if="s.unit" class="meta shrink-0">{{ s.unit }}</span>
+              <span v-else-if="s.unit" class="meta w-24 shrink-0">{{ s.unit }}</span>
             </div>
             <p v-if="errorOf(s)" :id="`${uid}-${s.key}-err`" class="field-error">{{ errorOf(s) }}</p>
             <button
@@ -158,7 +158,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
       <div class="flex flex-wrap items-center gap-3 border-t border-pico-border px-3 py-2">
         <button type="button" class="btn-primary btn-sm" :disabled="!canSave(g)" @click="save(g)">{{ busy === g.name ? 'Saving…' : `Save ${g.name.toLowerCase()}` }}</button>
         <span v-if="dirtyIn(g).length" class="meta">{{ dirtyIn(g).length }} unsaved {{ dirtyIn(g).length === 1 ? 'change' : 'changes' }}</span>
-        <p v-if="groupError[g.name]" role="alert" class="text-sm text-status-error">{{ groupError[g.name] }}</p>
+        <p v-if="groupError[g.name]" role="alert" class="text-sm text-danger-light">{{ groupError[g.name] }}</p>
       </div>
     </section>
   </div>

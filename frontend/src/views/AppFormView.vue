@@ -332,7 +332,7 @@ async function onSubmit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-3xl sm:px-6' : 'max-w-2xl sm:px-6']">
+    <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-6xl sm:px-6' : 'max-w-2xl sm:px-6']">
       <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
@@ -514,7 +514,7 @@ async function onSubmit() {
             <div v-if="vol.enabled" class="ml-6 mt-2 space-y-3">
               <div class="alert-warn text-xs">
                 Forces a single replica. Each deploy or restart stops the old pod before the new one starts, so expect about a minute of downtime.
-                Volume data is included in backups when the platform has volume backups turned on. It can't be removed except by deleting the app.
+                Volume data is included in your backups. It can't be removed except by deleting the app.
               </div>
               <div>
                 <label for="vol-size" class="label">Size (GiB)</label>

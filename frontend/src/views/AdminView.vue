@@ -322,7 +322,7 @@ const overrideSummary = (a: AdminApp) => {
 const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
 const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_7rem_6.5rem] md:items-center md:gap-3'
-const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_6.5rem] lg:items-center lg:gap-3'
+const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_9.5rem] lg:items-center lg:gap-3'
 const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem_2rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
@@ -361,7 +361,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </ol>
       </section>
 
-      <div role="tablist" aria-label="Admin sections" class="flex gap-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
+      <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-1 border-b border-pico-border" @keydown="onTabKey">
         <button
           v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"

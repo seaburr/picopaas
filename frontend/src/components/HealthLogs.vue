@@ -113,7 +113,7 @@ async function download() {
         </div>
       </div>
       <div class="mt-2 flex flex-wrap items-center gap-3">
-        <label class="check"><input v-model="previous" type="checkbox" /> <span>Previous container (before the last restart)</span></label>
+        <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="previous" type="checkbox" class="check" /> <span>Previous container (before the last restart)</span></label>
         <span class="flex-1" />
         <span v-if="fetched" class="text-xs text-zinc-400">Fetched {{ fetched.toLocaleTimeString() }}</span>
         <button type="button" class="btn-secondary btn-sm" :disabled="!ready || loading" @click="fetchLogs"><RefreshCw :size="14" aria-hidden="true" /> {{ loading ? 'Loading…' : 'Refresh' }}</button>

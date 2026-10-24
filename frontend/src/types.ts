@@ -519,6 +519,7 @@ export interface BackupFailure {
 export interface BackupHealth {
   enabled: boolean; configured: boolean; days: number
   storage: BackupStorage; failures: BackupFailure[]; stuck: BackupFailure[]
+  sweeper?: { last_run_at: string | null; cleaned: Record<string, number>; errors: string[]; orphan_repos: (string | number)[] }
 }
 export interface PlatformPod { namespace: string; name: string; phase?: string; ready?: boolean; restarts?: number; containers: string[] }
 export interface PlatformPods { namespaces: string[]; pods: PlatformPod[] }

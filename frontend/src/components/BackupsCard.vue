@@ -197,7 +197,7 @@ const statusClass = (s: string) =>
   s === 'succeeded' ? 'badge-ok' : s === 'failed' ? 'badge-error' : s === 'partial' ? 'badge-warn' : 'badge-neutral'
 const failedParts = (b: BackupSet) => b.parts.filter((p) => p.status === 'failed')
 const partsTitle = (b: BackupSet) => failedParts(b).map((p) => `${kindLabel(p.kind)}: ${p.error || 'failed'}`).join('\n')
-const partClass = (s: string) => (s === 'failed' ? 'text-danger-light' : s === 'succeeded' ? '' : 'text-pico-muted')
+const partClass = (s: string) => (s === 'failed' ? 'text-danger-light' : s === 'succeeded' ? '' : 'text-zinc-400')
 const delMessage = computed(() => {
   const b = delTarget.value
   if (!b) return ''
@@ -235,13 +235,13 @@ onBeforeUnmount(() => {
         </p>
         <div class="flex shrink-0 flex-wrap items-center gap-2">
           <RouterLink :to="`/apps/${appId}/edit#backups`" class="btn-secondary btn-sm">Backup settings</RouterLink>
-          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :title="noRun || undefined" @click="runNow">
+          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :aria-describedby="noRun ? 'bk-run-reason' : undefined" @click="runNow">
             {{ runBusy ? 'Starting…' : inFlight ? 'Backup running…' : 'Back up now' }}
           </button>
         </div>
       </div>
-      <p v-if="locked" role="status" class="alert-warn mt-2">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
-      <p v-else-if="full" role="status" class="alert-warn mt-2">
+      <p v-if="locked" id="bk-run-reason" role="status" class="alert-warn mt-2">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
+      <p v-else-if="full" id="bk-run-reason" role="status" class="alert-warn mt-2">
         Backup storage for this app is full ({{ sz(info.repo_bytes ?? 0) }} of {{ sz(info.cap_bytes) }}). New backups are refused until you delete older ones.
       </p>
       <p v-else class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way ({{ info.manual_per_hour ?? 1 }} per hour).</p>

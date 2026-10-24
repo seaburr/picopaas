@@ -157,16 +157,16 @@ function reset() {
           <p class="help">{{ f.min }} to {{ human(mx(f), f.unit) }}</p>
         </div>
       </div>
-      <h3 class="label mt-4">Replicas</h3>
-      <div class="mt-1 max-w-[12rem]">
+      <h3 class="label mt-5 border-t border-pico-border pt-4">Replicas</h3>
+      <div class="max-w-[12rem]">
         <input
           :id="`${uid}-replicas`" v-model="replicasVal" type="text" inputmode="numeric" pattern="[0-9]*"
           aria-label="Replicas" :placeholder="String(app.replicas)" class="input" :aria-invalid="replicasBad ? 'true' : undefined"
         />
         <p class="help">1 to {{ replicasMax }}. Scaling does not restart existing pods.</p>
       </div>
-      <h3 class="label mt-4">Disk, image and data</h3>
-      <div class="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <h3 class="label mt-5 border-t border-pico-border pt-4">Disk, image and data</h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div v-for="f in visibleX" :key="f.key">
           <label :for="`${uid}-${f.key}`" class="label">{{ f.label }}{{ f.key === 'db_max_connections' ? ` (${dbEngineLabel(app.db_engine)})` : '' }}{{ f.unit ? ` (${f.unit})` : '' }}</label>
           <input
@@ -190,7 +190,7 @@ function reset() {
         />
         <p class="help">Grow-only: {{ app.volume.size_gi }} to {{ volMaxAdmin }}. Can't be shrunk.</p>
       </div>
-      <p class="help">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
+      <p class="help mt-3">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers within the shown ranges.</p>
       <p v-if="restarts" class="alert-warn mt-3 text-xs" role="status">
         Changing CPU, memory, scratch disk or bandwidth restarts this app: its pods are replaced in a rolling restart.
