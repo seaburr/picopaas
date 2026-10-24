@@ -62,6 +62,9 @@ if [ "$MODE" != "package" ]; then
     $RQ init --quiet >/dev/null 2>&1 || fail "could not open or create the backup repository"
   fi
   step "backup repository ready"
+  # A killed Job can leave a stale lock that blocks the next forget/prune/purge. `unlock` (without --remove-all) only removes
+  # locks restic itself considers stale (older than 30 minutes, or of a process that is gone), never a live run's lock.
+  case "$MODE" in prune|forget|purge) $RQ unlock >/dev/null 2>&1 || true ;; esac
 fi
 
 if [ "$MODE" = "purge" ]; then

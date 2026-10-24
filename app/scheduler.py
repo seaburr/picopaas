@@ -225,6 +225,24 @@ def backup_job() -> None:
         session.close()
 
 
+def backup_sweep_job() -> None:
+    """Leader-only: reconcile stuck backup runs and delete orphaned Jobs/Secrets/blobs/rows (app/backup_sweeper.py)."""
+    from app import backup_sweeper, backups
+
+    if not backups.usable() or not try_acquire_leader():
+        return
+    from app.providers.backup import KubeBackupRunner
+
+    session = SessionLocal()
+    try:
+        backup_sweeper.sweep(session, KubeBackupRunner())
+    except Exception:
+        session.rollback()
+        log.exception("backup sweep failed")
+    finally:
+        session.close()
+
+
 def _read_ca() -> str | None:
     """PEM text from the file at MYSQL_SSL_CA, or None if unset/unreadable."""
     path = os.environ.get("MYSQL_SSL_CA") or config.MYSQL_SSL_CA
@@ -384,6 +402,8 @@ def start_scheduler() -> BackgroundScheduler:
     if config.BACKUPS_ENABLED:
         sched.add_job(backup_job, "interval", seconds=config.BACKUP_TICK_SECONDS, max_instances=1, coalesce=True,
                       id="backup", next_run_time=now + timedelta(seconds=30))
+        sched.add_job(backup_sweep_job, "interval", minutes=config.BACKUP_SWEEP_MINUTES, max_instances=1, coalesce=True,
+                      id="backup_sweep", next_run_time=now + timedelta(minutes=5))
     health.start_background(get_kube)
     sched.start()
     return sched
