@@ -228,7 +228,7 @@ def test_per_app_cap_skips_with_event(on, monkeypatch, user, db_session, runner)
     backups.tick(db_session, runner, NOW)
     assert runner.started == []
     run = db_session.query(models.BackupRun).one()
-    assert run.status == "failed" and "cap" in run.error
+    assert run.status == "failed" and "full" in run.error and "of 2.0 GB" in run.error
     assert db_session.query(models.AppEvent).one().kind == "backup_failed"
 
 

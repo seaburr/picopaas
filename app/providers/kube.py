@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.providers.base import FINISHED_PHASES, KubeProvider, PodInfo, PodLogs, PodSection, mark_current, select_log_pods
+from app.providers.base import FINISHED_PHASES, KubeProvider, is_platform_namespace, PodInfo, PodLogs, PodSection, mark_current, select_log_pods
 
 log = logging.getLogger(__name__)
 
@@ -410,6 +410,33 @@ class KubeClientProvider(KubeProvider):
             if not current and len(lines) == 0:
                 note = "The container hasn't printed anything yet."
         return PodSection(pod=name, lines=lines, note=note, restarts=restarts)
+
+    def platform_pods(self) -> list[dict[str, Any]]:
+        out = []
+        for pod in _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get()).get("items", []):
+            meta, st = pod.get("metadata") or {}, pod.get("status") or {}
+            if not is_platform_namespace(meta.get("namespace")) or not meta.get("name"):
+                continue
+            cs = st.get("containerStatuses") or []
+            out.append({"namespace": meta["namespace"], "name": meta["name"], "phase": st.get("phase") or "Unknown",
+                        "ready": bool(cs) and all(c.get("ready") for c in cs),
+                        "restarts": sum(int(c.get("restartCount") or 0) for c in cs),
+                        "containers": [c["name"] for c in (pod.get("spec") or {}).get("containers") or [] if c.get("name")]})
+        return sorted(out, key=lambda p: (p["namespace"], p["name"]))
+
+    def platform_log(self, namespace: str, pod: str, container: str, tail: int, since_seconds: int | None = None,
+                     previous: bool = False) -> list[str]:
+        if not is_platform_namespace(namespace):
+            raise ValueError("not a platform namespace")
+        match = [p for p in self.platform_pods() if p["namespace"] == namespace and p["name"] == pod
+                 and container in p["containers"]]  # only names we just listed reach the log API
+        if not match:
+            raise LookupError(pod)
+        kw: dict[str, Any] = {"tail_lines": tail, "previous": previous, "limit_bytes": 8 * 1024 * 1024}
+        if since_seconds:
+            kw["since_seconds"] = since_seconds
+        text = self.core.read_namespaced_pod_log(name=pod, namespace=namespace, container=container, **kw)
+        return [ln[:MAX_LOG_LINE] for ln in (text or "").splitlines()]
 
     def cluster_snapshot(self) -> dict[str, Any]:
         """Nodes + non-terminated pods (+ metrics.k8s.io usage when available). Read-only, resources only."""

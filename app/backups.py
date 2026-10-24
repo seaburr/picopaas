@@ -28,7 +28,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import audit, config, crypto, k8s_manifests, models, resources
+from app import audit, config, crypto, k8s_manifests, models, platform_settings, resources
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ FINAL_MAX_AGE = timedelta(hours=2)  # a final (pre-delete) backup that is still 
 STALE_DAILY = timedelta(hours=36)
 STALE_WEEKLY = timedelta(days=8)
 EVENT_KEPT = 20
+INTERRUPTED_MSG = "interrupted (platform restart or job lost)"
 TENANT_SWEEP_DAYS = 30  # how long after a volume backup the app's namespace is still checked for a leftover run Secret
 
 
@@ -100,10 +101,43 @@ def wants_backups(app: models.App) -> bool:
     return bool(app.want_db or app.want_storage or app.volume_size_gi)
 
 
-def default_enabled(app: models.App) -> bool:
-    """Initial value of the per-app "scheduled backups" setting. Opt-in: off unless BACKUP_DEFAULT_ENABLED is set (and then
-    only for apps with something to back up). Existing rows keep their value; manual backups work either way."""
-    return config.BACKUP_DEFAULT_ENABLED and wants_backups(app)
+def default_enabled(app: models.App, session: Optional[Session] = None) -> bool:
+    """Initial value of the per-app "scheduled backups" setting: the admin setting `backups_enabled_default` (else
+    BACKUP_DEFAULT_ENABLED, off), and only for apps with something to back up. Existing rows keep their value; manual
+    backups work either way."""
+    return bool(platform_settings.get(session, "backups_enabled_default")) and wants_backups(app)
+
+
+ADMIN_DISABLED_MSG = "Backups for this app were disabled by a platform admin."
+ADMIN_DISABLED_KEPT = " Existing backups are kept."
+
+
+def _mb(n: int) -> str:
+    return f"{n / 1024**2:.0f} MB" if n < 1024**3 else f"{n / 1024**3:.1f} GB"
+
+
+def app_cap_bytes(session: Session, cfg: Optional[models.AppBackupConfig]) -> int:
+    """This app's backup storage ceiling: the admin's per-app override, else the platform default."""
+    if cfg is not None and cfg.max_bytes_override:
+        return int(cfg.max_bytes_override)
+    return int(platform_settings.get(session, "backup_max_bytes_per_app"))
+
+
+def total_cap_bytes(session: Session) -> int:
+    return int(platform_settings.get(session, "backup_max_bytes_total"))
+
+
+def total_repo_bytes(session: Session) -> int:
+    return int(session.execute(select(func.coalesce(func.sum(
+        models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes
+        + models.AppBackupConfig.bucket_repo_bytes), 0))).scalar() or 0)
+
+
+def app_full_msg(session: Session, cfg: Optional[models.AppBackupConfig]) -> str:
+    return f"Backup storage for this app is full ({_mb(repo_bytes(cfg))} of {_mb(app_cap_bytes(session, cfg))})."
+
+
+PLATFORM_FULL_MSG = "Backup storage for the platform is full; new scheduled backups are paused until an administrator frees space."
 
 
 # --- scheduling -------------------------------------------------------------------------------
@@ -122,7 +156,7 @@ def compute_next(app_id: int, after: datetime, schedule: str) -> Optional[dateti
 def ensure_config(session: Session, app: models.App, now: Optional[datetime] = None) -> models.AppBackupConfig:
     cfg = session.get(models.AppBackupConfig, app.id)
     if cfg is None:
-        cfg = models.AppBackupConfig(app_id=app.id, enabled=default_enabled(app), schedule="daily",
+        cfg = models.AppBackupConfig(app_id=app.id, enabled=default_enabled(app, session), schedule="daily",
                                      next_backup_at=_now(now))  # first backup right away, then the daily slot
         session.add(cfg)
         session.commit()
@@ -236,15 +270,31 @@ def set_tag(run: models.BackupRun) -> str:
 
 
 def manual_cooldown(session: Session, app_id: int, now: Optional[datetime] = None) -> Optional[int]:
-    """Seconds until another on-demand backup is allowed (None = allowed now)."""
-    last = session.execute(
-        select(func.max(models.BackupRun.created_at)).where(models.BackupRun.app_id == app_id,
-                                                           models.BackupRun.trigger == "manual")
-    ).scalar()
-    if last is None:
+    """Seconds until another on-demand backup is allowed (None = allowed now): `backup_manual_per_hour` per app per hour."""
+    now = _now(now)
+    limit = int(platform_settings.get(session, "backup_manual_per_hour"))
+    recent = sorted(_naive(c) for c in session.execute(select(models.BackupSet.created_at).where(
+        models.BackupSet.app_id == app_id, models.BackupSet.trigger == "manual",
+        models.BackupSet.created_at > now - timedelta(hours=1))).scalars())
+    if len(recent) < limit:
         return None
-    wait = (_naive(last) + timedelta(minutes=config.BACKUP_MANUAL_MIN_INTERVAL_MINUTES) - _now(now)).total_seconds()
-    return int(wait) + 1 if wait > 0 else None
+    return int((recent[len(recent) - limit] + timedelta(hours=1) - now).total_seconds()) + 1
+
+
+USER_MANUAL_FACTOR = 5  # one account may start at most this many times the per-app limit per hour across all its apps
+
+
+def user_manual_cooldown(session: Session, owner_id: int, now: Optional[datetime] = None) -> Optional[int]:
+    """The same hourly limit per account, across its apps (so many apps can't be used to multiply the manual rate)."""
+    now = _now(now)
+    limit = int(platform_settings.get(session, "backup_manual_per_hour")) * USER_MANUAL_FACTOR
+    recent = sorted(_naive(c) for c in session.execute(
+        select(models.BackupSet.created_at).join(models.App, models.App.id == models.BackupSet.app_id).where(
+            models.App.owner_id == owner_id, models.BackupSet.trigger == "manual",
+            models.BackupSet.created_at > now - timedelta(hours=1))).scalars())
+    if len(recent) < limit:
+        return None
+    return int((recent[len(recent) - limit] + timedelta(hours=1) - now).total_seconds()) + 1
 
 
 # --- results ----------------------------------------------------------------------------------
@@ -276,6 +326,9 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     run.status = "succeeded" if ok else "failed"
     run.finished_at = now
     run.error = None if ok else (redact(error) or "the backup failed")[:255]
+    if not ok and run.trigger == "export" and "repository is not configured" in (run.error or "").lower():
+        run.error = ("The backup tooling on the platform is older than this download needs. An administrator has to update it; "
+                     "try again later.")
     if ok and run.trigger == "export":
         run.bytes_added = _int(result.get("bytes"))
     elif ok and run.trigger == "prune":
@@ -465,6 +518,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
         log.warning("backup: secret sweep failed (%s)", type(exc).__name__)
     _sweep_tenant_secrets(session, runner, now)
     _sweep_exports(runner, now, session)
+    _enforce_retention(session, runner, now)
     _schedule(session, now)
     _enqueue_purges(session, now)
     _start_queued(session, runner, now)
@@ -478,13 +532,21 @@ def _ensure_egress(runner: BackupRunner) -> None:
         log.warning("backup: could not update the Spaces egress policy (%s)", type(exc).__name__)
 
 
+def tenant_app_ids(session: Session, now: datetime) -> list[int]:
+    """Live apps that had a volume backup in the last TENANT_SWEEP_DAYS days: the only tenant namespaces a backup object can be in."""
+    return list(session.execute(select(models.BackupRun.app_id).join(models.App, models.App.id == models.BackupRun.app_id).where(
+        models.BackupRun.kind == "volume", models.BackupRun.trigger.in_(BACKUP_TRIGGERS), models.App.deleted_at.is_(None),
+        models.BackupRun.created_at >= now - timedelta(days=TENANT_SWEEP_DAYS)).distinct()).scalars().all())
+
+
 def _sweep_tenant_secrets(session: Session, runner: BackupRunner, now: datetime) -> None:
     """Volume backups keep their per-run Secret (with the backup key) in the app's namespace: sweep a leftover one there too
     (apps with a volume backup in the last SWEEP_DAYS days; a deleted app's namespace is gone). Not gated on BACKUP_KEY_SCOPED:
     turning the gate off again must still clean up what an earlier run left behind. Never raises."""
     try:
-        ids = session.execute(select(models.BackupRun.app_id).where(
-            models.BackupRun.kind == "volume", models.BackupRun.trigger.in_(BACKUP_TRIGGERS),
+        # Only live apps: a deleted app's namespace is gone (and the reconciler's role may not read it any more).
+        ids = session.execute(select(models.BackupRun.app_id).join(models.App, models.App.id == models.BackupRun.app_id).where(
+            models.BackupRun.kind == "volume", models.BackupRun.trigger.in_(BACKUP_TRIGGERS), models.App.deleted_at.is_(None),
             models.BackupRun.created_at >= now - timedelta(days=TENANT_SWEEP_DAYS)).distinct()).scalars().all()
         if ids:
             runner.sweep_namespaces([k8s_manifests.namespace_name(i) for i in ids],
@@ -539,7 +601,7 @@ def _poll(session: Session, runner: BackupRunner, now: datetime) -> None:
         elif st.state == "failed":
             _finish(session, run, runner, ok=False, error=st.error, now=now)
         elif st.state == "missing":
-            _finish(session, run, runner, ok=False, error="the backup job disappeared", now=now)
+            _finish(session, run, runner, ok=False, error=INTERRUPTED_MSG, now=now)
         elif run.started_at is not None and now - _naive(run.started_at) > grace:
             _finish(session, run, runner, ok=False, error="the backup took too long and was stopped", now=now)
 
@@ -551,16 +613,24 @@ def _schedule(session: Session, now: datetime) -> None:
     for app in session.execute(
         select(models.App).where(models.App.deleted_at.is_(None))
     ).scalars():
-        if app.id not in have and default_enabled(app) and eligible_kinds(app):
+        if app.id not in have and default_enabled(app, session) and eligible_kinds(app):
             ensure_config(session, app, now)
     due = session.execute(
         select(models.AppBackupConfig, models.App).join(models.App, models.App.id == models.AppBackupConfig.app_id)
         .where(models.App.deleted_at.is_(None), models.AppBackupConfig.enabled.is_(True),
-               models.AppBackupConfig.schedule != "off", models.AppBackupConfig.next_backup_at <= now)
+               models.AppBackupConfig.schedule != "off", models.AppBackupConfig.next_backup_at <= now,
+               models.AppBackupConfig.admin_disabled.is_(False))
     ).all()
+    total_full = bool(due) and total_repo_bytes(session) >= total_cap_bytes(session)
     for cfg, app in due:
         kinds = eligible_kinds(app)
         if not kinds or active_run(session, app.id) is not None:
+            continue
+        reason = PLATFORM_FULL_MSG if total_full else (app_full_msg(session, cfg) if repo_bytes(cfg) >= app_cap_bytes(session, cfg) else None)
+        if reason is not None:  # skipped, with the reason recorded where the owner and the admin Health page can see it
+            record_skip(session, app, kinds, "scheduled", reason, now)
+            cfg.next_backup_at = compute_next(app.id, now, cfg.schedule)
+            session.commit()
             continue
         st, _ = enqueue_set(session, app, kinds, "scheduled", now)
         cfg.next_backup_at = compute_next(app.id, now, cfg.schedule)
@@ -568,6 +638,88 @@ def _schedule(session: Session, now: datetime) -> None:
         audit.record(session, None, "backup.create", "app", app.id,
                      f"trigger=scheduled set={st.id} kinds=" + ",".join(kinds), actor_email="system")
     session.commit()
+
+
+def record_skip(session: Session, app: models.App, kinds: list[str], trigger: str, reason: str, now: datetime) -> models.BackupSet:
+    """A backup that was not started: a failed set carrying `reason` (the owner's Backups card and the admin Health page show
+    it; failed backups are the first to roll off)."""
+    st, runs = enqueue_set(session, app, kinds, trigger, now)
+    for r in runs:
+        _finish(session, r, None, ok=False, error=reason, now=now)
+    return st
+
+
+# --- retention: how many backups an app holds, and rolling off to stay under the ceiling ---------
+
+def rolloff_order(items: list[tuple[models.BackupSet, str]]) -> list[models.BackupSet]:
+    """Which backups go first. `items` = (set, status) for the app's deletable sets. Order: failed and partial backups (oldest
+    first), THEN succeeded ones (oldest first). The newest succeeded backup is never in the list, so a roll-off can't leave an
+    app with nothing to restore. Running / deleting sets are not candidates."""
+    key = lambda st: (_naive(st.created_at), st.id)  # noqa: E731
+    bad = sorted((st for st, status in items if status in ("failed", "partial")), key=key)
+    ok = sorted((st for st, status in items if status == "succeeded"), key=key)
+    return bad + ok[:-1]
+
+
+def rolloff_candidates(session: Session, app_id: int) -> list[models.BackupSet]:
+    sets = session.execute(select(models.BackupSet).where(
+        models.BackupSet.app_id == app_id, models.BackupSet.delete_status.is_(None))).scalars().all()
+    return rolloff_order([(st, set_status(st, set_parts(session, st))) for st in sets])
+
+
+def held_count(session: Session, app_id: int) -> int:
+    return int(session.execute(select(func.count(models.BackupSet.id)).where(
+        models.BackupSet.app_id == app_id, models.BackupSet.delete_status.is_(None))).scalar() or 0)
+
+
+def roll_off(session: Session, app: models.App, runner: BackupRunner, want: int, reason: str,
+             now: Optional[datetime] = None) -> int:
+    """Delete up to `want` backups in rolloff order through the owner-delete machinery (forget --prune Jobs, so storage is really
+    freed). Failed backups hold nothing and vanish at once; stops after the first backup that needs a Job (the repo is then busy).
+    Returns how many backups were put on the way out. Never raises."""
+    done = 0
+    for st in rolloff_candidates(session, app.id):
+        if done >= want:
+            break
+        try:
+            runs, _exports = enqueue_delete_set(session, app, st, runner, now)
+        except DeleteRefused:
+            session.rollback()
+            continue
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            log.warning("backup: roll-off for app %s failed (%s)", app.id, type(exc).__name__)
+            break
+        session.commit()
+        done += 1
+        audit.record(session, None, "backup.rolled_off", "app", app.id,
+                     f"set={st.id} reason={reason} runs={','.join(str(r.id) for r in runs) or '-'}", actor_email="system")
+        if runs:
+            break
+    return done
+
+
+def _enforce_retention(session: Session, runner: BackupRunner, now: datetime) -> None:
+    """Per tick: apps that hold more backups than `backup_max_held_per_app`, or are at their storage ceiling, lose their next
+    backup(s) in rolloff order. Skips apps with a backup in flight. Never raises."""
+    try:
+        max_held = int(platform_settings.get(session, "backup_max_held_per_app"))
+        held = dict(session.execute(select(models.BackupSet.app_id, func.count(models.BackupSet.id)).where(
+            models.BackupSet.delete_status.is_(None)).group_by(models.BackupSet.app_id)).all())
+        rows = session.execute(select(models.AppBackupConfig, models.App).join(
+            models.App, models.App.id == models.AppBackupConfig.app_id).where(
+            models.App.deleted_at.is_(None), models.AppBackupConfig.purged_at.is_(None))).all()
+        for cfg, app in rows:
+            excess = held.get(app.id, 0) - max_held
+            full = repo_bytes(cfg) >= app_cap_bytes(session, cfg)
+            if excess <= 0 and not full:
+                continue
+            if active_run(session, app.id) is not None:
+                continue
+            roll_off(session, app, runner, max(excess, 1), "max_held" if excess > 0 else "storage_full", now)
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        log.warning("backup: retention pass failed (%s)", type(exc).__name__)
 
 
 def _enqueue_purges(session: Session, now: datetime) -> None:
@@ -599,9 +751,8 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
         return
     running = _running(session)
     busy_servers = _db_servers(session, [r for r in running if r.kind == "db" and r.trigger != "export"])
-    total = session.execute(select(func.coalesce(func.sum(
-        models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes
-        + models.AppBackupConfig.bucket_repo_bytes), 0))).scalar() or 0
+    total = total_repo_bytes(session)
+    total_cap = total_cap_bytes(session)
     for run in queued:
         if len(running) >= max(1, config.BACKUP_MAX_CONCURRENT):
             break
@@ -626,12 +777,14 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
             if server_id in busy_servers:
                 continue
         if run.kind in KINDS and run.trigger in BACKUP_TRIGGERS:
-            if repo_bytes(cfg) >= config.BACKUP_MAX_BYTES_PER_APP:
-                _finish(session, run, None, ok=False,
-                        error=f"this app's backups reached the {config.BACKUP_MAX_BYTES_PER_APP // 1024**2} MB backup storage cap", now=now)
+            if cfg.admin_disabled and run.trigger in ("scheduled", "manual"):
+                _finish(session, run, None, ok=False, error=ADMIN_DISABLED_MSG, now=now)
                 continue
-            if total >= config.BACKUP_MAX_BYTES_TOTAL:
-                _finish(session, run, None, ok=False, error="the platform's backup storage is full", now=now)
+            if repo_bytes(cfg) >= app_cap_bytes(session, cfg):
+                _finish(session, run, None, ok=False, error=app_full_msg(session, cfg), now=now)
+                continue
+            if total >= total_cap:
+                _finish(session, run, None, ok=False, error=PLATFORM_FULL_MSG, now=now)
                 continue
             if run.kind == "bucket" and app.storage is not None and (app.storage.size_bytes or 0) > config.BACKUP_BUCKET_MAX_BYTES:
                 _finish(session, run, None, ok=False,
@@ -1013,15 +1166,17 @@ def export_filename(app: models.App, source: models.BackupRun, ext: str) -> str:
     return f"{stem}-{source.kind}-backup{source.id}.{ext}"
 
 
-def _check_export_limits(exports: list[models.BackupRun], now: datetime) -> None:
-    """One download being prepared per app at a time, and BACKUP_EXPORT_MAX_PER_HOUR new ones per hour (per set download)."""
+def _check_export_limits(exports: list[models.BackupRun], now: datetime, limit: Optional[int] = None) -> None:
+    """One download being prepared per app at a time, and `backup_export_max_per_hour` new ones per hour. A FAILED download does
+    not count (it produced nothing and the owner should be able to retry)."""
+    limit = config.BACKUP_EXPORT_MAX_PER_HOUR if limit is None else limit
     if any(e.status in ACTIVE for e in exports):
         raise ExportRefused("Another download is being prepared for this app. Wait for it to finish.", 409)
-    recent = sorted(_naive(e.created_at) for e in exports if now - _naive(e.created_at) < timedelta(hours=1))
-    if len(recent) >= config.BACKUP_EXPORT_MAX_PER_HOUR:
-        wait = int((recent[0] + timedelta(hours=1) - now).total_seconds()) + 1
-        raise ExportRefused(f"You can prepare {config.BACKUP_EXPORT_MAX_PER_HOUR} downloads per hour. "
-                            f"Try again in {max(1, wait // 60)} minutes.", 429, retry_after=wait)
+    recent = sorted(_naive(e.created_at) for e in exports if e.status != "failed" and now - _naive(e.created_at) < timedelta(hours=1))
+    if len(recent) >= limit:
+        wait = int((recent[len(recent) - limit] + timedelta(hours=1) - now).total_seconds()) + 1
+        raise ExportRefused(f"You can prepare {limit} backup download{'' if limit == 1 else 's'} per hour for this app "
+                            f"(failed downloads don't count). Try again in {max(1, wait // 60)} minutes.", 429, retry_after=wait)
 
 
 def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
@@ -1048,7 +1203,7 @@ def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
                                and now - _naive(e.finished_at) < timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)))]
     if live:
         return live[0], False
-    _check_export_limits(exports, now)
+    _check_export_limits(exports, now, int(platform_settings.get(session, "backup_export_max_per_hour")))
     run = models.BackupRun(app_id=app.id, kind=source.kind, trigger="export", status="queued", created_at=now,
                            source_run_id=source.id)
     session.add(run)
@@ -1101,7 +1256,7 @@ def enqueue_set_export(session: Session, app: models.App, st: models.BackupSet,
                                and now - _naive(e.finished_at) < timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)))]
     if live:
         return live[0], False
-    _check_export_limits(exports, now)
+    _check_export_limits(exports, now, int(platform_settings.get(session, "backup_export_max_per_hour")))
     run = models.BackupRun(app_id=app.id, kind="package", trigger="export", status="queued", created_at=now, set_id=st.id)
     session.add(run)
     session.flush()
@@ -1237,7 +1392,7 @@ def _retain(session: Session, app: models.App, cfg: models.AppBackupConfig, now:
 
 def app_state(cfg: Optional[models.AppBackupConfig], now: Optional[datetime] = None) -> str:
     """disabled | pending (no backup yet) | ok | stale | failing."""
-    if cfg is None or not cfg.enabled or cfg.schedule == "off":
+    if cfg is None or not cfg.enabled or cfg.admin_disabled or cfg.schedule == "off":
         return "disabled"
     now = _now(now)
     limit = STALE_WEEKLY if cfg.schedule == "weekly" else STALE_DAILY
@@ -1259,7 +1414,8 @@ def overview(session: Session, now: Optional[datetime] = None) -> dict[str, Any]
     now = _now(now)
     out: dict[str, Any] = {
         "enabled": enabled(), "configured": config.backups_configured(),
-        "cap_per_app_bytes": config.BACKUP_MAX_BYTES_PER_APP, "cap_total_bytes": config.BACKUP_MAX_BYTES_TOTAL,
+        "cap_per_app_bytes": int(platform_settings.get(session, "backup_max_bytes_per_app")),
+        "cap_total_bytes": total_cap_bytes(session),
         "total_repo_bytes": 0, "warning": None, "counts": {"ok": 0, "pending": 0, "stale": 0, "failing": 0, "disabled": 0},
         "apps": [], "retained": [],
     }
@@ -1282,11 +1438,12 @@ def overview(session: Session, now: Optional[datetime] = None) -> dict[str, Any]
         out["total_repo_bytes"] += repo_bytes(cfg)
         out["apps"].append({
             "app_id": app.id, "name": app.name, "owner_email": email, "state": state, "enabled": cfg.enabled,
-            "schedule": cfg.schedule, "last_success_at": cfg.last_success_at, "last_status": cfg.last_status,
+            "schedule": cfg.schedule, "admin_disabled": cfg.admin_disabled,
+            "cap_bytes": app_cap_bytes(session, cfg), "last_success_at": cfg.last_success_at, "last_status": cfg.last_status,
             "last_error": cfg.last_error, "next_backup_at": cfg.next_backup_at, "repo_bytes": repo_bytes(cfg)})
     if not out["configured"]:
         out["warning"] = "Backups are on but the backup bucket or key is not configured; nothing is being backed up."
-    elif out["total_repo_bytes"] >= 0.8 * config.BACKUP_MAX_BYTES_TOTAL:
+    elif out["total_repo_bytes"] >= 0.8 * out["cap_total_bytes"]:
         out["warning"] = "Backup storage is above 80% of the platform cap."
     return out
 

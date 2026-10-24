@@ -328,6 +328,11 @@ class AppBackupConfig(Base):
     # Opt-in: new rows take config.BACKUP_DEFAULT_ENABLED (default off); existing rows keep their value.
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     schedule: Mapped[str] = mapped_column(String(8), nullable=False, default="daily", server_default="daily")  # daily|weekly|off
+    # Platform-admin lock: while set, scheduled and manual backups don't run and the owner can't turn them back on.
+    # Existing backups are kept. `max_bytes_override` is an optional per-app storage ceiling (admin), else the platform default.
+    admin_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    admin_disabled_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    max_bytes_override: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     repo_password_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     next_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
     last_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # newest finished run of any kind
@@ -441,3 +446,13 @@ def release_unique_hosts(app: "App") -> None:
     app.custom_domain_status = None
     app.custom_domain_error = None
     app.custom_domain_verified_at = None
+
+
+class PlatformSetting(Base):
+    """Admin-set override of one platform setting (registry in app/platform_settings.py). No row = the default."""
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

@@ -85,6 +85,21 @@ class BackupRunner(ABC):
         """The same sweep inside these (app) namespaces, where volume backups keep their per-run Secret. Default: nothing."""
         return 0
 
+    def sweep_orphans(self, namespaces: list[str], active: set[str], min_age_seconds: int, limit: int) -> dict[str, int]:
+        """Delete labelled (picopaas.io/backup) Jobs, pods and Secrets in these namespaces whose name/Job is not in `active` AND
+        that are older than `min_age_seconds` (a Job being started has no committed row yet). At most `limit` objects.
+        Returns {"jobs": n, "pods": n, "secrets": n}. A namespace that is gone or unreadable is skipped. Default: nothing."""
+        return {"jobs": 0, "pods": 0, "secrets": 0}
+
+    def abort_stale_uploads(self, older_than_seconds: int, limit: int) -> int:
+        """Abort incomplete multipart uploads (from killed Jobs) older than this, under the export and repository prefixes.
+        Returns how many. Raises BackupRunnerError. Default: nothing."""
+        return 0
+
+    def repo_app_ids(self) -> set[int]:
+        """App ids that have a repository prefix (`<BACKUP_PREFIX>apps/<id>/`) in the backup bucket. Raises BackupRunnerError."""
+        return set()
+
 
 def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
     """(Secret, Job) for one run. Pure function; asserted on in tests. A volume backup (spec.volume) is the one Job that runs in
@@ -172,6 +187,18 @@ def parse_pod_output(lines: list[str]) -> tuple[Optional[dict[str, Any]], Option
         elif line.startswith(ERROR_PREFIX):
             error = line[len(ERROR_PREFIX):].strip()
     return result, error
+
+
+def _parse_ts(value: Any) -> Any:
+    """k8s creationTimestamp (ISO string or datetime) as an aware datetime; None when missing/unparseable."""
+    from datetime import datetime, timezone
+
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 class KubeBackupRunner(BackupRunner):
@@ -321,8 +348,77 @@ class KubeBackupRunner(BackupRunner):
             try:
                 n += self._sweep_ns(ns, active)
             except Exception as exc:  # noqa: BLE001 - a namespace that is gone or not readable must not stop the others
+                if type(exc).__name__ in ("NotFoundError", "ForbiddenError") or getattr(exc, "status", None) in (403, 404):
+                    log.debug("backup: namespace %s is gone or not readable, nothing to sweep", ns)  # a deleted app: not news
+                    continue
                 log.warning("backup: secret sweep in %s failed (%s)", ns, type(exc).__name__)
         return n
+
+    def sweep_orphans(self, namespaces: list[str], active: set[str], min_age_seconds: int, limit: int) -> dict[str, int]:
+        from datetime import datetime, timedelta, timezone
+
+        from app.providers.kube import _as_dict
+
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)
+        out = {"jobs": 0, "pods": 0, "secrets": 0}
+        left = limit
+        for ns in namespaces:
+            for key, api_version, kind in (("jobs", "batch/v1", "Job"), ("secrets", "v1", "Secret"), ("pods", "v1", "Pod")):
+                if left <= 0:
+                    return out
+                try:
+                    items = _as_dict(self._res(api_version, kind).get(namespace=ns, label_selector=LABEL)).get("items", [])
+                    for it in items:
+                        meta = it.get("metadata") or {}
+                        name = meta.get("name")
+                        owner = (meta.get("labels") or {}).get("job-name") or name  # a pod belongs to its Job
+                        if not name or owner in active or name in active or left <= 0:
+                            continue
+                        made = _parse_ts(meta.get("creationTimestamp"))
+                        if made is None or made > cutoff:
+                            continue
+                        self._delete(api_version, kind, name, ns)
+                        out[key] += 1
+                        left -= 1
+                except Exception as exc:  # noqa: BLE001 - gone / forbidden namespace or a kind we may not list: not news
+                    if type(exc).__name__ in ("NotFoundError", "ForbiddenError") or getattr(exc, "status", None) in (403, 404):
+                        continue
+                    log.warning("backup: orphan sweep of %s in %s failed (%s)", kind, ns, type(exc).__name__)
+        return out
+
+    def abort_stale_uploads(self, older_than_seconds: int, limit: int) -> int:
+        from datetime import datetime, timedelta, timezone
+
+        if not config.backup_export_prefix_ok():
+            raise BackupRunnerError("could not abort uploads (unsafe export prefix)")
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
+        n = 0
+        try:
+            s3 = self._s3()
+            for pfx in (config.BACKUP_EXPORT_PREFIX, config.BACKUP_PREFIX):
+                for page in s3.get_paginator("list_multipart_uploads").paginate(Bucket=config.BACKUP_BUCKET, Prefix=pfx):
+                    for u in page.get("Uploads") or []:
+                        if n >= limit:
+                            return n
+                        if u["Initiated"] < cutoff:
+                            s3.abort_multipart_upload(Bucket=config.BACKUP_BUCKET, Key=u["Key"], UploadId=u["UploadId"])
+                            n += 1
+            return n
+        except Exception as exc:  # noqa: BLE001
+            raise BackupRunnerError(f"could not abort incomplete uploads ({type(exc).__name__})") from None
+
+    def repo_app_ids(self) -> set[int]:
+        base = f"{config.BACKUP_PREFIX}apps/"
+        ids: set[int] = set()
+        try:
+            for page in self._s3().get_paginator("list_objects_v2").paginate(Bucket=config.BACKUP_BUCKET, Prefix=base, Delimiter="/"):
+                for cp in page.get("CommonPrefixes") or []:
+                    part = cp["Prefix"][len(base):].strip("/")
+                    if part.isdigit():
+                        ids.add(int(part))
+            return ids
+        except Exception as exc:  # noqa: BLE001
+            raise BackupRunnerError(f"could not list repositories ({type(exc).__name__})") from None
 
     def _sweep_ns(self, namespace: str, active: set[str]) -> int:
         from app.providers.kube import _as_dict

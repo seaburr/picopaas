@@ -62,7 +62,7 @@ async function load(quiet = false) {
       } else if ((prev === 'queued' || prev === 'running') && (!b.export || b.export.status === 'failed')) {
         // The backend drops a failed export from `backup.export` (null), so a preparing -> nothing transition is a failure.
         wantDownload.delete(b.id)
-        toast.error("Preparing the download failed. Try again; if it keeps failing, contact the administrator.")
+        toast.error(b.failed_export ? `Download failed: ${b.failed_export.error || 'unknown error'}` : "Preparing the download failed. Try again; if it keeps failing, contact the administrator.")
       }
     }
   } catch (e) {
@@ -160,6 +160,7 @@ function openUrl(url: string, filename: string | null) {
 
 const exState = (b: BackupSet) => {
   const s = b.export?.status
+  if (!b.export && b.failed_export) return 'failed'
   return !s || s === 'expired' ? 'none' : s === 'queued' || s === 'running' ? 'busy' : s
 }
 function onDownload(b: BackupSet) {
@@ -204,6 +205,14 @@ const delMessage = computed(() => {
   return `Delete this backup (${names || 'database, blob storage, volume'}) from ${stamp(b.created_at)}? It can't be undone.`
 })
 
+const locked = computed(() => !!info.value?.admin_disabled)
+const full = computed(() => !!info.value?.storage_full)
+const lockMsg = computed(() => info.value?.admin_disabled_message || 'Backups are turned off by the administrator.')
+const noRun = computed(() => (locked.value ? lockMsg.value : full.value ? 'Backup storage for this app is full. Delete older backups first.' : ''))
+const MB = 1048576
+const sz = (n: number) => (n >= 1024 * MB ? `${(n / 1024 / MB).toFixed(2)} GB` : `${(n / MB).toFixed(1)} MB`)
+const failMsg = (b: BackupSet) => `Download failed: ${b.failed_export?.error || b.export?.error || 'unknown error'}. Click to retry.`
+
 const lastSet = computed(() => sets.value.find((b) => b.status !== 'running' && b.status !== 'deleting') ?? sets.value[0])
 
 onMounted(() => load())
@@ -222,16 +231,20 @@ onBeforeUnmount(() => {
       <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p class="min-w-0 text-sm">
           <span class="font-medium">Scheduled backups:</span>
-          {{ info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="info.enabled && info.schedule !== 'off' && nextAt"> · next {{ nextAt }}</template>
+          {{ locked ? 'off (locked by the administrator)' : info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="!locked && info.enabled && info.schedule !== 'off' && nextAt"> · next {{ nextAt }}</template>
         </p>
         <div class="flex shrink-0 flex-wrap items-center gap-2">
           <RouterLink :to="`/apps/${appId}/edit#backups`" class="btn-secondary btn-sm">Backup settings</RouterLink>
-          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended" @click="runNow">
+          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :title="noRun || undefined" @click="runNow">
             {{ runBusy ? 'Starting…' : inFlight ? 'Backup running…' : 'Back up now' }}
           </button>
         </div>
       </div>
-      <p class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way (one per hour).</p>
+      <p v-if="locked" role="status" class="alert-warn mt-2">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
+      <p v-else-if="full" role="status" class="alert-warn mt-2">
+        Backup storage for this app is full ({{ sz(info.repo_bytes ?? 0) }} of {{ sz(info.cap_bytes) }}). New backups are refused until you delete older ones.
+      </p>
+      <p v-else class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way ({{ info.manual_per_hour ?? 1 }} per hour).</p>
       <p v-if="suspended" class="help mt-1">This app is suspended, so backups can't be started or deleted. You can still download existing backups.</p>
 
       <p v-if="!info.backups" class="meta mt-3">The backup list needs a newer platform version. Reload in a minute.</p>
@@ -274,7 +287,7 @@ onBeforeUnmount(() => {
                 <template v-if="b.status === 'succeeded' || b.status === 'partial'">
                   <span v-if="exState(b) === 'busy'" class="meta text-right" role="status">preparing, you can leave this page</span>
                   <span v-else-if="exState(b) === 'ready' && b.export?.available_until" class="meta text-right" :title="fullTime(b.export.available_until)">ready until {{ clock(b.export.available_until) }}</span>
-                  <span v-else-if="exState(b) === 'failed'" class="min-w-0 break-words text-right text-xs text-danger-light">Download failed. Click to retry.</span>
+                  <span v-else-if="exState(b) === 'failed'" class="min-w-0 break-words text-right text-xs text-danger-light">{{ failMsg(b) }}</span>
                 </template>
                 <span v-if="b.status === 'deleting'" class="badge-neutral">deleting</span>
                 <button

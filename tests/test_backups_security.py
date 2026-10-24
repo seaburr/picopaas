@@ -390,7 +390,7 @@ def test_presign_failure_message_does_not_leak(wired, alice, db_session):
 
 # --- rate limits ---------------------------------------------------------------------------------------
 
-def test_download_rate_limit_counts_failed_attempts_and_per_app(wired, alice, db_session):
+def test_download_rate_limit_per_app(wired, alice, db_session):
     a = _app(alice, db_session, "one", ("db", "bucket"))
     runs = [_succeeded(db_session, a, "db", f"{i:08x}") for i in range(5)]
     seen = []
@@ -399,7 +399,7 @@ def test_download_rate_limit_counts_failed_attempts_and_per_app(wired, alice, db
         seen.append(r.status_code)
         if r.status_code == 202:
             backups.tick(db_session, wired, datetime.utcnow())
-            wired.fail(wired.started[-1].name, "failed")  # failures still count against the hourly budget
+            wired.finish(wired.started[-1].name, {"exported": True, "bytes": 1})  # (failed downloads do NOT count: test_backups_limits)
             backups.tick(db_session, wired, datetime.utcnow())
     assert seen == [202, 202, 202, 429, 429]
     assert alice.post(f"/apps/{a}/backups/{runs[3]}/download").headers["Retry-After"].isdigit()

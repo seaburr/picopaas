@@ -8,6 +8,8 @@ Fakes for all four live in `fake.py` and are what tests should depend on.
 """
 from __future__ import annotations
 
+import re
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -98,6 +100,17 @@ class PodLogs:
         return cls(pod=None, lines=lines, note=note, pods=pods, sections=sections, pod_info=pod_info)
 
 
+_DNS1123_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+
+
+def is_platform_namespace(ns: object) -> bool:
+    """True for namespaces the admin log viewer may read: any well-formed namespace that is NOT a tenant (`app-*`) or
+    system (`kube-*`) namespace, so new platform workloads (picopaas-*, traefik, cert-manager, ...) show up without a code
+    change. Strict DNS-1123 label match: no path/label-selector injection is possible."""
+    return (isinstance(ns, str) and bool(_DNS1123_LABEL.match(ns))
+            and not ns.startswith("app-") and not ns.startswith("kube-") and ns != "default")
+
+
 class KubeProvider(ABC):
     """Applies rendered manifests (app/k8s_manifests.py) to the cluster."""
 
@@ -168,6 +181,17 @@ class KubeProvider(ABC):
     def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
         """Kubernetes Events about `pod` in an APP namespace, oldest first: [{"at": datetime|None (UTC), "type",
         "reason", "count": int, "message"}]. Raises LookupError if the pod isn't in that namespace."""
+        raise NotImplementedError
+
+    def platform_pods(self) -> list[dict[str, Any]]:
+        """Pods in platform namespaces only (is_platform_namespace): [{namespace, name, phase, ready, restarts,
+        containers: [str]}]. Never returns tenant pods."""
+        raise NotImplementedError
+
+    def platform_log(self, namespace: str, pod: str, container: str, tail: int, since_seconds: Optional[int] = None,
+                     previous: bool = False) -> list[str]:
+        """Log lines of one container of one pod in a PLATFORM namespace. ValueError if the namespace isn't a platform
+        namespace; LookupError if the pod/container doesn't exist there."""
         raise NotImplementedError
 
     @abstractmethod

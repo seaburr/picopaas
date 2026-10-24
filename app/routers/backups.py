@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app import audit, backups, config, models
+from app import audit, backups, config, models, platform_settings
 from app.db import get_db
 from app.dependencies import get_active_user, require_platform_admin
 from app.providers.backup import BackupRunner, BackupRunnerError, KubeBackupRunner
@@ -39,6 +39,13 @@ RUNS_SHOWN = 30
 def get_backup_runner() -> BackupRunner:
     """Signs download URLs only (the API never starts Jobs). Overridden in tests with FakeBackupRunner."""
     return KubeBackupRunner()
+
+
+class ExportFailureOut(BaseModel):
+    """The latest FAILED download (within the last hour) when nothing newer is live: show `error` instead of a generic message."""
+    id: int
+    error: str
+    at: Optional[datetime] = None
 
 
 class RunExportOut(BaseModel):
@@ -65,6 +72,7 @@ class BackupRunOut(BaseModel):
     source_run_id: Optional[int] = None  # restore runs: the backup run that was restored
     set_id: Optional[int] = None  # the backup (set) this run is a part of
     export: Optional[RunExportOut] = None  # GET /apps/{id}/backups only
+    failed_export: Optional[ExportFailureOut] = None  # GET /apps/{id}/backups only
 
 
 class SetPartOut(BaseModel):
@@ -91,6 +99,7 @@ class BackupSetOut(BaseModel):
     size_bytes: int = 0  # new data stored by the succeeded parts (restic deduplicates, so later backups add little)
     parts: List[SetPartOut] = []
     export: Optional[SetExportOut] = None  # the latest live package download (queued, running or ready), else null
+    failed_export: Optional[ExportFailureOut] = None  # the latest failed download within the hour (only when `export` is null)
 
 
 class VolumeBackupsOut(BaseModel):
@@ -111,7 +120,16 @@ class BackupKindOut(BaseModel):
 class BackupsOut(BaseModel):
     feature_enabled: bool  # BACKUPS_ENABLED on this platform
     configured: bool  # backup bucket + key present
-    enabled: bool  # this app's setting
+    enabled: bool  # this app's scheduled-backups setting (always false while admin_disabled)
+    admin_disabled: bool = False  # a platform admin locked backups off: no scheduled or manual backups, the owner can't re-enable
+    admin_disabled_reason: Optional[str] = None
+    admin_disabled_message: Optional[str] = None  # ready-to-show text, existing backups are kept
+    max_held: int = 14  # most backups kept (oldest roll off after each new one)
+    held: int = 0  # backups currently held
+    manual_per_hour: int = 1
+    export_per_hour: int = 3
+    storage_full: bool = False  # repo_bytes >= cap_bytes: new backups are refused until older ones roll off
+    cap_override: bool = False  # cap_bytes is a per-app admin override
     schedule: str
     state: str  # disabled | pending | ok | stale | failing
     kinds: List[BackupKindOut] = []
@@ -120,8 +138,8 @@ class BackupsOut(BaseModel):
     last_status: Optional[str] = None
     last_error: Optional[str] = None
     next_backup_at: Optional[datetime] = None
-    repo_bytes: int = 0
-    cap_bytes: int
+    repo_bytes: int = 0  # this app's backup storage in use
+    cap_bytes: int  # this app's effective ceiling (admin override, else the platform default)
     backups: List[BackupSetOut] = []  # newest first
     volume_backups: VolumeBackupsOut
     runs: List[BackupRunOut] = []  # the same parts, flat (kept for older clients)
@@ -138,19 +156,30 @@ class BackupConfigIn(BaseModel):
     schedule: Optional[Literal["daily", "weekly", "off"]] = None
 
 
-def _run_out(run: models.BackupRun, export: Optional[models.BackupRun]) -> BackupRunOut:
+def _failure(e: Optional[models.BackupRun]) -> Optional[ExportFailureOut]:
+    if e is None:
+        return None
+    return ExportFailureOut(id=e.id, error=e.error or "the download could not be prepared", at=e.finished_at or e.created_at)
+
+
+def _run_out(run: models.BackupRun, export: Optional[models.BackupRun], failed: Optional[models.BackupRun] = None) -> BackupRunOut:
     out = BackupRunOut.model_validate(run)
+    if export is None:
+        out.failed_export = _failure(failed)
     if export is not None:
         state = backups.export_state(export)
         out.export = RunExportOut(id=export.id, status=state, available_until=backups.export_available_until(export) if state == "ready" else None)
     return out
 
 
-def _set_out(st: models.BackupSet, parts: List[models.BackupRun], export: Optional[models.BackupRun]) -> BackupSetOut:
+def _set_out(st: models.BackupSet, parts: List[models.BackupRun], export: Optional[models.BackupRun],
+             failed: Optional[models.BackupRun] = None) -> BackupSetOut:
     out = BackupSetOut(
         id=st.id, trigger=st.trigger, created_at=st.created_at, finished_at=backups.set_finished_at(parts),
         status=backups.set_status(st, parts), size_bytes=backups.set_size(parts),
         parts=[SetPartOut(run_id=p.id, kind=p.kind, status=p.status, bytes_added=p.bytes_added, error=p.error) for p in parts])
+    if export is None:
+        out.failed_export = _failure(failed)
     if export is not None:
         state = backups.export_state(export)
         out.export = SetExportOut(id=export.id, status=state, available_until=backups.export_available_until(export) if state == "ready" else None)
@@ -175,16 +204,35 @@ def _out(db: Session, app: models.App) -> BackupsOut:
             kind=kind, last_backup_at=getattr(cfg, f"{p}_last_backup_at", None), last_status=getattr(cfg, f"{p}_last_status", None),
             last_error=getattr(cfg, f"{p}_last_error", None), last_bytes=getattr(cfg, f"{p}_last_bytes", None),
             repo_bytes=getattr(cfg, f"{p}_repo_bytes", 0) or 0))
-    on = cfg.enabled if cfg is not None else (backups.default_enabled(app) and backups.enabled())
+    locked = bool(cfg and cfg.admin_disabled)
+    on = (cfg.enabled if cfg is not None else (backups.default_enabled(app, db) and backups.enabled())) and not locked
+    cap = backups.app_cap_bytes(db, cfg)
+    failed_runs: dict[int, models.BackupRun] = {}
+    failed_sets: dict[int, models.BackupRun] = {}
+    if backups.enabled():
+        for e in backups.listed_exports(db, app.id):  # newest first
+            if backups.export_state(e) != "failed":
+                continue
+            if e.kind == "package" and e.set_id is not None:
+                failed_sets.setdefault(e.set_id, e)
+            elif e.source_run_id is not None:
+                failed_runs.setdefault(e.source_run_id, e)
     return BackupsOut(
         feature_enabled=backups.enabled(), configured=config.backups_configured(), enabled=on,
+        admin_disabled=locked, admin_disabled_reason=cfg.admin_disabled_reason if locked else None,
+        admin_disabled_message=(backups.ADMIN_DISABLED_MSG + backups.ADMIN_DISABLED_KEPT
+                                + (f" Reason: {cfg.admin_disabled_reason}" if cfg.admin_disabled_reason else "")) if locked else None,
+        max_held=int(platform_settings.get(db, "backup_max_held_per_app")), held=backups.held_count(db, app.id),
+        manual_per_hour=int(platform_settings.get(db, "backup_manual_per_hour")),
+        export_per_hour=int(platform_settings.get(db, "backup_export_max_per_hour")),
+        storage_full=backups.repo_bytes(cfg) >= cap, cap_override=bool(cfg and cfg.max_bytes_override),
         schedule=cfg.schedule if cfg is not None else "daily",
         state=backups.app_state(cfg) if cfg is not None else ("pending" if on else "disabled"),
         kinds=kinds, last_backup_at=cfg.last_backup_at if cfg else None, last_success_at=cfg.last_success_at if cfg else None,
         last_status=cfg.last_status if cfg else None, last_error=cfg.last_error if cfg else None,
         next_backup_at=cfg.next_backup_at if cfg else None, repo_bytes=backups.repo_bytes(cfg),
-        cap_bytes=config.BACKUP_MAX_BYTES_PER_APP, runs=[_run_out(r, live.get(r.id)) for r in runs],
-        backups=[_set_out(st, parts, set_live.get(st.id)) for st, parts in sets],
+        cap_bytes=cap, runs=[_run_out(r, live.get(r.id), failed_runs.get(r.id)) for r in runs],
+        backups=[_set_out(st, parts, set_live.get(st.id), failed_sets.get(st.id)) for st, parts in sets],
         volume_backups=VolumeBackupsOut(has_volume=backups.has_volume(app), available="volume" in backups.eligible_kinds(app),
                                         note=backups.volume_backup_note(app)))
 
@@ -204,8 +252,10 @@ def list_backups(app_id: int, db: Session = Depends(get_db), user: models.User =
 
 @router.post("/{app_id}/backups", response_model=List[BackupRunOut], status_code=202)
 def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Session = Depends(get_db),
-                  user: models.User = Depends(get_active_user)):
-    """Queue an on-demand backup (one per app per hour). The scheduler starts it within a minute."""
+                  user: models.User = Depends(get_active_user), runner: BackupRunner = Depends(get_backup_runner)):
+    """Queue an on-demand backup (`backup_manual_per_hour` per app per hour, default 1). The scheduler starts it within a minute.
+    403 when a platform admin disabled backups for the app; 409 when the app's backup storage is full (older backups are rolled off
+    first; try again shortly)."""
     app = _get_app_or_404(db, app_id, user)
     _require_usable()
     available = backups.eligible_kinds(app)
@@ -219,13 +269,27 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
         raise HTTPException(status_code=422, detail=backups.volume_backup_note(app) or (
             "This app has no database to back up yet." if app.want_db
             else "This app has no database, blob storage or volume to back up."))
-    backups.lock_app(db, app)  # per-app row lock until the commit below: a double click gets 409/429, not a second run
+    cfg = backups.lock_app(db, app)  # per-app row lock until the commit below: a double click gets 409/429, not a second run
+    if cfg.admin_disabled:
+        raise HTTPException(status_code=403, detail=backups.ADMIN_DISABLED_MSG + backups.ADMIN_DISABLED_KEPT)
     if backups.active_run(db, app.id) is not None:
         raise HTTPException(status_code=409, detail="A backup is already queued or running for this app.")
     wait = backups.manual_cooldown(db, app.id)
+    per_hour = int(platform_settings.get(db, "backup_manual_per_hour"))
     if wait is not None:
-        raise HTTPException(status_code=429, detail=f"You can start one backup per hour. Try again in {max(1, wait // 60)} minutes.",
-                            headers={"Retry-After": str(wait)})
+        raise HTTPException(status_code=429, detail=f"You can start {per_hour} backup{'' if per_hour == 1 else 's'} per hour for this app. "
+                            f"Try again in {max(1, wait // 60)} minutes.", headers={"Retry-After": str(wait)})
+    wait = backups.user_manual_cooldown(db, app.owner_id)
+    if wait is not None:
+        raise HTTPException(status_code=429, detail="You've started a lot of backups across your apps this hour. "
+                            f"Try again in {max(1, wait // 60)} minutes.", headers={"Retry-After": str(wait)})
+    if backups.repo_bytes(cfg) >= backups.app_cap_bytes(db, cfg):
+        full = backups.app_full_msg(db, cfg)
+        rolled = backups.roll_off(db, app, runner, 1, "storage_full")
+        raise HTTPException(status_code=409, detail=full + (" The oldest backup is being removed to make room; try again in a few minutes."
+                                                           if rolled else " Delete a backup you no longer need, then try again."))
+    if backups.total_repo_bytes(db) >= backups.total_cap_bytes(db):
+        raise HTTPException(status_code=409, detail="Backup storage for the platform is full right now. Try again later or ask an administrator.")
     st, runs = backups.enqueue_set(db, app, wanted, "manual")
     db.commit()
     audit.record(db, user, "backup.create", "app", app.id, f"trigger=manual set={st.id} kinds=" + ",".join(wanted))
@@ -241,6 +305,9 @@ def update_backup_config(app_id: int, body: BackupConfigIn, db: Session = Depend
     if not backups.eligible_kinds(app) and not backups.wants_backups(app):
         raise HTTPException(status_code=422, detail="This app has no database, blob storage or volume to back up.")
     cfg = backups.ensure_config(db, app)
+    if cfg.admin_disabled and (body.enabled or body.schedule in ("daily", "weekly")):
+        raise HTTPException(status_code=403, detail=backups.ADMIN_DISABLED_MSG + backups.ADMIN_DISABLED_KEPT)
+    was = (cfg.enabled, cfg.schedule)
     if body.enabled is not None:
         cfg.enabled = body.enabled
     if body.schedule is not None:
@@ -250,7 +317,58 @@ def update_backup_config(app_id: int, body: BackupConfigIn, db: Session = Depend
     elif cfg.enabled and (body.schedule is not None or body.enabled) and cfg.next_backup_at is None:
         cfg.next_backup_at = backups.compute_next(app.id, datetime.utcnow(), cfg.schedule)
     db.commit()
-    audit.record(db, user, "backup.config_changed", "app", app.id, f"enabled={cfg.enabled} schedule={cfg.schedule}")
+    audit.record(db, user, "backup.config_changed", "app", app.id,
+                 f"enabled={cfg.enabled} schedule={cfg.schedule} (was enabled={was[0]} schedule={was[1]})")
+    return _out(db, app)
+
+
+class AdminBackupLockIn(BaseModel):
+    """Admin control of one app's backups. Send only what you change."""
+    model_config = ConfigDict(extra="forbid")
+    admin_disabled: Optional[bool] = None
+    reason: Optional[str] = Field(default=None, max_length=255)  # required when admin_disabled is true
+    max_bytes: Optional[int] = Field(default=None, ge=1024**2)  # per-app storage ceiling; null clears it (platform default)
+
+
+@admin_router.put("/apps/{app_id}/backups", response_model=BackupsOut)
+def admin_set_backup_lock(app_id: int, body: AdminBackupLockIn, db: Session = Depends(get_db),
+                          admin: models.User = Depends(require_platform_admin)):
+    """Lock backups off for an app (with a reason shown to the owner) or lift the lock, and/or set this app's storage ceiling.
+    While locked no scheduled or manual backup runs and the owner can't turn backups on; existing backups are kept and stay
+    downloadable and deletable. Returns the same payload as GET /apps/{id}/backups."""
+    app = db.get(models.App, app_id)
+    if app is None or app.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="We can't find that app.")
+    _require_usable()
+    sent = body.model_fields_set
+    reason = (body.reason or "").strip()
+    if body.admin_disabled and not reason:
+        raise HTTPException(status_code=422, detail="Give a reason; the app's owner will see it.")
+    if "max_bytes" in sent and body.max_bytes is not None and body.max_bytes > backups.total_cap_bytes(db):
+        raise HTTPException(status_code=422, detail="A per-app ceiling can't exceed the platform total.")
+    cfg = backups.ensure_config(db, app)
+    if body.admin_disabled is not None and body.admin_disabled != cfg.admin_disabled:
+        cfg.admin_disabled = body.admin_disabled
+        cfg.admin_disabled_reason = reason if body.admin_disabled else None
+        db.commit()
+        audit.record(db, admin, "backup.admin_disabled" if cfg.admin_disabled else "backup.admin_enabled", "app", app.id,
+                     f"reason={reason}" if cfg.admin_disabled else "lock lifted")
+    elif body.admin_disabled and reason != (cfg.admin_disabled_reason or ""):
+        cfg.admin_disabled_reason = reason
+        db.commit()
+        audit.record(db, admin, "backup.admin_disabled", "app", app.id, f"reason={reason} (updated)")
+    if "max_bytes" in sent and body.max_bytes != cfg.max_bytes_override:
+        cfg.max_bytes_override = body.max_bytes
+        db.commit()
+        audit.record(db, admin, "backup.ceiling_set", "app", app.id, f"max_bytes={body.max_bytes if body.max_bytes else 'default'}")
+    return _out(db, app)
+
+
+@admin_router.get("/apps/{app_id}/backups", response_model=BackupsOut)
+def admin_get_backups(app_id: int, db: Session = Depends(get_db)):
+    app = db.get(models.App, app_id)
+    if app is None or app.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="We can't find that app.")
     return _out(db, app)
 
 

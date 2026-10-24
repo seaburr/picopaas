@@ -29,6 +29,9 @@ class FakeKubeProvider(KubeProvider):
         self.statuses: dict[str, str] = {}
         self.snapshot: dict[str, Any] = {"nodes": [], "pods": [], "metrics_available": True, "errors": []}
         self.snapshot_calls = 0
+        # (ns, pod) -> {"containers": [..], "lines": {container: [lines]}} for platform_pods()/platform_log()
+        self.platform_pod_data: dict[tuple[str, str], dict[str, Any]] = {}
+        self.platform_log_calls: list[tuple] = []
         self.list_ns_calls = 0
         # Tests: force what get_status reports after the next apply (ns -> "error: quota", "deploying", ...).
         self.forced_status: dict[str, str] = {}
@@ -73,6 +76,23 @@ class FakeKubeProvider(KubeProvider):
         infos = [meta.get(n) or PodInfo(name=n, created_at=base + dt.timedelta(minutes=i), phase="Running", ready=True)
                  for i, n in enumerate(names)]
         return select_log_pods(mark_current(infos))
+
+    def platform_pods(self) -> list[dict[str, Any]]:
+        from app.providers.base import is_platform_namespace
+        return [{"namespace": ns, "name": n, "phase": "Running", "ready": True, "restarts": 0,
+                 "containers": list(d["containers"])}
+                for (ns, n), d in sorted(self.platform_pod_data.items()) if is_platform_namespace(ns)]
+
+    def platform_log(self, namespace: str, pod: str, container: str, tail: int, since_seconds: Any = None,
+                     previous: bool = False) -> list[str]:
+        from app.providers.base import is_platform_namespace
+        self.platform_log_calls.append((namespace, pod, container, tail, since_seconds, previous))
+        if not is_platform_namespace(namespace):
+            raise ValueError("not a platform namespace")
+        data = self.platform_pod_data.get((namespace, pod))
+        if data is None or container not in data["containers"]:
+            raise LookupError(pod)
+        return list(data.get("lines", {}).get(container, []))[-tail:]
 
     def cluster_snapshot(self) -> dict[str, Any]:
         self.snapshot_calls += 1
@@ -461,6 +481,14 @@ class FakeBackupRunner(BackupRunner):
         self.deleted_exports: list[str] = []  # keys passed to delete_exports
         self.fail_delete_exports = False
         self.swept_namespaces: list[list[str]] = []  # namespaces handed to each sweep_namespaces call
+        self.job_age: dict[str, int] = {}  # seconds since a Job/Secret was created (default: old enough to sweep)
+        self.orphan_pods: dict[str, int] = {}  # pods labelled as backup pods with no live Job: name -> age seconds
+        self.orphan_sweeps: list[tuple[list[str], int, int]] = []  # (namespaces, min_age, limit) per sweep_orphans call
+        self.stale_uploads: list[int] = []  # ages (seconds) of incomplete multipart uploads
+        self.aborted_uploads = 0
+        self.fail_abort = False
+        self.repo_ids: set[int] = set()
+        self.fail_repo_list = False
 
     def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
         if self.fail_presign:
@@ -514,3 +542,31 @@ class FakeBackupRunner(BackupRunner):
     def sweep_namespaces(self, namespaces: list[str], active: set[str]) -> int:
         self.swept_namespaces.append(list(namespaces))
         return 0
+
+    def sweep_orphans(self, namespaces: list[str], active: set[str], min_age_seconds: int, limit: int) -> dict[str, int]:
+        self.orphan_sweeps.append((list(namespaces), min_age_seconds, limit))
+        out = {"jobs": 0, "pods": 0, "secrets": 0}
+        old = lambda n: self.job_age.get(n, 10**9) >= min_age_seconds  # noqa: E731
+        for kind, names in (("jobs", list(self.jobs)), ("secrets", list(self.secrets)), ("pods", list(self.orphan_pods))):
+            for n in names:
+                if sum(out.values()) >= limit:
+                    return out
+                if n in active or not (old(n) if kind != "pods" else self.orphan_pods[n] >= min_age_seconds):
+                    continue
+                {"jobs": self.jobs, "secrets": self.secrets, "pods": self.orphan_pods}[kind].pop(n, None)
+                out[kind] += 1
+        return out
+
+    def abort_stale_uploads(self, older_than_seconds: int, limit: int) -> int:
+        if self.fail_abort:
+            raise BackupRunnerError("could not abort incomplete uploads (FakeError)")
+        old = sorted(a for a in self.stale_uploads if a >= older_than_seconds)[:limit]
+        for a in old:
+            self.stale_uploads.remove(a)
+        self.aborted_uploads += len(old)
+        return len(old)
+
+    def repo_app_ids(self) -> set[int]:
+        if self.fail_repo_list:
+            raise BackupRunnerError("could not list repositories (FakeError)")
+        return set(self.repo_ids)

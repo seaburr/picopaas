@@ -230,9 +230,10 @@ def test_helpers_int_and_naive():
 def test_app_state_matrix():
     mk = lambda **kw: SimpleNamespace(**{"enabled": True, "schedule": "daily", "last_status": None, "db_last_status": None,  # noqa: E731
                                           "bucket_last_status": None, "vol_last_status": None, "last_success_at": None,
-                                          "created_at": NOW, **kw})
+                                          "created_at": NOW, "admin_disabled": False, **kw})
     assert backups.app_state(None) == "disabled" and backups.app_state(mk(enabled=False), NOW) == "disabled"
     assert backups.app_state(mk(schedule="off"), NOW) == "disabled"
+    assert backups.app_state(mk(admin_disabled=True), NOW) == "disabled"
     assert backups.app_state(mk(), NOW + timedelta(hours=1)) == "pending"
     assert backups.app_state(mk(), NOW + timedelta(days=3)) == "stale"
     assert backups.app_state(mk(bucket_last_status="failed"), NOW) == "failing"
