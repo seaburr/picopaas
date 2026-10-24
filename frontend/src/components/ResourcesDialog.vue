@@ -3,6 +3,7 @@ import { computed, reactive, ref, useId, watch } from 'vue'
 import { useModal } from '../composables/useModal'
 import { dbEngineLabel } from '../composables/appUi'
 import { useAuthStore } from '../stores/auth'
+import { getSettings } from '../api/admin'
 import type { AdminApp, ResourcesPatch } from '../types'
 
 const props = defineProps<{ app: AdminApp | null; error?: string }>()
@@ -15,26 +16,36 @@ const m = useModal(dlg, () => !!props.app, () => emit('cancel'))
 const D = computed(() => props.app?.resources.defaults)
 // Cpu/memory defaults double as the platform cap used for the "exceeds" warning.
 const auth = useAuthStore()
-const volMaxAdmin = computed(() => auth.user?.limits?.volume_override_max_gi ?? 10)
+// Ceilings are admin settings (Admin > Settings); the numbers below are fallbacks until they load.
+const ceil = reactive<Record<string, number>>({})
+watch(() => props.app, async (a) => {
+  if (!a) return
+  try {
+    for (const g of (await getSettings()).groups) for (const x of g.settings) if (x.type === 'int') ceil[x.key] = Number(x.value)
+  } catch { /* keep fallbacks */ }
+})
+const mx = (f: { max: number; ck: string }) => ceil[f.ck] ?? f.max
+const volMaxAdmin = computed(() => ceil.override_volume_max_gi ?? auth.user?.limits?.volume_override_max_gi ?? 10)
+const replicasMax = computed(() => ceil.max_replicas ?? 3)
 const CAPS = computed(() => ({ cpu: D.value?.cpu_limit_m ?? 0, mem: D.value?.mem_limit_mi ?? 0 }))
 type Key = 'cpu_request_m' | 'cpu_limit_m' | 'mem_request_mi' | 'mem_limit_mi'
 const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limit_mi']
-const fields: { key: Key; label: string; unit: string; min: number; max: number }[] = [
-  { key: 'cpu_request_m', label: 'CPU request', unit: 'm', min: 10, max: 1000 },
-  { key: 'cpu_limit_m', label: 'CPU limit', unit: 'm', min: 10, max: 1000 },
-  { key: 'mem_request_mi', label: 'Memory request', unit: 'Mi', min: 32, max: 2048 },
-  { key: 'mem_limit_mi', label: 'Memory limit', unit: 'Mi', min: 32, max: 2048 },
+const fields: { key: Key; label: string; unit: string; min: number; max: number; ck: string }[] = [
+  { key: 'cpu_request_m', label: 'CPU request', unit: 'm', min: 10, max: 1000, ck: 'cpu_limit_max_m' },
+  { key: 'cpu_limit_m', label: 'CPU limit', unit: 'm', min: 10, max: 1000, ck: 'cpu_limit_max_m' },
+  { key: 'mem_request_mi', label: 'Memory request', unit: 'Mi', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
+  { key: 'mem_limit_mi', label: 'Memory limit', unit: 'Mi', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
 ]
 
 // Extra limits (null = platform default). `unit` is MiB or MB; `max` is the backend ceiling.
 type XKey = 'ephemeral_limit_mi' | 'db_max_connections' | 'db_quota_mb' | 'storage_quota_mb' | 'image_size_mb' | 'egress_mbit'
-const xFields: { key: XKey; label: string; unit: string; min: number; max: number; show: 'all' | 'db' | 'storage'; restart?: boolean }[] = [
-  { key: 'ephemeral_limit_mi', label: 'Scratch disk', unit: 'MiB', min: 64, max: 2048, show: 'all', restart: true },
-  { key: 'egress_mbit', label: 'Outbound bandwidth', unit: 'Mbit/s', min: 1, max: 160, show: 'all', restart: true },
-  { key: 'image_size_mb', label: 'Max image size', unit: 'MB', min: 1, max: 2048, show: 'all' },
-  { key: 'db_max_connections', label: 'DB connections', unit: '', min: 1, max: 25, show: 'db' },
-  { key: 'db_quota_mb', label: 'DB quota', unit: 'MB', min: 1, max: 1024, show: 'db' },
-  { key: 'storage_quota_mb', label: 'Blob storage quota', unit: 'MB', min: 1, max: 51200, show: 'storage' },
+const xFields: { key: XKey; label: string; unit: string; min: number; max: number; ck: string; show: 'all' | 'db' | 'storage'; restart?: boolean }[] = [
+  { key: 'ephemeral_limit_mi', label: 'Scratch disk', unit: 'MiB', min: 64, max: 2048, ck: 'override_ephemeral_max_mi', show: 'all', restart: true },
+  { key: 'egress_mbit', label: 'Outbound bandwidth', unit: 'Mbit/s', min: 1, max: 160, ck: 'override_egress_max_mbit', show: 'all', restart: true },
+  { key: 'image_size_mb', label: 'Max image size', unit: 'MB', min: 1, max: 2048, ck: 'override_image_size_max_mb', show: 'all' },
+  { key: 'db_max_connections', label: 'DB connections', unit: '', min: 1, max: 25, ck: 'override_db_connections_max', show: 'db' },
+  { key: 'db_quota_mb', label: 'DB quota', unit: 'MB', min: 1, max: 1024, ck: 'override_db_quota_max_mb', show: 'db' },
+  { key: 'storage_quota_mb', label: 'Blob storage quota', unit: 'MB', min: 1, max: 51200, ck: 'override_storage_quota_max_mb', show: 'storage' },
 ]
 // Show sizes in GB once they are large; connections have no unit.
 const human = (n: number, unit: string) =>
@@ -64,20 +75,20 @@ const kBad = (f: (typeof fields)[number]) => {
   const v = vals[f.key].trim()
   if (v === '') return false
   const n = parse(v)
-  return n === null || n < f.min || n > f.max
+  return n === null || n < f.min || n > mx(f)
 }
 const xnum = (k: XKey) => parse(xvals[k])
 const xBad = (f: (typeof xFields)[number]) => {
   const v = xvals[f.key].trim()
   if (v === '') return false
   const n = parse(v)
-  return n === null || n < f.min || n > f.max
+  return n === null || n < f.min || n > mx(f)
 }
 const replicasBad = computed(() => {
   const v = replicasVal.value.trim()
   if (v === '') return false
   const n = parse(v)
-  return n === null || n < 1 || n > 3
+  return n === null || n < 1 || n > replicasMax.value
 })
 const volumeBad = computed(() => {
   const v = volumeVal.value.trim()
@@ -143,7 +154,7 @@ function reset() {
             class="input"
             :aria-invalid="kBad(f) ? 'true' : undefined"
           />
-          <p class="help">{{ f.min }} to {{ human(f.max, f.unit) }}</p>
+          <p class="help">{{ f.min }} to {{ human(mx(f), f.unit) }}</p>
         </div>
       </div>
       <h3 class="label mt-4">Replicas</h3>
@@ -152,7 +163,7 @@ function reset() {
           :id="`${uid}-replicas`" v-model="replicasVal" type="text" inputmode="numeric" pattern="[0-9]*"
           aria-label="Replicas" :placeholder="String(app.replicas)" class="input" :aria-invalid="replicasBad ? 'true' : undefined"
         />
-        <p class="help">1 to 3. Scaling does not restart existing pods.</p>
+        <p class="help">1 to {{ replicasMax }}. Scaling does not restart existing pods.</p>
       </div>
       <h3 class="label mt-4">Disk, image and data</h3>
       <div class="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -168,7 +179,7 @@ function reset() {
             class="input"
             :aria-invalid="xBad(f) ? 'true' : undefined"
           />
-          <p class="help">{{ f.min }} to {{ human(f.max, f.unit) }}</p>
+          <p class="help">{{ f.min }} to {{ human(mx(f), f.unit) }}</p>
         </div>
       </div>
       <div v-if="app.volume" class="mt-3 max-w-[12rem]">

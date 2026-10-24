@@ -3,7 +3,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app import config, volumes
+from app import config, platform_settings, volumes
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
 
 from app.env_refs import EnvValidationError, validate_env_key
@@ -181,7 +181,7 @@ class EnvVarOut(BaseModel):
 class VolumeIn(BaseModel):
     """Request a persistent volume. Omitted fields: size_gi = 1, mount_path = /data."""
     model_config = ConfigDict(extra="forbid")
-    size_gi: Optional[int] = Field(default=None, ge=1, le=config.OVERRIDE_VOLUME_MAX_GI)
+    size_gi: Optional[int] = Field(default=None, ge=1, le=platform_settings.BY_KEY["override_volume_max_gi"].max)  # real ceiling: volumes.apply_request
     mount_path: Optional[str] = Field(default=None, max_length=volumes.MOUNT_PATH_MAX)
 
     @field_validator("mount_path")

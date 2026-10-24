@@ -1,4 +1,4 @@
-import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate } from '../types'
+import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, PlatformPods, PlatformLogs } from '../types'
 import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -52,3 +52,27 @@ export const demoteUser = (id: number) => apiFetch<AdminUser>(`/admin/users/${id
 
 export const downloadAuditLog = (format: 'csv' | 'json') =>
   downloadFile(`/admin/audit/export?format=${format}`, `audit-log.${format}`)
+
+// ---- Admin settings: PUT body maps key -> value, or null to reset that key to its default. 422 detail is a string. ----
+export const getSettings = () => apiFetch<{ groups: SettingsGroup[] }>('/admin/settings')
+export const putSettings = (settings: Record<string, number | boolean | null>) =>
+  apiFetch<{ groups: SettingsGroup[] }>('/admin/settings', { method: 'PUT', body: JSON.stringify({ settings }) })
+
+// ---- Health extras ----
+export const getBackupHealth = (days = 7) => apiFetch<BackupHealth>(`/admin/health/backups?days=${days}`)
+export const getPlatformPods = () => apiFetch<PlatformPods>('/admin/health/logs/pods')
+export interface LogQuery { namespace: string; pod: string; container: string; tail: number; since_seconds?: number | null; previous: boolean }
+const logQs = (q: LogQuery) => {
+  const p = new URLSearchParams({ namespace: q.namespace, pod: q.pod, container: q.container, tail: String(q.tail) })
+  if (q.since_seconds) p.set('since_seconds', String(q.since_seconds))
+  if (q.previous) p.set('previous', 'true')
+  return p.toString()
+}
+export const getPlatformLogs = (q: LogQuery) => apiFetch<PlatformLogs>(`/admin/health/logs?${logQs(q)}`)
+export const downloadPlatformLogs = (q: LogQuery) =>
+  downloadFile(`/admin/health/logs/download?${logQs(q)}`, `${q.namespace}_${q.pod}_${q.container}.log`)
+
+// Per-app backup lock / storage ceiling. Send only what changes; max_bytes null clears the override.
+export const getAppBackups = (id: number) => apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`)
+export const putAppBackups = (id: number, body: { admin_disabled?: boolean; reason?: string; max_bytes?: number | null }) =>
+  apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`, { method: 'PUT', body: JSON.stringify(body) })

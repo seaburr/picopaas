@@ -7,10 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import audit, models, schemas
-from app import config, ratelimit, resources
+from app import config, platform_settings, ratelimit, resources
 from app.config import (
     DB_QUOTA_BYTES,
-    DEFAULT_APP_LIMIT,
     DEFAULT_CPU_LIMIT_M,
     DEFAULT_CPU_REQUEST_M,
     DEFAULT_MEM_LIMIT_MI,
@@ -27,6 +26,10 @@ from app.dependencies import get_current_user
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+def _default_app_limit(db: Session) -> int:
+    return platform_settings.get(db, "default_app_limit")
+
 
 _SESSION_MAX_AGE = JWT_EXPIRE_DAYS * 24 * 60 * 60
 
@@ -50,7 +53,7 @@ def _try_insert(db: Session, email: str, password: str, first: bool,
         password_hash=hash_password(password),
         role="platform_admin" if first else "user",
         status="active" if first else "pending",
-        app_limit=DEFAULT_APP_LIMIT,
+        app_limit=_default_app_limit(db),
         terms_accepted_at=datetime.now(timezone.utc).replace(tzinfo=None) if terms_accepted else None,
     )
     db.add(user)
@@ -100,7 +103,7 @@ def register(payload: schemas.UserRegister, request: Request, response: Response
                      actor_email=payload.email.lower()[:255])
         _set_session_cookie(response, 0)
         return schemas.UserOut(
-            id=top + 1, email=payload.email.lower(), role="user", app_limit=DEFAULT_APP_LIMIT,
+            id=top + 1, email=payload.email.lower(), role="user", app_limit=_default_app_limit(db),
             status="pending", created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
     db.refresh(user)
@@ -157,7 +160,7 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
     db_engines = _available_db_engines(db)
     return schemas.MeOut(
         **out,
-        max_apps=config.MAX_APPS_PER_USER,
+        max_apps=platform_settings.get(db, "max_apps_per_user"),
         app_limit_effective=resources.effective_app_limit(current_user),
         features=schemas.Features(
             databases=bool(db_engines),
@@ -175,13 +178,13 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
             bucket_mb=STORAGE_QUOTA_BYTES // (1024 * 1024),
             ephemeral_mi=EPHEMERAL_LIMIT_MI,
             egress_mbit=config.EGRESS_BANDWIDTH_MBIT,
-            volume_max_gi=config.VOLUME_MAX_GI,
+            volume_max_gi=platform_settings.effective_volume_max_gi(db),
             volume_default_gi=config.VOLUME_DEFAULT_GI,
-            volume_override_max_gi=config.OVERRIDE_VOLUME_MAX_GI,
+            volume_override_max_gi=platform_settings.get(db, "override_volume_max_gi"),
             volume_default_mount_path=config.VOLUME_DEFAULT_MOUNT_PATH,
             override=schemas.LimitOverride(
-                cpu_min_m=resources.CPU_MIN_M, cpu_max_m=resources.CPU_MAX_M,
-                mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=resources.MEM_MAX_MI,
+                cpu_min_m=resources.CPU_MIN_M, cpu_max_m=platform_settings.get(db, "cpu_limit_max_m"),
+                mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=platform_settings.get(db, "mem_limit_max_mi"),
             ),
         ),
     )

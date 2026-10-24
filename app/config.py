@@ -272,13 +272,20 @@ BACKUP_TICK_SECONDS = int(os.environ.get("BACKUP_TICK_SECONDS", 60))
 BACKUP_DELETED_RETENTION_DAYS = int(os.environ.get("BACKUP_DELETED_RETENTION_DAYS", 14))  # repos kept after app delete
 BACKUP_MANUAL_MIN_INTERVAL_MINUTES = 60  # on-demand backups: one per app per hour
 BACKUP_JOB_DEADLINE_SECONDS = int(os.environ.get("BACKUP_JOB_DEADLINE_SECONDS", 1800))
+# Orphan sweeper (app/backup_sweeper.py): every N minutes the leader reconciles runs stuck after a restart / lost Job and
+# deletes leftovers (k8s objects, blobs, rows). A queued run older than BACKUP_QUEUED_MAX_SECONDS never got a slot.
+BACKUP_SWEEP_MINUTES = int(os.environ.get("BACKUP_SWEEP_MINUTES", 10))
+BACKUP_SWEEP_LIMIT = int(os.environ.get("BACKUP_SWEEP_LIMIT", 50))  # objects/rows touched per phase per sweep
+BACKUP_QUEUED_MAX_SECONDS = int(os.environ.get("BACKUP_QUEUED_MAX_SECONDS", 12 * 3600))
+BACKUP_ORPHAN_MIN_AGE_SECONDS = int(os.environ.get("BACKUP_ORPHAN_MIN_AGE_SECONDS", 900))  # k8s objects younger than this are left alone
+BACKUP_STALE_UPLOAD_SECONDS = int(os.environ.get("BACKUP_STALE_UPLOAD_SECONDS", 24 * 3600))  # incomplete multipart uploads
 BACKUP_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_UPLOAD_LIMIT_KIB", 2048))  # per Job, so a backup can't saturate the node
 # Blob storage ("bucket" kind) is copied to an emptyDir before restic reads it, so the scratch size bounds what can be
 # backed up (the default bucket quota is 100 MB; admin overrides can go higher). Bigger buckets fail with a clear error.
 BACKUP_EXPORT_PREFIX = "exports/"  # owner download staging objects in the backup bucket
 BACKUP_EXPORT_TTL_SECONDS = int(os.environ.get("BACKUP_EXPORT_TTL_SECONDS", 3600))  # export objects are swept after this
 BACKUP_EXPORT_URL_SECONDS = 600  # presigned GET lifetime
-BACKUP_EXPORT_MAX_PER_HOUR = 3  # download requests per app per hour
+BACKUP_EXPORT_MAX_PER_HOUR = int(os.environ.get("BACKUP_EXPORT_MAX_PER_HOUR", 3))  # download requests per app per hour
 BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 1024**2))  # keep 2 Jobs inside deploy/platform/backup.yaml quota
 # Volume backups ("volume" kind) run in the TENANT namespace and put the backup key in a per-run Secret there, so they stay off
 # until an admin confirms the key is bucket-scoped (docs/design/backups.md decisions log, 2026-10-23). Default 0: no volume part.

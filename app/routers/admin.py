@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import audit, backups, config, crypto, health, models, naming, quota, resources, schemas, volumes
+from app import audit, backups, config, crypto, health, models, naming, platform_settings, quota, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_platform_admin
@@ -401,25 +401,37 @@ def _object_store_or_none(request: Request):
 class AppResourcesPatch(BaseModel):
     """Omitted field = unchanged; explicit null = reset to the platform default."""
     model_config = ConfigDict(extra="forbid")
-    cpu_request_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=resources.CPU_MAX_M)
-    cpu_limit_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=resources.CPU_MAX_M)
-    mem_request_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
-    mem_limit_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=resources.MEM_MAX_MI)
+    cpu_request_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=platform_settings.BY_KEY["cpu_limit_max_m"].max)
+    cpu_limit_m: Optional[int] = Field(default=None, ge=resources.CPU_MIN_M, le=platform_settings.BY_KEY["cpu_limit_max_m"].max)
+    mem_request_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=platform_settings.BY_KEY["mem_limit_max_mi"].max)
+    mem_limit_mi: Optional[int] = Field(default=None, ge=resources.MEM_MIN_MI, le=platform_settings.BY_KEY["mem_limit_max_mi"].max)
     db_max_connections: Optional[int] = Field(
         default=None, ge=config.OVERRIDE_DB_CONNECTIONS_MIN, le=config.OVERRIDE_DB_CONNECTIONS_MAX)
     ephemeral_limit_mi: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_EPHEMERAL_MIN_MI, le=config.OVERRIDE_EPHEMERAL_MAX_MI)
+        default=None, ge=config.OVERRIDE_EPHEMERAL_MIN_MI, le=platform_settings.BY_KEY["override_ephemeral_max_mi"].max)
     db_quota_mb: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_DB_QUOTA_MIN_MB, le=config.OVERRIDE_DB_QUOTA_MAX_MB)
+        default=None, ge=config.OVERRIDE_DB_QUOTA_MIN_MB, le=platform_settings.BY_KEY["override_db_quota_max_mb"].max)
     storage_quota_mb: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_STORAGE_QUOTA_MIN_MB, le=config.OVERRIDE_STORAGE_QUOTA_MAX_MB)
+        default=None, ge=config.OVERRIDE_STORAGE_QUOTA_MIN_MB, le=platform_settings.BY_KEY["override_storage_quota_max_mb"].max)
     image_size_mb: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_IMAGE_SIZE_MIN_MB, le=config.OVERRIDE_IMAGE_SIZE_MAX_MB)
+        default=None, ge=config.OVERRIDE_IMAGE_SIZE_MIN_MB, le=platform_settings.BY_KEY["override_image_size_max_mb"].max)
     egress_mbit: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_EGRESS_MIN_MBIT, le=config.OVERRIDE_EGRESS_MAX_MBIT)
+        default=None, ge=config.OVERRIDE_EGRESS_MIN_MBIT, le=platform_settings.BY_KEY["override_egress_max_mbit"].max)
     # Grow-only (Kubernetes PVC expansion); the app must already have a volume. Explicit null is rejected.
     volume_size_gi: Optional[int] = Field(
-        default=None, ge=config.OVERRIDE_VOLUME_MIN_GI, le=config.OVERRIDE_VOLUME_MAX_GI)
+        default=None, ge=config.OVERRIDE_VOLUME_MIN_GI, le=platform_settings.BY_KEY["override_volume_max_gi"].max)
+
+
+def _check_ceilings(db: Session, payload: AppResourcesPatch) -> None:
+    """The admin-set ceilings (Admin > Settings) are enforced here, not in the schema, so a change applies at once."""
+    errs = []
+    for f in payload.model_fields_set:
+        v = getattr(payload, f)
+        key = platform_settings.RESOURCE_CEILINGS.get(f)
+        if v is not None and key and v > (cap := platform_settings.get(db, key)):
+            errs.append(f"{f} can be at most {cap} {platform_settings.BY_KEY[key].unit} (platform ceiling).")
+    if errs:
+        raise HTTPException(status_code=422, detail=" ".join(errs))
 
 
 def _grow_volume(a: models.App, size_gi: Optional[int]) -> bool:
@@ -446,6 +458,7 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
                         mysql_admin_factory=Depends(get_mysql_admin_factory),
                         object_store=Depends(_object_store_or_none)):
     a = _get_app_or_404(db, app_id)
+    _check_ceilings(db, payload)
     changes = {f: getattr(payload, f) for f in payload.model_fields_set if f != "volume_size_gi"}
     volume_grown = False
     old_volume = a.volume_size_gi
@@ -491,7 +504,7 @@ def patch_app_resources(app_id: int, payload: AppResourcesPatch, db: Session = D
 
 class ReplicasSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    replicas: int = Field(ge=1, le=config.MAX_REPLICAS)
+    replicas: int = Field(ge=1, le=platform_settings.BY_KEY["max_replicas"].max)
 
 
 @router.put("/apps/{app_id}/replicas", response_model=schemas.AppOut)
@@ -499,6 +512,9 @@ def set_replicas(app_id: int, payload: ReplicasSet, db: Session = Depends(get_db
                  admin: models.User = Depends(require_platform_admin)):
     """Set the Deployment replica count. A suspended app stays suspended (scaled to 0) and picks it up on unsuspend."""
     a = _get_app_or_404(db, app_id)
+    max_replicas = platform_settings.get(db, "max_replicas")
+    if payload.replicas > max_replicas:
+        raise HTTPException(status_code=422, detail=f"Replicas can be at most {max_replicas} (platform ceiling).")
     if a.volume_size_gi is not None and payload.replicas > 1:
         raise HTTPException(status_code=409, detail=volumes.REPLICAS_WITH_VOLUME_MSG)
     old = a.replicas
@@ -605,8 +621,7 @@ def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get
 def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db),
                admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
-    from app import config
-    if payload.app_limit > config.MAX_APPS_PER_USER:
+    if payload.app_limit > platform_settings.get(db, "max_apps_per_user"):
         raise HTTPException(status_code=422, detail="That's above the platform's per-account app limit.")
     user.app_limit = payload.app_limit
     db.commit()

@@ -6,7 +6,9 @@ import PasswordField from '../components/PasswordField.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import SettingsPanel from '../components/SettingsPanel.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
+import BackupAdminDialog from '../components/BackupAdminDialog.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
@@ -18,7 +20,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Archive, Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -42,7 +44,7 @@ const error = ref('')
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // Tabs live in ?tab= so they are linkable.
-const TABS = ['users', 'apps', 'servers', 'audit'] as const
+const TABS = ['users', 'apps', 'servers', 'settings', 'audit'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'users'))
 const q = ref('')
@@ -282,6 +284,7 @@ async function addServer() {
 // ---- app resources ----
 const resApp = ref<AdminApp | null>(null)
 const resError = ref('')
+const bkApp = ref<AdminApp | null>(null)
 async function saveResources(body: ResourcesPatch, replicas: number | null) {
   if (!resApp.value) return
   resError.value = ''
@@ -360,7 +363,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
       <div role="tablist" aria-label="Admin sections" class="flex gap-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
         <button
-          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'audit', label: 'Audit', n: null }] as const"
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
           :key="t.id"
           type="button"
@@ -379,7 +382,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
 
       <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-3">
-        <div v-if="tab !== 'servers'">
+        <div v-if="tab !== 'servers' && tab !== 'settings'">
           <label :for="`${uid}-q`" class="sr-only">Search</label>
           <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
         </div>
@@ -477,6 +480,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               <div class="flex gap-0.5 lg:justify-end">
                 <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="`https://${appHost(a)}`" />
                 <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="resError = ''; resApp = a" />
+                <IconButton :icon="Archive" :label="`Backups for ${a.name}`" sm @click="bkApp = a" />
                 <IconButton v-if="a.status === 'suspended'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
                 <IconButton v-else :icon="Ban" :label="`Suspend ${a.name}`" sm @click="askApp('suspend', a)" />
                 <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askApp('delete', a)" />
@@ -528,6 +532,9 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
             before retiring it. If no server can take a new database, users can't tick Database on new apps.
           </p>
         </template>
+
+        <!-- SETTINGS -->
+        <SettingsPanel v-else-if="tab === 'settings'" />
 
         <!-- AUDIT -->
         <template v-else>
@@ -655,6 +662,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
     </dialog>
 
+    <BackupAdminDialog :app="bkApp" @close="bkApp = null" />
     <ResourcesDialog :app="resApp" :error="resError" @save="saveResources" @cancel="resApp = null" />
     <ConfirmDialog
       :open="confirm !== null"

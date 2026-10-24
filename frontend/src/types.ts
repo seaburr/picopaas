@@ -405,7 +405,9 @@ export interface BackupRun {
   source_run_id: number | null
   // Absent before the async-export backend deploys: treat as null.
   export?: BackupRunExport | null
+  failed_export?: BackupFailedExport | null
 }
+export interface BackupFailedExport { id: number; error: string | null; at: string | null }
 export interface BackupRunExport {
   id: number
   status: 'queued' | 'running' | 'ready' | 'failed' | 'expired'
@@ -428,6 +430,7 @@ export interface BackupSet {
   size_bytes: number
   parts: BackupSetPart[]
   export: BackupRunExport | null
+  failed_export?: BackupFailedExport | null
 }
 export interface VolumeBackups {
   has_volume: boolean
@@ -457,6 +460,16 @@ export interface BackupsInfo {
   last_backup_at: string | null
   last_success_at: string | null
   cap_bytes: number
+  repo_bytes?: number
+  admin_disabled?: boolean
+  admin_disabled_reason?: string | null
+  admin_disabled_message?: string | null
+  max_held?: number
+  held?: number
+  manual_per_hour?: number
+  export_per_hour?: number
+  storage_full?: boolean
+  cap_override?: boolean
 }
 export interface BackupExport {
   export_id: number
@@ -471,3 +484,42 @@ export interface BackupExport {
   error: string | null
   created_at: string
 }
+
+// ---- Admin settings (GET/PUT /admin/settings) ----
+export interface PlatformSetting {
+  key: string
+  label: string
+  description: string
+  type: 'int' | 'bool'
+  unit: string
+  value: number | boolean
+  default: number | boolean
+  overridden: boolean
+  min: number | null
+  max: number | null
+  updated_at: string | null
+  updated_by: string | null
+}
+export interface SettingsGroup { name: string; settings: PlatformSetting[] }
+
+// ---- Admin health extras (GET /admin/health/backups, /admin/health/logs/pods) ----
+export interface BackupTopApp {
+  app_id: number; name: string; owner_email: string | null; deleted: boolean
+  repo_bytes: number; db_bytes: number; volume_bytes: number; bucket_bytes: number
+  cap_bytes?: number; full?: boolean; admin_disabled?: boolean
+}
+export interface BackupStorage {
+  used_bytes: number; cap_bytes: number; used_pct: number | null; apps_with_backups: number
+  top_apps: BackupTopApp[]; over_cap?: boolean; warning: string | null; note: string
+}
+export interface BackupFailure {
+  run_id: number; app_id: number; app_name: string | null; app_deleted: boolean; owner_email: string | null
+  kind: string; trigger: string; status: string; error: string | null; at: string | null; still_failing?: boolean; age_seconds?: number
+}
+export interface BackupHealth {
+  enabled: boolean; configured: boolean; days: number
+  storage: BackupStorage; failures: BackupFailure[]; stuck: BackupFailure[]
+}
+export interface PlatformPod { namespace: string; name: string; phase?: string; ready?: boolean; restarts?: number; containers: string[] }
+export interface PlatformPods { namespaces: string[]; pods: PlatformPod[] }
+export interface PlatformLogs { namespace: string; pod: string; container: string; previous: boolean; lines: string[]; truncated: boolean }

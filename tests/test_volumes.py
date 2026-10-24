@@ -264,9 +264,14 @@ SPEC = ("apiVersion: picopaas/v1\nname: s\nimage: ghcr.io/example/demo:1\nport: 
 def test_spec_parse_and_errors():
     assert parse_spec(SPEC).resources.volume.mountPath == "/var/www/html"
     assert parse_spec(SPEC.replace(", mountPath: /var/www/html", "")).resources.volume.mountPath == "/data"
-    for bad in ("mountPath: /etc", "mountPath: /", "sizeGi: 0", "sizeGi: 99", "sizeGi: 1Gi", "foo: 1"):
+    for bad in ("mountPath: /etc", "mountPath: /", "sizeGi: 0", "sizeGi: 5000", "sizeGi: 1Gi", "foo: 1"):
         with pytest.raises(SpecError):
             parse_spec(SPEC.replace("sizeGi: 1, mountPath: /var/www/html", bad))
+
+
+def test_spec_size_above_ceiling_rejected_on_deploy(on, user):
+    # parse accepts it (the real ceiling is the effective setting); deploy enforces it
+    assert user.post("/apps/spec", json={"spec": SPEC.replace("sizeGi: 1", "sizeGi: 99")}).status_code == 422
 
 
 def test_spec_deploy_round_trip_and_no_removal(on, user):

@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 
-from app import config
+from app import config, platform_settings
 
 DISABLED_MSG = "Persistent volumes aren't enabled on this platform."
 FORBIDDEN_PREFIXES = ("/proc", "/sys", "/dev", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/tmp", "/run", "/var/run", "/var/lock")
@@ -56,7 +56,7 @@ def _locked_total_in_use(db) -> int:
 
 
 def require_capacity(db) -> None:
-    if _locked_total_in_use(db) >= config.VOLUMES_MAX_TOTAL:
+    if _locked_total_in_use(db) >= platform_settings.get(db, "volumes_max_total"):
         raise HTTPException(
             status_code=409,
             detail="The platform has no persistent volume capacity left right now. Try again later or ask an administrator.",
@@ -69,22 +69,23 @@ def apply_request(db, app: Any, size_gi: Optional[int], mount_path: Optional[str
     Rules: feature flag on; no detaching (callers reject null); size is grow-only and capped at the user ceiling
     (a smaller request keeps the size already granted, it is not an error); replicas must be 1; platform capacity checked when enabling."""
     require_enabled()
+    max_gi = platform_settings.effective_volume_max_gi(db)
     new_size = size_gi if size_gi is not None else (app.volume_size_gi or config.VOLUME_DEFAULT_GI)
     new_path = validate_mount_path(mount_path) if mount_path is not None else (app.volume_mount_path or config.VOLUME_DEFAULT_MOUNT_PATH)
     old_size = app.volume_size_gi
     if new_size < config.OVERRIDE_VOLUME_MIN_GI:
         raise HTTPException(status_code=422, detail=f"Volume size must be at least {config.OVERRIDE_VOLUME_MIN_GI} GiB.")
     if old_size is None:
-        if new_size > config.VOLUME_MAX_GI:
-            raise HTTPException(status_code=422, detail=f"Volume size can be at most {config.VOLUME_MAX_GI} GiB. Ask an administrator for more.")
+        if new_size > max_gi:
+            raise HTTPException(status_code=422, detail=f"Volume size can be at most {max_gi} GiB. Ask an administrator for more.")
         if (app.replicas or 1) > 1:
             raise HTTPException(status_code=409, detail=_REPLICAS_MSG)
         require_capacity(db)
     else:
         if new_size <= old_size:
             new_size = old_size  # never shrink: keep the current (possibly admin-granted) size, no error
-        elif new_size > config.VOLUME_MAX_GI:
-            raise HTTPException(status_code=422, detail=f"Volume size can be at most {config.VOLUME_MAX_GI} GiB. Ask an administrator for more.")
+        elif new_size > max_gi:
+            raise HTTPException(status_code=422, detail=f"Volume size can be at most {max_gi} GiB. Ask an administrator for more.")
     changed = (old_size, app.volume_mount_path) != (new_size, new_path)
     app.volume_size_gi = new_size
     app.volume_mount_path = new_path
