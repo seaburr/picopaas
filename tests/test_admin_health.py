@@ -48,21 +48,22 @@ def test_shape(make_client, kube):
         "nodes": [_node()],
         "pods": [_pod("web-1", f"app-{aid}", restarts=2), _pod("api-0", "picopaas-system"),
                  _pod("t-0", "traefik", ready=False, cpu_used_m=None, mem_used_mi=None),
-                 _pod("other", "kube-system")],
+                 _pod("other", "kube-system"), _pod("bk-1", "picopaas-backup"), _pod("dflt", "default")],
         "metrics_available": True, "errors": [],
     }
     r = admin.get("/admin/health")
     assert r.status_code == 200
     d = r.json()
     assert d["metrics_available"] is True and d["errors"] == []
-    assert d["cluster"]["node_count"] == 1 and d["cluster"]["pods_total"] == 4
+    assert d["cluster"]["node_count"] == 1 and d["cluster"]["pods_total"] == 6
     assert "max_nodes" in d["cluster"]
     assert d["nodes"][0]["cpu_requested_m"] == 300
     a = d["apps"][0]
     assert a["owner_email"] == "admin@example.com" and a["namespace"] == f"app-{aid}"
     assert (a["pods_ready"], a["pods_total"], a["restarts"]) == (1, 1, 2)
     assert (a["cpu_limit_m"], a["mem_limit_mi"]) == (200, 384)
-    assert [p["name"] for p in d["platform"]] == ["api-0", "t-0"]
+    # known namespaces first, then any other platform namespace (new workloads show up); never app-*/kube-*/default
+    assert [p["name"] for p in d["platform"]] == ["api-0", "t-0", "bk-1"]
     assert d["platform"][1]["ready"] is False and d["platform"][1]["cpu_used_m"] is None
     assert isinstance(d["db_servers"], list) and "generated_at" in d
 

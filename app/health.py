@@ -14,11 +14,13 @@ from sqlalchemy.orm import Session
 from app import config, models
 from app import resources
 from app.k8s_manifests import namespace_name
-from app.providers.base import KubeProvider
+from app.providers.base import KubeProvider, is_platform_namespace
 
 log = logging.getLogger(__name__)
 
 CACHE_TTL_S = 15
+# Listed first, in this order; any other platform namespace (is_platform_namespace) follows alphabetically, so new
+# workloads (picopaas-backup, picopaas-data, ...) show up without a code change.
 PLATFORM_NAMESPACES = ("picopaas-system", "traefik", "cert-manager")
 
 # Cache of the (slow) k8s snapshot only; DB-derived data is built per request.
@@ -31,6 +33,11 @@ _background = False  # True once start_background() ran: requests then never blo
 # Per-DbServer SQL metrics, keyed by server id: {id: (monotonic_at, metrics_dict)}. Same TTL as the k8s cache,
 # so rapid Health refreshes don't hit the DB servers (errors are cached too, to avoid hammering a down server).
 _db_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+
+
+def _platform_namespaces(by_ns: dict[str, list]) -> list[str]:
+    rest = sorted(ns for ns in by_ns if is_platform_namespace(ns) and ns not in PLATFORM_NAMESPACES)
+    return [*PLATFORM_NAMESPACES, *rest]
 
 
 def invalidate_db_server(server_id: int) -> None:
@@ -193,7 +200,7 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factor
     platform = [
         {"name": p["name"], "namespace": p["namespace"], "ready": p["ready"], "restarts": p["restarts"],
          "cpu_used_m": p["cpu_used_m"], "mem_used_mi": p["mem_used_mi"]}
-        for ns in PLATFORM_NAMESPACES for p in by_ns.get(ns, [])
+        for ns in _platform_namespaces(by_ns) for p in by_ns.get(ns, [])
     ]
 
     return {

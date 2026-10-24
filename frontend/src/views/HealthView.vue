@@ -15,6 +15,8 @@ import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
+import HealthBackups from '../components/HealthBackups.vue'
+import HealthLogs from '../components/HealthLogs.vue'
 import { approveUser, getHealth } from '../api/admin'
 import { ApiError } from '../api/client'
 import type { ClusterHealth, HealthApp } from '../types'
@@ -416,6 +418,9 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
             </table>
           </div>
         </section>
+
+        <HealthBackups />
+        <HealthLogs />
       </template>
       <p v-else-if="!error" class="text-sm text-zinc-400" role="status">Querying cluster…</p>
     </main>
