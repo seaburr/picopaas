@@ -7,6 +7,8 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Approve request 0008 (backups)? (raised 2026-10-23).** A second-region Spaces bucket `picopaas-backups` (proposed SFO3) inside the existing $5 Spaces subscription, about $0 marginal; snapshots optional later at about $0.06/GiB/mo. Background: `docs/requests/0008-backups.md`, `docs/design/backups.md`. Default if unanswered: phase 1 uses only the existing allowance (prefix `backups/` in `pico-paas-s3-a`, same region as app buckets). Also confirm the region (SFO3 vs TOR1/AMS3). — _your answer:_
+
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
   databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
