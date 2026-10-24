@@ -362,7 +362,23 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
   under `mountPath` (default `/data`). Don't mount over directories your image needs to start, unless it copies them in.
 - **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink. Growing a volume after it's created is supported by the API (DigitalOcean's CSI driver expands the filesystem online) but is not yet tested live on this platform, so plan the size up front.
 - **No detaching.** To drop a volume, delete the app; the data is destroyed with it.
-- **Not backed up yet.** Treat it as one copy of the data. Keep anything irreplaceable somewhere else too.
+- **Not backed up yet.** Volume backups are coming (see Backups, section 7b). Until then treat it as one copy of the data and keep anything irreplaceable somewhere else too.
+
+## 7b. Backups
+
+When your administrator has turned backups on, an app with a **database** is backed up automatically once a day (a
+bit after 03:00 UTC, staggered per app). Each backup is encrypted and stored outside the cluster; the last 7 daily, 4 weekly and
+6 monthly copies are kept. What is covered:
+- **Database: yes.** A full dump of your app's database (MySQL or PostgreSQL).
+- **Persistent volume: next.** Volume backups are the next step; for now a volume is not backed up.
+- **Blob storage: no.** Buckets are not backed up.
+- DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
+
+Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
+(one per hour). Turn backups off or switch to weekly with `PATCH /apps/{id}/backups`. A failed backup adds an event to your app and
+shows in the status. Backup storage has its own cap (2 GiB per app) and does not count against your database or storage quota.
+When you delete an app the platform takes a final backup and keeps it for 14 days, then deletes it. Restoring is done by an
+administrator for now.
 
 ## 8. Health checks
 

@@ -1,6 +1,17 @@
 # Backups for apps (REQ-9): design
 
-Status: DESIGN ONLY (2026-10-23, infra-ops). No code, nothing provisioned. Chas approved starting REQ-9; first user is his
+Status: **phase 1a IMPLEMENTED (2026-10-23, backend-dev), flag `BACKUPS_ENABLED` off, nothing provisioned.** Done: config knobs,
+migration `c2e8a4f6b1d7` (`app_backup_config`, `backup_runs`), backup image `images/backup/` (ghcr.io/seaburr/picopaas-backup),
+`deploy/platform/backup.yaml` (ns `picopaas-backup`, RBAC, NetworkPolicies), DB dump Jobs via `app/backups.py` +
+`app/providers/backup.py` (leader-only tick), `GET/POST/PATCH /apps/{id}/backups`, `GET /admin/backups` + Health block, failure events
+and audit, final backup on delete with 14-day retention and purge, docs. Deferred to 1b: volume Jobs (app namespace), snapshot
+download (presigned GET), UI Backups card, CLI, per-run `restic check`/`stats` maintenance Job, platform-DB dump. Deviations from
+this document: one random password per app (shared by its kind repos); table is `backup_runs` (not `app_backups`) with
+`queued` status and `trigger` scheduled|manual|final|purge; tick every 60 s (not 5 min) so results and deletes settle fast;
+retention and `--prune` run at the end of every backup Job (a weekly maintenance Job is 1b); the dump uses `mariadb-dump`
+(Alpine has no Oracle `mysqldump`), adding `--no-tablespaces` / `--set-gtid-purged=OFF` only when the client supports them;
+purge = forget all snapshots + prune (restic cannot delete a repo; its config/key files remain). Original design status:
+No code, nothing provisioned. Chas approved starting REQ-9; first user is his
 WordPress blog (image + 1 GiB RWO volume + managed MySQL database + optional Spaces bucket). Background:
 `docs/research/wordpress-backups.md`, `docs/research/wordpress-requirements.md` (REQ-9), `docs/requests/0007-persistent-volumes.md`,
 `docs/deployment/infrastructure.md`. Paid-resource request: `docs/requests/0008-backups.md`.

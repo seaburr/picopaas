@@ -28,7 +28,8 @@ everywhere a user is accepted except where marked "session only".
 | POST | `/apps/{app_id}/storage/delete` | owner or admin |
 | POST | `/apps/{app_id}/storage/presign` | owner or admin; PUT needs a full-scope key |
 | POST | `/apps/{app_id}/restart`, `/check-image`, `/rollback` | owner or admin |
-| GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/docs/admin-guide` | admin |
+| GET, POST, PATCH | `/apps/{app_id}/backups` | owner or admin; POST and PATCH need a full-scope key |
+| GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/backups`, `/admin/docs/admin-guide` | admin |
 | PATCH | `/admin/users/{user_id}` | admin |
 | POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote` | admin |
 | DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
@@ -227,6 +228,19 @@ Errors: 422 for YAML/spec errors (message lists `field: problem` in plain words,
 values given for undeclared secrets, missing secret values, trying to remove a database or bucket from an existing
 app, trying to change the `resources.db_engine` of an existing app, removing `resources.volume` from an app that has one, an invalid volume request (see `POST /apps`; 409 when out of volume capacity), or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
+
+## Backups (`/apps/{app_id}/backups`, owner or admin)
+
+Off unless the administrator enabled `BACKUPS_ENABLED` (see ADMIN_GUIDE). Phase 1a covers the app's database; `volume` is
+rejected until phase 1b. Download of a snapshot and restore are not in the API yet.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/apps/{app_id}/backups` | none | `{feature_enabled, configured, enabled, schedule, state, kinds[{kind, last_backup_at, last_status, last_error, last_bytes, repo_bytes}], last_backup_at, last_success_at, last_status, last_error, next_backup_at, repo_bytes, cap_bytes, runs[]}`. `state` is `disabled`, `pending`, `ok`, `stale` or `failing`. A run is `{id, kind, trigger (scheduled, manual, final), status (queued, running, succeeded, failed), created_at, started_at, finished_at, bytes_added, repo_bytes, snapshot_id, error}`, newest first (30). Works with `feature_enabled: false` when backups are off. Read-scope keys may call it. |
+| POST | `/apps/{app_id}/backups` | `{kinds?: ["db"]}` (default: everything the app has) | 202, a list of queued runs. 422 backups off, or nothing to back up; 503 enabled but not configured; 409 a run is already queued or running; 429 (with `Retry-After`) when a manual backup was started in the last hour. Audit `backup.create`. Not for read-scope keys (403). |
+| PATCH | `/apps/{app_id}/backups` | `{enabled?: bool, schedule?: "daily"\|"weekly"\|"off"}` | The same payload as GET. Audit `backup.config_changed`. 422 if backups are off or the app has no database or volume. |
+
+`GET /admin/backups` (admin): `{enabled, configured, cap_per_app_bytes, cap_total_bytes, total_repo_bytes, warning, counts{ok, pending, stale, failing, disabled}, apps[], retained[]}`; `retained` lists deleted apps whose repositories are still within their 14 days. `GET /admin/health` also carries a compact `backups` block.
 
 ## Background jobs
 

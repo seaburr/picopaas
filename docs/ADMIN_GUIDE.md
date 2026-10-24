@@ -305,9 +305,53 @@ the count and size caps above bound it. What the platform does for an app with a
 - Grow with `PATCH /admin/apps/{id}/resources {"volume_size_gi": N}` (1 to `OVERRIDE_VOLUME_MAX_GI`, default 10, only up). The claim is expanded online: the API supports growing a volume after creation (DigitalOcean's CSI driver expands the filesystem online), but this is not yet tested live on this platform, so plan the size up front.
   The storage class cannot be changed on an existing claim.
 - Users can't detach a volume; deleting the app is the only way to drop it.
-- Not backed up: add snapshots before relying on it for data that cannot be recreated.
+- Not backed up yet (volume backups are phase 1b of App backups below): add snapshots before relying on it for data that cannot be recreated.
 
 Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persistentvolumeclaims` rights to `picopaas-app-ns`).
+
+## App backups
+
+Off by default (`BACKUPS_ENABLED=0`): with the flag off nothing runs, no namespace exists and every backup endpoint says so.
+Phase 1a backs up **databases** (MySQL and PostgreSQL) of apps that have one; volume backups, snapshot download and restore
+come next. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
+
+How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) queues a run per app at its daily slot
+(`BACKUP_SCHEDULE_HOUR` UTC plus a per-app minute offset) and starts a Kubernetes Job in namespace `picopaas-backup`
+(at most `BACKUP_MAX_CONCURRENT`, one dump per DB server at a time). The Job gets an ephemeral Secret (the app's own DB
+user, repo URL and password, the bucket key), runs `mariadb-dump` or `pg_dump` into `restic backup --stdin`, then
+`restic forget --prune` with the retention below, and the platform deletes the Job and Secret once it records the result.
+Each app has its own restic repository (`<BACKUP_PREFIX>apps/<app id>/db`) and a random password stored encrypted in the
+platform database (rotated with `FERNET_KEY`; if you lose the key and the database the backups are unreadable).
+
+Enable:
+1. Create the bucket and a key limited to it (request 0008; keep it separate from the tenant Spaces key and the platform
+   admin key). Put these in `picopaas-env`: `BACKUPS_ENABLED=1`, `BACKUP_BUCKET`, `BACKUP_REGION` (or `BACKUP_ENDPOINT`),
+   `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY`. With any of bucket, endpoint or key missing the feature is
+   "misconfigured": the API answers 503, nothing runs, and the Health and `/admin/backups` pages say so. The tenant
+   `SPACES_*` key is never used as a fallback.
+2. Make the image pullable: `ghcr.io/seaburr/picopaas-backup` is built by `.github/workflows/backup-image.yml` from
+   `images/backup/`. A new GHCR package is private; set it to **Public** once (GitHub > Packages > picopaas-backup > Package
+   settings > Change visibility) so the cluster can pull it anonymously. Pin by digest with `BACKUP_IMAGE` in production.
+3. Deploy: `deploy.yml` applies `deploy/platform/backup.yaml` (namespace, quota, minimal RBAC, NetworkPolicies limited to
+   the DB CIDR and HTTPS to public addresses) only while `BACKUPS_ENABLED=1` in `picopaas-env`; it reads the DB CIDR from
+   `MYSQL_EGRESS_CIDR` / `PG_EGRESS_CIDR`. Apply it by hand the same way if you deploy manually.
+
+Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 7 / 4 / 6; per-app cap
+`BACKUP_MAX_BYTES_PER_APP` = 2 GiB; platform cap `BACKUP_MAX_BYTES_TOTAL` = 100 GiB (warning at 80%); `BACKUP_UPLOAD_LIMIT_KIB`
+(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14). Backup bytes do not count against
+the 50 MB database or 100 MB storage caps. Over a cap, the backup is skipped with a failed run and an app event, never silently.
+
+Monitoring: `GET /admin/backups` and the `backups` block of `GET /admin/health` give ok / pending / stale (no success in
+36 hours, 8 days for weekly) / failing counts, repo bytes against the cap and per-app detail. A failed run also adds a
+`backup_failed` event to the app and an audit row (`backup.failed`, actor system).
+
+Deleting an app: the platform takes one final backup (the delete waits for it, at most two hours, and a failure does not block
+it), keeps the repositories for 14 days, then purges them (`backup.retained` is audited). Purge forgets all snapshots and prunes the
+data; restic's small config and key files stay in the bucket. DigitalOcean's own managed-database backups remain the
+disaster layer underneath.
+
+Restore is manual until phase 2: read the snapshot with restic using the repo URL and the decrypted password (an admin
+tool for this ships with phase 1b).
 
 ## Scaling
 
