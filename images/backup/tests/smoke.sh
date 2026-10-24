@@ -95,7 +95,9 @@ out="$(vrun -e MODE=backup -e KIND=volume -e TAG=manual)" && { echo "SMOKE FAIL:
 docker run --rm --user 0 --entrypoint sh -v "$NET-vol:/volume" "$IMAGE" -c 'rm -f /volume/locked'
 
 # Package: three repos under one base (db from MySQL, a blob-storage tree, the volume), then ONE tar.gz.
-P="$WORK/pkg"; mkdir -p "$P/out" && chmod -R 0777 "$P"
+# Every host-side directory is made up front: the containers (UID 10001, umask 077) create private dirs, so the runner
+# user cannot mkdir inside them later (Linux enforces this; Docker Desktop does not).
+P="$WORK/pkg"; mkdir -p "$P/out" "$P/repos/bucket" && chmod -R 0777 "$P"
 prun() { docker run --rm --read-only --user 10001 --cap-drop ALL --tmpfs /tmp:uid=10001 -v "$P:/work" -v "$NET-vol:/volume:ro" \
     --network "$NET" -e RESTIC_PASSWORD=$PW -e VOLUME_DIR=/volume "$@" "$IMAGE"; }
 last="$(prun -e RESTIC_REPOSITORY=/work/repos/db -e MODE=backup -e KIND=db -e ENGINE=mysql -e DB_HOST="$NET-mysql" -e DB_PORT=3306 \
@@ -105,7 +107,6 @@ last="$(prun -e RESTIC_REPOSITORY=/work/repos/volume -e MODE=backup -e KIND=volu
 vsnap="$(sed -E 's/.*"snapshot_id":"([0-9a-f]+)".*/\1/' <<<"$last")"
 # the blob-storage repo: what the bucket Job leaves behind (restic of /work/bucket); the copy from S3 is not exercised here.
 # The tree lives on a tmpfs: restic reads with O_NOATIME, which Docker Desktop's bind mounts answer with EIO.
-mkdir -p "$P/repos/bucket" && chmod 0777 "$P/repos/bucket"
 bsnap="$(docker run --rm --user 10001 --entrypoint sh --tmpfs /work:uid=10001 --tmpfs /tmp:uid=10001 -v "$P/repos/bucket:/repo" \
   -e RESTIC_REPOSITORY=/repo -e RESTIC_PASSWORD=$PW "$IMAGE" -c '
   restic init -q && mkdir -p /work/bucket/img && echo "object one" > /work/bucket/a.txt && echo "object two" > /work/bucket/img/b.txt
