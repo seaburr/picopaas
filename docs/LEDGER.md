@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] BLOCKED (owner: backend-dev/infra-ops, images/backup/tests/smoke.sh): backup-image run 40110484384 failed at the package step of the real-DB smoke (passed locally): `mkdir: cannot create directory .../pkg/repos: Permission denied`, `create repository at /repo failed: mkdir /repo/data: permission denied`, then 'a snapshot id is not valid' -> SMOKE FAIL: package. Likely CI runner UID vs container user / temp dir perms in the package invocation. No new backup image was pushed; BACKUP_IMAGE stays on the old digest. CI, image, deploy (40110561797) green.
 - 2026-10-24 [scm-security] DONE: committed backup sets/volume backups, bootstrap scoped-key proof, Backups card, docs; see git log. gitleaks clean. No findings. Do NOT set BACKUP_KEY_SCOPED=1 until backup image re-pinned, rbac applied, migration run.
 - 2026-10-24 [scm-security] START: commit/push backup sets + volume backups, bootstrap scoped-key proof, Backups card, docs; tests 1552 passed, typecheck ok.
 - 2026-10-24 scm-security: DONE ddda3cb feat(infra): bootstrap stores a bucket-scoped (picopaas-backups, readwrite) Spaces key in BACKUP_ACCESS_KEY_*, adds rotate_backup_key input and revoke step; ids/secrets masked; verified live (backup/export/download/delete), rerun reuses the key.
