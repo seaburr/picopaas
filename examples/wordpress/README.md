@@ -121,6 +121,7 @@ Full procedure, bundle preparation, sizing and rollback: [MIGRATION.md](MIGRATIO
 | `WP_ADMIN_EMAIL` | required for install | Admin email |
 | `WP_ADMIN_USER` / `WP_TITLE` | `admin` / `WordPress` | Used by the first-boot install |
 | `WP_PAGE_CACHE` | `false` | nginx full-page cache in `/tmp` for anonymous GETs (60 s) |
+| `WP_AUTOINDEX_PATHS` | empty | Comma-separated static folders outside WordPress that get a directory listing, e.g. `/kab/,/files/`. Files are served as-is; PHP and dotfiles there are refused; `/wp-*` paths are ignored |
 | `WP_ALLOW_XMLRPC` | `false` | `true` allows `/xmlrpc.php` (Jetpack needs it) |
 | `WP_CRON_ENABLED` / `WP_CRON_INTERVAL` | `true` / `300` | CLI wp-cron loop (page-load cron is off) |
 | `WP_CONFIG_MANAGED` | `true` | Volume mode: rewrite `wp-config.php` on each boot |

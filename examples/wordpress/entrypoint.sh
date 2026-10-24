@@ -64,6 +64,17 @@ if [ "${WP_ALLOW_XMLRPC:-false}" = "true" ]; then : > /tmp/nginx-xmlrpc.conf
 else echo 'location = /xmlrpc.php { return 403; }' > /tmp/nginx-xmlrpc.conf; fi
 if [ "${WP_PAGE_CACHE:-false}" = "true" ]; then echo 'set $wp_cache_off 0;' > /tmp/nginx-cache.conf
 else echo 'set $wp_cache_off 1;' > /tmp/nginx-cache.conf; fi
+# Directory listings for static download folders outside WordPress (e.g. WP_AUTOINDEX_PATHS=/kab/,/files/).
+# Files there are served as-is: no PHP, no dotfiles. WordPress paths are refused.
+: > /tmp/nginx-autoindex.conf
+for p in $(printf '%s' "${WP_AUTOINDEX_PATHS:-}" | tr ',' ' '); do
+  case "$p" in */) ;; *) p="$p/" ;; esac
+  if ! printf '%s' "$p" | grep -Eq '^/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/$' || printf '%s' "$p" | grep -Eq '^/wp-|\.\.'; then
+    log "autoindex: ignoring invalid path '$p'"; continue
+  fi
+  printf 'location ^~ %s {\n    autoindex on;\n    location ~ /\\. { deny all; }\n    location ~* \\.(php\\d?|phtml|phar)$ { deny all; }\n    try_files $uri $uri/ =404;\n}\n' "$p" >> /tmp/nginx-autoindex.conf
+  log "autoindex: directory listing enabled for $p"
+done
 # Not ready until we know WordPress is installed.
 set_state() { # $1 = message, empty = ready
   if [ -n "$1" ]; then printf 'set $wp_not_ready 1;\nset $wp_not_ready_msg "%s";\n' "$1" > /tmp/nginx-state.conf
