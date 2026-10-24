@@ -370,7 +370,8 @@ class BackupRun(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
     kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | volume | bucket
-    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore | export
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore | export | delete
+    # queued | running | succeeded | failed; a backup also passes through `deleting` and ends `deleted` (hidden); an export may be `expired`.
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

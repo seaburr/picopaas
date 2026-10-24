@@ -190,13 +190,15 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     run.error = None if ok else (redact(error) or "the backup failed")[:255]
     if ok and run.trigger == "export":
         run.bytes_added = _int(result.get("bytes"))
-    elif ok and run.trigger not in ("purge", "restore"):
+    elif ok and run.trigger not in ("purge", "restore", "delete"):
         run.snapshot_id = str(result.get("snapshot_id") or "")[:64] or None
         run.bytes_added = _int(result.get("bytes_added"))
         run.repo_bytes = _int(result.get("repo_bytes"))
     cfg = session.get(models.AppBackupConfig, run.app_id)
     if run.trigger in ("restore", "export"):
         pass  # neither changes anything about the app's own backup summary
+    elif run.trigger == "delete":
+        _finish_delete(session, run, cfg, ok=ok, result=result, now=now)
     elif cfg is not None and run.trigger == "purge":
         if ok:
             cfg.purged_at = now
@@ -214,7 +216,10 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
             if run.repo_bytes is not None:
                 setattr(cfg, f"{p}_repo_bytes", run.repo_bytes)
             cfg.last_success_at = now
-    if not ok and run.trigger not in ("purge", "restore", "export"):
+    if not ok and run.trigger == "delete":
+        _event(session, run.app_id, run.id,
+               f"Deleting your {KIND_LABEL.get(run.kind, run.kind)} backup failed: {run.error}. The backup is still there.", now)
+    elif not ok and run.trigger not in ("purge", "restore", "export"):
         _event(session, run.app_id, run.id,
                f"Backup of your {KIND_LABEL.get(run.kind, run.kind)} failed: {run.error}. "
                "See the Backups card on the app page for details.", now)
@@ -230,6 +235,12 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
                      f"run={run.id} kind={run.kind} result={'succeeded' if ok else 'failed'}" + ("" if ok else f": {run.error}"),
                      actor_email="system")
         return
+    if run.trigger == "delete":
+        src = session.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+        audit.record(session, None, "backup.deleted" if ok else "backup.delete_failed", "app", run.app_id,
+                     f"run={run.source_run_id} kind={run.kind} snapshot={((src.snapshot_id if src else None) or '')[:8]} delete_run={run.id}"
+                     + ("" if ok else f": {run.error}"), actor_email="system")
+        return
     if run.trigger == "export":
         audit.record(session, None, "backup.export_succeeded" if ok else "backup.export_failed", "app", run.app_id,
                      f"run={run.id} from_run={run.source_run_id} {detail}", actor_email="system")
@@ -244,6 +255,62 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         audit.record(session, None, "backup.pruned", "app", run.app_id,
                      f"run={run.id} kind={run.kind} keep=daily:{config.BACKUP_KEEP_DAILY},weekly:{config.BACKUP_KEEP_WEEKLY},"
                      f"monthly:{config.BACKUP_KEEP_MONTHLY}", actor_email="system")
+
+
+BACKUP_TRIGGERS = ("scheduled", "manual", "final")
+
+
+def _finish_delete(session: Session, run: models.BackupRun, cfg: Optional[models.AppBackupConfig], *, ok: bool,
+                   result: dict[str, Any], now: datetime) -> None:
+    """End of a delete run. Failure: the source run is a normal succeeded backup again. Success: the source row is kept with
+    status `deleted` (so restore/export `source_run_id` history still resolves) but never listed or usable; the kind's
+    repo size comes from the Job's result, and when the deleted run was the kind's latest backup the summary is recomputed."""
+    src = session.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+    if src is None:
+        return
+    if not ok:
+        if src.status == "deleting":
+            src.status = "succeeded"
+        return
+    src.status = "deleted"
+    if cfg is None:
+        return
+    p = _prefix(src.kind)
+    size = _int(result.get("repo_bytes")) if "repo_bytes" in result else None
+    if size is not None:
+        setattr(cfg, f"{p}_repo_bytes", size)
+    if src.finished_at is not None and getattr(cfg, f"{p}_last_backup_at") == src.finished_at:
+        session.flush()
+        _recompute_summary(session, cfg, src.app_id, src.kind)
+
+
+def _latest_backup(session: Session, app_id: int, kind: Optional[str] = None) -> Optional[models.BackupRun]:
+    q = select(models.BackupRun).where(models.BackupRun.app_id == app_id, models.BackupRun.trigger.in_(BACKUP_TRIGGERS),
+                                       models.BackupRun.status.in_(("succeeded", "failed")),
+                                       models.BackupRun.finished_at.is_not(None))
+    if kind is not None:
+        q = q.where(models.BackupRun.kind == kind)
+    return session.execute(q.order_by(models.BackupRun.finished_at.desc(), models.BackupRun.id.desc()).limit(1)).scalar_one_or_none()
+
+
+def _recompute_summary(session: Session, cfg: models.AppBackupConfig, app_id: int, kind: str) -> None:
+    """Per-kind and app-wide last-backup fields from the runs that remain (a deleted run no longer counts)."""
+    p = _prefix(kind)
+    last = _latest_backup(session, app_id, kind)
+    ok = session.execute(select(models.BackupRun).where(
+        models.BackupRun.app_id == app_id, models.BackupRun.kind == kind, models.BackupRun.trigger.in_(BACKUP_TRIGGERS),
+        models.BackupRun.status == "succeeded").order_by(models.BackupRun.finished_at.desc(), models.BackupRun.id.desc()).limit(1)
+    ).scalar_one_or_none()
+    setattr(cfg, f"{p}_last_backup_at", last.finished_at if last else None)
+    setattr(cfg, f"{p}_last_status", last.status if last else None)
+    setattr(cfg, f"{p}_last_error", last.error if last else None)
+    setattr(cfg, f"{p}_last_bytes", ok.bytes_added if ok else None)
+    top = _latest_backup(session, app_id)
+    cfg.last_backup_at, cfg.last_status, cfg.last_error = (top.finished_at, top.status, top.error) if top else (None, None, None)
+    best = session.execute(select(func.max(models.BackupRun.finished_at)).where(
+        models.BackupRun.app_id == app_id, models.BackupRun.trigger.in_(BACKUP_TRIGGERS),
+        models.BackupRun.status == "succeeded")).scalar()
+    cfg.last_success_at = best
 
 
 def _int(v: Any) -> Optional[int]:
@@ -407,13 +474,13 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
             continue
         server_id = app.database.db_server_id if app.database is not None else None
         # one dump or restore at a time per DB server (connection budget)
-        if run.kind == "db" and run.trigger not in ("purge", "export"):
+        if run.kind == "db" and run.trigger not in ("purge", "export", "delete"):
             if server_id is None:
                 _finish(session, run, None, ok=False, error="the app has no database", now=now)
                 continue
             if server_id in busy_servers:
                 continue
-        if run.kind in ("db", "bucket") and run.trigger not in ("purge", "restore", "export"):
+        if run.kind in ("db", "bucket") and run.trigger not in ("purge", "restore", "export", "delete"):
             if repo_bytes(cfg) >= config.BACKUP_MAX_BYTES_PER_APP:
                 _finish(session, run, None, ok=False,
                         error=f"this app's backups reached the {config.BACKUP_MAX_BYTES_PER_APP // 1024**2} MB backup storage cap", now=now)
@@ -451,7 +518,7 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
 def _scratch_mib(run: models.BackupRun) -> int:
     if run.trigger == "export":  # bucket: the restored tree plus the tarball; db: the compressed dump
         return 2 * (config.BACKUP_BUCKET_MAX_BYTES // 1024**2) + 64 if run.kind == "bucket" else 256
-    if run.kind != "bucket" or run.trigger == "purge":
+    if run.kind != "bucket" or run.trigger in ("purge", "delete"):
         return 0
     return config.BACKUP_BUCKET_MAX_BYTES // 1024**2 + 64
 
@@ -512,6 +579,12 @@ def _bucket_env(st: models.AppStorage) -> dict[str, str]:
 def _build_env(session: Session, app: models.App, cfg: models.AppBackupConfig, run: models.BackupRun) -> dict[str, str]:
     """The per-run Secret's contents. Raises ValueError with a safe message when a credential can't be read."""
     env = _repo_env(session, app.id, run.kind, cfg)
+    if run.trigger == "delete":
+        source = session.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+        if source is None or source.app_id != app.id or not source.snapshot_id or cfg.purged_at is not None:
+            raise ValueError("the backup to delete is gone")
+        env.update({"MODE": "forget", "KIND": run.kind, "SNAPSHOT": source.snapshot_id, "TAG": "delete"})
+        return env
     env.update({
         "MODE": "purge" if run.trigger == "purge" else "backup",
         "KIND": run.kind,
@@ -594,6 +667,66 @@ def _build_restore_env(session: Session, run: models.BackupRun, target: models.A
             raise ValueError("the target app has no database")
         env.update(_db_env(target.database))
     return env
+
+
+# --- owner delete of one backup --------------------------------------------------------------
+
+class DeleteRefused(Exception):
+    """Raised by enqueue_delete with a message that is safe to show to the owner."""
+
+    def __init__(self, message: str, status: int = 422) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _repo_busy(session: Session, app_id: int, kind: str) -> bool:
+    """Any backup, restore (into this app, or from this repo into another app), export or delete queued/running that touches
+    this app's repo of `kind`."""
+    own = session.execute(select(models.BackupRun.id).where(
+        models.BackupRun.app_id == app_id, models.BackupRun.kind == kind, models.BackupRun.status.in_(ACTIVE)).limit(1)).first()
+    if own is not None:
+        return True
+    repo_runs = select(models.BackupRun.id).where(models.BackupRun.app_id == app_id, models.BackupRun.kind == kind)
+    return session.execute(select(models.BackupRun.id).where(
+        models.BackupRun.trigger == "restore", models.BackupRun.status.in_(ACTIVE),
+        models.BackupRun.source_run_id.in_(repo_runs)).limit(1)).first() is not None
+
+
+def enqueue_delete(session: Session, app: models.App, source: models.BackupRun, runner: BackupRunner,
+                   now: Optional[datetime] = None) -> tuple[models.BackupRun, list[models.BackupRun]]:
+    """Queue `restic forget <snapshot> --prune` for one succeeded db/bucket backup of `app`. Returns (delete run, exports
+    removed). Takes the per-app lock first; the caller commits. The source goes to status `deleting` until the Job ends.
+    A ready (finished, unexpired) export of this run is deleted from staging and marked `expired` so a download link can't
+    outlive its backup; a queued or running export is a 409 (wait for it)."""
+    now = _now(now)
+    cfg = lock_app(session, app)
+    session.refresh(source)
+    if cfg.repo_password_enc is None or cfg.purged_at is not None:
+        raise DeleteRefused("The repository for that backup has been purged.", 410)
+    if source.status == "deleting":
+        raise DeleteRefused("That backup is already being deleted.", 409)
+    if (source.app_id != app.id or source.trigger not in BACKUP_TRIGGERS or source.kind not in RESTORABLE
+            or source.status != "succeeded" or not source.snapshot_id):
+        raise DeleteRefused("Only a finished database or blob storage backup can be deleted.")
+    if _repo_busy(session, app.id, source.kind):
+        raise DeleteRefused(f"A backup, restore, download or delete is already queued or running for this app's "
+                            f"{KIND_LABEL.get(source.kind, source.kind)} backups. Try again when it finishes.", 409)
+    live = [e for e in session.execute(select(models.BackupRun).where(
+        models.BackupRun.trigger == "export", models.BackupRun.source_run_id == source.id,
+        models.BackupRun.status == "succeeded")).scalars() if export_state(e, now) == "ready" and e.export_key]
+    if live:
+        try:
+            runner.delete_exports([e.export_key for e in live if e.export_key])
+        except BackupRunnerError:
+            raise DeleteRefused("We couldn't remove the prepared download of this backup. Try again in a minute.", 503) from None
+        for e in live:
+            e.status = "expired"
+    source.status = "deleting"
+    run = models.BackupRun(app_id=app.id, kind=source.kind, trigger="delete", status="queued", created_at=now,
+                           source_run_id=source.id)
+    session.add(run)
+    session.flush()
+    return run, live
 
 
 # --- owner download (export) ------------------------------------------------------------------

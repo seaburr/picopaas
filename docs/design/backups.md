@@ -154,6 +154,26 @@ Why scheduler-created Jobs and not a per-app CronJob: the schedule, concurrency 
 | Restore a bucket | 3 | rclone sync from the restored restic tree to the app bucket, after an automatic export of the current contents. |
 | Disaster (cluster loss) | doc only | DO managed DB backup to a new cluster; restic repos are independent of it. Runbook added to `docs/deployment/runbooks.md` with the monthly restore drill on a throwaway app (the REQ-9 acceptance test). |
 
+### Deleting one backup (owner)
+
+`DELETE /apps/{id}/backups/{run_id}` removes one snapshot. Under `backups.lock_app` the API checks that the run is a succeeded
+`db`/`bucket` backup with a snapshot (422 otherwise) and that nothing is queued or running for that repo of that kind (backup,
+restore into the app or from this repo, export, delete: 409), then queues a run with `trigger="delete"` and `source_run_id` = the
+backup and sets the source to `deleting`. The tick starts a Job with `MODE=forget SNAPSHOT=<id>`: it checks the snapshot exists
+(`restic snapshots --json <id>`), runs `restic forget <id> --prune` under `LONG_TIMEOUT` and prints
+`PICOPAAS_RESULT {"forgotten":true,"repo_bytes":N}`. A snapshot that is already gone (retention pruned it first) is success
+and prints a "already gone" step; any other failure is a fixed `PICOPAAS_ERROR`. No DB credentials, no per-server dump slot, no cap checks.
+
+State model: the source is `succeeded -> deleting -> deleted` on success, or back to `succeeded` on failure (including a Job
+that could not start). A `deleted` row is **kept** (not removed) and filtered out of `runs[]`, so `source_run_id` on past
+restore/export/delete runs still resolves; its status makes restore, export and delete refuse it. On success the kind's
+`repo_bytes` is taken from the result, and if the deleted run was the kind's latest backup the per-kind and app-wide
+last-backup fields are recomputed from the remaining runs. On failure the delete run holds the error and a `backup_failed`
+app event says so. Live-export rule: a finished, unexpired download of the run is deleted from the staging prefix and marked
+`expired` as part of the delete (a failure to remove it aborts with 503 and changes nothing); a queued/running export is a 409.
+Audit: `backup.delete` (user), `backup.export_deleted` (reason=backup_deleted), then `backup.deleted` / `backup.delete_failed` (system).
+Delete runs are hidden from `runs[]`. Requires the backup image with `MODE=forget` (republish and re-pin `BACKUP_IMAGE`).
+
 MVP means phase 1: backups exist, are listed, downloadable, and status is visible. Restores are the documented manual
 download-and-reimport flow until phase 2 (honest: restores are phase 2, since an untested backup is not a backup, the drill ships with phase 2).
 

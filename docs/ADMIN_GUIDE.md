@@ -392,10 +392,12 @@ Backup audit actions (creating, deleting and downloading backups are all logged;
 | `backup.succeeded` / `backup.failed` | system | a backup run ends | `run=<id> <kind> <trigger>` |
 | `backup.pruned` | system | after a successful backup, `forget --prune` removed snapshots beyond the policy | `run=<id> kind=<kind> keep=daily:1,weekly:1,monthly:1` |
 | `backup.purged` | system | the 14-day purge of a deleted app's repos, success or failure | `run=<id> kind=<kind> result=succeeded\|failed` |
+| `backup.delete` | the owner or an admin | `DELETE /apps/{id}/backups/{run_id}` accepted | `run=<id> kind=<kind> snapshot=<8 chars>` |
+| `backup.deleted` / `backup.delete_failed` | system | the MODE=forget Job ends | `run=<id> kind=<kind> snapshot=<8 chars> delete_run=<id>` (+ `: <error>` on failure) |
 | `backup.download` | the owner | a new export is requested | `run=<id> kind=<kind> export=<id>` |
 | `backup.download_link` | the owner | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> kind=<kind> expires_in=600` |
 | `backup.export_succeeded` / `backup.export_failed` | system | the export job ends | |
-| `backup.export_deleted` | system | the 1-hour sweep removed an export file (one row per export) | `export=<id> run=<id> reason=expired` |
+| `backup.export_deleted` | system, or the user who deleted the backup | the 1-hour sweep removed an export file (system), or its backup was deleted (user); one row per export | `export=<id> run=<id> reason=expired\|backup_deleted` |
 | `backup.restore`, `backup.restore_succeeded` / `_failed` | admin / system | admin restore | |
 | `backup.config_changed`, `backup.retained` | owner / system | settings change; repos kept after app delete | |
 

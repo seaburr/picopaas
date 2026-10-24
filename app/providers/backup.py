@@ -71,6 +71,9 @@ class BackupRunner(ABC):
         """Delete export objects older than `older_than_seconds`. Returns the deleted keys. Raises BackupRunnerError."""
         return []
 
+    def delete_exports(self, keys: list[str]) -> None:
+        """Delete these export objects now (a backup is being deleted). Raises BackupRunnerError. Default: nothing to do."""
+
     @abstractmethod
     def sweep(self, active: set[str]) -> int:
         """Delete Secrets labelled picopaas.io/backup whose name is not in `active` (a crash between Job end and
@@ -277,6 +280,16 @@ class KubeBackupRunner(BackupRunner):
             return old
         except Exception as exc:  # noqa: BLE001
             raise BackupRunnerError(f"could not sweep exports ({type(exc).__name__})") from None
+
+    def delete_exports(self, keys: list[str]) -> None:
+        if not config.backup_export_prefix_ok() or any(not k.startswith(config.BACKUP_EXPORT_PREFIX) or ".." in k for k in keys):
+            raise BackupRunnerError("could not delete exports (unsafe export key)")  # never touch a repo object
+        if not keys:
+            return
+        try:
+            self._s3().delete_objects(Bucket=config.BACKUP_BUCKET, Delete={"Objects": [{"Key": k} for k in keys], "Quiet": True})
+        except Exception as exc:  # noqa: BLE001
+            raise BackupRunnerError(f"could not delete exports ({type(exc).__name__})") from None
 
     def sweep(self, active: set[str]) -> int:
         from app.providers.kube import _as_dict

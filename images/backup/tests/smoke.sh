@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test of a built backup image against REAL MySQL 8.4 and PostgreSQL 17 (TLS on, as on the managed servers):
-# db backup, then restore of that snapshot into the same database. The pytest script tests stub mariadb-dump, pg_dump and
+# db backup, restore of that snapshot into the same database, then forget of that snapshot (twice). The pytest script tests stub mariadb-dump, pg_dump and
 # restic, so a flag the packaged client rejects (2026-10-24: mariadb-dump --connect-timeout) only shows up here.
 # Usage: images/backup/tests/smoke.sh <image>   (run by .github/workflows/backup-image.yml before the push; needs docker)
 set -euo pipefail
@@ -50,5 +50,12 @@ for spec in "mysql $NET-mysql 3306" "pg $NET-pg 5432"; do
   snap="$(sed -E 's/.*"snapshot_id":"([0-9a-f]+)".*/\1/' <<<"$last")"
   out="$(run "$engine" "$host" "$port" -e MODE=restore -e KIND=db -e SNAPSHOT="$snap")" || true; echo "$out"
   [[ "$(tail -n1 <<<"$out")" == *'"restored":true'* ]] || { echo "SMOKE FAIL: $engine restore"; exit 1; }
+  # owner delete of one backup: restic forget <snapshot> --prune, then again (already gone, e.g. pruned by retention = success)
+  out="$(run "$engine" "$host" "$port" -e MODE=forget -e KIND=db -e SNAPSHOT="$snap")" || true; echo "$out"
+  [[ "$(tail -n1 <<<"$out")" == 'PICOPAAS_RESULT {"forgotten":true'* ]] || { echo "SMOKE FAIL: $engine forget"; exit 1; }
+  [[ "$out" == *"deleting the snapshot"* ]] || { echo "SMOKE FAIL: $engine forget did not delete"; exit 1; }
+  out="$(run "$engine" "$host" "$port" -e MODE=forget -e KIND=db -e SNAPSHOT="$snap")" || true; echo "$out"
+  [[ "$(tail -n1 <<<"$out")" == 'PICOPAAS_RESULT {"forgotten":true'* && "$out" == *"already gone"* ]] \
+    || { echo "SMOKE FAIL: $engine forget of a missing snapshot"; exit 1; }
 done
 echo "SMOKE OK"

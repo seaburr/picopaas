@@ -6,6 +6,8 @@
 #   MODE=restore  KIND=bucket  restic restore SNAPSHOT, empty the target bucket, upload the files
 #   MODE=export   KIND=db|bucket  restic dump SNAPSHOT as ONE file (db: .sql.gz or .pgdump, bucket: .tar.gz) and upload it to
 #                              s3://$EXPORT_BUCKET/$EXPORT_KEY with the backup key (owner download; the API presigns it)
+#   MODE=forget   KIND=db|bucket  SNAPSHOT=<id>  `restic forget <id> --prune` (owner deleted one backup); a snapshot that is already gone
+#                              (pruned by retention) counts as success; prints {"forgotten":true,"repo_bytes":N}
 #   MODE=purge                 forget every snapshot of the repo and prune (deleted-app retention expired)
 # Inputs (env, from the per-run Secret): ENGINE (mysql|pg), DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_CA,
 # SRC_ENDPOINT SRC_BUCKET SRC_REGION SRC_ACCESS_KEY SRC_SECRET_KEY (bucket kind: the app whose bucket is read; for a
@@ -46,7 +48,7 @@ step "start mode=$MODE kind=$KIND"
 # Create the repo on first use ("cat config" succeeds only when it exists). A restore never creates one.
 step "opening the backup repository"
 if ! $RQ cat config >/dev/null 2>&1; then
-  [ "$MODE" = "restore" ] || [ "$MODE" = "export" ] && fail "the backup repository could not be opened"
+  [ "$MODE" = "restore" ] || [ "$MODE" = "export" ] || [ "$MODE" = "forget" ] && fail "the backup repository could not be opened"
   step "creating the backup repository"
   $RQ init --quiet >/dev/null 2>&1 || fail "could not open or create the backup repository"
 fi
@@ -55,6 +57,30 @@ step "backup repository ready"
 if [ "$MODE" = "purge" ]; then
   $RESTIC forget --keep-tag picopaas-keep-nothing --prune >/dev/null 2>&1 || fail "purge failed"
   echo 'PICOPAAS_RESULT {"purged":true}'
+  exit 0
+fi
+
+if [ "$MODE" = "forget" ]; then
+  : "${SNAPSHOT:?}"
+  case "$SNAPSHOT" in ""|*[!0-9a-f]*) fail "the snapshot id is not valid" ;; esac
+  step "checking the snapshot"
+  # restic says "no matching ID" for an unknown id in a repo that has snapshots, but exits 0 with an empty list when the repo
+  # has none at all, so count what came back instead of trusting the exit status alone.
+  if SNAPS="$($RQ snapshots --json "$SNAPSHOT" 2>"$TMP/snap.err")"; then
+    COUNT="$(printf '%s' "$SNAPS" | jq 'length' 2>/dev/null)"
+  elif grep -qiE "no matching id|no snapshot|not found" "$TMP/snap.err" 2>/dev/null; then
+    COUNT=0
+  else
+    fail "checking the snapshot failed"
+  fi
+  case "${COUNT:-}" in
+    0) step "the snapshot is already gone" ;;  # retention pruned it first: nothing left to delete
+    [1-9]*) step "deleting the snapshot"
+            $RESTIC forget "$SNAPSHOT" --prune >/dev/null 2>&1 || fail "deleting the backup failed" ;;
+    *) fail "checking the snapshot failed" ;;
+  esac
+  REPO="$($RQ stats --mode raw-data --json 2>/dev/null | jq -r '.total_size // empty' 2>/dev/null)"
+  if [ -n "${REPO:-}" ]; then echo "PICOPAAS_RESULT {\"forgotten\":true,\"repo_bytes\":$REPO}"; else echo 'PICOPAAS_RESULT {"forgotten":true}'; fi
   exit 0
 fi
 

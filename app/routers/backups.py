@@ -50,7 +50,7 @@ class BackupRunOut(BaseModel):
     id: int
     kind: str
     trigger: str
-    status: str  # queued | running | succeeded | failed
+    status: str  # queued | running | succeeded | failed | deleting (an owner delete is in progress)
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
@@ -112,7 +112,8 @@ def _out(db: Session, app: models.App) -> BackupsOut:
     runs = []
     if backups.enabled():
         runs = (db.query(models.BackupRun)
-                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export")))
+                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export", "delete")),
+                        models.BackupRun.status != "deleted")
                 .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc()).limit(RUNS_SHOWN).all())
     live = backups.live_exports_by_run(db, app.id, [r.id for r in runs]) if runs else {}
     kinds = []
@@ -307,3 +308,33 @@ def get_download(app_id: int, export_id: int, db: Session = Depends(get_db), use
         audit.record(db, user, "backup.download_link", "app", app.id,
                      f"export={run.id} run={run.source_run_id} kind={run.kind} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
     return out
+
+
+class BackupDeleteOut(BaseModel):
+    run_id: int  # the backup run being deleted (as in the path)
+    status: str  # always "deleting" here
+    delete_run_id: int
+
+
+@router.delete("/{app_id}/backups/{run_id}", response_model=BackupDeleteOut, status_code=202)
+def delete_backup(app_id: int, run_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
+                  runner: BackupRunner = Depends(get_backup_runner)):
+    """Delete one succeeded database or blob storage backup (its restic snapshot, then prune). 202; the run shows
+    `status: "deleting"` in GET /apps/{id}/backups until the Job ends, then disappears (or returns to `succeeded` on failure).
+    409 while a backup, restore, download or delete is active for that repo. A ready download of the run is removed with it."""
+    app = _get_app_or_404(db, app_id, user)
+    _require_usable()
+    source = db.get(models.BackupRun, run_id)
+    if source is None or source.app_id != app.id or source.status == "deleted":
+        raise HTTPException(status_code=404, detail="We can't find that backup run.")
+    try:
+        run, exports = backups.enqueue_delete(db, app, source, runner)
+    except backups.DeleteRefused as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    db.commit()
+    audit.record(db, user, "backup.delete", "app", app.id,
+                 f"run={source.id} kind={source.kind} snapshot={(source.snapshot_id or '')[:8]}")
+    for e in exports:
+        audit.record(db, user, "backup.export_deleted", "app", app.id, f"export={e.id} run={source.id} reason=backup_deleted")
+    return BackupDeleteOut(run_id=source.id, status="deleting", delete_run_id=run.id)

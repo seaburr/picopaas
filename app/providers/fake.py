@@ -458,12 +458,19 @@ class FakeBackupRunner(BackupRunner):
         self.export_sweeps: list[int] = []  # older_than_seconds of each sweep_exports call
         self.fail_presign = False
         self.swept_keys: list[str] = []  # keys the next sweep_exports call reports as deleted
+        self.deleted_exports: list[str] = []  # keys passed to delete_exports
+        self.fail_delete_exports = False
 
     def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
         if self.fail_presign:
             raise BackupRunnerError("could not sign the download (FakeError)")
         self.presigned.append((key, expires_seconds, filename))
         return f"https://backups.example.invalid/{key}?X-Amz-Expires={expires_seconds}&sig=not-a-signature"
+
+    def delete_exports(self, keys: list[str]) -> None:
+        if self.fail_delete_exports:
+            raise BackupRunnerError("could not delete exports (FakeError)")
+        self.deleted_exports += list(keys)
 
     def sweep_exports(self, older_than_seconds: int) -> list[str]:
         self.export_sweeps.append(older_than_seconds)
