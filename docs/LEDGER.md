@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: WordPress relative redirects + WP_AUTOINDEX_PATHS committed (67c7446); pushed, gitleaks clean. No findings.
 - 2026-10-23 [scm-security] DONE: volume ceiling bf16df9, Blob storage UI c4978d0, docs 37819fc; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit/push volume ceiling + Blob storage rename; watch CI.
 - 2026-10-23 [tech-writer] DONE (uncommitted): prose rename Storage -> Blob storage across USER/ADMIN/CLI/API/ARCHITECTURE/ROADMAP docs, README, ghost example, WP migration; blob storage vs persistent volume table in USER_GUIDE section 7. Contracts untouched; no anchor links affected.
