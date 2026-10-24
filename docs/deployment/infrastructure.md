@@ -79,6 +79,8 @@ account to 100 buckets, so roughly 100 blob-storage apps is the wall (raising it
 provisioning (`SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`) live in `picopaas-env`. Credential theft from Spaces is
 out of scope (request 0002).
 
+Backups (request 0008 phase 1, enabled 2026-10-23): a dedicated bucket `picopaas-backups` in the same ATL1 Spaces subscription ($0 extra; counts toward the 100-bucket limit), created by bootstrap if missing, restic repos under `backups/`. The second-region bucket from request 0008 is deferred, so a regional ATL1 outage or loss of the Spaces account takes backups too. **Shared key decision (2026-10-23)**: backups reuse the platform Spaces key (`BACKUP_ACCESS_KEY_*` = `SPACES_*`), so a leaked backup Job credential can reach every tenant bucket. Acceptable only while Jobs run in the platform namespace (DB dumps); it must be replaced with a bucket-scoped key before volume backups run in tenant namespaces.
+
 ## DNS and domain
 
 The domain `picopaas.xyz` is a DO DNS domain. `bootstrap` upserts only the A records `*` and `picopaas` to the load

@@ -10,6 +10,9 @@ on:
       sha:
         description: "Commit SHA (short or full) whose image to deploy; default = current ref"
         required: false
+      backup_image_digest:
+        description: "Optional sha256:<64 hex> of ghcr.io/seaburr/picopaas-backup to pin; default = resolve :latest at run time"
+        required: false
 
 permissions:
   contents: read
@@ -277,6 +280,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         env:
           PICOPAAS_FERNET_KEY: ${{ secrets.PICOPAAS_FERNET_KEY }}
+          BACKUP_IMAGE_DIGEST_INPUT: ${{ inputs.backup_image_digest }}
         run: |
           set -euo pipefail
           ns=picopaas-system
@@ -330,7 +334,35 @@ jobs:
             --from-file=ca.crt="$RUNNER_TEMP/db-ca.crt" \
             ${PG_HOST:+--from-file=pg-ca.crt="$RUNNER_TEMP/pg-ca.crt"} --dry-run=client -o yaml | kubectl apply -f -
 
+          # ---- Backups (request 0008 phase 1; enabled by Chas 2026-10-23) ----
+          # Dedicated bucket in the SAME Spaces region/subscription ($0 extra) so tenant bucket listing never sees it.
+          # Created idempotently with the platform Spaces key (Spaces buckets are private by default).
+          BACKUP_BUCKET="picopaas-backups"
+          BACKUP_ENDPOINT="https://$SPACES_REGION.digitaloceanspaces.com"
+          if AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+              aws s3api head-bucket --bucket "$BACKUP_BUCKET" --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" 2>/dev/null; then
+            echo "backup bucket $BACKUP_BUCKET exists"
+          else
+            AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+              aws s3api create-bucket --bucket "$BACKUP_BUCKET" --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" \
+              || { echo "::error::could not create backup bucket $BACKUP_BUCKET (name taken by another account? change BACKUP_BUCKET)"; exit 1; }
+          fi
+          # The backup pod must get a digest-pinned image. Use the workflow input, else resolve :latest now
+          # (package ghcr.io/seaburr/picopaas-backup must be Public; build it with backup-image.yml first).
+          BACKUP_IMAGE_DIGEST="${BACKUP_IMAGE_DIGEST_INPUT:-}"
+          if [ -z "$BACKUP_IMAGE_DIGEST" ]; then
+            BACKUP_IMAGE_DIGEST=$(docker buildx imagetools inspect ghcr.io/seaburr/picopaas-backup:latest --format '{{json .Manifest}}' | jq -r .digest)
+          fi
+          case "$BACKUP_IMAGE_DIGEST" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "::error::could not determine backup image digest (got '$BACKUP_IMAGE_DIGEST'); run backup-image.yml and make the package Public, or pass backup_image_digest"; exit 1;;
+          esac
+          BACKUP_IMAGE="ghcr.io/seaburr/picopaas-backup@$BACKUP_IMAGE_DIGEST"
+          echo "backup image: $BACKUP_IMAGE"
+
           # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
+          # BACKUP_ACCESS_KEY_ID/SECRET below reuse the platform Spaces key BY DECISION 2026-10-23 (Chas); must be
+          # replaced with a bucket-scoped key before volume backups in tenant namespaces (docs/design/backups.md).
           kubectl -n $ns create secret generic picopaas-env \
             --from-literal=ENVIRONMENT=production \
             --from-literal=FERNET_KEY="$FERNET_KEY" \
@@ -344,6 +376,14 @@ jobs:
             --from-literal=SPACES_REGION="$SPACES_REGION" \
             --from-literal=SPACES_ENDPOINT="https://$SPACES_REGION.digitaloceanspaces.com" \
             --from-literal=APP_DOMAIN="$DOMAIN" \
+            --from-literal=BACKUPS_ENABLED=1 \
+            --from-literal=BACKUP_BUCKET="$BACKUP_BUCKET" \
+            --from-literal=BACKUP_PREFIX=backups/ \
+            --from-literal=BACKUP_REGION="$SPACES_REGION" \
+            --from-literal=BACKUP_ENDPOINT="$BACKUP_ENDPOINT" \
+            --from-literal=BACKUP_IMAGE="$BACKUP_IMAGE" \
+            --from-literal=BACKUP_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+            --from-literal=BACKUP_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
             --from-literal=RECONCILER_ENABLED=1 \
             --from-literal=MAX_NODES=2 \
             --from-literal=VOLUMES_ENABLED=1 \

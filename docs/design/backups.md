@@ -28,6 +28,9 @@ WordPress blog (image + 1 GiB RWO volume + managed MySQL database + optional Spa
 | Execution | Leader-only scheduler job decides what is due and creates k8s Jobs; DB dumps and maintenance run in a platform namespace, volume backups must run in the app namespace. |
 | Cost | Phase 1 fits inside the existing $5 Spaces subscription: marginal about $0. Snapshots (phase 3, optional) about $0.06/GiB/mo. |
 
+**Decisions log**
+- 2026-10-23 (Chas): enable backups on this instance and **reuse the existing platform Spaces credentials** for the backup bucket (no separate key). Phase 1 uses a dedicated bucket `picopaas-backups` in the existing ATL1 region (created by bootstrap, $0 extra) with prefix `backups/`; the second-region bucket (request 0008) is deferred. **Condition**: the shared full-access key must be replaced by a bucket-scoped key before volume backups run in tenant namespaces (phase 1b), because that Secret would then be readable from tenant-adjacent Jobs.
+
 ## 1. What is protected and how
 
 RPO is the schedule interval (default daily, so up to 24 h of data loss). RTO is the operator time to run a restore; targets below

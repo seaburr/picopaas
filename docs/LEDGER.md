@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] START: commit/push backups-enable infra change (bootstrap.yml + docs); watch CI. Bootstrap NOT run. Shared-key blast radius already recorded in docs/PENTEST.md and backups.md; no new finding.
+- 2026-10-23 [infra-ops] DONE (uncommitted): backups enabled in bootstrap.yml (picopaas-env BACKUPS_ENABLED=1 + BACKUP_*; idempotent `picopaas-backups` bucket via aws s3api in ATL1; digest-pinned BACKUP_IMAGE resolved from :latest or `backup_image_digest` input; shared platform Spaces key by decision). Docs: ci-cd.md, infrastructure.md, design/backups.md decisions. Not run.
+- 2026-10-23 [infra-ops] START: enable backups in bootstrap (shared Spaces key, dedicated bucket, digest-pinned image).
+- 2026-10-23 [ghost-poc] START: deploy ghost-poc app, build WP->Ghost migration script (waits on Chas's Admin API key file).
 - 2026-10-23 [scm-security] DONE: backups 1a committed in 3 chunks + ledger; gitleaks clean. See push/CI below.
 - 2026-10-23 [scm-security] START: commit/push backups 1a; watch CI, backup-image, deploy.
 - 2026-10-23 [security-reviewer] DONE (uncommitted): backups 1a review. Fixed: truncated-snapshot cleanup in picopaas-backup.sh, retention when owner disabled backups, workflow action SHA pins, deploy.yml empty-CIDR guard (+2 tests). Findings in docs/PENTEST.md; decisions: shared bucket key blast radius, final-backup churn.
