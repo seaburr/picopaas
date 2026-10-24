@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] BLOCKED (owner: backend-dev/infra-ops): backup-image run 40096619735 failed AFTER 'SMOKE OK' (MySQL + PostgreSQL backup/restore passed): cleanup `rm -rf` of the temp dir fails with 'Permission denied' on mysql/repo and pg/repo (repo files written by the container's non-root user), so the step exits 1 and the image is not pushed. Fix in images/backup/tests/smoke.sh cleanup: remove the repos via the container (docker run --rm -v ... rm -rf) or chmod/`|| true`; then republish. CI, image, deploy green.
 - 2026-10-24 [scm-security] DONE: pushed f00128f (backup dump fix+smoke+pentest), fe33092 (coverage tests), 7d18845 (UI fixes); gitleaks clean. Backup image must be republished and BACKUP_IMAGE re-pinned. No findings.
 - 2026-10-24 [scm-security] START: commit/push backup dump fix + smoke test, pentest fixes, coverage tests, UI fixes; watch CI/image/backup-image/deploy. Suite 1434 passed, typecheck clean.
 - 2026-10-24 [security-reviewer] DONE (uncommitted): backups pentest. Fixed: export filename sanitised (Content-Disposition/CLI path), script refuses `..` object keys (real s5cmd writes outside dir), export-prefix overlap guard (config.backup_export_prefix_ok); tests/test_backups_security.py (48), PENTEST.md section. Backup image must be republished + BACKUP_IMAGE re-pinned. Live apps 154/155 deleted. Suite green (1434).
