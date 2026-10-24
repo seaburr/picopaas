@@ -5,6 +5,12 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: committed CRD + AWS research and ledger; gitleaks clean, only <acct>/<id> placeholders in aws-port.md. No findings.
+- 2026-10-23 [scm-security] START: commit/push CRD + AWS research + ledger.
+- 2026-10-23 [infra-ops] DONE (uncommitted): docs/research/aws-port.md. AWS port ~20 agent-days (~16 for EC2+k3s); S3 is native so bootstrap.md contract untouched. EKS like-for-like ~$155/mo vs DO $75.30 (cheapest EKS ~$120); EC2+k3s+RDS+S3 ~$62 ($48 no PG). Nothing provisioned; no cloud account or local kubectl touched.
+- 2026-10-23 [infra-ops] START: AWS port research (docs only, no provisioning).
+- 2026-10-23 [backend-dev] DONE (uncommitted): docs/research/crd.md. Spec is CRD-shaped in 2-3 days (option C: accept picopaas.io/v1alpha1 + picopaas/v1); read-only mirror (B) +3-4 days; thin GitOps controller +8-12; full operator ~20-30 (not recommended: tenants would need kube creds). Research only, nothing provisioned or touched.
+- 2026-10-23 [backend-dev] START: CRD research (docs only, no code).
 - 2026-10-23 [scm-security] DONE: committed Azure research, WP_AUTOINDEX_PATHS note, ledger; gitleaks clean, no identifiers in azure-port.md. No findings.
 - 2026-10-23 [scm-security] START: commit/push Azure research + WP migration note + ledger.
 - 2026-10-23 [infra-ops] DONE (uncommitted): docs/research/azure-port.md. Azure port ~26 agent-days; AKS like-for-like ~$121/mo vs DO $75.30 (cheapest AKS ~$104; VM+k3s variant ~$68). Biggest decision: Blob is not S3 (bootstrap.md contract). Recommend phase 0 seam refactor only unless credits cover it. Nothing provisioned; no cloud account or local kubectl touched.
