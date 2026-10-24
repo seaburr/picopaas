@@ -26,7 +26,7 @@ images and forces a non-root numeric UID (10001). So this image:
 ## Deploy it
 1. Build: push to `examples/ghost/**` → the `examples` workflow publishes
    `ghcr.io/seaburr/picopaas-example-ghost:<sha>` (make the GHCR package **public** — PicoPaaS pulls anonymously).
-2. Create an app with a **database** and a **storage bucket**, port **2368**, image
+2. Create an app with a **database** and a **blob storage bucket**, port **2368**, image
    `ghcr.io/seaburr/picopaas-example-ghost:latest`, and these env refs:
    `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_NAME=${{ db.name }}`, `DB_USER=${{ db.user }}`,
    `DB_PASSWORD=${{ db.password }}`, `DB_CA_CERT=${{ db.ca_cert }}`, `S3_ENDPOINT=${{ storage.endpoint }}`,
@@ -37,7 +37,7 @@ images and forces a non-root numeric UID (10001). So this image:
 
 ## Uploaded images
 The published image (built by `.github/workflows/examples.yml` with `WITH_S3=1`) includes the
-`ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS bucket. The entrypoint sets the adapter's
+`ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS blob storage bucket. The entrypoint sets the adapter's
 `assetHost` to the public Spaces URL (`https://<bucket>.<region>.digitaloceanspaces.com`) so image links resolve
 (the adapter default is AWS-style). A plain local `docker build` defaults to `WITH_S3=0` (uploads on ephemeral disk).
 

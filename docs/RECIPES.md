@@ -19,7 +19,7 @@ a non-root numeric UID (10001). So we build a thin image on top that runs as 100
 - An `/etc/passwd` entry for UID 10001. Node's `os.userInfo()` throws for a UID with no entry.
 - `content/` seeded from `content.orig` at build. The stock root entrypoint normally does this and we bypass it.
 - `chown` of `content/` only. Chowning the whole tree duplicates it in a new layer and doubles the image.
-- The S3 storage adapter, behind build-arg `WITH_S3=1` (the published image is built with it).
+- The S3 blob storage adapter, behind build-arg `WITH_S3=1` (the published image is built with it).
 - `HOME=/tmp`, which any UID can write.
 
 ```dockerfile
@@ -630,7 +630,7 @@ for the spec and env vars, and `examples/wordpress/MIGRATION.md` to move an exis
   `${{ storage.bucket }}`, `${{ storage.access_key }}`, `${{ storage.secret_key }}`. See the
   [User guide](USER_GUIDE.md) and [API](API.md) for the full set.
 - **No persistent filesystem.** The 250 MB scratch disk is wiped on restart. Keep state in the MySQL database and
-  uploads in the storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
+  uploads in the blob storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
 - **No outbound SMTP.** Disable features that send email, or they will error.
 - **Fit the caps:** 512 MB image, 200m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
 

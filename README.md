@@ -1,7 +1,7 @@
 # PicoPaaS
 
 A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
-and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible storage bucket (100 MB). Each app gets its own HTTPS
+and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB). Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
@@ -12,7 +12,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
-- Optional MySQL or PostgreSQL database and S3-compatible storage bucket per app, each with its own credentials.
+- Optional MySQL or PostgreSQL database and S3-compatible blob storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.picopaas.xyz`) from a wildcard certificate.
 - Logs (with download), restart, and live status in the UI.
 - One-click templates (Ghost, an nginx static site, the podinfo sample API) that prefill the new-app form.
@@ -36,7 +36,7 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Scratch disk | 250 MB (pod is evicted over it) |
 | Image size | 512 MB compressed |
 | MySQL or PostgreSQL database | 50 MB (writes revoked over it) |
-| Storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
+| Blob storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
 | Outbound bandwidth | 20 Mbit/s per app (about 2.5 MB/s), counting everything the app sends, HTTP responses to visitors included |
 | Apps per user | 1 by default (`app_limit`; an administrator can raise it). Hard cap of 5 active apps per account, administrators included (`MAX_APPS_PER_USER`) |
 
@@ -133,7 +133,7 @@ sequenceDiagram
 | TLS | cert-manager, Let's Encrypt, DNS-01 via DO | One wildcard cert, so no per-app issuance or rate limits |
 | Metrics | metrics-server | CPU and memory in the admin health view |
 | Database | DO Managed MySQL 8.4 and Managed PostgreSQL 17 | MySQL holds the platform DB. Each app's database (MySQL or PostgreSQL, chosen by `resources.db_engine`) gets its own database and user/role, over the VPC with TLS |
-| Object storage | DO Spaces (S3 API, boto3) | A bucket and access key per app |
+| Blob storage | DO Spaces (S3 API, boto3) | A bucket and access key per app |
 | Secrets at rest | Fernet (`cryptography`), MultiFernet for rotation | One platform key encrypts env secrets, DB and bucket credentials |
 | Infra as code | Terraform with Terraform Cloud state | Cluster, VPC, MySQL, PostgreSQL, firewall, Spaces bucket, DNS |
 | CI/CD | GitHub Actions, GHCR | Public repo and images, so both are free |

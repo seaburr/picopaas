@@ -1,7 +1,7 @@
 # PicoPaaS User Guide
 
 This guide is for app owners. You deploy one Docker image, give it env vars and secrets, and optionally add a MySQL or PostgreSQL
-database and an S3-compatible storage bucket. PicoPaaS serves your app over HTTPS at a generated hostname such as
+database and an S3-compatible blob storage bucket. PicoPaaS serves your app over HTTPS at a generated hostname such as
 `clever-robin-a1b2c3d.picopaas.xyz`.
 
 Platform URL: `https://platform.picopaas.xyz` (the CLI default).
@@ -33,13 +33,13 @@ administrator restores the account.
 | Image visibility | Public images only. A missing or private image gives `422` ("Couldn't find that image, or it's private..."). |
 | CPU / memory | Each app gets a limit of **200m CPU / 384Mi** (request 64m / 128Mi) and runs one replica. Only a platform administrator can raise CPU, memory, replicas (1 to 3), scratch disk, outbound bandwidth, database connections or quotas for a specific app; ask them if you need more. |
 | Outbound bandwidth | **20 Mbit/s** (about 2.5 MB/s) per app, enforced on the pod. It applies to everything your app sends, including HTTP responses to visitors, so a download-heavy app is throttled. Inbound traffic is not capped. A platform administrator can raise it per app (up to 160 Mbit/s). |
-| Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the storage bucket. |
+| Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the blob storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
 | Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too (`app_limit` is the per-user setting, default 1; the hard max is the ceiling for it). Over the limit gives `403` ("You've reached your limit of N apps..."). |
 | Database | Optional database, your choice of MySQL or PostgreSQL (see section 5a), 50 MB. |
-| Storage | Optional storage bucket (S3-compatible), 100 MB. |
+| Blob storage | Optional blob storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |
-| Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. There is no persistent disk; use the database or bucket. |
+| Hardening | Pods run with seccomp `RuntimeDefault`, no privilege escalation, all capabilities dropped. Without a persistent volume (section 7a) there is no persistent disk; use the database or blob storage. |
 
 Example Dockerfile:
 
@@ -57,7 +57,7 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 1. Open **Apps**, then **New app**, and stay on the **Form** tab.
 2. Enter a name, image and container port.
-3. Tick **Database** and **Storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
+3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
 5. Optional: open **Advanced: health check**, turn it on, and set the path and (optionally) a timeout.
 6. Click **Create app**.
@@ -163,7 +163,7 @@ secrets:
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
 | `resources.db_engine` | string | no | see note | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
-| `resources.storage` | boolean | no | `false` | Provisions a storage bucket. Same removal rule. |
+| `resources.storage` | boolean | no | `false` | Provisions a blob storage bucket. Same removal rule. |
 | `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
 | `healthCheck.timeoutSeconds` | integer | no | blank | 1 to 90. Probe timeout for both probes; blank uses the platform values (see section 8). `periodSeconds` is raised to at least the timeout. |
@@ -297,7 +297,16 @@ conn = psycopg.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"
 
 **Connection limit (MySQL).** Your database user is capped at 10 simultaneous connections (platform setting `MAX_DB_USER_CONNECTIONS`). If your app uses a connection pool, keep its maximum size at or below this, otherwise MySQL returns `exceeded the 'max_user_connections' resource`. For example, set Knex/Ghost `pool.max` to 10 or less.
 
-## 7. Storage bucket (S3)
+## 7. Blob storage (S3)
+
+PicoPaaS has two ways to keep files. Pick by how your app reads them:
+
+| | Blob storage | Persistent volume |
+|---|---|---|
+| What it is | S3-compatible bucket, reached over the network API | Disk mounted into the container (section 7a) |
+| Survives restarts | Yes | Yes |
+| Replicas | Any | Single replica only |
+| Default size | 100 MB | 1 GiB |
 
 ```yaml
 resources: { storage: true }
@@ -332,7 +341,7 @@ picopaas storage upload myapp ./site.tar.gz --key restore/site.tar.gz
 picopaas storage download myapp restore/site.tar.gz -o site.tar.gz
 ```
 
-The CLI asks PicoPaaS for a short-lived link (10 minutes) for that one object and streams the file directly to storage. An upload is
+The CLI asks PicoPaaS for a short-lived link (10 minutes) for that one object and streams the file directly to blob storage. An upload is
 refused if it would not fit in the bucket's remaining quota, or while the bucket is over its cap (see Recovering from over-cap).
 
 ## 7a. Persistent volume
@@ -351,7 +360,7 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
   so expect a gap of up to about a minute on each deploy, restart and when the platform moves your app to another machine.
 - **Your app writes to the mount path.** The volume is writable by the non-root user your image runs as; put the data
   under `mountPath` (default `/data`). Don't mount over directories your image needs to start, unless it copies them in.
-- **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink.
+- **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink. Growing a volume after it's created is supported by the API (DigitalOcean's CSI driver expands the filesystem online) but is not yet tested live on this platform, so plan the size up front.
 - **No detaching.** To drop a volume, delete the app; the data is destroyed with it.
 - **Not backed up yet.** Treat it as one copy of the data. Keep anything irreplaceable somewhere else too.
 
@@ -400,24 +409,24 @@ a new one, and it deploys normally.
 
 ## 9. Credential rotation
 
-Rotate the database password or the storage keys from the **Danger zone** on the app's **Settings** page, with
+Rotate the database password or the blob storage keys from the **Danger zone** on the app's **Settings** page, with
 `picopaas rotate NAME --db` (or `--storage`), or with `POST /apps/{id}/rotate-credentials` and
 `{"target": "db"}` or `{"target": "storage"}`. The old credentials stop working, and the app restarts with the new ones,
 so expect a short interruption.
 
 Rotation can fail in two ways:
 
-- `409` ("Your database is still being created..." or the storage equivalent): the database or bucket isn't ready yet,
+- `409` ("Your database is still being created..." or the blob storage equivalent): the database or bucket isn't ready yet,
   or the app never had one. Try again in a minute.
 - `502` ("Couldn't rotate the credentials, so the old ones still work..."): the provider call failed. Your old
   credentials are kept.
 
-If an app shows "Your saved secrets can't be read", rotating fixes the database and storage credentials. Secret env vars
+If an app shows "Your saved secrets can't be read", rotating fixes the database and blob storage credentials. Secret env vars
 marked "can't be read" are not fixed by rotation: open **Edit**, type their values again and save.
 
 ## 10. Quotas
 
-Database size is checked every minute and storage every 5 minutes, so a limit is enforced with some delay (a fast writer can
+Database size is checked every minute and blob storage every 5 minutes, so a limit is enforced with some delay (a fast writer can
 overshoot a little before the next check). Both are shown on the app page (**Usage**), in `picopaas status <app>`, and in
 `GET /apps/{id}` under `quota`; an app over a cap gets an **over cap** badge in the list.
 
@@ -434,7 +443,7 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
   pages, so the reported size may not shrink until you `TRUNCATE`, `DROP` or run `OPTIMIZE TABLE`; on PostgreSQL use
   `VACUUM FULL` or `TRUNCATE`). On PostgreSQL a session your app keeps open may stay read-only; reconnect it. Within about a minute the platform
   re-measures and restores writes. You don't need to click anything. `GET /apps/{id}/database/usage` shows the live size.
-- **Storage:** your app only holds a read-only key while over the cap, so delete through the platform instead: on the **App
+- **Blob storage:** your app only holds a read-only key while over the cap, so delete through the platform instead: on the **App
   health** page click **Free up space** (delete everything, or everything under a prefix), run
   `picopaas storage-delete <app> --prefix uploads/old/` (or `--all`), or call `POST /apps/{id}/storage/delete` with
   `{"prefix": "..."}` or `{"all": true}`. Each call deletes up to 5000 objects. Repeat it if the response says `truncated`. As soon
@@ -485,7 +494,7 @@ The UI and CLI show friendly names. The API uses the raw value in the second col
 | Suspended | `suspended` | Stopped (scaled to zero) by an administrator, or because your account was suspended. You can't edit, rotate or delete it. |
 | Deleted | `deleted` | Torn down. Deleted apps normally disappear from your list. |
 
-Deleting an app removes its namespace, database and storage bucket.
+Deleting an app removes its namespace, database and blob storage bucket.
 
 ### Viewing logs
 
@@ -519,7 +528,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | TLS error from your database | Use the CA certificate from `${{ db.ca_cert }}`. For MySQL on Python 3.13, see the strict-flag note in section 6. |
 | Database writes fail with a read-only or permission error | You hit the 50 MB cap (on PostgreSQL, past 100 MB `CONNECT` is refused). The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
 | Bucket writes fail (`AccessDenied`) and the app page says the bucket is over its cap | Click **Free up space** (or run `picopaas storage-delete`). Your app's own key is read-only and can't delete. |
-| The app restarts with "used more than 250 MB of local disk" | The app wrote too much to the container filesystem, `/tmp` or logs. Store files in the storage bucket and log less. |
+| The app restarts with "used more than 250 MB of local disk" | The app wrote too much to the container filesystem, `/tmp` or logs. Store files in the blob storage bucket and log less. |
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
 | `User ... has exceeded the 'max_user_connections' resource` | MySQL: your pool is bigger than the per-app connection cap (10). Lower the pool's max size. |
 | PostgreSQL: `too many connections for role "app_<id>"` | Your pool is bigger than the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
@@ -558,7 +567,7 @@ env:
   APP_VERSION: "1.0.0"
 ```
 
-probe (exercises the database and storage bucket; endpoints include `/db`, `/s3`, `/db/fill?mb=N`, `/s3/fill?mb=N` and `/disk/fill`):
+probe (exercises the database and blob storage bucket; endpoints include `/db`, `/s3`, `/db/fill?mb=N`, `/s3/fill?mb=N` and `/disk/fill`):
 
 ```yaml
 apiVersion: picopaas/v1

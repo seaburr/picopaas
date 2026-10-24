@@ -20,7 +20,7 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 | Managed MySQL | `db-s-1vcpu-1gb`, MySQL 8.4, single node, NYC3 (platform DB + MySQL app DBs) | $15.15 |
 | Managed PostgreSQL | `db-s-1vcpu-1gb`, PostgreSQL 17, single node, NYC3 (`picopaas-pg-nyc3`, PostgreSQL app DBs; added 2026-10-22) | $15.15 |
 | Load balancer | 1 × regional DO LB (created by the Traefik Service) | $12 |
-| Spaces | 1 subscription (bucket `pico-paas-s3-a` in ATL1 plus one bucket per storage-enabled app) | $5 |
+| Spaces | 1 subscription (bucket `pico-paas-s3-a` in ATL1 plus one bucket per blob-storage app) | $5 |
 | DNS, VPC, GHCR (public images), Terraform Cloud (state only), GitHub Actions (public repo), Let's Encrypt | | $0 |
 | **Baseline** | | **about $75.30** |
 | **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $103.30** |
@@ -33,7 +33,7 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 | Second node (autoscaler, up to `max_nodes = 2`) | +$28/mo while it exists (billed per second, so less if it scales back down) |
 | Spaces storage beyond 250 GiB | +$0.02/GiB/mo. Unlikely: 100 MB × 100 buckets is about 10 GB |
 | Spaces egress beyond 1,024 GiB | +$0.01/GiB. Unlikely at these caps |
-| Spaces bucket count | Not a cost: DO's account limit is 100 buckets (see §3), so about 100 apps with storage is the wall. Raising it is a support request |
+| Spaces bucket count | Not a cost: DO's account limit is 100 buckets (see §3), so about 100 apps with blob storage is the wall. Raising it is a support request |
 | Bigger MySQL | Standard plans: 2 GiB $30.45, 4 GiB $60.90 (+$15.30 and +$45.75 over today). Extra disk $0.215/GiB. A second 1 GiB server adds $15.15 |
 | Load balancer | Flat $12. No bandwidth charge on regional LBs |
 
@@ -108,7 +108,7 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $75
   re-enforced on every poll while over, because REVOKE does not touch open sessions: the provider also KILLs the
   user's sessions (in-cluster MySQL: `picopaas_ops.kill_app_sessions`), and if that can't be confirmed the app's pod
   is rolled once, which closes its connections.
-- **Storage:** one Spaces bucket per app with a per-bucket read/write key. Spaces has no quotas, so the
+- **Blob storage:** one Spaces bucket per app with a per-bucket read/write key. Spaces has no quotas, so the
   reconciler sums object sizes (every 5 min), and above 100 MB it swaps the key to read-only and flags the app.
   The old key is revoked only after the app has rolled to the new one. An over-cap app can't delete with a read-only
   key, so `POST /apps/{id}/storage/delete` deletes with the platform's credentials and restores the key at once.
@@ -139,7 +139,7 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 - `hostUsers: false` (user namespaces) was considered and not adopted.
 
 ### Reference variables
-If an app requests a DB or storage, the platform exposes reference variables the user maps onto their
+If an app requests a DB or blob storage, the platform exposes reference variables the user maps onto their
 own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
 - `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`, `db.ca_cert`, `db.tls`
 - `storage.endpoint`, `storage.region`, `storage.bucket`, `storage.access_key`, `storage.secret_key` (`storage.endpoint` is a full URL, e.g. `https://atl1.digitaloceanspaces.com`)
@@ -195,7 +195,7 @@ server that has room.
 |---|---|---|---|
 | Compute | +1 node (`s-2vcpu-4gb-amd`, $28) | ~12 apps (requests 64m/128Mi, limits 200m/384Mi) | Pending pods / node allocatable |
 | MySQL / PostgreSQL | +1 DB server per engine (managed 1 GiB, ~$15) | **~25 app DBs**, limited by connections: 76 max ÷ ~10 per app user (cap is a ceiling, not a reservation), oversubscribed. Disk alone would fit ~200 × 50 MB | allocated DBs ≥ 80% of `max_databases` |
-| Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with storage | bucket count ≥ 80 |
+| Spaces | the account limit, not money | **100 buckets per account**: a hard wall at ~100 apps with blob storage | bucket count ≥ 80 |
 
 ### Compute
 The DOKS node pool gets `auto_scale = true` with `min_nodes = 1` and `max_nodes` set by Chas. That's
@@ -221,7 +221,7 @@ scheduled and removes it when nodes are idle. This is the only automatic scale-o
   can coexist, so mixing them later costs nothing.
 
 ### Spaces
-The 100-bucket account limit hits before cost does. Before ~80 storage-enabled apps, either ask DO
+The 100-bucket account limit hits before cost does. Before ~80 blob-storage apps, either ask DO
 support for a higher limit (free), or switch to one shared bucket with per-app prefixes and access
 through platform-signed URLs. The `ObjectStore` interface hides which one is in use, so apps don't change.
 
@@ -238,7 +238,7 @@ New questions go in `docs/QUESTIONS.md`. Decided so far:
 4. Autoscaler `max_nodes = 2` (approved), so the worst case is +$28/mo over the static setup.
 
 ## Key management (2026-10-19)
-`FERNET_KEY` encrypts every secret stored in MySQL (env-var secrets, app DB passwords, storage keys, DB server admin
+`FERNET_KEY` encrypts every secret stored in MySQL (env-var secrets, app DB passwords, blob storage keys, DB server admin
 passwords). The session signing key is derived from it unless `SECRET_KEY` is set. The key lives in the GitHub repo
 secret `PICOPAAS_FERNET_KEY`; `bootstrap.yml` writes it into `picopaas-env`. It must never be generated per cluster:
 a cluster replacement on 2026-10-19 did that and orphaned the encrypted data. Rotation (MultiFernet re-encrypt) is

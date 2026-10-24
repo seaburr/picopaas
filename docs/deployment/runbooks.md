@@ -6,7 +6,7 @@ the manual bring-up path is in `deploy/README.md`.
 ## Platform key
 
 `PICOPAAS_FERNET_KEY` (GitHub repo secret) is the only platform key. It encrypts every secret stored in MySQL (env-var
-values, app DB passwords, storage secret keys, DB server admin passwords). The JWT signing key is derived from it
+values, app DB passwords, blob storage secret keys, DB server admin passwords). The JWT signing key is derived from it
 (HMAC-SHA256 of a fixed label, see `app/config.py`), so rotating it also logs everyone out. An explicit `SECRET_KEY` env
 is still honoured but not needed.
 

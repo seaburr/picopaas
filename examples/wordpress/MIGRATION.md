@@ -34,7 +34,7 @@ Verify: `gzip -dc db.sql.gz | grep -n -E 'GTID_PURGED|SQL_LOG_BIN|DEFINER'` show
 | Resource | Rule of thumb | Default / cap | Ask admin for |
 |---|---|---|---|
 | Volume | WordPress core (about 70 MB) + `wp-content` + growth. Delete unused default themes first | 1 GiB for users, $0.10/GiB/month | more only if wp-content is large |
-| Bucket | compressed bundle, temporarily (delete it afterwards) | 100 MB | raise `storage_quota_mb` above the bundle size |
+| Blob storage bucket | compressed bundle, temporarily (delete it afterwards) | 100 MB | raise `storage_quota_mb` above the bundle size |
 | Database | imported data after stripping logs | 50 MB | raise `db_quota_mb` only if still larger |
 | CPU | the restore and `search-replace` are CPU heavy; admin pages too | 200m | 500m |
 | RAM | 4 PHP workers, about 200 MiB steady | 384 MB | usually none |

@@ -1,7 +1,7 @@
 # PicoPaaS CLI
 
 `cli/picopaas.py` deploys and manages apps from your terminal. It is a thin client for the platform's HTTP API: it
-talks only to PicoPaaS (`PICOPAAS_URL`) and never connects to your database server or your storage bucket directly.
+talks only to PicoPaaS (`PICOPAAS_URL`) and never connects to your database server or your blob storage bucket directly.
 It needs Python 3 and `httpx` (`pip install httpx`).
 
 ## Setup
@@ -28,7 +28,7 @@ Output is plain text for people, so scripts should check the exit code (0 ok, 1 
 | `events NAME` | Show recent restart events. |
 | `versions NAME` / `rollback NAME DIGEST` | List earlier image versions / redeploy one. |
 | `export NAME [-o FILE]` | Print the app as a YAML spec. |
-| `usage NAME` | Show database and storage usage. |
+| `usage NAME` | Show database and blob storage usage. |
 | `rotate NAME --db` or `--storage` | Rotate the database password or bucket keys. |
 | `storage upload NAME FILE [--key K]` | Upload a file to the app's bucket (default key: the file name). |
 | `storage download NAME KEY [-o FILE]` | Download one object. |
@@ -86,7 +86,7 @@ unless you set `PORT` yourself. The full format is in [USER_GUIDE.md](USER_GUIDE
 
 `status NAME` prints `name`, `url`, `status`, and, when there is one, `detail` (why it failed and what to do),
 `retry` (when it will be retried) and `event` (a recent restart), then `image` and `health`. It also shows
-`replicas` when more than one, the database `engine` (MySQL or PostgreSQL) and database and storage usage against
+`replicas` when more than one, the database `engine` (MySQL or PostgreSQL) and database and blob storage usage against
 their caps. Statuses read `queued` (API `pending`) and `failed` (API `error`).
 
 ## logs
@@ -121,14 +121,14 @@ when you apply. The CLI builds the spec from the app's current settings.
 
 ## usage
 
-`usage NAME` asks the platform to measure the database and the storage bucket right now and prints
+`usage NAME` asks the platform to measure the database and the blob storage bucket right now and prints
 `size / cap MB` for each, flagging `OVER CAP, read-only`. For a bucket it also lists the largest prefixes. An app with
 neither says so.
 
 ## rotate
 
 `rotate NAME --db` or `--storage` replaces the database password or the bucket access keys. It prints
-`Rotated the database password for NAME. The app is restarting.` (or `Rotated the storage bucket keys for ...`).
+`Rotated the database password for NAME. The app is restarting.` (or `Rotated the blob storage bucket keys for ...`).
 If the database or bucket is still being created, or the app doesn't have one, it fails with a 409 explanation.
 
 ## storage upload / download
@@ -154,7 +154,7 @@ working. Custom domains can be disabled platform-wide (the command then prints t
 
 ## delete
 
-`delete NAME --yes` permanently deletes the app and destroys its database and storage data. Without `--yes` it
+`delete NAME --yes` permanently deletes the app and destroys its database and blob storage data. Without `--yes` it
 refuses and changes nothing.
 
 ## Database access
@@ -169,6 +169,6 @@ writes return once it's under the limit. Connection settings and TLS examples pe
 ## Errors
 
 Errors print `error: <message>` and exit 1. The message is the server's plain-language explanation (for example
-`error: Your storage bucket is still being created. Try again in a minute.`); `-v` prefixes the HTTP code. A missing
+`error: Your blob storage bucket is still being created. Try again in a minute.`); `-v` prefixes the HTTP code. A missing
 token, a 401, an unreachable server and a timeout each say what to check (`PICOPAAS_TOKEN`, `PICOPAAS_URL`, your
 network).
