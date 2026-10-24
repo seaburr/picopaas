@@ -265,3 +265,26 @@ def test_storage_download(monkeypatch, capsys, tmp_path):
     routes[("GET", "/a/b.bin")] = httpx.Response(404)
     code, _, err, _ = run(["storage", "download", "demo", "a/b.bin", "-o", str(out_file)], routes, monkeypatch, capsys)
     assert code == 1 and "No such object" in err
+
+
+def test_admin_backup_restore(monkeypatch, capsys):
+    apps = [{"id": 5, "name": "demo", "owner_email": "a@x.y"}, {"id": 9, "name": "copy", "owner_email": "b@x.y"}]
+    seen = {}
+
+    def post(req):
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(202, json={"id": 77})
+
+    routes = {("GET", "/admin/apps"): httpx.Response(200, json=apps), ("POST", "/admin/backups/12/restore"): post}
+    code, out, _, _ = run(["admin", "backup", "restore", "12", "--to", "copy"], routes, monkeypatch, capsys)
+    assert code == 0 and "run 77" in out and seen["body"] == {"target_app_id": 9, "overwrite_source": False}
+    code, out, _, _ = run(["admin", "backup", "restore", "12", "--to", "5", "--overwrite-source"], routes, monkeypatch, capsys)
+    assert code == 0 and seen["body"] == {"target_app_id": 5, "overwrite_source": True}
+    code, _, err, _ = run(["admin", "backup", "restore", "12", "--to", "ghost"], routes, monkeypatch, capsys)
+    assert code == 1 and "No app named or numbered ghost" in err
+    dup = {("GET", "/admin/apps"): httpx.Response(200, json=apps + [{"id": 10, "name": "copy", "owner_email": "c@x.y"}])}
+    code, _, err, _ = run(["admin", "backup", "restore", "12", "--to", "copy"], dup, monkeypatch, capsys)
+    assert code == 1 and "numeric id" in err
+    refuse = {**routes, ("POST", "/admin/backups/12/restore"): httpx.Response(409, json={"detail": "That would overwrite the app."})}
+    code, _, err, _ = run(["admin", "backup", "restore", "12", "--to", "5"], refuse, monkeypatch, capsys)
+    assert code == 1 and "overwrite" in err

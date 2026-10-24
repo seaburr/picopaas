@@ -450,6 +450,26 @@ def cmd_domain(c, args) -> None:
         print(f"problem:  {d['error']}")
 
 
+def _find_any_app(c: httpx.Client, ref: str) -> dict:
+    """Platform admins: an app by name or numeric id across all owners (GET /admin/apps)."""
+    apps = _request(c, "GET", "/admin/apps").json()
+    hits = [a for a in apps if a["name"] == ref or str(a["id"]) == ref]
+    if not hits:
+        raise CliError(f"No app named or numbered {ref}.")
+    if len(hits) > 1:
+        ids = ", ".join(f"{a['id']} ({a['owner_email']})" for a in hits)
+        raise CliError(f"More than one app is named {ref}: {ids}. Pass the numeric id.")
+    return hits[0]
+
+
+def cmd_admin_backup_restore(c, args) -> None:
+    target = _find_any_app(c, args.to)
+    body = {"target_app_id": target["id"], "overwrite_source": bool(args.overwrite_source)}
+    run = _request(c, "POST", f"/admin/backups/{args.run_id}/restore", json=body).json()
+    print(f"Restore queued as run {run['id']} into {target['name']} (app {target['id']}); it starts within a minute and "
+          f"replaces what is there. Watch it: GET /apps/{target['id']}/backups")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="picopaas",
@@ -530,6 +550,14 @@ def build_parser() -> argparse.ArgumentParser:
     g3.add_argument("--verify", action="store_true", help="check the DNS records and activate the domain")
     g3.add_argument("--remove", action="store_true", help="detach the custom domain")
     dm.set_defaults(fn=cmd_domain)
+    ad = sub.add_parser("admin", help="platform administrator commands")
+    asub = ad.add_subparsers(dest="admin_command", required=True)
+    ab = asub.add_parser("backup", help="backup helpers").add_subparsers(dest="backup_command", required=True)
+    rs = ab.add_parser("restore", help="restore a database or blob storage backup into an app (replaces its data)")
+    rs.add_argument("run_id", type=int, help="the backup run's id (GET /apps/ID/backups lists them)")
+    rs.add_argument("--to", required=True, metavar="APP", help="target app (name or id); never the source unless --overwrite-source")
+    rs.add_argument("--overwrite-source", action="store_true", help="allow restoring over the source app (it must be suspended)")
+    rs.set_defaults(fn=cmd_admin_backup_restore)
     return p
 
 

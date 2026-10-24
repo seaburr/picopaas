@@ -258,9 +258,9 @@ BACKUP_SECRET_ACCESS_KEY = os.environ.get("BACKUP_SECRET_ACCESS_KEY", "")
 BACKUP_IMAGE = os.environ.get("BACKUP_IMAGE", "ghcr.io/seaburr/picopaas-backup:latest")  # pin by digest in prod
 BACKUP_NAMESPACE = "picopaas-backup"
 # Retention per repo (restic forget --prune): newest N daily / weekly / monthly snapshots.
-BACKUP_KEEP_DAILY = int(os.environ.get("BACKUP_KEEP_DAILY", 7))
-BACKUP_KEEP_WEEKLY = int(os.environ.get("BACKUP_KEEP_WEEKLY", 4))
-BACKUP_KEEP_MONTHLY = int(os.environ.get("BACKUP_KEEP_MONTHLY", 6))
+BACKUP_KEEP_DAILY = int(os.environ.get("BACKUP_KEEP_DAILY", 1))
+BACKUP_KEEP_WEEKLY = int(os.environ.get("BACKUP_KEEP_WEEKLY", 1))
+BACKUP_KEEP_MONTHLY = int(os.environ.get("BACKUP_KEEP_MONTHLY", 1))
 # Backup bytes are metered separately from the 50 MB DB / 100 MB storage caps: per app (all repos) and platform total.
 BACKUP_MAX_BYTES_PER_APP = int(os.environ.get("BACKUP_MAX_BYTES_PER_APP", 2 * 1024**3))
 BACKUP_MAX_BYTES_TOTAL = int(os.environ.get("BACKUP_MAX_BYTES_TOTAL", 100 * 1024**3))
@@ -271,6 +271,9 @@ BACKUP_DELETED_RETENTION_DAYS = int(os.environ.get("BACKUP_DELETED_RETENTION_DAY
 BACKUP_MANUAL_MIN_INTERVAL_MINUTES = 60  # on-demand backups: one per app per hour
 BACKUP_JOB_DEADLINE_SECONDS = int(os.environ.get("BACKUP_JOB_DEADLINE_SECONDS", 1800))
 BACKUP_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_UPLOAD_LIMIT_KIB", 2048))  # per Job, so a backup can't saturate the node
+# Blob storage ("bucket" kind) is copied to an emptyDir before restic reads it, so the scratch size bounds what can be
+# backed up (the default bucket quota is 100 MB; admin overrides can go higher). Bigger buckets fail with a clear error.
+BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 1024**2))  # keep 2 Jobs inside deploy/platform/backup.yaml quota
 
 
 def backup_endpoint() -> str:

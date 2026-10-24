@@ -346,6 +346,12 @@ class AppBackupConfig(Base):
     vol_last_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     vol_last_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     vol_repo_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    # Blob storage bucket kind ("bucket"): same fields as above.
+    bucket_last_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    bucket_last_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    bucket_last_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    bucket_last_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    bucket_repo_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     # Set when the app is deleted after its final backup: repos are purged once this passes (BACKUP_DELETED_RETENTION_DAYS).
     deleted_retention_until: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     purged_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -363,8 +369,8 @@ class BackupRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
-    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | vol
-    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | volume | bucket
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -374,6 +380,9 @@ class BackupRun(Base):
     snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # restic short snapshot id
     error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     job_name: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
+    # trigger == "restore": app_id is the TARGET app; this is the backup run (succeeded snapshot) being restored.
+    # No FK: the source run/app may be long gone from the app's point of view (retained repo after deletion).
+    source_run_id: Mapped[Optional[int]] = mapped_column(nullable=True)
 
 
 class AuditLog(Base):

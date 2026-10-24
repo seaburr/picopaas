@@ -7,6 +7,10 @@ DB server at a time) and purges the repos of apps deleted more than BACKUP_DELET
 
 Everything is inert unless config.BACKUPS_ENABLED and the backup bucket/key are configured (`usable()`); the flag is read
 at call time so tests can switch it. Volume backups (kind "volume") are phase 1b: the columns exist, nothing creates them.
+
+Kind "bucket" (blob storage) copies the app's objects to a scratch emptyDir with the app's own bucket key, then restic
+backs the directory up. Admin restore runs (`trigger == "restore"`, `enqueue_restore`) reuse the same queue/Job/Secret
+lifecycle: the run row belongs to the TARGET app and points at the source run whose snapshot is restored.
 """
 from __future__ import annotations
 
@@ -24,8 +28,9 @@ from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
 
-KINDS = ("db",)  # kinds this phase can run ("volume" arrives in phase 1b)
-KIND_LABEL = {"db": "database", "volume": "volume"}
+KINDS = ("db", "bucket")  # kinds this phase can run ("volume" arrives in phase 1b)
+KIND_LABEL = {"db": "database", "volume": "volume", "bucket": "blob storage"}
+RESTORABLE = ("db", "bucket")
 SCHEDULES = ("daily", "weekly", "off")
 ACTIVE = ("queued", "running")
 FINAL_MAX_AGE = timedelta(hours=2)  # a final (pre-delete) backup that is still not done after this no longer blocks deletion
@@ -62,12 +67,12 @@ def redact(text: Optional[str], limit: int = 200) -> str:
 
 def eligible_kinds(app: models.App) -> list[str]:
     """Kinds this app has data for AND this phase can back up."""
-    return ["db"] if app.database is not None else []
+    return (["db"] if app.database is not None else []) + (["bucket"] if app.storage is not None else [])
 
 
 def wants_backups(app: models.App) -> bool:
-    """Default for the per-app setting: on for apps with a database or volume (the unrecoverable resources)."""
-    return bool(app.want_db or app.volume_size_gi)
+    """Default for the per-app setting: on for apps with a database, blob storage or volume (the unrecoverable resources)."""
+    return bool(app.want_db or app.want_storage or app.volume_size_gi)
 
 
 # --- scheduling -------------------------------------------------------------------------------
@@ -137,8 +142,12 @@ def manual_cooldown(session: Session, app_id: int, now: Optional[datetime] = Non
 
 # --- results ----------------------------------------------------------------------------------
 
-def _prefix(kind: str) -> str:
-    return "db" if kind == "db" else "vol"
+def prefix(kind: str) -> str:
+    """Column prefix on AppBackupConfig for a kind (db_*, vol_*, bucket_*)."""
+    return {"db": "db", "bucket": "bucket"}.get(kind, "vol")
+
+
+_prefix = prefix
 
 
 def _event(session: Session, app_id: int, run_id: int, message: str, at: datetime) -> None:
@@ -160,12 +169,14 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     run.status = "succeeded" if ok else "failed"
     run.finished_at = now
     run.error = None if ok else (redact(error) or "the backup failed")[:255]
-    if ok and run.trigger != "purge":
+    if ok and run.trigger not in ("purge", "restore"):
         run.snapshot_id = str(result.get("snapshot_id") or "")[:64] or None
         run.bytes_added = _int(result.get("bytes_added"))
         run.repo_bytes = _int(result.get("repo_bytes"))
     cfg = session.get(models.AppBackupConfig, run.app_id)
-    if cfg is not None and run.trigger == "purge":
+    if run.trigger == "restore":
+        pass  # a restore changes nothing about the app's own backup summary
+    elif cfg is not None and run.trigger == "purge":
         if ok:
             cfg.purged_at = now
             setattr(cfg, f"{_prefix(run.kind)}_repo_bytes", 0)
@@ -182,7 +193,7 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
             if run.repo_bytes is not None:
                 setattr(cfg, f"{p}_repo_bytes", run.repo_bytes)
             cfg.last_success_at = now
-    if not ok and run.trigger != "purge":
+    if not ok and run.trigger not in ("purge", "restore"):
         _event(session, run.app_id, run.id,
                f"Backup of your {KIND_LABEL.get(run.kind, run.kind)} failed: {run.error}. "
                "Open Settings > Backups for details.", now)
@@ -193,6 +204,10 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         except Exception as exc:  # noqa: BLE001 - the Secret sweep retries
             log.warning("backup run %s: cleanup failed (%s)", run.id, type(exc).__name__)
     detail = f"{run.kind} {run.trigger}" + ("" if ok else f": {run.error}")
+    if run.trigger == "restore":
+        audit.record(session, None, "backup.restore_succeeded" if ok else "backup.restore_failed", "app", run.app_id,
+                     f"run={run.id} from_run={run.source_run_id} {detail}", actor_email="system")
+        return
     audit.record(session, None, "backup.succeeded" if ok else "backup.failed", "app", run.app_id,
                  f"run={run.id} {detail}", actor_email="system")
 
@@ -211,6 +226,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
     if not usable():
         return
     now = _now(now)
+    _ensure_egress(runner)
     _poll(session, runner, now)
     try:
         swept = runner.sweep({r.job_name for r in _running(session) if r.job_name})
@@ -223,12 +239,22 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
     _start_queued(session, runner, now)
 
 
+def _ensure_egress(runner: BackupRunner) -> None:
+    """Keep the namespace's NetworkPolicy for the Spaces endpoint's private VPC IPs current. Never raises."""
+    try:
+        runner.ensure_spaces_egress(config.backup_endpoint())
+    except Exception as exc:  # noqa: BLE001
+        log.warning("backup: could not update the Spaces egress policy (%s)", type(exc).__name__)
+
+
 def _running(session: Session) -> list[models.BackupRun]:
     return list(session.execute(select(models.BackupRun).where(models.BackupRun.status == "running")).scalars())
 
 
 def _poll(session: Session, runner: BackupRunner, now: datetime) -> None:
-    grace = timedelta(seconds=config.BACKUP_JOB_DEADLINE_SECONDS + 600)
+    # Kubernetes fails the Job at activeDeadlineSeconds; this is the backstop if it never reports that (a hung run must
+    # not hold a concurrency slot or the per-server dump slot).
+    grace = timedelta(seconds=config.BACKUP_JOB_DEADLINE_SECONDS + 120)
     for run in _running(session):
         try:
             st = runner.status(run.job_name or "")
@@ -251,7 +277,7 @@ def _schedule(session: Session, now: datetime) -> None:
     for app in session.execute(
         select(models.App).where(models.App.deleted_at.is_(None))
     ).scalars():
-        if app.id not in have and wants_backups(app) and app.database is not None:
+        if app.id not in have and wants_backups(app) and eligible_kinds(app):
             ensure_config(session, app, now)
     due = session.execute(
         select(models.AppBackupConfig, models.App).join(models.App, models.App.id == models.AppBackupConfig.app_id)
@@ -278,7 +304,7 @@ def _enqueue_purges(session: Session, now: datetime) -> None:
         if active_run(session, cfg.app_id) is not None:
             continue
         app = session.get(models.App, cfg.app_id)
-        kinds = [k for k, p in (("db", "db"), ("volume", "vol"))
+        kinds = [k for k, p in (("db", "db"), ("volume", "vol"), ("bucket", "bucket"))
                  if (getattr(cfg, f"{p}_repo_bytes") or 0) > 0 or getattr(cfg, f"{p}_last_status") == "succeeded"]
         if not kinds:
             cfg.purged_at = now
@@ -298,35 +324,44 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
     running = _running(session)
     busy_servers = _db_servers(session, [r for r in running if r.kind == "db"])
     total = session.execute(select(func.coalesce(func.sum(
-        models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes), 0))).scalar() or 0
+        models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes
+        + models.AppBackupConfig.bucket_repo_bytes), 0))).scalar() or 0
     for run in queued:
         if len(running) >= max(1, config.BACKUP_MAX_CONCURRENT):
             break
         app = session.get(models.App, run.app_id)
         cfg = session.get(models.AppBackupConfig, run.app_id)
-        if app is None or cfg is None:
+        restore = run.trigger == "restore"
+        if app is None or (cfg is None and not restore):
             _finish(session, run, None, ok=False, error="the app no longer exists", now=now)
             continue
         if app.deleted_at is not None and run.trigger not in ("final", "purge"):
             _finish(session, run, None, ok=False, error="the app was deleted", now=now)
             continue
         server_id = app.database.db_server_id if app.database is not None else None
+        # one dump or restore at a time per DB server (connection budget)
         if run.kind == "db" and run.trigger != "purge":
             if server_id is None:
                 _finish(session, run, None, ok=False, error="the app has no database", now=now)
                 continue
-            if server_id in busy_servers:  # one dump at a time per DB server (connection budget)
+            if server_id in busy_servers:
                 continue
-            if (cfg.db_repo_bytes or 0) + (cfg.vol_repo_bytes or 0) >= config.BACKUP_MAX_BYTES_PER_APP:
+        if run.kind in ("db", "bucket") and run.trigger not in ("purge", "restore"):
+            if repo_bytes(cfg) >= config.BACKUP_MAX_BYTES_PER_APP:
                 _finish(session, run, None, ok=False,
                         error=f"this app's backups reached the {config.BACKUP_MAX_BYTES_PER_APP // 1024**2} MB backup storage cap", now=now)
                 continue
             if total >= config.BACKUP_MAX_BYTES_TOTAL:
                 _finish(session, run, None, ok=False, error="the platform's backup storage is full", now=now)
                 continue
+            if run.kind == "bucket" and app.storage is not None and (app.storage.size_bytes or 0) > config.BACKUP_BUCKET_MAX_BYTES:
+                _finish(session, run, None, ok=False,
+                        error=f"the bucket is larger than the {config.BACKUP_BUCKET_MAX_BYTES // 1024**2} MB a backup can copy", now=now)
+                continue
         try:
-            spec = BackupJobSpec(name=f"bk-{run.id}", run_id=run.id, app_id=app.id, kind=run.kind,
-                                 env=_build_env(session, app, cfg, run))
+            env = _build_restore_env(session, run, app, now) if restore else _build_env(session, app, cfg, run)
+            spec = BackupJobSpec(name=f"bk-{run.id}", run_id=run.id, app_id=app.id, kind=run.kind, env=env,
+                                 scratch_mib=_scratch_mib(run))
         except ValueError as exc:
             _finish(session, run, None, ok=False, error=str(exc), now=now)
             continue
@@ -343,6 +378,12 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
             busy_servers.add(server_id)
 
 
+def _scratch_mib(run: models.BackupRun) -> int:
+    if run.kind != "bucket" or run.trigger == "purge":
+        return 0
+    return config.BACKUP_BUCKET_MAX_BYTES // 1024**2 + 64
+
+
 def _db_servers(session: Session, runs: list[models.BackupRun]) -> set[int]:
     out: set[int] = set()
     for r in runs:
@@ -352,50 +393,145 @@ def _db_servers(session: Session, runs: list[models.BackupRun]) -> set[int]:
     return out
 
 
-def _build_env(session: Session, app: models.App, cfg: models.AppBackupConfig, run: models.BackupRun) -> dict[str, str]:
-    """The per-run Secret's contents. Raises ValueError with a safe message when a credential can't be read."""
+def _repo_env(session: Session, source_app_id: int, kind: str, cfg: models.AppBackupConfig) -> dict[str, str]:
+    """Repository coordinates + the backup bucket's own key (never the app's)."""
     try:
         password = repo_password(cfg)
     except ValueError:
         raise ValueError("the stored backup password can't be read (platform key changed)") from None
     session.commit()  # persist a freshly generated repo password before any Job can write to the repo
-    env = {
-        "MODE": "purge" if run.trigger == "purge" else "backup",
-        "RESTIC_REPOSITORY": repo_url(app.id, run.kind),
+    return {
+        "RESTIC_REPOSITORY": repo_url(source_app_id, kind),
         "RESTIC_PASSWORD": password,
         "AWS_ACCESS_KEY_ID": config.BACKUP_ACCESS_KEY_ID,
         "AWS_SECRET_ACCESS_KEY": config.BACKUP_SECRET_ACCESS_KEY,
         "AWS_DEFAULT_REGION": config.BACKUP_REGION or "us-east-1",
+        "LIMIT_UPLOAD_KIB": str(config.BACKUP_UPLOAD_LIMIT_KIB),
+    }
+
+
+def _db_env(db: models.AppDatabase) -> dict[str, str]:
+    """Connection settings for an app's own database role (the app's role, never the server admin's)."""
+    if db.server is None:
+        raise ValueError("the app has no database")
+    pw = crypto.try_decrypt(db.password_encrypted)
+    if pw is None:
+        raise ValueError("the database credentials can't be read (platform key changed)")
+    env = {
+        "ENGINE": "pg" if db.server.engine == "pg" else "mysql",
+        "DB_HOST": db.server.host, "DB_PORT": str(db.server.port), "DB_NAME": db.db_name,
+        "DB_USER": db.db_user, "DB_PASSWORD": pw,
+    }
+    if db.server.ca_cert:
+        env["DB_CA"] = db.server.ca_cert
+    return env
+
+
+def _bucket_env(st: models.AppStorage) -> dict[str, str]:
+    """The app's own bucket key (the platform holds it; there is no separate read-only key per backup). Passed to the Job
+    only through the per-run Secret, under names the script hands to s5cmd's environment alone."""
+    sk = crypto.try_decrypt(st.secret_key_encrypted)
+    if sk is None:
+        raise ValueError("the storage credentials can't be read (platform key changed)")
+    return {"SRC_ENDPOINT": st.endpoint, "SRC_BUCKET": st.bucket, "SRC_REGION": st.region or "us-east-1",
+            "SRC_ACCESS_KEY": st.access_key, "SRC_SECRET_KEY": sk}
+
+
+def _build_env(session: Session, app: models.App, cfg: models.AppBackupConfig, run: models.BackupRun) -> dict[str, str]:
+    """The per-run Secret's contents. Raises ValueError with a safe message when a credential can't be read."""
+    env = _repo_env(session, app.id, run.kind, cfg)
+    env.update({
+        "MODE": "purge" if run.trigger == "purge" else "backup",
+        "KIND": run.kind,
         "KEEP_DAILY": str(config.BACKUP_KEEP_DAILY),
         "KEEP_WEEKLY": str(config.BACKUP_KEEP_WEEKLY),
         "KEEP_MONTHLY": str(config.BACKUP_KEEP_MONTHLY),
-        "LIMIT_UPLOAD_KIB": str(config.BACKUP_UPLOAD_LIMIT_KIB),
         "TAG": run.trigger,
-    }
-    if run.trigger != "purge":
-        db = app.database
-        if db is None or db.server is None:
+    })
+    if run.trigger == "purge":
+        return env
+    if run.kind == "bucket":
+        if app.storage is None:
+            raise ValueError("the app has no blob storage")
+        env.update(_bucket_env(app.storage))
+    else:
+        if app.database is None:
             raise ValueError("the app has no database")
-        pw = crypto.try_decrypt(db.password_encrypted)
-        if pw is None:
-            raise ValueError("the database credentials can't be read (platform key changed)")
-        env.update({
-            "ENGINE": "pg" if db.server.engine == "pg" else "mysql",
-            "DB_HOST": db.server.host, "DB_PORT": str(db.server.port), "DB_NAME": db.db_name,
-            "DB_USER": db.db_user, "DB_PASSWORD": pw,
-        })
-        if db.server.ca_cert:
-            env["DB_CA"] = db.server.ca_cert
+        env.update(_db_env(app.database))
+    return env
+
+
+# --- admin restore ----------------------------------------------------------------------------
+
+class RestoreRefused(Exception):
+    """Raised by enqueue_restore with a message that is safe to show to the admin."""
+
+    def __init__(self, message: str, status: int = 422) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def enqueue_restore(session: Session, source: models.BackupRun, target: models.App, overwrite_source: bool,
+                    now: Optional[datetime] = None) -> models.BackupRun:
+    """Queue a restore of `source` (a succeeded db/bucket run) into `target`'s database or bucket. Never restores over
+    the source app unless overwrite_source is set AND that app is suspended (nothing is writing to it)."""
+    if source.trigger in ("purge", "restore") or source.kind not in RESTORABLE:
+        raise RestoreRefused("Only database and blob storage backups can be restored.")
+    if source.status != "succeeded" or not source.snapshot_id:
+        raise RestoreRefused("That backup run didn't finish successfully, so there is no snapshot to restore.")
+    src_cfg = session.get(models.AppBackupConfig, source.app_id)
+    if src_cfg is None or src_cfg.repo_password_enc is None or src_cfg.purged_at is not None:
+        raise RestoreRefused("The repository for that backup has been purged.", 410)
+    if target.id == source.app_id:
+        if not overwrite_source:
+            raise RestoreRefused("That would overwrite the app the backup came from. Restore into another app, "
+                                 "or pass overwrite_source on a suspended app.", 409)
+        if target.status != "suspended":
+            raise RestoreRefused("Suspend the app first: restoring over the source app is only allowed while it is suspended.", 409)
+    if source.kind == "db" and target.database is None:
+        raise RestoreRefused("The target app has no database to restore into.")
+    if source.kind == "bucket":
+        if target.storage is None:
+            raise RestoreRefused("The target app has no blob storage to restore into.")
+        if target.storage.over_quota:
+            raise RestoreRefused("The target app's bucket is over its quota (read-only). Free space first.")
+    if active_run(session, target.id) is not None:
+        raise RestoreRefused("A backup or restore is already queued or running for the target app.", 409)
+    run = models.BackupRun(app_id=target.id, kind=source.kind, trigger="restore", status="queued",
+                           created_at=_now(now), source_run_id=source.id)
+    session.add(run)
+    session.flush()
+    return run
+
+
+def _build_restore_env(session: Session, run: models.BackupRun, target: models.App, now: datetime) -> dict[str, str]:
+    source = session.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+    src_cfg = session.get(models.AppBackupConfig, source.app_id) if source is not None else None
+    if source is None or src_cfg is None or not source.snapshot_id or src_cfg.purged_at is not None:
+        raise ValueError("the backup to restore is gone")
+    if source.app_id == target.id and target.status != "suspended":
+        raise ValueError("the app is no longer suspended")
+    env = _repo_env(session, source.app_id, source.kind, src_cfg)
+    env.update({"MODE": "restore", "KIND": source.kind, "SNAPSHOT": source.snapshot_id, "TAG": "restore"})
+    if source.kind == "bucket":
+        if target.storage is None:
+            raise ValueError("the target app has no blob storage")
+        env.update(_bucket_env(target.storage))
+    else:
+        if target.database is None:
+            raise ValueError("the target app has no database")
+        env.update(_db_env(target.database))
     return env
 
 
 # --- app delete -------------------------------------------------------------------------------
 
 def final_gate(session: Session, app: models.App, now: Optional[datetime] = None) -> bool:
-    """Called by the reconciler before it drops a deleted app's database. True = go ahead and delete. Takes ONE final
-    backup attempt first (queued here, run by `tick`); a failed or stuck attempt does not block the deletion. When the
-    app has backed-up data, its repos are kept BACKUP_DELETED_RETENTION_DAYS and purged afterwards."""
-    if not usable() or app.database is None:
+    """Called by the reconciler before it drops a deleted app's database/bucket. True = go ahead and delete. Takes ONE
+    final backup attempt per kind first (queued here, run by `tick`); a failed or stuck attempt does not block the
+    deletion. When the app has backed-up data, its repos are kept BACKUP_DELETED_RETENTION_DAYS and purged afterwards."""
+    kinds = eligible_kinds(app)
+    if not usable() or not kinds:
         return True
     now = _now(now)
     cfg = ensure_config(session, app, now)
@@ -406,17 +542,19 @@ def final_gate(session: Session, app: models.App, now: Optional[datetime] = None
         # otherwise they would sit in the bucket forever.
         _retain(session, app, cfg, now)
         return True
-    run = session.execute(
+    runs = list(session.execute(
         select(models.BackupRun).where(models.BackupRun.app_id == app.id, models.BackupRun.trigger == "final")
-        .order_by(models.BackupRun.id.desc()).limit(1)
-    ).scalar_one_or_none()
-    if run is None:
-        enqueue(session, app, "db", "final", now)
+        .order_by(models.BackupRun.id)
+    ).scalars())
+    if not runs:
+        for kind in kinds:
+            enqueue(session, app, kind, "final", now)
         session.commit()
         return False
-    if run.status in ACTIVE:
-        if now - _naive(run.created_at) <= FINAL_MAX_AGE:
-            return False
+    active = [r for r in runs if r.status in ACTIVE]
+    if active and all(now - _naive(r.created_at) <= FINAL_MAX_AGE for r in active):
+        return False
+    for run in active:
         _finish(session, run, None, ok=False, error="the final backup did not finish in time", now=now)
     _retain(session, app, cfg, now)
     return True
@@ -438,7 +576,7 @@ def app_state(cfg: Optional[models.AppBackupConfig], now: Optional[datetime] = N
         return "disabled"
     now = _now(now)
     limit = STALE_WEEKLY if cfg.schedule == "weekly" else STALE_DAILY
-    if cfg.last_status == "failed":
+    if cfg.last_status == "failed" or "failed" in (cfg.db_last_status, cfg.bucket_last_status, cfg.vol_last_status):
         return "failing"
     if cfg.last_success_at is None:
         return "stale" if now - _naive(cfg.created_at) > limit else "pending"
@@ -446,7 +584,9 @@ def app_state(cfg: Optional[models.AppBackupConfig], now: Optional[datetime] = N
 
 
 def repo_bytes(cfg: Optional[models.AppBackupConfig]) -> int:
-    return (cfg.db_repo_bytes or 0) + (cfg.vol_repo_bytes or 0) if cfg is not None else 0
+    if cfg is None:
+        return 0
+    return (cfg.db_repo_bytes or 0) + (cfg.vol_repo_bytes or 0) + (cfg.bucket_repo_bytes or 0)
 
 
 def overview(session: Session, now: Optional[datetime] = None) -> dict[str, Any]:

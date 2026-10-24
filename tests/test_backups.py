@@ -214,8 +214,8 @@ def test_retention_args_from_config(on, monkeypatch, user, db_session, runner):
     _app_with_db(user, db_session)
     backups.tick(db_session, runner, NOW)
     env = runner.started[0].env
-    assert (env["KEEP_DAILY"], env["KEEP_WEEKLY"], env["KEEP_MONTHLY"]) == ("3", "4", "12")
-    assert config.BACKUP_KEEP_WEEKLY == 4 and config.BACKUP_MAX_BYTES_PER_APP == 2 * 1024**3
+    assert (env["KEEP_DAILY"], env["KEEP_WEEKLY"], env["KEEP_MONTHLY"]) == ("3", "1", "12")
+    assert config.BACKUP_KEEP_WEEKLY == 1 and config.BACKUP_MAX_BYTES_PER_APP == 2 * 1024**3
     assert config.BACKUP_MAX_BYTES_TOTAL == 100 * 1024**3 and config.BACKUP_PREFIX == "backups/"
 
 
@@ -284,7 +284,7 @@ def test_job_manifests_are_hardened_and_secret_holds_creds():
     assert c["securityContext"]["readOnlyRootFilesystem"] is True and c["securityContext"]["capabilities"] == {"drop": ["ALL"]}
     assert c["resources"]["limits"] == {"cpu": "200m", "memory": "320Mi", "ephemeral-storage": "200Mi"}
     assert c["envFrom"] == [{"secretRef": {"name": "bk-5"}}] and "env" not in c
-    assert job["spec"]["activeDeadlineSeconds"] == config.BACKUP_JOB_DEADLINE_SECONDS and job["spec"]["backoffLimit"] == 1
+    assert job["spec"]["activeDeadlineSeconds"] == config.BACKUP_JOB_DEADLINE_SECONDS and job["spec"]["backoffLimit"] == 0
 
 
 def test_parse_pod_output():
@@ -533,3 +533,521 @@ def test_script_removes_truncated_snapshot_when_dump_fails(tmp_path):
     assert r.returncode == 1 and "PICOPAAS_ERROR database dump failed" in r.stdout
     assert "not-the-db-password" not in r.stdout + r.stderr and "s3:x/y" not in r.stdout + r.stderr
     assert "forget abcdef1234567890" in log.read_text()
+
+
+# --- blob storage ("bucket") kind ---
+
+def _add_storage(db, aid, over_quota=False, size=1000):
+    db.add(models.AppStorage(app_id=aid, bucket=f"bkt-{aid}", endpoint="https://atl1.digitaloceanspaces.com", region="atl1",
+                             access_key=f"AK{aid}", secret_key_encrypted=crypto.encrypt(f"not-the-bucket-secret-{aid}"),
+                             size_bytes=size, over_quota=over_quota))
+    db.commit()
+
+
+def _ghost_like(client, db, name="devlog", with_db=True, **kw):
+    """An app like the devlog: database + blob storage."""
+    r = client.post("/apps", json={**APP, "name": name, "want_db": with_db, "want_storage": True})
+    assert r.status_code == 201, r.text
+    aid = r.json()["id"]
+    if with_db:
+        db.add(models.AppDatabase(app_id=aid, db_server_id=_server(db).id, db_name=f"app_{aid}", db_user=f"app_{aid}",
+                                  password_encrypted=crypto.encrypt("not-the-db-password")))
+        db.commit()
+    _add_storage(db, aid, **kw)
+    return aid
+
+
+def test_bucket_kind_scheduled_with_db_and_secret_contents(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session)
+    backups.tick(db_session, runner, NOW)
+    by_kind = {s.kind: s for s in runner.started}
+    assert set(by_kind) == {"db", "bucket"}
+    env = by_kind["bucket"].env
+    assert env["MODE"] == "backup" and env["KIND"] == "bucket"
+    assert env["RESTIC_REPOSITORY"].endswith(f"/apps/{aid}/bucket") and env["TAG"] == "scheduled"
+    assert env["SRC_BUCKET"] == f"bkt-{aid}" and env["SRC_ACCESS_KEY"] == f"AK{aid}"
+    assert env["SRC_SECRET_KEY"] == f"not-the-bucket-secret-{aid}" and env["SRC_ENDPOINT"].startswith("https://")
+    assert "DB_PASSWORD" not in env  # the bucket Job never gets the database credentials
+    assert "SRC_SECRET_KEY" not in by_kind["db"].env
+    # same repo password for both kinds, backup-bucket key stays separate from the app's key
+    assert env["RESTIC_PASSWORD"] == by_kind["db"].env["RESTIC_PASSWORD"]
+    assert env["AWS_ACCESS_KEY_ID"] == "backup-key-id" and env["AWS_ACCESS_KEY_ID"] != env["SRC_ACCESS_KEY"]
+    assert by_kind["bucket"].scratch_mib > 0 and by_kind["db"].scratch_mib == 0
+    assert db_session.query(models.BackupRun).filter_by(kind="bucket").count() == 1
+
+
+def test_bucket_status_is_separate_from_db_status(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session)
+    backups.tick(db_session, runner, NOW)
+    by_kind = {s.kind: s.name for s in runner.started}
+    runner.finish(by_kind["db"], {"snapshot_id": "d1", "bytes_added": 10, "repo_bytes": 100})
+    runner.fail(by_kind["bucket"], "copying the bucket's objects failed")
+    backups.tick(db_session, runner, NOW + timedelta(minutes=2))
+    cfg = db_session.get(models.AppBackupConfig, aid)
+    assert (cfg.db_last_status, cfg.bucket_last_status) == ("succeeded", "failed")
+    assert cfg.bucket_last_error == "copying the bucket's objects failed" and cfg.db_repo_bytes == 100
+    assert backups.app_state(cfg, NOW + timedelta(minutes=3)) == "failing"  # one kind failing is enough
+    ev = db_session.query(models.AppEvent).one()
+    assert "blob storage" in ev.message
+    kinds = {k["kind"]: k for k in user.get(f"/apps/{aid}/backups").json()["kinds"]}
+    assert kinds["db"]["last_status"] == "succeeded" and kinds["bucket"]["last_status"] == "failed"
+    # next success clears it
+    runner.outcomes.clear()
+    db_session.get(models.AppBackupConfig, aid).next_backup_at = NOW
+    db_session.commit()
+    backups.tick(db_session, runner, NOW + timedelta(days=1))
+    for s in runner.started[2:]:
+        runner.finish(s.name, {"snapshot_id": "x", "bytes_added": 1, "repo_bytes": 50})
+    backups.tick(db_session, runner, NOW + timedelta(days=1, minutes=2))
+    assert backups.app_state(db_session.get(models.AppBackupConfig, aid), NOW + timedelta(days=1, minutes=3)) == "ok"
+
+
+def test_storage_only_app_is_backed_up(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session, "imgs", with_db=False)
+    backups.tick(db_session, runner, NOW)
+    assert [s.kind for s in runner.started] == ["bucket"]
+    assert user.get(f"/apps/{aid}/backups").json()["enabled"] is True
+
+
+def test_bucket_larger_than_scratch_is_refused(on, monkeypatch, user, db_session, runner):
+    monkeypatch.setattr(config, "BACKUP_BUCKET_MAX_BYTES", 5000)
+    _ghost_like(user, db_session, with_db=False, size=6000)
+    backups.tick(db_session, runner, NOW)
+    run = db_session.query(models.BackupRun).one()
+    assert runner.started == [] and run.status == "failed" and "larger" in run.error
+
+
+def test_bucket_bytes_count_toward_per_app_cap(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session)
+    cfg = backups.ensure_config(db_session, db_session.get(models.App, aid), NOW)
+    cfg.bucket_repo_bytes = config.BACKUP_MAX_BYTES_PER_APP
+    db_session.commit()
+    backups.tick(db_session, runner, NOW)
+    assert runner.started == []
+    assert {r.status for r in db_session.query(models.BackupRun)} == {"failed"}
+
+
+def test_manual_bucket_backup_and_validation(on, user, db_session, runner):
+    plain = _app_with_db(user, db_session, "plain")
+    r = user.post(f"/apps/{plain}/backups", json={"kinds": ["bucket"]})
+    assert r.status_code == 422 and "blob storage" in r.json()["detail"]
+    aid = _ghost_like(user, db_session)
+    r = user.post(f"/apps/{aid}/backups", json={"kinds": ["bucket"]})
+    assert r.status_code == 202 and [x["kind"] for x in r.json()] == ["bucket"]
+
+
+def test_bucket_job_manifest_has_scratch_and_no_creds_in_args():
+    spec = BackupJobSpec(name="bk-6", run_id=6, app_id=2, kind="bucket", scratch_mib=1088,
+                         env={"SRC_SECRET_KEY": "not-the-bucket-secret", "RESTIC_PASSWORD": "not-the-password"})
+    secret, job = job_manifests(spec)
+    pod = job["spec"]["template"]["spec"]
+    c = pod["containers"][0]
+    assert {"name": "work", "mountPath": "/work"} in c["volumeMounts"]
+    assert {"name": "work", "emptyDir": {"sizeLimit": "1088Mi"}} in pod["volumes"]
+    assert c["resources"]["limits"]["ephemeral-storage"] == "1288Mi" and c["securityContext"]["readOnlyRootFilesystem"] is True
+    assert "not-the-bucket-secret" not in str(job) and secret["stringData"]["SRC_SECRET_KEY"] == "not-the-bucket-secret"
+    assert "env" not in c and "args" not in c and "command" not in c
+
+
+def test_delete_takes_final_backup_of_every_kind(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session)
+    backups.ensure_config(db_session, db_session.get(models.App, aid), NOW)
+    kube = FakeKubeProvider()
+    assert user.delete(f"/apps/{aid}").status_code == 204
+    _sweep(db_session, kube)
+    finals = db_session.query(models.BackupRun).filter_by(trigger="final").all()
+    assert sorted(r.kind for r in finals) == ["bucket", "db"]
+    now = datetime.utcnow()
+    backups.tick(db_session, runner, now)
+    assert sorted(s.kind for s in runner.started) == ["bucket", "db"]
+    runner.finish(runner.started[0].name, {"snapshot_id": "f1", "bytes_added": 1, "repo_bytes": 9})
+    backups.tick(db_session, runner, now)
+    _sweep(db_session, kube)
+    assert db_session.get(models.App, aid).status != "deleted"  # the other kind is still running
+    runner.finish(runner.started[1].name, {"snapshot_id": "f2", "bytes_added": 1, "repo_bytes": 9})
+    backups.tick(db_session, runner, now)
+    _sweep(db_session, kube)
+    assert db_session.get(models.App, aid).status == "deleted"
+    assert db_session.get(models.AppBackupConfig, aid).deleted_retention_until is not None
+
+
+def test_purge_includes_bucket_repo(on, user, db_session, runner):
+    aid = _ghost_like(user, db_session)
+    cfg = backups.ensure_config(db_session, db_session.get(models.App, aid), NOW)
+    cfg.bucket_repo_bytes, cfg.deleted_retention_until = 400, NOW - timedelta(days=1)
+    db_session.get(models.App, aid).deleted_at = NOW - timedelta(days=15)
+    db_session.commit()
+    backups.tick(db_session, runner, NOW)
+    purge = [s for s in runner.started if s.env["MODE"] == "purge"]
+    assert [s.kind for s in purge] == ["bucket"] and "SRC_SECRET_KEY" not in purge[0].env
+
+
+# --- admin restore ---
+
+def _succeeded(db, aid, kind="db", snap="aa11bb22", **kw):
+    backups.ensure_config(db, db.get(models.App, aid), NOW)
+    cfg = db.get(models.AppBackupConfig, aid)
+    if cfg.repo_password_enc is None:
+        cfg.repo_password_enc = crypto.encrypt("not-the-repo-password")
+    run = models.BackupRun(app_id=aid, kind=kind, trigger="scheduled", status="succeeded", snapshot_id=snap,
+                           created_at=NOW, finished_at=NOW, **kw)
+    db.add(run)
+    db.commit()
+    return run.id
+
+
+def _restore(client, run_id, target, **body):
+    return client.post(f"/admin/backups/{run_id}/restore", json={"target_app_id": target, **body})
+
+
+@pytest.fixture()
+def pair(on, user, admin, db_session):
+    """Source (devlog: db + bucket) and a separate target app of the same shape, each with a succeeded run."""
+    src = _ghost_like(user, db_session, "devlog")
+    dst = _ghost_like(user, db_session, "devlog-copy")
+    ids = _succeeded(db_session, src, "db", "d0d0d0d0"), _succeeded(db_session, src, "bucket", "b0b0b0b0")
+    _succeeded(db_session, dst, "db", "e0e0e0e0")
+    for a in (src, dst):  # keep the nightly scheduler out of these tests
+        db_session.get(models.AppBackupConfig, a).next_backup_at = NOW + timedelta(days=30)
+    db_session.commit()
+    return src, dst, *ids
+
+
+def test_restore_requires_platform_admin(pair, user, other, admin, db_session, make_client):
+    src, dst, rdb, _ = pair
+    assert _restore(user, rdb, dst).status_code == 403  # even the app's owner
+    assert _restore(other, rdb, dst).status_code == 403
+    from fastapi.testclient import TestClient
+    from app.main import app as fastapi_app
+    assert TestClient(fastapi_app).post(f"/admin/backups/{rdb}/restore", json={"target_app_id": dst}).status_code == 401
+    assert db_session.query(models.BackupRun).filter_by(trigger="restore").count() == 0
+
+
+def test_restore_refused_for_read_scope_admin_key(pair, admin, make_client):
+    src, dst, rdb, _ = pair
+    key = admin.post("/api/keys", json={"name": "ro", "scope": "read"})
+    raw = key.json().get("key") or key.json().get("raw_key")
+    c = make_client()
+    r = c.post(f"/admin/backups/{rdb}/restore", json={"target_app_id": dst}, headers={"Authorization": f"Bearer {raw}"})
+    assert r.status_code == 403
+
+
+def test_restore_refuses_the_source_app_by_default(pair, admin, db_session):
+    src, dst, rdb, rbk = pair
+    for rid in (rdb, rbk):
+        r = _restore(admin, rid, src)
+        assert r.status_code == 409 and "overwrite" in r.json()["detail"]
+    r = _restore(admin, rdb, src, overwrite_source=True)  # app is running: still refused
+    assert r.status_code == 409 and "Suspend" in r.json()["detail"]
+    assert db_session.query(models.BackupRun).filter_by(trigger="restore").count() == 0
+
+
+def test_restore_over_suspended_source_with_flag(pair, admin, db_session, runner):
+    src, dst, rdb, _ = pair
+    assert admin.post(f"/admin/apps/{src}/suspend").status_code == 200
+    r = _restore(admin, rdb, src, overwrite_source=True)
+    assert r.status_code == 202 and r.json()["trigger"] == "restore" and r.json()["source_run_id"] == rdb
+    a = db_session.query(models.AuditLog).filter_by(action="backup.restore").one()
+    assert a.actor_email == "admin@example.com" and "overwrite_source" in a.detail and str(rdb) in a.detail
+    backups.tick(db_session, runner, NOW)
+    assert runner.started[-1].env["MODE"] == "restore"
+    assert _restore(admin, rdb, src, overwrite_source=True).status_code == 409
+
+
+def test_restore_overwrite_rechecked_when_job_starts(pair, admin, db_session, runner):
+    src, dst, rdb, _ = pair
+    admin.post(f"/admin/apps/{src}/suspend")
+    assert _restore(admin, rdb, src, overwrite_source=True).status_code == 202
+    db_session.get(models.App, src).status = "running"
+    db_session.commit()
+    backups.tick(db_session, runner, NOW)
+    assert [s for s in runner.started if s.env["MODE"] == "restore"] == []
+    run = db_session.query(models.BackupRun).filter_by(trigger="restore").one()
+    assert run.status == "failed" and "suspended" in run.error
+
+
+def test_restore_db_job_uses_target_role_and_source_repo(pair, admin, user, db_session, runner):
+    src, dst, rdb, _ = pair
+    db_session.get(models.AppDatabase, db_session.query(models.AppDatabase).filter_by(app_id=dst).one().id).password_encrypted = \
+        crypto.encrypt("not-the-target-db-password")
+    db_session.commit()
+    r = _restore(admin, rdb, dst)
+    assert r.status_code == 202 and r.json()["status"] == "queued"
+    run_id = r.json()["id"]
+    backups.tick(db_session, runner, NOW)
+    spec = [s for s in runner.started if s.run_id == run_id][0]
+    env = spec.env
+    assert env["MODE"] == "restore" and env["KIND"] == "db" and env["SNAPSHOT"] == "d0d0d0d0"
+    assert env["RESTIC_REPOSITORY"].endswith(f"/apps/{src}/db")  # the SOURCE's repo ...
+    assert crypto.decrypt(db_session.get(models.AppBackupConfig, src).repo_password_enc) == env["RESTIC_PASSWORD"]
+    assert env["DB_NAME"] == f"app_{dst}" and env["DB_USER"] == f"app_{dst}"  # ... the TARGET's database role
+    assert env["DB_PASSWORD"] == "not-the-target-db-password" and "SRC_SECRET_KEY" not in env
+    assert spec.name in runner.secrets
+    runner.finish(spec.name, {"restored": True})
+    backups.tick(db_session, runner, NOW + timedelta(minutes=1))
+    run = db_session.get(models.BackupRun, run_id)
+    assert run.status == "succeeded" and run.snapshot_id is None
+    assert spec.name not in runner.secrets and spec.name not in runner.jobs
+    assert db_session.query(models.AuditLog).filter_by(action="backup.restore_succeeded").count() == 1
+    cfg = db_session.get(models.AppBackupConfig, dst)  # the target's own backup summary is untouched
+    assert cfg is None or cfg.db_last_status is None
+    assert db_session.query(models.AppEvent).count() == 0
+
+
+def test_restore_bucket_job_writes_target_bucket(pair, admin, db_session, runner):
+    src, dst, _, rbk = pair
+    assert _restore(admin, rbk, dst).status_code == 202
+    backups.tick(db_session, runner, NOW)
+    env = [s for s in runner.started if s.env["MODE"] == "restore"][0].env
+    assert env["KIND"] == "bucket" and env["SNAPSHOT"] == "b0b0b0b0" and env["RESTIC_REPOSITORY"].endswith(f"/apps/{src}/bucket")
+    assert env["SRC_BUCKET"] == f"bkt-{dst}" and env["SRC_SECRET_KEY"] == f"not-the-bucket-secret-{dst}"
+    assert f"bkt-{src}" not in str(env) and "DB_PASSWORD" not in env
+
+
+def test_restore_failure_is_audited_and_cleaned(pair, admin, db_session, runner):
+    src, dst, rdb, _ = pair
+    run_id = _restore(admin, rdb, dst).json()["id"]
+    backups.tick(db_session, runner, NOW)
+    runner.fail(f"bk-{run_id}", "loading the dump into the target database failed")
+    backups.tick(db_session, runner, NOW + timedelta(minutes=1))
+    run = db_session.get(models.BackupRun, run_id)
+    assert run.status == "failed" and "loading the dump" in run.error and runner.secrets == {}
+    assert db_session.query(models.AuditLog).filter_by(action="backup.restore_failed").count() == 1
+    assert db_session.query(models.AppEvent).count() == 0  # admin-initiated: no event in the owner's feed
+
+
+def test_restore_validation(pair, admin, user, db_session, runner):
+    src, dst, rdb, rbk = pair
+    assert _restore(admin, 99999, dst).status_code == 404
+    assert _restore(admin, rdb, 99999).status_code == 404
+    assert admin.post(f"/admin/backups/{rdb}/restore", json={}).status_code == 422
+    assert admin.post(f"/admin/backups/{rdb}/restore", json={"target_app_id": dst, "x": 1}).status_code == 422
+    failed = models.BackupRun(app_id=src, kind="db", trigger="manual", status="failed", created_at=NOW)
+    vol = models.BackupRun(app_id=src, kind="volume", trigger="manual", status="succeeded", snapshot_id="v", created_at=NOW)
+    db_session.add_all([failed, vol])
+    db_session.commit()
+    assert _restore(admin, failed.id, dst).status_code == 422
+    assert _restore(admin, vol.id, dst).status_code == 422
+    nodb = user.post("/apps", json={**APP, "name": "nodb"}).json()["id"]
+    r = _restore(admin, rdb, nodb)
+    assert r.status_code == 422 and "no database" in r.json()["detail"]
+    r = _restore(admin, rbk, nodb)
+    assert r.status_code == 422 and "no blob storage" in r.json()["detail"]
+    over = _ghost_like(user, db_session, "overq", with_db=False, over_quota=True)
+    assert _restore(admin, rbk, over).status_code == 422
+    assert _restore(admin, rdb, dst).status_code == 202
+    assert _restore(admin, rbk, dst).status_code == 409  # one backup/restore at a time per app
+
+
+def test_restore_from_deleted_app_and_purged_repo(pair, admin, user, db_session):
+    src, dst, rdb, _ = pair
+    cfg = db_session.get(models.AppBackupConfig, src)
+    db_session.get(models.App, src).deleted_at = NOW  # the source is gone (repo retained): still restorable elsewhere
+    db_session.commit()
+    assert _restore(admin, rdb, dst).status_code == 202
+    cfg.purged_at = NOW
+    db_session.commit()
+    db_session.query(models.BackupRun).filter_by(trigger="restore").delete()
+    db_session.commit()
+    assert _restore(admin, rdb, dst).status_code == 410
+
+
+def test_restore_flag_off_and_misconfigured(user, admin, db_session):
+    assert _restore(admin, 1, 1).status_code == 422
+
+
+# --- script level (stub restic / s5cmd / jq): bucket backup + restore ---
+
+def _stub_env(tmp_path, bucket_files):
+    import shutil
+    import stat
+    jq = shutil.which("jq")
+    if not jq:
+        pytest.skip("jq not installed")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fixture = tmp_path / "remote"
+    for rel, data in bucket_files.items():
+        f = fixture / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(data)
+    calls = tmp_path / "calls.log"
+
+    def stub(name, body):
+        p = bindir / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+
+    (bindir / "jq").symlink_to(jq)
+    # restic: `cat config` ok; backup prints a summary; restore SNAP:/path --target T drops a file tree under T
+    stub("restic", f'echo "restic $@" >> {calls}\n'
+         'CMD=""; for a in "$@"; do case "$a" in backup|stats|restore|forget|cat) CMD=$a; break;; esac; done\n'
+         'case "$CMD" in\n'
+         '  backup) echo \'{"message_type":"summary","snapshot_id":"cafe0123456789","data_added":42}\'; exit 0;;\n'
+         '  stats) echo \'{"total_size":99}\'; exit 0;;\n'
+         '  restore) T=""; while [ $# -gt 0 ]; do [ "$1" = --target ] && T="$2"; shift; done\n'
+         f'           mkdir -p "$T/sub"; echo one > "$T/a.txt"; echo two > "$T/sub/b.txt"; exit 0;;\n'
+         'esac\nexit 0\n')
+    # s5cmd over a local directory standing in for the bucket (the script must pass creds only via env)
+    stub("s5cmd", f'echo "s5cmd $@ KEY=$AWS_ACCESS_KEY_ID SECRET=$AWS_SECRET_ACCESS_KEY" >> {calls}\n'
+         f'R={fixture}\n'
+         'JSON=""; while [ "$1" != ls ] && [ "$1" != cp ] && [ "$1" != rm ]; do case "$1" in --json) JSON=1; shift;; --endpoint-url|--numworkers) shift 2;; *) shift;; esac; done\n'
+         'CMD=$1; shift\n'
+         'case "$CMD" in\n'
+         '  ls) if [ -z "$(find $R -type f 2>/dev/null)" ]; then echo "ERROR no object found" >&2; exit 1; fi\n'
+         '      (cd $R && find . -type f | sed "s|^\\./||" | while read k; do echo "{\\"key\\":\\"s3://b/$k\\",\\"size\\":3}"; done)\n'
+         '      echo "{\\"key\\":\\"s3://b/folder/\\",\\"size\\":0}"; exit 0;;\n'
+         '  cp) case "$1" in\n'
+         '        s3://*) mkdir -p "$2"; (cd $R && find . -type f | while read k; do mkdir -p "$2/$(dirname $k)"; cp "$k" "$2/$k"; done);;\n'
+         '        *) rm -rf $R; mkdir -p $R; SRC=${1%/\\*}; (cd $SRC && find . -type f | while read k; do mkdir -p "$R/$(dirname $k)"; cp "$k" "$R/$k"; done);;\n'
+         '      esac; exit 0;;\n'
+         '  rm) if [ -z "$(find $R -type f 2>/dev/null)" ]; then echo "ERROR no object found" >&2; exit 1; fi; rm -rf $R; mkdir -p $R; exit 0;;\n'
+         'esac\n')
+    work = tmp_path / "work"
+    work.mkdir()
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "RESTIC_REPOSITORY": "s3:x/y", "RESTIC_PASSWORD": "not-the-password",
+           "AWS_ACCESS_KEY_ID": "backup-key-id", "AWS_SECRET_ACCESS_KEY": "not-the-backup-secret",
+           "KIND": "bucket", "SRC_ENDPOINT": "https://s3.example", "SRC_BUCKET": "b", "SRC_REGION": "atl1",
+           "SRC_ACCESS_KEY": "app-key-id", "SRC_SECRET_KEY": "not-the-app-secret", "TAG": "scheduled",
+           "WORK_DIR": str(work), "TMP_DIR": str(scratch)}
+    return env, calls, fixture, work
+
+
+def _run_script(env, tmp_path):
+    script = os.path.join(os.path.dirname(__file__), "..", "images", "backup", "picopaas-backup.sh")
+    return subprocess.run(["sh", script], env=env, capture_output=True, text=True, cwd=tmp_path)
+
+
+def test_script_bucket_backup_copies_then_restics_with_creds_only_in_env(tmp_path):
+    env, calls, fixture, work = _stub_env(tmp_path, {"content/images/p.png": "png", "top.txt": "top"})
+    r = _run_script({**env, "MODE": "backup"}, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip().splitlines()[-1] == 'PICOPAAS_RESULT {"snapshot_id":"cafe0123","bytes_added":42,"repo_bytes":99}'
+    log = calls.read_text()
+    assert f"restic --limit-upload 0 --cleanup-cache backup {work}/bucket --json --tag scheduled --host app" in log
+    assert "forget --keep-daily" in log and "--group-by host,paths --prune" in log
+    # the app's key only ever appears as s5cmd's environment, never in an argument; the repo key never reaches s5cmd
+    for line in log.splitlines():
+        if line.startswith("s5cmd"):
+            args, _, envpart = line.partition(" KEY=")
+            assert "app-key-id" not in args and "not-the-app-secret" not in args and "backup-key-id" not in line
+            assert envpart.startswith("app-key-id SECRET=not-the-app-secret")
+        else:
+            assert "app-key-id" not in line and "not-the-app-secret" not in line
+    assert "app-key-id" not in r.stdout + r.stderr and "not-the-app-secret" not in r.stdout + r.stderr
+    assert not (work / "bucket").exists()  # scratch removed
+
+
+def test_script_bucket_backup_empty_bucket(tmp_path):
+    env, calls, fixture, work = _stub_env(tmp_path, {})
+    r = _run_script({**env, "MODE": "backup"}, tmp_path)
+    assert r.returncode == 0 and "PICOPAAS_RESULT" in r.stdout  # an empty bucket is a valid (empty) snapshot
+
+
+def test_script_bucket_backup_incomplete_copy_fails_before_restic(tmp_path):
+    """A copy that silently drops an object must fail the run rather than seal a partial snapshot."""
+    env, calls, fixture, work = _stub_env(tmp_path, {"a.txt": "a", "b.txt": "b"})
+    stub_path = os.path.join(env["PATH"].split(":")[0], "s5cmd")
+    body = open(stub_path).read().replace('cp "$k" "$2/$k"; done);;', 'cp "$k" "$2/$k"; break; done);;', 1)
+    assert "break" in body
+    open(stub_path, "w").write(body)
+    r = _run_script({**env, "MODE": "backup"}, tmp_path)
+    assert r.returncode == 1 and "PICOPAAS_ERROR the copy of the bucket is incomplete" in r.stdout
+    assert " backup " not in calls.read_text()
+
+
+def test_script_bucket_restore_replaces_target(tmp_path):
+    env, calls, fixture, work = _stub_env(tmp_path, {"stale/old.txt": "stale"})
+    r = _run_script({**env, "MODE": "restore", "SNAPSHOT": "cafe0123"}, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.strip().splitlines()[-1] == 'PICOPAAS_RESULT {"restored":true,"objects":2}'
+    assert (fixture / "a.txt").read_text().strip() == "one" and (fixture / "sub/b.txt").read_text().strip() == "two"
+    assert not (fixture / "stale/old.txt").exists()  # replaced, not merged
+    log = calls.read_text()
+    assert f"restore cafe0123:{work}/bucket --target {work}/restore" in log
+    assert "rm s3://b/*" in log and "cp " in log and "backup" not in log
+    assert "app-key-id" not in r.stdout + r.stderr and "not-the-app-secret" not in r.stdout + r.stderr
+
+
+def test_script_bucket_restore_missing_snapshot_fails_closed(tmp_path):
+    env, calls, fixture, work = _stub_env(tmp_path, {"keep/me.txt": "x"})
+    import stat
+    p = os.path.join(env["PATH"].split(":")[0], "restic")
+    open(p, "w").write('#!/bin/sh\nfor a in "$@"; do [ "$a" = restore ] && exit 1; done\nexit 0\n')
+    os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC)
+    r = _run_script({**env, "MODE": "restore", "SNAPSHOT": "nope"}, tmp_path)
+    assert r.returncode == 1 and "PICOPAAS_ERROR restoring the snapshot from the repository failed" in r.stdout
+    assert (fixture / "keep/me.txt").exists()  # the target bucket was not touched
+
+
+# --- hung-run guards (first prod backup sat Running with no output) ---
+
+def test_tick_keeps_spaces_egress_policy_current(on, runner, db_session):
+    backups.tick(db_session, runner, NOW)
+    assert runner.egress_endpoints == ["https://sfo3.digitaloceanspaces.com"]
+
+
+def test_hung_job_is_failed_after_deadline_and_frees_the_server_slot(on, user, db_session, runner):
+    a = _app_with_db(user, db_session, "a")
+    b = _app_with_db(user, db_session, "b")  # same DB server: waits for a's dump
+    backups.tick(db_session, runner, NOW)
+    assert [s.app_id for s in runner.started] == [a]
+    later = NOW + timedelta(seconds=config.BACKUP_JOB_DEADLINE_SECONDS + 60)
+    backups.tick(db_session, runner, later)  # inside the grace window: Kubernetes may still report DeadlineExceeded
+    assert db_session.query(models.BackupRun).filter_by(app_id=a).one().status == "running"
+    backups.tick(db_session, runner, NOW + timedelta(seconds=config.BACKUP_JOB_DEADLINE_SECONDS + 130))
+    run = db_session.query(models.BackupRun).filter_by(app_id=a).one()
+    assert run.status == "failed" and "took too long" in run.error and run.job_name in runner.cleaned
+    assert [s.app_id for s in runner.started] == [a, b]  # the slot is free again
+
+
+def test_kube_runner_applies_egress_policy_once_per_answer(monkeypatch):
+    from app.providers import backup as pb
+
+    applied = []
+
+    class Kube:
+        def apply(self, manifests):
+            applied.extend(manifests)
+
+    monkeypatch.setattr("app.reconciler._private_storage_ips", lambda endpoint: ["10.11.0.9", "10.11.0.8"])
+    monkeypatch.setattr(pb, "_egress_applied", [])
+    r = pb.KubeBackupRunner(dynamic_client=object(), core_api=object())
+    r._kube = Kube()
+    r.ensure_spaces_egress("https://atl1.digitaloceanspaces.com")
+    r.ensure_spaces_egress("https://atl1.digitaloceanspaces.com")  # unchanged: not re-applied
+    assert len(applied) == 1
+    pol = applied[0]
+    assert pol["metadata"] == {"name": "allow-egress-spaces", "namespace": "picopaas-backup"}
+    rule = pol["spec"]["egress"][0]
+    assert [t["ipBlock"]["cidr"] for t in rule["to"]] == ["10.11.0.8/32", "10.11.0.9/32"]
+    assert rule["ports"] == [{"protocol": "TCP", "port": 443}]
+
+
+def test_backup_yaml_grants_networkpolicy_rights_and_documents_spaces():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    text = open(os.path.join(root, "deploy", "platform", "backup.yaml")).read()
+    assert "networkpolicies" in text and "allow-egress-spaces" in text
+
+
+def test_script_prints_progress_and_checks_password(tmp_path):
+    env, calls, fixture, work = _stub_env(tmp_path, {"a.txt": "a"})
+    r = _run_script({**env, "MODE": "backup"}, tmp_path)
+    lines = r.stdout.splitlines()
+    steps = [x for x in lines if x.startswith("PICOPAAS_STEP ")]
+    assert steps[0] == "PICOPAAS_STEP start mode=backup kind=bucket"
+    assert "PICOPAAS_STEP backup repository ready" in steps and "PICOPAAS_STEP writing the snapshot" in steps
+    assert lines[-1].startswith("PICOPAAS_RESULT ")
+    assert "app-key-id" not in r.stdout and "not-the-app-secret" not in r.stdout and "not-the-password" not in r.stdout
+    r = _run_script({**env, "MODE": "backup", "RESTIC_PASSWORD": ""}, tmp_path)
+    assert r.returncode == 1 and "PICOPAAS_ERROR the repository password is missing" in r.stdout
+
+
+def test_script_db_dump_has_connect_timeouts_and_step_lines():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    text = open(os.path.join(root, "images", "backup", "picopaas-backup.sh")).read()
+    assert "mariadb-dump --connect-timeout=20" in text and "PGCONNECT_TIMEOUT=20" in text
+    assert "timeout -k 10 $QUICK_TIMEOUT restic" in text and "timeout -k 10 $LONG_TIMEOUT restic" in text
+    assert "dumping the database into the repository" in text

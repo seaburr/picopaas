@@ -3,6 +3,9 @@
 The API never touches the cluster: POST only queues a `BackupRun`; the leader's scheduler tick (app/backups.py) starts
 the Job. Read-scope API keys can list but not create (the global read-only gate blocks every non-GET). Owner or
 platform admin only; anyone else gets 404. Download of a snapshot (presigned URL) is phase 1b.
+
+Admin restore (`POST /admin/backups/{run_id}/restore`) queues a restore Job like a backup: it is admin-only, restores
+into ANOTHER app by default, and only over the source app when `overwrite_source` is set and that app is suspended.
 """
 from datetime import datetime
 from typing import List, Literal, Optional
@@ -38,6 +41,7 @@ class BackupRunOut(BaseModel):
     repo_bytes: Optional[int] = None
     snapshot_id: Optional[str] = None
     error: Optional[str] = None
+    source_run_id: Optional[int] = None  # restore runs: the backup run that was restored
 
 
 class BackupKindOut(BaseModel):
@@ -68,7 +72,7 @@ class BackupsOut(BaseModel):
 
 class BackupCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kinds: Optional[List[Literal["db", "volume"]]] = None  # default: everything this app has
+    kinds: Optional[List[Literal["db", "volume", "bucket"]]] = None  # default: everything this app has
 
 
 class BackupConfigIn(BaseModel):
@@ -86,7 +90,7 @@ def _out(db: Session, app: models.App) -> BackupsOut:
                 .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc()).limit(RUNS_SHOWN).all())
     kinds = []
     for kind in backups.eligible_kinds(app):
-        p = "db" if kind == "db" else "vol"
+        p = backups.prefix(kind)
         kinds.append(BackupKindOut(
             kind=kind, last_backup_at=getattr(cfg, f"{p}_last_backup_at", None), last_status=getattr(cfg, f"{p}_last_status", None),
             last_error=getattr(cfg, f"{p}_last_error", None), last_bytes=getattr(cfg, f"{p}_last_bytes", None),
@@ -126,9 +130,12 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
     if "volume" in wanted and "volume" not in available:
         raise HTTPException(status_code=422, detail="Volume backups aren't available yet." if app.volume_size_gi
                             else "This app has no volume to back up.")
+    if "bucket" in wanted and "bucket" not in available:
+        raise HTTPException(status_code=422, detail="This app has no blob storage to back up yet." if app.want_storage
+                            else "This app has no blob storage to back up.")
     if not wanted or any(k not in available for k in wanted):
         raise HTTPException(status_code=422, detail="This app has no database to back up yet." if app.want_db
-                            else "This app has no database or volume to back up.")
+                            else "This app has no database, blob storage or volume to back up.")
     if backups.active_run(db, app.id) is not None:
         raise HTTPException(status_code=409, detail="A backup is already queued or running for this app.")
     wait = backups.manual_cooldown(db, app.id)
@@ -149,7 +156,7 @@ def update_backup_config(app_id: int, body: BackupConfigIn, db: Session = Depend
     app = _get_app_or_404(db, app_id, user)
     _require_usable()
     if not backups.eligible_kinds(app) and not backups.wants_backups(app):
-        raise HTTPException(status_code=422, detail="This app has no database or volume to back up.")
+        raise HTTPException(status_code=422, detail="This app has no database, blob storage or volume to back up.")
     cfg = backups.ensure_config(db, app)
     if body.enabled is not None:
         cfg.enabled = body.enabled
@@ -168,3 +175,32 @@ def update_backup_config(app_id: int, body: BackupConfigIn, db: Session = Depend
 def admin_backups(db: Session = Depends(get_db)):
     """Fleet overview: per app state/last success/bytes, platform total vs cap, apps retained after deletion."""
     return backups.overview(db)
+
+
+class RestoreIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target_app_id: int
+    overwrite_source: bool = False
+
+
+@admin_router.post("/backups/{run_id}/restore", response_model=BackupRunOut, status_code=202)
+def restore_backup(run_id: int, body: RestoreIn, db: Session = Depends(get_db),
+                   admin: models.User = Depends(require_platform_admin)):
+    """Queue a restore of a succeeded database or blob storage backup into the target app's database or bucket (replacing
+    what is there). The scheduler starts the Job within a minute; poll GET /apps/{target}/backups for the result."""
+    _require_usable()
+    source = db.get(models.BackupRun, run_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="We can't find that backup run.")
+    target = db.get(models.App, body.target_app_id)
+    if target is None or target.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="We can't find the target app. It may have been deleted.")
+    try:
+        run = backups.enqueue_restore(db, source, target, body.overwrite_source)
+    except backups.RestoreRefused as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    db.commit()
+    audit.record(db, admin, "backup.restore", "app", target.id,
+                 f"run={run.id} from_run={source.id} from_app={source.app_id} kind={source.kind}"
+                 + (" overwrite_source" if target.id == source.app_id else ""))
+    return BackupRunOut.model_validate(run)
