@@ -85,6 +85,7 @@ Idempotent env-driven actions, run on every boot once WordPress is installed (al
 - `WP_REMOVE_PLUGINS=slug1,slug2`: deactivate and delete plugins that break on current PHP or that you no longer want (for example Jetpack). Names must match `[a-z0-9-]+`; must-use plugins are never touched. Prefer this over `WP_RESTORE_DEACTIVATE` when you want the files gone from the volume.
 - `WP_RESET_PASSWORD_USER=<login|email|id>` with `WP_RESET_PASSWORD_NONCE=<any string>`: sets a random password, printed once in the app logs. Use it when you cannot log in and mail is not configured, since the lost-password email cannot be sent (SMTP is blocked). A marker (a database option keyed by user and nonce) stops repeated resets on restart; change the nonce to reset again. Change the password after login and remove the variables.
 - `WP_CLEAR_LOGIN_LOCKOUTS=1`: clears Limit Login Attempts Reloaded lockouts and retry counters, in case the migrated site locked your IP. Remove it afterwards.
+- `WP_AUTOINDEX_PATHS=/downloads/,...`: if the old server (Apache `Options +Indexes`) listed static folders that sit outside WordPress, nginx returns 403 for them until you list them here. Files inside are served as-is; PHP and dotfiles are refused.
 
 ## 8. Rollback
 Nothing touches the old server. To redo: stop the app, delete the marker (`rm /var/www/html/.picopaas-restored`, needs a shell on the volume)
