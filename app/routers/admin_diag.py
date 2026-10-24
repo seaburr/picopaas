@@ -9,8 +9,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app import admin_diag, audit, models
+from app.log_redact import redact_line
 from app.db import get_db
-from app.dependencies import get_kube, require_platform_admin
+from app.dependencies import get_kube, require_admin_session, require_platform_admin
 from app.providers.base import is_platform_namespace
 
 router = APIRouter(prefix="/admin/health", tags=["admin"], dependencies=[Depends(require_platform_admin)])
@@ -32,7 +33,7 @@ def health_backups(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_
     return admin_diag.backup_health(db, days)
 
 
-@router.get("/logs/pods")
+@router.get("/logs/pods", dependencies=[Depends(require_admin_session)])
 def platform_pods(kube=Depends(get_kube)):
     """Platform components (pods in platform namespaces, discovered; never app-* namespaces) and their containers."""
     try:
@@ -57,7 +58,7 @@ def _read(kube, namespace: str, pod: str, container: str, tail: int, since: Opti
     except Exception as exc:  # noqa: BLE001
         log.warning("platform log read failed (%s/%s): %s", namespace, pod, type(exc).__name__)
         raise HTTPException(status_code=502, detail="We couldn't read those logs right now.")
-    lines = lines[-tail:]
+    lines = [redact_line(ln) for ln in lines[-tail:]]
     kept: list[str] = []
     size = 0
     for ln in reversed(lines):  # keep the newest lines inside the byte budget
@@ -69,7 +70,7 @@ def _read(kube, namespace: str, pod: str, container: str, tail: int, since: Opti
     return kept, len(kept) < len(lines)
 
 
-@router.get("/logs")
+@router.get("/logs", dependencies=[Depends(require_admin_session)])
 def platform_logs(namespace: str = Query(..., pattern=NS_PATTERN), pod: str = Query(..., pattern=POD_PATTERN),
                   container: str = Query(..., pattern=CONTAINER_PATTERN),
                   tail: int = Query(VIEW_DEFAULT_TAIL, ge=1, le=VIEW_MAX_TAIL),
@@ -80,7 +81,7 @@ def platform_logs(namespace: str = Query(..., pattern=NS_PATTERN), pod: str = Qu
             "truncated": truncated}
 
 
-@router.get("/logs/download")
+@router.get("/logs/download", dependencies=[Depends(require_admin_session)])
 def platform_logs_download(namespace: str = Query(..., pattern=NS_PATTERN), pod: str = Query(..., pattern=POD_PATTERN),
                            container: str = Query(..., pattern=CONTAINER_PATTERN),
                            tail: int = Query(DOWNLOAD_MAX_TAIL, ge=1, le=DOWNLOAD_MAX_TAIL),

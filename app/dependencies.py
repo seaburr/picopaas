@@ -140,3 +140,11 @@ def require_platform_admin(current_user: models.User = Depends(get_current_user)
     if not current_user.is_platform_admin or current_user.status != "active":
         raise HTTPException(status_code=403, detail="This needs administrator access.")
     return current_user
+
+
+def require_admin_session(request: Request, current_user: models.User = Depends(require_platform_admin)) -> models.User:
+    """Platform admin AND a browser session: for endpoints exposing platform internals (logs) that a leaked admin API key,
+    even a read-only one, must not be able to pull."""
+    if getattr(request.state, "auth_via", None) != "cookie":
+        raise HTTPException(status_code=403, detail="Platform logs can only be read from the web UI, not with an API key.")
+    return current_user

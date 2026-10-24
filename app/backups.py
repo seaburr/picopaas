@@ -70,6 +70,10 @@ def redact(text: Optional[str], limit: int = 200) -> str:
     """Short, URL- and key-free summary of an error text before it is stored or shown."""
     t = re.sub(r"\w+://\S+", "<url>", str(text or ""))
     t = re.sub(r"(?i)(password|secret|token|key)\s*[=:]\s*\S+", r"\1=<redacted>", t)
+    if len(config.BACKUP_BUCKET) >= 4:
+        t = t.replace(config.BACKUP_BUCKET, "<bucket>")  # an error text may quote the bucket name
+    t = re.sub(r"(?<![\w:])/(?:[\w.@+-]+/)+[\w.@+-]*", "<path>", t)  # absolute file paths inside the Job or platform
+    t = re.sub(r"(?s)Traceback \(most recent call last\).*", "an internal error", t)
     return " ".join(t.split())[:limit]
 
 
