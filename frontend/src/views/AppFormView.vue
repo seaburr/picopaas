@@ -332,7 +332,7 @@ async function onSubmit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-6xl sm:px-6' : 'max-w-2xl']">
+    <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-3xl sm:px-6' : 'max-w-2xl sm:px-6']">
       <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
@@ -398,7 +398,7 @@ async function onSubmit() {
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
       <form class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
-        <fieldset :disabled="suspended" :class="['space-y-4', isEdit ? 'max-w-3xl' : '']">
+        <fieldset :disabled="suspended" :class="'space-y-4'">
           <div>
             <label for="f-name" class="label">Name</label>
             <input
@@ -603,10 +603,11 @@ async function onSubmit() {
         </div>
       </form>
 
-      <section v-if="isEdit && loadedApp" class="mt-6" aria-labelledby="h-other">
+      <section v-if="isEdit && loadedApp" class="mt-4" aria-labelledby="h-other">
         <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
-        <AppSettingsPanel :app="loadedApp" @update:app="onPanelUpdate" />
-        <BackupSettings class="mt-3" :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
+        <AppSettingsPanel :app="loadedApp" @update:app="onPanelUpdate">
+          <BackupSettings :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
+        </AppSettingsPanel>
       </section>
       </template>
     </main>

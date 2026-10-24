@@ -279,6 +279,9 @@ const suspended = computed(() => app.value.status === 'suspended')
             <p v-if="subError" id="sub-err" role="alert" class="field-error mt-2 break-words">{{ subError }}</p>
           </section>
 
+          <!-- Extra settings sections go in this slot; the Danger zone must stay the last element. -->
+          <slot />
+
           <section class="card card-pad border-danger/40" aria-labelledby="h-danger">
             <h2 id="h-danger" class="section-title text-danger-light">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
