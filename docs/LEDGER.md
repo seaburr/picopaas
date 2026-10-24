@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] DONE: committed backup audit completeness (fcd4a52); gitleaks clean, no security findings; pushed, watching CI/image/deploy.
+- 2026-10-24 [scm-security] START: committing backup audit completeness (tests 1446 passed).
+- 2026-10-24 [backend-dev] DONE (uncommitted): backup audit gaps closed: backup.create (scheduled/final, trigger=), backup.pruned, backup.purged, backup.export_deleted (sweep_exports now returns deleted keys), backup.download_link; tests/test_backups_audit.py; ADMIN_GUIDE, design/backups.md, QUESTIONS resolved.
+- 2026-10-24 [backend-dev] START: backup audit gaps (create/delete/download).
 - 2026-10-24 [scm-security] START: committing backups race lock + exports (backend, frontend, docs) in chunks.
 - 2026-10-24 [scm-security] DONE: committed backups race lock/exports (api, frontend, docs); gitleaks clean, no findings; pushed, watching CI/image/deploy.
 - 2026-10-24 [backend-dev] DONE (uncommitted): backups double-click race closed (backups.lock_app: FOR UPDATE on AppBackupConfig in manual backup + export enqueue; PENTEST fixed; QUESTIONS trimmed) and owner come-back-later downloads (GET /apps/{id}/backups/exports, `export` on runs[]; API/USER_GUIDE/design docs; tests/test_backups_race_exports.py).
