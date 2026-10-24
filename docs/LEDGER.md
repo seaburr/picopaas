@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: committed Azure research, WP_AUTOINDEX_PATHS note, ledger; gitleaks clean, no identifiers in azure-port.md. No findings.
+- 2026-10-23 [scm-security] START: commit/push Azure research + WP migration note + ledger.
+- 2026-10-23 [infra-ops] DONE (uncommitted): docs/research/azure-port.md. Azure port ~26 agent-days; AKS like-for-like ~$121/mo vs DO $75.30 (cheapest AKS ~$104; VM+k3s variant ~$68). Biggest decision: Blob is not S3 (bootstrap.md contract). Recommend phase 0 seam refactor only unless credits cover it. Nothing provisioned; no cloud account or local kubectl touched.
+- 2026-10-23 [infra-ops] START: Azure port research (docs only, no provisioning).
 - 2026-10-23 [scm-security] DONE: WordPress relative redirects + WP_AUTOINDEX_PATHS committed (67c7446); pushed, gitleaks clean. No findings.
 - 2026-10-23 [scm-security] DONE: volume ceiling bf16df9, Blob storage UI c4978d0, docs 37819fc; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] START: commit/push volume ceiling + Blob storage rename; watch CI.
