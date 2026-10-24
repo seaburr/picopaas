@@ -9,6 +9,7 @@ wait or store data nobody asked for) but repos from earlier manual backups still
 (`source_run_id`, `export_key`, migration `e5b1c7d9a2f4`); a Job with `MODE=export` (image script) `restic dump`s the snapshot to one file and uploads it
 with the backup key to `exports/<app>/<export id>.<ext>`; `GET /apps/{id}/backups/exports/{export_id}` returns a 10-minute presigned URL
 once ready; objects are swept after 1 hour (not the 24 h lifecycle first designed); 3 per app per hour; audit `backup.download`.
+Come back later (2026-10-24): `GET /apps/{id}/backups/exports` lists non-expired exports (failed ones for an hour, `url` null); the single-export GET presigns a fresh 10-minute URL on every call until `available_until` (finish + 1 h); each run in `GET /apps/{id}/backups` has an `export` summary. Enqueue paths (manual backup, export) serialise per app with `SELECT ... FOR UPDATE` on the `AppBackupConfig` row (`backups.lock_app`), closing the double-click race.
 CLI: `picopaas backup list|run|enable|disable|download`. Needs the backup image republished and `BACKUP_IMAGE` re-pinned.
 
 Status update 2026-10-23 (backend-dev): **bucket kind and admin restore helpers IMPLEMENTED** (pulled forward from phases 3 and 2),

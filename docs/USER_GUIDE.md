@@ -378,7 +378,7 @@ weekly and one monthly copy. A backup you start by hand replaces that day's dail
   it sees exactly what your app sees.
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
-On the app's health page, the **Backups** card shows the same thing: a switch for scheduled backups (off until you turn it on), the last backup per kind with its time and size, a **Back up now** button, and a list of recent runs with a **Download** button on each successful one (3 downloads per hour; the link works for 10 minutes).
+On the app's health page, the **Backups** card shows the same thing: a switch for scheduled backups (off until you turn it on), the last backup per kind with its time and size, a **Back up now** button, and a list of recent runs, labelled automatic or manual. Click **Prepare download** on any successful one (automatic backups too); you can leave the page while it prepares, then come back and click **Download** within an hour (3 downloads per hour).
 
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
 (one per hour; it works whether or not scheduled backups are on). Turn scheduled backups on or off, or switch to weekly, with
@@ -401,7 +401,7 @@ picopaas backup list myapp
 `.sql.gz`, or `.pgdump` for PostgreSQL; a bucket as `.tar.gz`); add a run id and `-o file` for a specific one. Over the API:
 `POST /apps/{id}/backups/{run_id}/download` starts preparing the file, then poll `GET /apps/{id}/backups/exports/{export_id}` until
 `status` is `ready` and fetch the `url` (valid 10 minutes; ask again for a fresh one). The prepared file is deleted after an hour. You can
-prepare 3 downloads per app per hour.
+prepare 3 downloads per app per hour. The download is prepared in the background; you can leave and come back within an hour: `GET /apps/{id}/backups/exports` lists your prepared downloads, and each run in `GET /apps/{id}/backups` carries an `export` field ("Ready to download"). Scheduled and manual backups download the same way.
 
 When you delete an app the platform takes a final backup **only if scheduled backups are on for it**, and keeps it for 14 days,
 then deletes it. If they are off, no final backup is taken, but any backups you made earlier by hand are kept for the same 14 days and

@@ -7,7 +7,7 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Backups pentest follow-ups (raised 2026-10-24, docs/PENTEST.md "Backups end-to-end review").** OK to add a row lock in `enqueue_export`/manual backup to close the double-click race (two clicks can both pass the "nothing active" check; bounded by the 2-Job cap and hourly limits), and one audit row when a download link is issued? (Image republish/re-pin and the "database dump failed" bug are handled: mariadb-dump rejected `--connect-timeout`, fixed and now caught by a real-DB smoke test in the image build.) — _your answer:_
+- **Backups pentest follow-ups (raised 2026-10-24, docs/PENTEST.md "Backups end-to-end review").** OK to add one audit row when a download link is issued? (The double-click race is fixed with a row lock. Image republish/re-pin and the "database dump failed" bug are handled: mariadb-dump rejected `--connect-timeout`, fixed and now caught by a real-DB smoke test in the image build.) — _your answer:_
 
 - **Approve request 0008 (backups)? (raised 2026-10-23).** A second-region Spaces bucket `picopaas-backups` (proposed SFO3) inside the existing $5 Spaces subscription, about $0 marginal; snapshots optional later at about $0.06/GiB/mo. Background: `docs/requests/0008-backups.md`, `docs/design/backups.md`. Default if unanswered: phase 1 uses only the existing allowance (prefix `backups/` in `pico-paas-s3-a`, same region as app buckets). Also confirm the region (SFO3 vs TOR1/AMS3). — _your answer:_
 
