@@ -5,6 +5,12 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] DONE: pushed f00128f (backup dump fix+smoke+pentest), fe33092 (coverage tests), 7d18845 (UI fixes); gitleaks clean. Backup image must be republished and BACKUP_IMAGE re-pinned. No findings.
+- 2026-10-24 [scm-security] START: commit/push backup dump fix + smoke test, pentest fixes, coverage tests, UI fixes; watch CI/image/backup-image/deploy. Suite 1434 passed, typecheck clean.
+- 2026-10-24 [security-reviewer] DONE (uncommitted): backups pentest. Fixed: export filename sanitised (Content-Disposition/CLI path), script refuses `..` object keys (real s5cmd writes outside dir), export-prefix overlap guard (config.backup_export_prefix_ok); tests/test_backups_security.py (48), PENTEST.md section. Backup image must be republished + BACKUP_IMAGE re-pinned. Live apps 154/155 deleted. Suite green (1434).
+- 2026-10-24 [qa-tester] DONE (uncommitted): backups coverage pass, tests/test_backups_coverage.py (+19 tests: KubeBackupRunner vs fake dynamic client, export naming/state, overview/app_state, purge/retain/restore/export refusals). app/backups.py 85->94%, providers/backup.py 48->99%, routers/backups.py 99%. No app bugs found.
+- 2026-10-24 [security-reviewer] START: backups end-to-end pentest (downloads/exports, restore, namespace, script).
+- 2026-10-24 [qa-tester] START: backups coverage pass (tests/test_backups_coverage.py).
 - 2026-10-24 [frontend-dev] DONE (uncommitted): Backups card on App health page (frontend/src/components/BackupsCard.vue, api/backups.ts, types.ts, AppDetailView.vue, docs/USER_GUIDE.md 7b). typecheck + build pass; no frontend test setup exists.
 - 2026-10-24 [frontend-dev] START: owner Backups card.
 - 2026-10-24 [scm-security] DONE: templates refresh, backups opt-in/downloads/CLI, docs pushed; gitleaks clean on all commits. Backup image must be republished and BACKUP_IMAGE re-pinned before live. No findings.
