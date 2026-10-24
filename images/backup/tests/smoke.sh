@@ -8,7 +8,13 @@ IMAGE="${1:?usage: smoke.sh <image>}"
 NET="bk-smoke-$$"
 PW=not-the-password
 WORK="$(mktemp -d)"
-cleanup() { docker rm -f "$NET-mysql" "$NET-pg" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+# The repos under $WORK are owned by the image's UID 10001, so they are removed from inside a container.
+cleanup() {
+  docker rm -f "$NET-mysql" "$NET-pg" >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
+  docker run --rm --user 0 --entrypoint sh -v "$WORK:/w" "$IMAGE" -c 'rm -rf /w/* /w/.[!.]*' >/dev/null 2>&1 || true
+  rm -rf "$WORK" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 docker network create "$NET" >/dev/null
