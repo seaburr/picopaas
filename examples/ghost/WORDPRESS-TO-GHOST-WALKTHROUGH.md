@@ -34,7 +34,7 @@ export PICOPAAS_URL=https://platform.picopaas.xyz PICOPAAS_TOKEN=<your token>
 python3 cli/picopaas.py apply -f ghost-poc.yaml
 ```
 You should see `Created ghost-poc (queued). It'll be live in about a minute at https://<host>.picopaas.xyz`.
-(An app named `ghost-poc` may already exist, id 153, deployed ahead of time. Then `apply` prints `Updated`; that is fine.)
+The import reads from the WordPress above, so keep that app running until you are done.
 
 ## b. Wait for running
 ```

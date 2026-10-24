@@ -5,6 +5,14 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] DONE: templates refresh, backups opt-in/downloads/CLI, docs pushed; gitleaks clean on all commits. Backup image must be republished and BACKUP_IMAGE re-pinned before live. No findings.
+- 2026-10-24 [scm-security] START: commit/push templates refresh + backups opt-in/downloads/CLI + docs; watch CI/image/backup-image/deploy.
+- 2026-10-24 [backend-dev] DONE (uncommitted): chunk 3 owner CLI `picopaas backup list|run|enable|disable|download [run_id] [-o]` (cli/picopaas.py, tests/test_cli_commands.py, docs/CLI.md). Chunk 2 owner downloads: `POST /apps/{id}/backups/{run_id}/download` + `GET /apps/{id}/backups/exports/{export_id}` (10 min presigned GET), `trigger=export` BackupRun (migration e5b1c7d9a2f4 adds backup_runs.export_key), MODE=export in images/backup/picopaas-backup.sh, 3/app/hour, 1 active/app, sweep of exports/ after 1 h in the tick, audit backup.download; backup.yaml ephemeral quota 3Gi -> 4Gi. Chunk 1 opt-in: BACKUP_DEFAULT_ENABLED (default 0). MUST BEFORE LIVE: republish the backup image (backup-image workflow), re-pin BACKUP_IMAGE in picopaas-env, run deploy (migration + quota). Docs: USER_GUIDE, API, ADMIN_GUIDE, CLI, design/backups.md.
+- 2026-10-24 [backend-dev] START: backups chunk 3 (CLI backup commands).
+- 2026-10-24 [backend-dev] START: backups chunk 2 (owner downloads / export Job).
+- 2026-10-24 [backend-dev] START: backups chunk 1 (opt-in via BACKUP_DEFAULT_ENABLED; manual backups independent; docs).
+- 2026-10-23 [release-blogger] DONE: posted devlog-2026-10-23-evening and could-picopaas-run-elsewhere (published). Both new; nothing skipped. No per-feature posts for these commits by request.
+- 2026-10-23 [release-blogger] START: evening devlog + cloud-alternatives post.
 - 2026-10-23 [scm-security] DONE: backups fix, bucket kind/restore, docs, Ghost WP walkthrough committed and pushed (see git log); watching CI/image/backup-image/examples/deploy. Retention config.py change folded into the bucket-kind commit; app/backups.py and tests ride with it, so the first commit alone is not self-contained. No findings.
 - 2026-10-23 [scm-security] START: commit/push backups fix + ghost backups + docs + Ghost WP example; watch all workflows.
 - 2026-10-23 [backend-dev] DONE (uncommitted): hung first prod backup (bk-1 Running, no logs). Root cause: backup NetworkPolicy excludes private ranges, but inside the DO VPC Spaces resolves to a private IP (reconciler.py _private_storage_ips; tenants get allow-egress-storage), so restic could not connect and silently retried. Fix: platform-managed allow-egress-spaces policy (+ Role rights in backup.yaml, needs deploy), step progress lines, timeouts, backoffLimit 0, poll backstop deadline+120s. Needs image republish + deploy.yml before rerun.

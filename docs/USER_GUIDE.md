@@ -366,10 +366,11 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
 
 ## 7b. Backups
 
-When your administrator has turned backups on, an app with a **database** or **blob storage** is backed up automatically once a day (a
-bit after 03:00 UTC, staggered per app). Each backup is encrypted and stored outside the cluster. PicoPaaS keeps the latest daily backup plus one
-weekly and one monthly copy. A backup you start by hand replaces that day's daily copy. Downloading a backup is coming soon; until
-then, keep your own copy of anything you need for the long term (for example, export your data from the app itself). What is covered:
+When your administrator has turned backups on, you can back up an app with a **database** or **blob storage**. Scheduled backups are
+**opt-in**: turn them on for an app and it is backed up once a day (a bit after 03:00 UTC, staggered per app); until you do, nothing runs
+by itself, but you can start a backup by hand at any time. Each backup is encrypted and stored outside the cluster. PicoPaaS keeps the latest daily backup plus one
+weekly and one monthly copy. A backup you start by hand replaces that day's daily copy. Because only those few copies are kept,
+**download** anything you need for the long term (see below). What is covered:
 - **Database: yes.** A full dump of your app's database (MySQL or PostgreSQL).
 - **Persistent volume: next.** Volume backups are the next step; for now a volume is not backed up.
 - **Blob storage: yes.** Every object in your bucket is copied and stored the same way (as its own backup, shown as `bucket`
@@ -378,9 +379,31 @@ then, keep your own copy of anything you need for the long term (for example, ex
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
-(one per hour). Turn backups off or switch to weekly with `PATCH /apps/{id}/backups`. A failed backup adds an event to your app and
+(one per hour; it works whether or not scheduled backups are on). Turn scheduled backups on or off, or switch to weekly, with
+`PATCH /apps/{id}/backups`. A failed backup adds an event to your app and
 shows in the status. Backup storage has its own cap (2 GiB per app) and does not count against your database or storage quota.
-When you delete an app the platform takes a final backup and keeps it for 14 days, then deletes it. Restoring is done by an
+
+```bash
+# opt in to daily backups, run one now, list them
+curl -X PATCH -H "Authorization: Bearer $PICOPAAS_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"enabled": true}' https://platform.picopaas.xyz/apps/ID/backups
+curl -X POST -H "Authorization: Bearer $PICOPAAS_TOKEN" https://platform.picopaas.xyz/apps/ID/backups
+curl -H "Authorization: Bearer $PICOPAAS_TOKEN" https://platform.picopaas.xyz/apps/ID/backups
+# or with the CLI
+picopaas backup enable myapp      # picopaas backup disable myapp
+picopaas backup run myapp
+picopaas backup list myapp
+```
+
+**Downloading a backup.** `picopaas backup download myapp` saves the latest successful backup of each kind (a database dump as
+`.sql.gz`, or `.pgdump` for PostgreSQL; a bucket as `.tar.gz`); add a run id and `-o file` for a specific one. Over the API:
+`POST /apps/{id}/backups/{run_id}/download` starts preparing the file, then poll `GET /apps/{id}/backups/exports/{export_id}` until
+`status` is `ready` and fetch the `url` (valid 10 minutes; ask again for a fresh one). The prepared file is deleted after an hour. You can
+prepare 3 downloads per app per hour.
+
+When you delete an app the platform takes a final backup **only if scheduled backups are on for it**, and keeps it for 14 days,
+then deletes it. If they are off, no final backup is taken, but any backups you made earlier by hand are kept for the same 14 days and
+then deleted, so download what you need before deleting. Restoring is done by an
 administrator: ask them to restore a backup run into your app (database tables or the whole bucket are replaced with the backup's
 contents) or into a fresh copy of it.
 
@@ -558,7 +581,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, a static nginx site and the podinfo sample API. **Deploy** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons and env vars, so you can adjust before creating. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
+The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana, n8n (PostgreSQL), Shlink, a Gatus status page and a static nginx site, each with a link to its example README. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
 
 ## 15. Test apps
 

@@ -86,7 +86,7 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
   isn't pinned to SPA-shared paths.
 
 ## Shipped (2026-10-20 round)
-2. App templates / one-click catalog (`/templates`: Ghost, nginx static site, podinfo) — DONE.
+2. App templates / one-click catalog (`/templates`: Ghost, WordPress, Directus, Grafana, n8n, Shlink, status page, nginx static site) — DONE.
 3. Instant rollback to a previous image digest (last 5 per app) — DONE.
 4. Deploy health-gate + auto-rollback to the last good digest on a failed image rollout — DONE.
 8. Per-app CPU/memory history on the app detail page — DONE.

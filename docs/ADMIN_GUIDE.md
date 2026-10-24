@@ -313,7 +313,7 @@ Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persisten
 
 Off by default (`BACKUPS_ENABLED=0`): with the flag off nothing runs, no namespace exists and every backup endpoint says so.
 Backs up **databases** (MySQL and PostgreSQL) and **blob storage buckets** of apps that have them, and gives admins a restore
-helper (below); volume backups and snapshot download come next. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
+helper (below) and owner downloads; volume backups come next. **Scheduled backups are opt-in per app** (`BACKUP_DEFAULT_ENABLED`, default `0`; set `1` to make new apps default to on): owners enable them with `PATCH /apps/{id}/backups` / `picopaas backup enable`, and an owner can always run a manual backup. Existing config rows keep their value. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
 
 How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) queues a run per app at its daily slot
 (`BACKUP_SCHEDULE_HOUR` UTC plus a per-app minute offset) and starts a Kubernetes Job in namespace `picopaas-backup`
@@ -372,15 +372,25 @@ after that deadline even if Kubernetes never reports it, freeing its DB-server s
 
 Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 1 / 1 / 1 (Chas, 2026-10-23: owners archive anything older themselves); per-app cap
 `BACKUP_MAX_BYTES_PER_APP` = 2 GiB; platform cap `BACKUP_MAX_BYTES_TOTAL` = 100 GiB (warning at 80%); `BACKUP_UPLOAD_LIMIT_KIB`
-(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14). Backup bytes do not count against
+(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14); `BACKUP_DEFAULT_ENABLED` (0); `BACKUP_EXPORT_TTL_SECONDS` (3600). Backup bytes do not count against
 the 50 MB database or 100 MB storage caps. Over a cap, the backup is skipped with a failed run and an app event, never silently.
+
+**Owner downloads (export).** `POST /apps/{id}/backups/{run_id}/download` queues a `trigger=export` run (it does not block backups
+or the final backup, and does not touch the app's backup summary). The tick starts a Job in `picopaas-backup` with `MODE=export`:
+`restic dump` of the snapshot into one file (`.sql.gz` / `.pgdump` / `.tar.gz`) uploaded with `s5cmd` to the backup bucket under
+`exports/<app id>/<export id>.<ext>` using the backup key; the API presigns a GET (10 minutes) when the owner polls
+`GET /apps/{id}/backups/exports/{export_id}`. The scheduler tick deletes export objects older than `BACKUP_EXPORT_TTL_SECONDS` (3600; swept at most every
+5 minutes). Limits: 3 downloads per app per hour, one active export per app. Same NetworkPolicy, timeouts, step lines,
+`backoffLimit: 0` and deadline as backups; the Job's scratch emptyDir is 256 MiB (database) or 2 x `BACKUP_BUCKET_MAX_BYTES` + 64 MiB (bucket), so the
+namespace ephemeral-storage quota in `backup.yaml` is 4Gi. Audit `backup.download` / `backup.export_succeeded` / `backup.export_failed`.
+**Going live needs: republish the backup image (backup-image workflow), re-pin `BACKUP_IMAGE` in `picopaas-env`, and deploy (migration `e5b1c7d9a2f4`, quota change).**
 
 Monitoring: `GET /admin/backups` and the `backups` block of `GET /admin/health` give ok / pending / stale (no success in
 36 hours, 8 days for weekly) / failing counts, repo bytes against the cap and per-app detail. A failed run also adds a
 `backup_failed` event to the app and an audit row (`backup.failed`, actor system).
 
-Deleting an app: the platform takes one final backup (the delete waits for it, at most two hours, and a failure does not block
-it), keeps the repositories for 14 days, then purges them (`backup.retained` is audited). Purge forgets all snapshots and prunes the
+Deleting an app: when scheduled backups are on for it, the platform takes one final backup (the delete waits for it, at most two hours, and a failure does not block
+it); when they are off (the opt-in default) no final backup is taken and the delete does not wait, but repositories left by earlier manual backups are still kept 14 days and purged (a deliberate choice: a disabled app is one whose owner declined automatic protection, and a final backup of a never-backed-up app would store data nobody asked us to keep). Either way the platform keeps the repositories for 14 days, then purges them (`backup.retained` is audited). Purge forgets all snapshots and prunes the
 data; restic's small config and key files stay in the bucket. DigitalOcean's own managed-database backups remain the
 disaster layer underneath.
 

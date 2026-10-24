@@ -29,6 +29,7 @@ everywhere a user is accepted except where marked "session only".
 | POST | `/apps/{app_id}/storage/presign` | owner or admin; PUT needs a full-scope key |
 | POST | `/apps/{app_id}/restart`, `/check-image`, `/rollback` | owner or admin |
 | GET, POST, PATCH | `/apps/{app_id}/backups` | owner or admin; POST and PATCH need a full-scope key |
+| POST, GET | `/apps/{app_id}/backups/{run_id}/download`, `/apps/{app_id}/backups/exports/{export_id}` | owner or admin; POST needs a full-scope key |
 | POST | `/admin/backups/{run_id}/restore` | admin, full-scope key |
 | GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/backups`, `/admin/docs/admin-guide` | admin |
 | PATCH | `/admin/users/{user_id}` | admin |
@@ -125,8 +126,10 @@ change a scope). Pre-existing keys are `full`.
 ## Templates (`/templates`, active)
 
 `GET /templates` returns the static catalog of one-click starters: a list of `{id, name, description, image, port,
-wants_db, wants_storage, env{KEY: value}, notes, docs_url}` (`env` values may be `${{ ref }}` references). Today:
-`ghost`, `static-site`, `podinfo`. A template is just a prefilled `POST /apps` body; nothing is created.
+wants_db, db_engine, wants_storage, env{KEY: value}, secrets[{key, hint}], health_check{path, timeout_seconds}|null,
+volume{size_gi, mount_path, required}|null, notes, docs_url}` (`env` values may be `${{ ref }}` references; `secrets` are
+names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub). Today:
+`ghost`, `wordpress`, `directus`, `grafana`, `n8n`, `shlink`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
 
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
@@ -233,13 +236,15 @@ limit is checked first, so at the limit you get the 403 before any image or env 
 ## Backups (`/apps/{app_id}/backups`, owner or admin)
 
 Off unless the administrator enabled `BACKUPS_ENABLED` (see ADMIN_GUIDE). Covers the app's database (`db`) and blob storage bucket (`bucket`); `volume` is
-rejected until phase 1b. Download of a snapshot is not in the API yet; restore is admin-only (below).
+rejected until phase 1b. Scheduled backups are opt-in (`enabled` starts false unless the operator sets `BACKUP_DEFAULT_ENABLED=1`); a manual `POST` works either way. Download is below; restore is admin-only.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/apps/{app_id}/backups` | none | `{feature_enabled, configured, enabled, schedule, state, kinds[{kind, last_backup_at, last_status, last_error, last_bytes, repo_bytes}], last_backup_at, last_success_at, last_status, last_error, next_backup_at, repo_bytes, cap_bytes, runs[]}`. `state` is `disabled`, `pending`, `ok`, `stale` or `failing`. A run is `{id, kind, trigger (scheduled, manual, final, restore), status (queued, running, succeeded, failed), created_at, started_at, finished_at, bytes_added, repo_bytes, snapshot_id, error, source_run_id}`, newest first (30). Works with `feature_enabled: false` when backups are off. Read-scope keys may call it. |
+| GET | `/apps/{app_id}/backups` | none | `{feature_enabled, configured, enabled, schedule, state, kinds[{kind, last_backup_at, last_status, last_error, last_bytes, repo_bytes}], last_backup_at, last_success_at, last_status, last_error, next_backup_at, repo_bytes, cap_bytes, runs[]}`. `state` is `disabled` (scheduled backups off), `pending`, `ok`, `stale` or `failing`. A run is `{id, kind, trigger (scheduled, manual, final, restore), status (queued, running, succeeded, failed), created_at, started_at, finished_at, bytes_added, repo_bytes, snapshot_id, error, source_run_id}`, newest first (30). Works with `feature_enabled: false` when backups are off. Read-scope keys may call it. |
 | POST | `/apps/{app_id}/backups` | `{kinds?: ["db"\|"bucket"]}` (default: everything the app has) | 202, a list of queued runs. 422 backups off, or nothing to back up; 503 enabled but not configured; 409 a run is already queued or running; 429 (with `Retry-After`) when a manual backup was started in the last hour. Audit `backup.create`. Not for read-scope keys (403). |
 | PATCH | `/apps/{app_id}/backups` | `{enabled?: bool, schedule?: "daily"\|"weekly"\|"off"}` | The same payload as GET. Audit `backup.config_changed`. 422 if backups are off or the app has no database or volume. |
+| POST | `/apps/{app_id}/backups/{run_id}/download` | none | 202 `{export_id, run_id, kind, status, filename, size_bytes, url, url_expires_in, available_until, error, created_at}`. `run_id` must be a succeeded `db` or `bucket` run of this app. `status` is `queued`, `running`, `ready`, `failed` or `expired`; `url` is only set on `ready`. Asking again for a snapshot with a live export returns the same export. 404 unknown run; 409 another download is being prepared for this app; 410 repository purged; 422 backups off or the run is not downloadable; 429 (with `Retry-After`) after 3 downloads in an hour; 503 not configured. Audit `backup.download` (then `backup.export_succeeded` / `backup.export_failed`, actor system). Not for read-scope keys. |
+| GET | `/apps/{app_id}/backups/exports/{export_id}` | none | The same object. When `status` is `ready`, `url` is a fresh presigned GET valid `url_expires_in` (600) seconds and `filename` is the suggested name (`<app>-<kind>-backup<run>.sql.gz` / `.pgdump` / `.tar.gz`). The file is deleted `available_until` (one hour after it was prepared); after that `expired`. Read-scope keys may call it. |
 
 `GET /admin/backups` (admin): `{enabled, configured, cap_per_app_bytes, cap_total_bytes, total_repo_bytes, warning, counts{ok, pending, stale, failing, disabled}, apps[], retained[]}`; `retained` lists deleted apps whose repositories are still within their 14 days. `GET /admin/health` also carries a compact `backups` block.
 

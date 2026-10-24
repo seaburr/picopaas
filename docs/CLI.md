@@ -152,6 +152,22 @@ command for database contents (see below).
 otherwise `problem:` says what is missing and it stays `pending`. `--remove` detaches it; the generated address keeps
 working. Custom domains can be disabled platform-wide (the command then prints the server's explanation).
 
+## backup
+
+```
+picopaas backup list <app>
+picopaas backup run <app>
+picopaas backup enable <app>      # scheduled (daily) backups on; they are opt-in
+picopaas backup disable <app>     # scheduled backups off; `backup run` still works
+picopaas backup download <app> [run_id] [-o file]
+```
+
+`list` shows whether scheduled backups are on and the recent runs (ids, kind, how, status, size). `run` queues a backup now (one per
+app per hour). `download` prepares the backup as one file (database: `.sql.gz`, or `.pgdump` for PostgreSQL; bucket: `.tar.gz`),
+waits for it, and saves it. With no run id it fetches the latest successful run of each kind into the current directory, named by the
+platform; with a run id (from `list`) it fetches that one, and `-o` chooses the file name (`-o` needs a run id when the app has two
+kinds). Preparing a file takes from seconds to a few minutes; at most 3 downloads per app per hour.
+
 ## admin backup restore
 
 Platform administrators only (the token must belong to an admin with a full-scope key).

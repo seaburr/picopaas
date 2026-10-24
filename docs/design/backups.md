@@ -1,5 +1,16 @@
 # Backups for apps (REQ-9): design
 
+Status update 2026-10-24 (backend-dev): **opt-in and owner downloads IMPLEMENTED.** (1) Scheduled backups are opt-in:
+`BACKUP_DEFAULT_ENABLED` (default 0) sets `enabled` on new `app_backup_config` rows; existing rows keep their value; the scheduler only
+picks enabled rows and no longer creates rows for apps itself. A manual `POST /apps/{id}/backups` works with scheduled backups off (same
+409/hourly rules) and does not opt the app in. Delete: a disabled app gets no final backup (it never opted in, and the delete should not
+wait or store data nobody asked for) but repos from earlier manual backups still get the 14-day retention and purge. (2) Download
+(deviation from the original `GET .../download`): `POST /apps/{id}/backups/{run_id}/download` queues a `trigger=export` BackupRun
+(`source_run_id`, `export_key`, migration `e5b1c7d9a2f4`); a Job with `MODE=export` (image script) `restic dump`s the snapshot to one file and uploads it
+with the backup key to `exports/<app>/<export id>.<ext>`; `GET /apps/{id}/backups/exports/{export_id}` returns a 10-minute presigned URL
+once ready; objects are swept after 1 hour (not the 24 h lifecycle first designed); 3 per app per hour; audit `backup.download`.
+CLI: `picopaas backup list|run|enable|disable|download`. Needs the backup image republished and `BACKUP_IMAGE` re-pinned.
+
 Status update 2026-10-23 (backend-dev): **bucket kind and admin restore helpers IMPLEMENTED** (pulled forward from phases 3 and 2),
 migration `d4a9e1b7c3f2`. Bucket: Job copies the app's objects to an emptyDir with `s5cmd` (pinned, sha256-verified), verifies the
 object count, `restic backup /work/bucket` into `apps/<id>/bucket`, then forget/prune; the app's own bucket key goes in the per-run
@@ -8,7 +19,7 @@ on delete, purge covers it; scratch bounded by `BACKUP_BUCKET_MAX_BYTES` (512 Mi
 `{target_app_id, overwrite_source?}` plus `picopaas admin backup restore`; Job reads the SOURCE repo and writes the TARGET's DB (as its
 own role, tables dropped first, DEFINERs stripped) or bucket (emptied first, count verified); source app refused unless suspended and
 `overwrite_source`; audited. Verified locally against rclone-as-S3, MariaDB and PostgreSQL (sha256 of every object identical).
-Still deferred: volume Jobs, snapshot download, UI, maintenance Job, restore into a NEW app.
+Still deferred: volume Jobs, UI, maintenance Job, restore into a NEW app.
 
 Status: **phase 1a IMPLEMENTED (2026-10-23, backend-dev), flag `BACKUPS_ENABLED` off, nothing provisioned.** Done: config knobs,
 migration `c2e8a4f6b1d7` (`app_backup_config`, `backup_runs`), backup image `images/backup/` (ghcr.io/seaburr/picopaas-backup),
