@@ -863,3 +863,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-23 [scm-security] DONE: WordPress example 6bee6a6 + docs 6bece32 pushed; CI, image, examples (wordpress matrix), deploy green; gitleaks clean. Reminder: make GHCR package public (QUESTIONS to-do). No findings.
 - 2026-10-24 [scm-security] START: commit/push frontend Backups card, watch CI/image/deploy.
 - 2026-10-24 [scm-security] NOTE: bootstrap run 40093548475 succeeded; it re-pinned BACKUP_IMAGE to sha256:68d20f57380bcc0a740a4f6d59a17b4d4fd49983026a37b186095de0e5c11b73 (built from 4e1be21, MODE=export).
+- 2026-10-24 [scm-security] DONE: backups card committed 940288d and pushed; CI, image, deploy green; gitleaks clean. No findings.
