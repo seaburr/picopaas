@@ -2,6 +2,7 @@
 import { computed, reactive, ref, useId, watch } from 'vue'
 import { useModal } from '../composables/useModal'
 import { dbEngineLabel } from '../composables/appUi'
+import { useAuthStore } from '../stores/auth'
 import type { AdminApp, ResourcesPatch } from '../types'
 
 const props = defineProps<{ app: AdminApp | null; error?: string }>()
@@ -13,6 +14,8 @@ const m = useModal(dlg, () => !!props.app, () => emit('cancel'))
 // Platform defaults for this app's engine come from the backend (resources.defaults).
 const D = computed(() => props.app?.resources.defaults)
 // Cpu/memory defaults double as the platform cap used for the "exceeds" warning.
+const auth = useAuthStore()
+const volMaxAdmin = computed(() => auth.user?.limits?.volume_override_max_gi ?? 10)
 const CAPS = computed(() => ({ cpu: D.value?.cpu_limit_m ?? 0, mem: D.value?.mem_limit_mi ?? 0 }))
 type Key = 'cpu_request_m' | 'cpu_limit_m' | 'mem_request_mi' | 'mem_limit_mi'
 const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limit_mi']
@@ -31,7 +34,7 @@ const xFields: { key: XKey; label: string; unit: string; min: number; max: numbe
   { key: 'image_size_mb', label: 'Max image size', unit: 'MB', min: 1, max: 2048, show: 'all' },
   { key: 'db_max_connections', label: 'DB connections', unit: '', min: 1, max: 25, show: 'db' },
   { key: 'db_quota_mb', label: 'DB quota', unit: 'MB', min: 1, max: 1024, show: 'db' },
-  { key: 'storage_quota_mb', label: 'Bucket quota', unit: 'MB', min: 1, max: 51200, show: 'storage' },
+  { key: 'storage_quota_mb', label: 'Blob storage quota', unit: 'MB', min: 1, max: 51200, show: 'storage' },
 ]
 // Show sizes in GB once they are large; connections have no unit.
 const human = (n: number, unit: string) =>
@@ -80,7 +83,7 @@ const volumeBad = computed(() => {
   const v = volumeVal.value.trim()
   if (!props.app?.volume || v === '') return false
   const n = parse(v)
-  return n === null || n < Math.max(1, props.app.volume.size_gi) || n > 20
+  return n === null || n < Math.max(1, props.app.volume.size_gi) || n > volMaxAdmin.value
 })
 const invalid = computed(
   () => fields.some(kBad) || visibleX.value.some(xBad) || replicasBad.value || volumeBad.value,
@@ -169,12 +172,12 @@ function reset() {
         </div>
       </div>
       <div v-if="app.volume" class="mt-3 max-w-[12rem]">
-        <label :for="`${uid}-volume`" class="label">Volume size (GiB)</label>
+        <label :for="`${uid}-volume`" class="label">Persistent volume size (GiB)</label>
         <input
           :id="`${uid}-volume`" v-model="volumeVal" type="text" inputmode="numeric" pattern="[0-9]*"
           :placeholder="String(app.volume.size_gi)" class="input" :aria-invalid="volumeBad ? 'true' : undefined"
         />
-        <p class="help">Grow-only: {{ app.volume.size_gi }} to 20. Can't be shrunk.</p>
+        <p class="help">Grow-only: {{ app.volume.size_gi }} to {{ volMaxAdmin }}. Can't be shrunk.</p>
       </div>
       <p class="help">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers within the shown ranges.</p>

@@ -180,7 +180,7 @@ def test_admin_grow_only(on, admin, user, db_session):
     assert user.get(f"/apps/{aid}").json()["status"] == "pending"  # re-applied so the PVC grows
     assert admin.patch(f"/admin/apps/{aid}/resources", json={"volume_size_gi": 3}).status_code == 422
     assert admin.patch(f"/admin/apps/{aid}/resources", json={"volume_size_gi": None}).status_code == 422
-    assert admin.patch(f"/admin/apps/{aid}/resources", json={"volume_size_gi": 21}).status_code == 422
+    assert admin.patch(f"/admin/apps/{aid}/resources", json={"volume_size_gi": config.OVERRIDE_VOLUME_MAX_GI + 1}).status_code == 422
     assert user.get(f"/apps/{aid}").json()["volume"]["size_gi"] == 5
     # a smaller request keeps the granted size (no shrink, no error), and re-sending the granted size is fine
     r = user.patch(f"/apps/{aid}", json={"volume": {"size_gi": 1}})
@@ -402,3 +402,19 @@ def test_mount_path_cannot_shadow_system_dirs(path):
 
 def test_mount_path_leading_slashes_collapse():
     assert volumes.validate_mount_path("//data") == "/data"
+
+
+def test_override_ceiling_default_env_and_clamp(monkeypatch):
+    import importlib
+    try:
+        monkeypatch.delenv("OVERRIDE_VOLUME_MAX_GI", raising=False)
+        monkeypatch.delenv("VOLUME_MAX_GI", raising=False)
+        assert importlib.reload(config).OVERRIDE_VOLUME_MAX_GI == 10
+        monkeypatch.setenv("OVERRIDE_VOLUME_MAX_GI", "4")
+        assert importlib.reload(config).OVERRIDE_VOLUME_MAX_GI == 4
+        monkeypatch.setenv("VOLUME_MAX_GI", "9")
+        c = importlib.reload(config)
+        assert c.VOLUME_MAX_GI == 4  # clamped to the admin ceiling
+    finally:
+        monkeypatch.undo()
+        importlib.reload(config)

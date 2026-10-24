@@ -34,6 +34,7 @@ export interface Limits {
   ephemeral_mi?: number
   volume_max_gi?: number
   volume_default_gi?: number
+  volume_override_max_gi?: number
   volume_default_mount_path?: string
   override: { cpu_min_m: number; cpu_max_m: number; mem_min_mi: number; mem_max_mi: number }
 }
@@ -184,7 +185,7 @@ export interface ResourcesPatch {
   storage_quota_mb?: number | null
   image_size_mb?: number | null
   egress_mbit?: number | null
-  volume_size_gi?: number // grow-only, 1..20, app must have a volume
+  volume_size_gi?: number // grow-only, 1..admin ceiling, app must have a volume
 }
 
 // PATCH /admin/apps/{id}/resources returns the updated AdminApp.

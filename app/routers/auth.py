@@ -177,6 +177,7 @@ def me(current_user: models.User = Depends(get_current_user), db: Session = Depe
             egress_mbit=config.EGRESS_BANDWIDTH_MBIT,
             volume_max_gi=config.VOLUME_MAX_GI,
             volume_default_gi=config.VOLUME_DEFAULT_GI,
+            volume_override_max_gi=config.OVERRIDE_VOLUME_MAX_GI,
             volume_default_mount_path=config.VOLUME_DEFAULT_MOUNT_PATH,
             override=schemas.LimitOverride(
                 cpu_min_m=resources.CPU_MIN_M, cpu_max_m=resources.CPU_MAX_M,

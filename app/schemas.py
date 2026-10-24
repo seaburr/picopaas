@@ -138,6 +138,7 @@ class Limits(BaseModel):
     egress_mbit: int = 20
     volume_max_gi: int = 1  # per-app volume size ceiling for users (admins can grant more)
     volume_default_gi: int = 1
+    volume_override_max_gi: int = 10  # admin ceiling (grow-only override)
     volume_default_mount_path: str = "/data"
     override: LimitOverride
 

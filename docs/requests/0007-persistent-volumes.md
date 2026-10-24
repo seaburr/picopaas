@@ -59,3 +59,5 @@ APPROVED: enable with the defaults above on 2026-10-23 (Chas in chat: "Send it")
 
 StorageClass verified live by Chas 2026-10-23: `do-block-storage` (default class, `dobs.csi.digitalocean.com`),
 `reclaimPolicy: Delete`, `allowVolumeExpansion: true`, `volumeBindingMode: Immediate`.
+
+2026-10-23 Chas lowered the admin ceiling default to 10 GiB (`OVERRIDE_VOLUME_MAX_GI`, env-overridable). Worst case with 10 volumes is now $10/mo.

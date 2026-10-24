@@ -14,13 +14,13 @@ kubeconfig contents in your secret store.
    platform.<your-domain> -> platform (API + UI; 1 or more replicas; one leader runs the reconciler)
    <generated-host>.<your-domain> -> app-<id> namespace (Deployment, Service, Ingress, Secret, quota, netpols)
 MySQL and/or PostgreSQL server(s)   platform database + one database and user per app
-S3-compatible storage               one bucket + key per storage-enabled app (and a platform bucket)
+S3-compatible blob storage         one bucket + key per blob-storage app (and a platform bucket)
 Container registry                  images are pulled by the cluster; the platform never builds
 ```
 
 - The platform is one Python/Vue service. Users and apps are rows in the platform database; a **reconciler** turns
   those rows into Kubernetes objects (one namespace per app) and keeps them converged.
-- With `RECONCILER_ENABLED=1` the process runs scheduled jobs: reconcile every 15 s, database quota poll (60 s), storage
+- With `RECONCILER_ENABLED=1` the process runs scheduled jobs: reconcile every 15 s, database quota poll (60 s), blob storage
   quota poll (5 min), image watcher (10 min) and a metrics sampler. A database lock (`GET_LOCK` on MySQL) lets several
   platform replicas run while only the leader acts.
 - The reconciler re-applies any app whose rendered manifest changed, and recreates the namespace of any running app
@@ -38,10 +38,10 @@ Container registry                  images are pulled by the cluster; the platfo
 | cert-manager | Wildcard certificate by DNS-01 for the generated hosts; per-host HTTP-01 certificates for custom domains. |
 | metrics-server | Optional but needed for CPU/memory on the Health page. |
 | SQL server(s) | MySQL 8 and/or PostgreSQL 13+, with TLS, an admin account that can create databases and users, reachable from the cluster. MySQL and PostgreSQL are equal choices; run one or both. |
-| Object storage | S3-compatible, able to create buckets and per-bucket access keys. A provider-specific key API is used for provisioning (the reference deployment uses DigitalOcean Spaces). |
+| Blob storage | S3-compatible, able to create buckets and per-bucket access keys. A provider-specific key API is used for provisioning (the reference deployment uses DigitalOcean Spaces). |
 | Container registry | Reachable from the nodes. Public images need nothing more. |
 | DNS and a domain | A wildcard record to the load balancer and a name for the platform itself. |
-| Network | Pod egress to the database port(s), the storage endpoint and the registry. |
+| Network | Pod egress to the database port(s), the blob storage endpoint and the registry. |
 
 Any cloud works if it provides the above. The reference deployment runs on DigitalOcean (managed Kubernetes, managed
 databases, Spaces); the Terraform and manifests in the repo show one way to wire it.
@@ -72,7 +72,8 @@ required.
 |---|---|
 | `VOLUMES_ENABLED` | `1` lets apps request a persistent volume (one `ReadWriteOnce` PVC each). Off: the API answers 422 "Persistent volumes aren't enabled on this platform." and the reconciler never renders a PVC. Turning it off later stops mounting volumes into existing apps; it does not delete a claim or its data. |
 | `VOLUME_STORAGE_CLASS` | StorageClass for the claims (default `do-block-storage`). It must have `reclaimPolicy: Delete` and allow volume expansion. |
-| `VOLUME_MAX_GI` | Largest volume a user can ask for (default 1, the provider minimum). |
+| `VOLUME_MAX_GI` | Largest volume a user can ask for (default 1, the provider minimum). Clamped to `OVERRIDE_VOLUME_MAX_GI` at startup, with a log warning. |
+| `OVERRIDE_VOLUME_MAX_GI` | Largest volume a platform admin can grant (default 10 GiB). Enforced on create, spec, PATCH and the admin resources endpoint, and shown to the admin dialog via `/auth/me` `limits.volume_override_max_gi`. |
 | `VOLUMES_MAX_TOTAL` | Platform-wide cap on live apps with a volume (default 10). Adding one beyond it is a 409. Keep it under the per-node attach limit of your provider (15 on DigitalOcean). The admin health page shows the count as `workloads.with_volume`. |
 
 **Names and domains**
@@ -98,7 +99,7 @@ required.
 | `PG_HARD_CAP_RATIO`, `PG_STATEMENT_TIMEOUT_MS`, `PG_IDLE_TX_TIMEOUT_MS` | PostgreSQL second-stage quota multiple and session timeouts. |
 | `DB_METRICS_ENABLED`, `DB_METRICS_PORT`, `DB_METRICS_CA`, `MANAGED_DB_DISK_MB` | Optional host metrics scrape (off by default) and disk size for the Health page percentage. |
 
-**Storage provisioning**
+**Blob storage provisioning**
 
 `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY` and `SPACES_REGION` identify the S3 account that creates buckets;
 `DIGITALOCEAN_TOKEN` is needed on that provider to mint per-bucket keys. Other providers need a matching provider
@@ -108,7 +109,7 @@ module.
 
 | Variable | Purpose |
 |---|---|
-| `DB_QUOTA_BYTES`, `STORAGE_QUOTA_BYTES` | Default database and bucket quota per app. |
+| `DB_QUOTA_BYTES`, `STORAGE_QUOTA_BYTES` | Default database and blob storage bucket quota per app. |
 | `MAX_IMAGE_SIZE_BYTES` | Largest image accepted. |
 | `DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`, `EPHEMERAL_LIMIT_MI` | Default per-pod CPU, memory and scratch disk. |
 | `EGRESS_BANDWIDTH_MBIT` | Default per-pod outbound cap. |
@@ -126,7 +127,7 @@ lowered cap keep running but cannot be redeployed until they shrink.
 | Secret | Purpose |
 |---|---|
 | `FERNET_KEY` | The one platform key. Encrypts env var values, app database passwords, bucket secret keys and database-server admin passwords. |
-| Storage and cloud credentials | Used by the platform to provision buckets and keys. |
+| Blob storage and cloud credentials | Used by the platform to provision buckets and keys. |
 | Database admin credentials | One per registered server, stored encrypted. |
 
 Keep an off-cluster copy of `FERNET_KEY`. Lose it and all stored ciphertext is unreadable. A wrong key does not stop
@@ -179,10 +180,10 @@ automatically at start from the `BOOTSTRAP_*` variables.
 - **In-cluster MySQL:** supported (`MYSQL_EGRESS_MODE=in-cluster`, `MYSQL_ADMIN_USE_PROCEDURES=1`); the manifests are in
   `deploy/mysql/`, including a nightly dump job. Prefer a managed server if your provider has one.
 
-## Object storage
+## Blob storage
 
-One bucket and one access key per storage-enabled app. Check your provider's bucket-per-account limit; it is the
-ceiling for storage apps. The storage poll lists each bucket: over its quota, the app's key is swapped for a read-only
+One bucket and one access key per blob-storage app. Check your provider's bucket-per-account limit; it is the
+ceiling for blob-storage apps. The blob storage poll lists each bucket: over its quota, the app's key is swapped for a read-only
 one and the app restarts, and owners free space with **Free up space**. Raising the quota restores the app.
 
 ## The admin UI
@@ -275,7 +276,7 @@ Defaults come from `app/config.py`; an admin can override most per app.
 | Bucket quota | 1 to 51200 MB |
 | Image size | 1 to 2048 MB |
 | Outbound bandwidth | 1 to 160 Mbit/s |
-| Persistent volume | 1 to 20 GiB, grow-only (the app must already have one) |
+| Persistent volume | 1 to 10 GiB (`OVERRIDE_VOLUME_MAX_GI`), grow-only (the app must already have one) |
 
 Clear a field to return to the default. Changing CPU, memory, scratch disk or outbound bandwidth rolls the app's pods.
 Changing a quota runs that app's check immediately, so raising it restores a read-only database or bucket at once.
@@ -288,7 +289,7 @@ Service and no per-pod addressing, so clustered or gossip apps that need named p
 
 ## Persistent volumes
 
-Enable with `VOLUMES_ENABLED=1` after the cost is approved. Block storage is billed per GiB per month for as long as
+Enable with `VOLUMES_ENABLED=1` after the cost is approved. Persistent volumes are block storage, billed per GiB per month for as long as
 the volume exists, including while the app is stopped, so cost is (sum of volume sizes) x the provider's per-GiB price;
 the count and size caps above bound it. What the platform does for an app with a volume:
 - Renders a PVC `app-<id>-data` (RWO, `VOLUME_STORAGE_CLASS`), mounts it at the app's mount path, and sets the pod
@@ -301,7 +302,7 @@ the count and size caps above bound it. What the platform does for an app with a
   `kubectl get storageclass <class> -o jsonpath='{.reclaimPolicy}'` (DigitalOcean's `do-block-storage` is `Delete`; its
   `-retain` variant is not suitable). If a claim ever leaves an orphaned PV, delete the PV by hand; the platform has no
   PersistentVolume permission on purpose.
-- Grow with `PATCH /admin/apps/{id}/resources {"volume_size_gi": N}` (1 to 20, only up). The claim is expanded online.
+- Grow with `PATCH /admin/apps/{id}/resources {"volume_size_gi": N}` (1 to `OVERRIDE_VOLUME_MAX_GI`, default 10, only up). The claim is expanded online: the API supports growing a volume after creation (DigitalOcean's CSI driver expands the filesystem online), but this is not yet tested live on this platform, so plan the size up front.
   The storage class cannot be changed on an existing claim.
 - Users can't detach a volume; deleting the app is the only way to drop it.
 - Not backed up: add snapshots before relying on it for data that cannot be recreated.
@@ -329,7 +330,7 @@ Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persisten
 - **Platform database:** the most important data. Use your provider's daily backups or your own dumps and test a
   restore. The in-cluster MySQL manifests include a nightly dump job.
 - **App databases:** same servers, same backups. A restore brings back every tenant database on that server.
-- **Object storage:** buckets are not backed up by the platform; tell owners.
+- **Blob storage:** buckets are not backed up by the platform; tell owners.
 - **Key copy:** keep `FERNET_KEY` and the provider credentials in a secret manager.
 - **Upgrades:** build and publish a new platform image, then roll the Deployment. Migrations (Alembic) run at start and
   only move forward, so prefer a forward fix when a migration has shipped. `kubectl rollout undo` works for a rollback
@@ -380,4 +381,4 @@ page and one app.
   database and role names (not data or password hashes).
 - A failed database or bucket delete during app deletion is logged and ignored, so provider-side orphans are possible.
 - A public Kubernetes API unless your provider lets you restrict it to known networks.
-- Storage credential theft is not a goal of the platform's isolation.
+- Blob storage credential theft is not a goal of the platform's isolation.

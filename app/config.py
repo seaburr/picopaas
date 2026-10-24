@@ -12,6 +12,7 @@ to start.
 import base64
 import hashlib
 import hmac
+import logging
 import os
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
@@ -178,7 +179,13 @@ VOLUMES_ENABLED = os.environ.get("VOLUMES_ENABLED", "0") == "1"
 VOLUME_STORAGE_CLASS = os.environ.get("VOLUME_STORAGE_CLASS", "do-block-storage")  # must have reclaimPolicy Delete
 VOLUME_DEFAULT_GI = 1  # DigitalOcean's minimum volume size
 VOLUME_MAX_GI = int(os.environ.get("VOLUME_MAX_GI", 1))  # per-app ceiling for users
-OVERRIDE_VOLUME_MIN_GI, OVERRIDE_VOLUME_MAX_GI = 1, 20  # platform-admin ceiling (grow-only)
+OVERRIDE_VOLUME_MIN_GI = 1
+OVERRIDE_VOLUME_MAX_GI = int(os.environ.get("OVERRIDE_VOLUME_MAX_GI", 10))  # platform-admin ceiling (grow-only)
+if VOLUME_MAX_GI > OVERRIDE_VOLUME_MAX_GI:  # the user ceiling can never exceed the admin ceiling
+    logging.getLogger(__name__).warning(
+        "VOLUME_MAX_GI=%s exceeds OVERRIDE_VOLUME_MAX_GI=%s; clamping to %s",
+        VOLUME_MAX_GI, OVERRIDE_VOLUME_MAX_GI, OVERRIDE_VOLUME_MAX_GI)
+    VOLUME_MAX_GI = OVERRIDE_VOLUME_MAX_GI
 # DOKS attaches at most 15 volumes per node; cap the platform-wide count (live apps with a volume) below that.
 VOLUMES_MAX_TOTAL = int(os.environ.get("VOLUMES_MAX_TOTAL", 10))
 VOLUME_DEFAULT_MOUNT_PATH = "/data"

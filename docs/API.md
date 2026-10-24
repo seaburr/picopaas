@@ -100,10 +100,10 @@ reset and informational only (the server does not block other calls); the UI sho
 - `features: {databases, storage, volumes, db_engines}`: `volumes` is true when persistent volumes are enabled
   (`VOLUMES_ENABLED`); hide the volume option when false. (The `databases`, `storage` and `db_engines` flags:) `databases` is true when a new database could be placed now (an `active`
   database server with a free slot; draining and full servers don't count). `db_engines` lists the engines that have room
-  now, a subset of `["mysql", "pg"]` (`databases` is true when it is non-empty); use it for the engine picker. `storage` is true when the platform has bucket
+  now, a subset of `["mysql", "pg"]` (`databases` is true when it is non-empty); use it for the engine picker. `storage` (blob storage) is true when the platform has bucket
   credentials configured. Hide the matching checkbox when false.
 - `limits: {cpu_limit_m, mem_limit_mi, cpu_request_m, mem_request_mi, image_mb, db_mb, bucket_mb, ephemeral_mi, egress_mbit,
-  volume_max_gi, volume_default_gi, volume_default_mount_path, override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform defaults (`image_mb`, `db_mb`, `bucket_mb`
+  volume_max_gi, volume_default_gi, volume_override_max_gi, volume_default_mount_path, override: {cpu_min_m, cpu_max_m, mem_min_mi, mem_max_mi}}`: the platform defaults (`image_mb`, `db_mb`, `bucket_mb`
   and `ephemeral_mi` (the scratch disk) are per-app defaults an administrator can raise) and the CPU/memory range an
   administrator may override per app.
 
@@ -140,7 +140,7 @@ detached, delete the app instead); an app with replicas above 1 can't get a volu
 (409, also on `PUT /admin/apps/{id}/replicas`); when the platform already holds `VOLUMES_MAX_TOTAL` volumes, adding one is 409.
 A volume app rolls with the `Recreate` strategy, so each deploy has a short gap. Changing the size or mount path re-deploys. `platform_subdomain` / `platform_host` are an admin-assigned fixed label and its full host (for example `blog.picopaas.xyz`), or null; the generated `hostname` keeps working. `db_engine` is only meaningful when `want_db` is true.
 `custom_domain` is null when none is attached, else `{host, status (pending|active|error), verified_at, error, challenge_host, challenge_token, cname_target}` — the last three are the DNS records the user must create. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`, `root_image`, `config`, `quota`, `env_invalid`, `unreadable_secrets`, `db_capacity`, `db_failed`, `storage_failed`, `unknown`); it is null unless `status` is `error`.
-`quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, storage every 5 min), no live calls. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
+`quota` is `{db, storage}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, blob storage every 5 min), no live calls. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, ephemeral_limit_mi, db_max_connections, db_quota_mb,
 storage_quota_mb, image_size_mb, egress_mbit, overridden, exceeds_platform_caps, defaults}`: the effective per-app values (platform
 defaults unless an administrator overrode them) and `defaults`, the platform default of each field for this app's DB engine.
@@ -156,7 +156,7 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | GET | `/apps/{app_id}` | none | `App`; 404 "We can't find that app..." (also for other people's apps). |
 | PATCH | `/apps/{app_id}` | `AppUpdate` | `App` (owner only; others, including administrators, get 404). 403 "This app is suspended by an administrator..." Changing image, port, env or health check sets status `pending` and redeploys. |
 | DELETE | `/apps/{app_id}` | none | 204. Soft delete; the reconciler tears down the namespace, database and bucket. 403 if the app is suspended. Owner only (administrators use `DELETE /admin/apps/{app_id}`). |
-| POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 "Your database is still being created..." or the storage equivalent (also when the app has no database or bucket); 502 "Couldn't rotate the credentials, so the old ones still work..."; 403 if suspended. |
+| POST | `/apps/{app_id}/rotate-credentials` | `{"target": "db"\|"storage"}` | `App` (status `pending`). 409 "Your database is still being created..." or the blob storage equivalent (also when the app has no database or bucket); 502 "Couldn't rotate the credentials, so the old ones still work..."; 403 if suspended. |
 | GET | `/apps/{app_id}/database/usage` | none | Live `{size_bytes, limit_bytes, over_quota}`. 404 if the app has no database; 502 if the DB server is unreachable. Owner or admin. |
 | GET | `/apps/{app_id}/storage/usage` | none | Live `{size_bytes, limit_bytes, over_quota, objects, top_prefixes[{prefix, size_bytes, objects}]}` (top 5 first-path-segment prefixes). 404 if no bucket. Owner or admin. |
 | POST | `/apps/{app_id}/storage/delete` | `{"prefix": "..."}` or `{"all": true}` (exactly one; 422 otherwise) | `{deleted, size_bytes, truncated, over_quota}`. Deletes with the platform's credentials (an over-cap app's own key is read-only), at most 5000 objects per call (`truncated` = more remain). Re-measures; if now under the cap the read-write key is restored immediately. Audit-logged as `app.storage.delete`. Owner or admin. |
@@ -217,7 +217,7 @@ fails, the previous version keeps running and `image_update_error` explains why 
 Request: `{"spec": "<YAML, max 64KB>", "secrets": {"NAME": "value"}}` (`secrets` optional; each key must be in the
 spec's `secrets` list).
 
-Spec fields: `apiVersion: picopaas/v1`, `name`, `image`, `port` (1024 to 65535), `resources{db, db_engine (mysql|pg), storage, volume{sizeGi (1 to 20, default 1), mountPath (default /data)}}`,
+Spec fields: `apiVersion: picopaas/v1`, `name`, `image`, `port` (1024 to 65535), `resources{db, db_engine (mysql|pg), storage, volume{sizeGi (1 to 10, default 1), mountPath (default /data)}}`,
 `healthCheck{enabled, path, timeoutSeconds (1 to 90)}`, `env{}`, `secrets[]`.
 
 Response: 200 `App` plus `created: bool` (200 for both create and update). The app is matched by
@@ -230,7 +230,7 @@ limit is checked first, so at the limit you get the 403 before any image or env 
 
 ## Background jobs
 
-The platform reconciles apps, polls database and storage usage, and re-checks image tags on its own
+The platform reconciles apps, polls database and blob storage usage, and re-checks image tags on its own
 schedule. There are no API endpoints to trigger them.
 
 ## Admin (`/admin`, admin)
@@ -285,7 +285,7 @@ All return 404 for an unknown or deleted app.
 | `storage_quota_mb` | 1 to 51200 | 100 |
 | `image_size_mb` | 1 to 2048 | 512 |
 | `egress_mbit` (outbound bandwidth, Mbit/s) | 1 to 160 | 20 |
-| `volume_size_gi` (persistent volume, GiB) | 1 to 20, **grow-only**, app must already have a volume | 1 (user ceiling `VOLUME_MAX_GI`) |
+| `volume_size_gi` (persistent volume, GiB) | 1 to 10 (`OVERRIDE_VOLUME_MAX_GI`), **grow-only**, app must already have a volume | 1 (user ceiling `VOLUME_MAX_GI`) |
 
 422 if a request exceeds its limit (CPU or memory). Response (`AdminAppOut`): `id, name, hostname, status, owner_id,
 owner_email, image, created_at, replicas, volume (`{size_gi, mount_path, phase}` or null), want_db, want_storage, db_engine (null without a database), platform_host,
@@ -341,7 +341,7 @@ returns `{"url", "method", "headers", "expires_at", "key"}`. The bucket is alway
 returned (the URL is signed for that one bucket and key). `key` is 1 to 512 characters, no leading `/`, no `..`, no backslash or
 control characters; repeated `/` collapse and the normalised `key` is echoed back. `expires_seconds` defaults to 600, max 3600.
 For `PUT`, `content_length` (bytes) is required and is signed into the URL: send the body with exactly that `Content-Length` (use
-the returned `headers`) or the storage service rejects it. A size above the bucket's remaining quota gives 413. Errors: 404 (no
+the returned `headers`) or the blob storage service rejects it. A size above the bucket's remaining quota gives 413. Errors: 404 (no
 such app, not yours, or no bucket), 409 (bucket is over its cap and read-only, or full), 403 (read-scope API key asked for a PUT;
 GET is allowed), 422 (bad key, expiry or missing size), 429 (30 presigns per minute per user, per process). Every presign is
 audited as `storage.presign` (`method`, `key`, `size`; never the URL).

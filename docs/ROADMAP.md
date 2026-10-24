@@ -76,7 +76,7 @@ takeover hygiene + a CAA pre-flight.** No new infra. Sources:
 
 ### Terraform provider (`terraform-provider-picopaas`) — future, 2026-10-20
 Chas: "we've done it before for Tribal, so the whole thing is understood." A provider wrapping the existing REST API
-(`terraform-provider-picopaas`) would let users declare apps/env/DB/storage as HCL — the IaC story PaaS users expect.
+(`terraform-provider-picopaas`) would let users declare apps/env/DB/blob storage as HCL — the IaC story PaaS users expect.
 - Resources: `picopaas_app` (image, port, env/secrets, want_db, want_storage, health check, auto_update),
   data sources for templates and app status; auth via an API key (ties into API scopes, below — a CI token should be
   able to deploy without full account control).
@@ -109,7 +109,7 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 
 ## Persistent volumes (block storage): backend built, disabled (Chas, 2026-10-22)
 **Status 2026-10-23:** the backend is implemented behind `VOLUMES_ENABLED` (default off): `resources.volume` in the API and
-spec, PVC + `Recreate` + `fsGroup`, single replica enforced, ResourceQuota, grow-only admin override (1 to 20 GiB),
+spec, PVC + `Recreate` + `fsGroup`, single replica enforced, ResourceQuota, grow-only admin override (1 to 10 GiB),
 `VOLUMES_MAX_TOTAL` capacity cap, RBAC for namespaced PVCs. Nothing is provisioned until `docs/requests/0007` is approved
 and the flag is turned on. Still open: frontend UI, snapshot backups, pentest pass, usage (`statfs`) in the health views.
 Detaching is intentionally not supported (delete the app). The original plan follows.

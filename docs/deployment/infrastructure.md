@@ -74,8 +74,8 @@ no-op (the procedure sets the default at creation), so admin overrides are not a
 
 ## Spaces
 
-One Spaces subscription covers the platform bucket and one bucket plus key per storage-enabled app (ATL1). DO limits an
-account to 100 buckets, so roughly 100 storage apps is the wall (raising it is a support request). Credentials for
+One Spaces subscription covers the platform bucket and one bucket plus key per blob-storage app (ATL1). DO limits an
+account to 100 buckets, so roughly 100 blob-storage apps is the wall (raising it is a support request). Credentials for
 provisioning (`SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`) live in `picopaas-env`. Credential theft from Spaces is
 out of scope (request 0002).
 
@@ -102,6 +102,6 @@ new paid resource go through `docs/requests/`.
 `VOLUMES_ENABLED=1` is set at bootstrap in `picopaas-env`. Apps that ask for `resources.volume` get one RWO PVC on
 StorageClass `do-block-storage` (DOKS default, `dobs.csi.digitalocean.com`, reclaimPolicy Delete, allowVolumeExpansion
 true; verified by Chas and re-checked on every bootstrap). Deleting an app deletes its PVC and the DO volume. Caps:
-1 GiB per volume for users, 20 GiB admin override, `VOLUMES_MAX_TOTAL=10`; at most 15 attached per node. Volumes are
+1 GiB per volume for users, 10 GiB admin override (`OVERRIDE_VOLUME_MAX_GI`), `VOLUMES_MAX_TOTAL=10`; at most 15 attached per node. Volumes are
 grow-only and not backed up. Cost: $0 static, $0.10/GiB/mo per volume while it exists (worst case with defaults about
 $1/mo), not included in the $75.30 baseline.
