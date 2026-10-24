@@ -514,7 +514,7 @@ async function onSubmit() {
             <div v-if="vol.enabled" class="ml-6 mt-2 space-y-3">
               <div class="alert-warn text-xs">
                 Forces a single replica. Each deploy or restart stops the old pod before the new one starts, so expect about a minute of downtime.
-                Volume data is not backed up. It can't be removed except by deleting the app.
+                Volume data is included in backups when the platform has volume backups turned on. It can't be removed except by deleting the app.
               </div>
               <div>
                 <label for="vol-size" class="label">Size (GiB)</label>

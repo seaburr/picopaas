@@ -12,14 +12,15 @@ export const setBackupConfig = (id: number, enabled: boolean, schedule?: string)
 
 export const backUpNow = (id: number) => apiFetch<BackupRun[]>(`/apps/${id}/backups`, { method: 'POST' })
 
-export const startBackupDownload = (id: number, runId: number) =>
-  apiFetch<BackupExport>(`/apps/${id}/backups/${runId}/download`, { method: 'POST' })
+// 202 export (kind "package"); poll getBackupExport until ready.
+export const downloadBackupSet = (id: number, setId: number) =>
+  apiFetch<BackupExport>(`/apps/${id}/backups/sets/${setId}/download`, { method: 'POST' })
 
 export const getBackupExport = (id: number, exportId: number) =>
   apiFetch<BackupExport>(`/apps/${id}/backups/exports/${exportId}`)
 
 export const listBackupExports = (id: number) => apiFetch<BackupExport[]>(`/apps/${id}/backups/exports`)
 
-// 202 {run_id, status: "deleting"}; the run shows status "deleting" until it leaves runs[]. 409 busy (active export/job), 404 gone.
-export const deleteBackupRun = (id: number, runId: number) =>
-  apiFetch<{ run_id: number; status: string }>(`/apps/${id}/backups/${runId}`, { method: 'DELETE' })
+// 202 {set_id, status, delete_run_ids}; the backup shows status "deleting" until it disappears. 409 busy, 404 gone.
+export const deleteBackupSet = (id: number, setId: number) =>
+  apiFetch<{ set_id: number; status: string; delete_run_ids: number[] }>(`/apps/${id}/backups/sets/${setId}`, { method: 'DELETE' })

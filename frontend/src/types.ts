@@ -412,6 +412,28 @@ export interface BackupRunExport {
   available_until: string | null
   error?: string | null
 }
+export interface BackupSetPart {
+  run_id: number
+  kind: BackupKind | string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'deleting' | string
+  bytes_added: number | null
+  error: string | null
+}
+export interface BackupSet {
+  id: number
+  trigger: 'scheduled' | 'manual' | 'final' | string
+  created_at: string
+  finished_at: string | null
+  status: 'running' | 'succeeded' | 'partial' | 'failed' | 'deleting' | string
+  size_bytes: number
+  parts: BackupSetPart[]
+  export: BackupRunExport | null
+}
+export interface VolumeBackups {
+  has_volume: boolean
+  available: boolean
+  note: string | null
+}
 export interface BackupKindStatus {
   kind: BackupKind | string
   last_backup_at: string | null
@@ -427,6 +449,9 @@ export interface BackupsInfo {
   schedule: 'daily' | 'weekly' | 'off' | string
   state: string
   kinds: BackupKindStatus[]
+  // Absent on an older backend: the card falls back to a message.
+  backups?: BackupSet[]
+  volume_backups?: VolumeBackups
   runs: BackupRun[]
   next_backup_at: string | null
   last_backup_at: string | null
