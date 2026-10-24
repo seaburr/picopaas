@@ -1,0 +1,137 @@
+# Namespace + RBAC + NetworkPolicy for the backup Jobs (docs/design/backups.md; app/backups.py). Applied by deploy.yml
+# ONLY when picopaas-env has BACKUPS_ENABLED=1 (the feature is off and this namespace does not exist until then).
+#
+# The placeholders __DB_EGRESS_CIDR__ / __PG_EGRESS_CIDR__ are substituted by deploy.yml from picopaas-env
+# (MYSQL_EGRESS_CIDR / PG_EGRESS_CIDR, same VPC CIDR as tenant apps' DB egress). Never apply this file unsubstituted.
+#
+# Backup pods run the platform's own image (ghcr.io/seaburr/picopaas-backup), never tenant code, in this namespace only.
+# Volume backups (phase 1b) run in the app namespace and are not covered here.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: picopaas-backup
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# So a bug cannot swamp the shared node: at most 4 pods, 1 CPU, 1.5 GiB (design section 3).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: backup-quota
+  namespace: picopaas-backup
+spec:
+  hard:
+    pods: "4"
+    requests.cpu: "500m"
+    limits.cpu: "1"
+    limits.memory: 1536Mi
+    limits.ephemeral-storage: 1Gi
+---
+# Minimal namespaced grant for the platform ServiceAccount: create/inspect/delete backup Jobs and their per-run Secrets,
+# read pods and their logs (the result line), delete finished pods. Nothing cluster-wide, nothing in other namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: picopaas-backup-runner
+  namespace: picopaas-backup
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: picopaas-backup-runner
+  namespace: picopaas-backup
+subjects:
+  - kind: ServiceAccount
+    name: picopaas
+    namespace: picopaas-system
+roleRef:
+  kind: Role
+  name: picopaas-backup-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+# Job pods use this SA: no token, no rights.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-job
+  namespace: picopaas-backup
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: picopaas-backup
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: picopaas-backup
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# The managed database servers (MySQL 3306/25060, PostgreSQL 25060) by VPC CIDR.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-db
+  namespace: picopaas-backup
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock: {cidr: __DB_EGRESS_CIDR__}
+        - ipBlock: {cidr: __PG_EGRESS_CIDR__}
+      ports:
+        - {protocol: TCP, port: 3306}
+        - {protocol: TCP, port: 25060}
+---
+# The backup bucket (Spaces, HTTPS). Spaces has no fixed IP range, so this is "public addresses on 443 only": private
+# ranges (other namespaces, the VPC, node metadata) stay unreachable.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-bucket
+  namespace: picopaas-backup
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"]
+      ports:
+        - {protocol: TCP, port: 443}

@@ -83,6 +83,14 @@ jobs:
           kubectl apply -f deploy/platform/rbac.yaml
           # PriorityClass must exist before the Deployment that references it (else admission rejects the pod).
           kubectl apply -f deploy/platform/priorityclass.yaml
+          # Backups (off by default): the picopaas-backup namespace/RBAC/NetworkPolicy exist only once BACKUPS_ENABLED=1.
+          if [ "$(kubectl -n picopaas-system get secret picopaas-env -o jsonpath='{.data.BACKUPS_ENABLED}' 2>/dev/null | base64 -d)" = "1" ]; then
+            dbcidr=$(kubectl -n picopaas-system get secret picopaas-env -o jsonpath='{.data.MYSQL_EGRESS_CIDR}' | base64 -d)
+            pgcidr=$(kubectl -n picopaas-system get secret picopaas-env -o jsonpath='{.data.PG_EGRESS_CIDR}' 2>/dev/null | base64 -d)
+            [ -n "$dbcidr" ] || { echo "BACKUPS_ENABLED=1 needs MYSQL_EGRESS_CIDR in picopaas-env"; exit 1; }
+            sed -e "s#__DB_EGRESS_CIDR__#$dbcidr#" -e "s#__PG_EGRESS_CIDR__#${pgcidr:-$dbcidr}#" \
+                deploy/platform/backup.yaml | kubectl apply -f -
+          fi
           envsum=$(kubectl -n picopaas-system get secret picopaas-env -o json | jq -S -c .data | sha256sum | cut -d' ' -f1)
           sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" \
               -e "s#picopaas.io/env-checksum: .*#picopaas.io/env-checksum: \"$envsum\"#" \

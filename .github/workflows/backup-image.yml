@@ -1,0 +1,53 @@
+name: backup-image
+
+# Builds the backup image (restic + DB clients, images/backup) to GHCR for the platform's backup Jobs.
+# The package must be PUBLIC so the cluster can pull it anonymously (one-time: GitHub > Packages >
+# picopaas-backup > Package settings > Change visibility > Public).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/backup/**"
+      - ".github/workflows/backup-image.yml"
+  workflow_dispatch:
+  # Weekly rebuild so Alpine security patches are picked up without a code change.
+  schedule:
+    - cron: "41 6 * * 1"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/backup
+          platforms: linux/amd64
+          push: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: |
+            ghcr.io/seaburr/picopaas-backup:latest
+            ghcr.io/seaburr/picopaas-backup:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
