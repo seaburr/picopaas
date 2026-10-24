@@ -116,6 +116,8 @@ const imageError = computed(() => {
 const formError = computed(() => (error.value && !error.value.toLowerCase().startsWith('image') ? error.value : ''))
 
 const templateNote = ref<{ name: string; notes: string } | null>(null)
+const templateSecrets = ref<{ key: string; hint: string }[]>([])
+const templateHints = ref<string[]>([])
 
 onMounted(async () => {
   if (isEdit.value && appId.value !== null) {
@@ -161,8 +163,29 @@ onMounted(async () => {
         form.image = t.image
         form.port = t.port
         form.want_db = t.wants_db && !dbOff.value
+        form.db_engine = t.db_engine ?? 'mysql'
         form.want_storage = t.wants_storage && !storageOff.value
-        env.value = Object.entries(t.env).map(([key, value]) => ({ key, value, is_secret: false }))
+        form.health_check_enabled = !!t.health_check
+        if (t.health_check) {
+          form.health_check_path = t.health_check.path
+          form.health_check_timeout = t.health_check.timeout_seconds ?? ''
+        }
+        if (t.volume && volumesOn.value) {
+          vol.enabled = true
+          vol.size = Math.min(t.volume.size_gi, volMax.value)
+          vol.mount = t.volume.mount_path
+        }
+        env.value = [
+          ...Object.entries(t.env).map(([key, value]) => ({ key, value, is_secret: false })),
+          ...(t.secrets ?? []).map((s) => ({ key: s.key, value: '', is_secret: true })),
+        ]
+        const hints: string[] = []
+        if (t.volume && !volumesOn.value) hints.push('This instance has persistent volumes turned off, so the volume was skipped.')
+        if (t.wants_db && dbOff.value) hints.push('Databases are turned off here, so the database was skipped.')
+        if (t.wants_storage && storageOff.value) hints.push('Blob storage is turned off here, so the bucket was skipped.')
+        if (t.wants_db && t.db_engine === 'pg' && !dbOff.value && !availableEngines.value.includes('pg')) hints.push('PostgreSQL has no free capacity right now.')
+        templateSecrets.value = t.secrets ?? []
+        templateHints.value = hints
         templateNote.value = { name: t.name, notes: t.notes ?? '' }
       } else {
         error.value = `Unknown template "${route.query.template}".`
@@ -334,6 +357,15 @@ async function onSubmit() {
       <p v-if="templateNote" class="alert-info mb-3">
         <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
       </p>
+      <p v-for="h in templateHints" :key="h" class="alert-warn mb-3">{{ h }}</p>
+      <div v-if="templateSecrets.length" class="alert-info mb-3 text-sm">
+        <strong class="font-medium">Set these secrets in Environment variables before creating:</strong>
+        <ul class="mt-1 list-disc space-y-0.5 pl-5">
+          <li v-for="sec in templateSecrets" :key="sec.key" class="min-w-0 break-words">
+            <span class="mono">{{ sec.key }}</span>: {{ sec.hint }}
+          </li>
+        </ul>
+      </div>
 
       <div v-if="!isEdit" class="mb-3 flex gap-1 border-b border-pico-border" role="tablist">
         <button
