@@ -34,12 +34,21 @@ database. n8n is Postgres-first, which is why it's the recipe that exercises the
 - A created workflow **and** the owner account **survived a pod restart** — the data is in Postgres and the
   encryption key is pinned, so nothing was lost on the ephemeral disk.
 
+## With a persistent volume (recommended)
+
+`n8n.yaml` mounts a 1 GiB volume at `/home/node` with `N8N_USER_FOLDER=/home/node`. Mount the whole home, not just
+`.n8n`: n8n also writes `~/.cache`. Verified live: the auto-generated encryption key, a stored credential, an active
+webhook workflow and filesystem binary data all survived a restart, with Postgres and with SQLite on the volume (drop
+`db`/`DB_*` for that), and a manual backup of the volume succeeded. Details and caveats (about a minute of downtime per
+deploy, single replica, 512 MiB memory override still needed, slow first boot) are in `../../docs/RECIPES.md`.
+Without volumes, delete the `volume` line and set `N8N_USER_FOLDER` to `/tmp`; then the encryption key must be pinned.
+
 ## Make it yours
 
 Everything is in `n8n.yaml`. The one value that needs your attention is the single real secret (set by name
 under `secrets:`, value provided through the dashboard's secret editor or the API, never in the file):
 
-- **`N8N_ENCRYPTION_KEY`** — **required and pinned.** n8n encrypts stored credentials with this key. The
+- **`N8N_ENCRYPTION_KEY`** — **pinned** (required without a volume, recommended with one). n8n encrypts stored credentials with this key. The
   scratch disk is wiped on restart, so if you don't pin the key, a restart regenerates it and every saved
   credential becomes undecryptable. Set it once and keep it stable.
 
@@ -53,7 +62,7 @@ Everything else is wired from platform refs (see `../../docs/RECIPES.md` for the
   file to mount).
 - `DB_POSTGRESDB_POOL_SIZE=2` — stay under the per-app role's **CONNECTION LIMIT of 5** (the 1 GB Postgres
   node has only ~22 usable connections total).
-- **`N8N_USER_FOLDER=/tmp` is REQUIRED** — the image's default HOME isn't writable as the non-root UID.
+- **`N8N_USER_FOLDER` is REQUIRED** — `/home/node` with the volume, `/tmp` without. The image's default HOME isn't writable as the non-root UID.
 - `N8N_HOST` / `N8N_PROTOCOL` / `N8N_PORT` / `WEBHOOK_URL` / `N8N_EDITOR_BASE_URL` — set to the app's URL.
 - `NODE_OPTIONS=--max-old-space-size=384` plus optional footprint-trimming flags
   (`N8N_RUNNERS_ENABLED`, `N8N_DIAGNOSTICS_ENABLED`, `N8N_VERSION_NOTIFICATIONS_ENABLED`,

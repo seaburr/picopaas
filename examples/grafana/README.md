@@ -1,7 +1,7 @@
 # Grafana on PicoPaaS
 
 [Grafana](https://grafana.com/) dashboards running as an ordinary PicoPaaS app, backed by the platform's
-**MySQL** database so dashboards, users and settings survive restarts and redeploys.
+**MySQL or PostgreSQL** database (`grafana.yaml` / `grafana-postgres.yaml`) so dashboards, users and settings survive restarts and redeploys.
 
 ## No custom image
 
@@ -21,8 +21,11 @@ the API, never in the file.
 Key choices (see `../../docs/RECIPES.md` for the full write-up):
 
 - `GF_DATABASE_URL: ${{ db.url }}` — PicoPaaS accepts a `${{ ... }}` value only when it's exactly one
-  reference, so use the single `db.url` ref (a full `mysql://...` DSN), not host/port vars glued together.
-- `GF_DATABASE_SSL_MODE=skip-verify` + `GF_DATABASE_CA_CERT_PATH=/etc/ssl/certs/ca-certificates.crt` — managed
+  reference, so use the single `db.url` ref (a full `mysql://...` or `postgres://...` DSN), not host/port vars glued together.
+- PostgreSQL variant (`grafana-postgres.yaml`): `resources.db_engine: pg`, `GF_DATABASE_TYPE=postgres`, and
+  `GF_DATABASE_SSL_MODE=require` (Grafana reads the TLS mode from this variable, not the URL). `db.url` is then a
+  `postgres://...?sslmode=require` DSN. The MySQL CA-file workaround below does not apply.
+- MySQL: `GF_DATABASE_SSL_MODE=skip-verify` + `GF_DATABASE_CA_CERT_PATH=/etc/ssl/certs/ca-certificates.crt` — managed
   MySQL requires TLS, and Grafana's driver insists on reading a CA file even for skip-verify, so point it at
   the CA bundle already in the image. Encrypted but unverified; CA-verified TLS would need a PEM mount the
   platform doesn't offer.
@@ -33,7 +36,7 @@ Key choices (see `../../docs/RECIPES.md` for the full write-up):
 
 ## Deploy on PicoPaaS
 
-1. Create an app with a **database** (no bucket), port **3000**, image `grafana/grafana:13.2.4`, and the env
+1. Create an app with a **database** of your chosen engine (no bucket), port **3000**, image `grafana/grafana:13.2.4`, and the env
    from `grafana.yaml`.
 2. Set the `GF_SECURITY_ADMIN_PASSWORD` secret's value in the dashboard or via the API.
 3. Open the app's URL and log in as your admin user.
@@ -49,4 +52,4 @@ picopaas apply -f grafana.yaml
 Run Grafana at **one replica**. PicoPaaS gives each app a single ClusterIP Service on the app port and no
 per-pod addressing, so multi-replica HA that needs pods to gossip with named peers — Grafana's unified-alerting
 memberlist, for instance — can't discover its peers and won't work. That's intentional and out of scope. A
-single MySQL-backed Grafana is the supported shape.
+single-replica Grafana is the supported shape.

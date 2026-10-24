@@ -92,6 +92,8 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 8. Per-app CPU/memory history on the app detail page — DONE.
 
 ## Backlog (free, common on other PaaS)
+- **Second-region backup copy (request 0008, deferred by Chas 2026-10-24).** Replicate `picopaas-backups` to a bucket in another
+  region (SFO3/TOR1/AMS3) so backups survive an ATL1 loss. About $0 inside the Spaces allowance. Not now.
 - **Scale-to-zero on idle (item 7, deferred 2026-10-20).** Sleeping idle apps to 0 replicas raises density
   (free capacity), but *transparent* wake-on-request needs an activator in the request path
   (Knative / KEDA http-add-on) = a new component, and auto-detecting idle needs a traffic signal we don't yet

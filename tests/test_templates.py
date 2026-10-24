@@ -4,7 +4,7 @@ from app.env_refs import ALLOWED_REFS, ENV_KEY_RE, resolve_ref
 from app.routers.templates import CATALOG
 from tests.conftest import register_and_login
 
-EXPECTED = {"ghost", "wordpress", "directus", "grafana", "n8n", "shlink", "status", "static-site"}
+EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "status", "static-site"}
 
 
 def test_templates_catalog(client):
@@ -36,6 +36,9 @@ def test_n8n_uses_postgres(client):
     t = {x["id"]: x for x in client.get("/templates").json()}["n8n"]
     assert t["db_engine"] == "pg" and t["wants_db"]
     assert [s["key"] for s in t["secrets"]] == ["N8N_ENCRYPTION_KEY"]
+    # verified live: mount the whole home so both ~/.n8n and ~/.cache are on the volume
+    assert t["volume"] == {"size_gi": 1, "mount_path": "/home/node", "required": True}
+    assert t["env"]["N8N_USER_FOLDER"] == "/home/node"
 
 
 def test_catalog_is_consistent():
@@ -85,3 +88,10 @@ def test_prefilled_template_with_empty_secrets_creates_app(client):
     r = client.post("/apps", json={"name": "shlink", "image": t["image"], "port": t["port"], "want_db": True,
                                    "db_engine": t["db_engine"], "env": env})
     assert r.status_code == 201, r.text
+
+
+def test_grafana_pg_variant(client):
+    register_and_login(client, "gpg@example.com")
+    t = {x["id"]: x for x in client.get("/templates").json()}["grafana-pg"]
+    assert t["db_engine"] == "pg" and t["env"]["GF_DATABASE_TYPE"] == "postgres"
+    assert t["env"]["GF_DATABASE_SSL_MODE"] == "require" and t["env"]["GF_DATABASE_URL"] == "${{ db.url }}"

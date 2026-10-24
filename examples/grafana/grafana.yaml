@@ -36,6 +36,7 @@ env:
   # Outbound phone-home is pointless here (egress is restricted); don't let it log failures.
   GF_ANALYTICS_REPORTING_ENABLED: "false"
   GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+  GF_PLUGINS_PREINSTALL_DISABLED: "true"  # required: Grafana 13 otherwise downloads plugins at boot (docs/RECIPES.md)
 
 secrets:
   # Set the value in the dashboard's secret editor or via the API. Never put it in this file.

@@ -155,7 +155,7 @@ CATALOG: List[TemplateOut] = [
     ),
     TemplateOut(
         id="grafana",
-        name="Grafana (dashboards)",
+        name="Grafana on MySQL",
         description="Grafana with its state in PicoPaaS MySQL (TLS, encrypted but unverified).",
         image="grafana/grafana:13.2.4",
         port=3000,
@@ -172,6 +172,36 @@ CATALOG: List[TemplateOut] = [
             "GF_DATABASE_MAX_IDLE_CONN": "2",
             "GF_SECURITY_ADMIN_USER": "admin",
             "GF_ANALYTICS_REPORTING_ENABLED": "false",
+            "GF_PLUGINS_PREINSTALL_DISABLED": "true",
+            "GF_ANALYTICS_CHECK_FOR_UPDATES": "false",
+        },
+        secrets=[
+            TemplateSecret(key="GF_SECURITY_ADMIN_PASSWORD", hint="Password for the admin user; pick a long one."),
+        ],
+        health_check=TemplateHealthCheck(path="/api/health"),
+        notes="Set GF_SECURITY_ADMIN_PASSWORD, then sign in as admin. Outbound traffic is restricted, so only public data sources work.",
+        docs_url=f"{REPO_EXAMPLES}/grafana",
+    ),
+    TemplateOut(
+        id="grafana-pg",
+        name="Grafana on PostgreSQL",
+        description="Grafana with its state in PicoPaaS PostgreSQL (TLS required).",
+        image="grafana/grafana:13.2.4",
+        port=3000,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "GF_SERVER_HTTP_PORT": "3000",
+            "GF_SERVER_ROOT_URL": "${{ app.url }}",
+            "GF_DATABASE_TYPE": "postgres",
+            "GF_DATABASE_URL": "${{ db.url }}",
+            "GF_DATABASE_SSL_MODE": "require",
+            "GF_DATABASE_MAX_OPEN_CONN": "8",
+            "GF_DATABASE_MAX_IDLE_CONN": "2",
+            "GF_SECURITY_ADMIN_USER": "admin",
+            "GF_ANALYTICS_REPORTING_ENABLED": "false",
+            "GF_PLUGINS_PREINSTALL_DISABLED": "true",
             "GF_ANALYTICS_CHECK_FOR_UPDATES": "false",
         },
         secrets=[
@@ -206,7 +236,8 @@ CATALOG: List[TemplateOut] = [
             "WEBHOOK_URL": "${{ app.url }}",
             "N8N_EDITOR_BASE_URL": "${{ app.url }}",
             "GENERIC_TIMEZONE": "UTC",
-            "N8N_USER_FOLDER": "/tmp",
+            "N8N_USER_FOLDER": "/home/node",
+            "N8N_DEFAULT_BINARY_DATA_MODE": "filesystem",
             "NODE_OPTIONS": "--max-old-space-size=384",
             "EXECUTIONS_DATA_SAVE_ON_SUCCESS": "none",
             "EXECUTIONS_DATA_MAX_AGE": "72",
@@ -222,12 +253,13 @@ CATALOG: List[TemplateOut] = [
         secrets=[
             TemplateSecret(
                 key="N8N_ENCRYPTION_KEY",
-                hint=f"Random string, generate with: {HEX_CMD}. Keep it stable, or every saved credential becomes unreadable.",
+                hint=f"Random string, generate with: {HEX_CMD}. Keep it stable: it decrypts the saved credentials.",
             ),
         ],
         health_check=TemplateHealthCheck(path="/healthz"),
+        volume=TemplateVolume(size_gi=1, mount_path="/home/node", required=True),
         notes=(
-            "Needs PostgreSQL, which an instance may have no capacity for. Raise memory to 512 MiB (admin) for comfort. "
+            "Needs PostgreSQL, which an instance may have no capacity for, and a volume (mounted at /home/node: it holds n8n's config, binary data and UI cache). Ask an admin to raise memory to 512 MiB: n8n is OOM-killed at the 384 MiB default. First boot takes a few minutes. "
             "Set N8N_ENCRYPTION_KEY and never change it. NODES_INCLUDE loads only common nodes; drop it to load all. "
             "Success executions are not kept, to stay inside the database quota."
         ),

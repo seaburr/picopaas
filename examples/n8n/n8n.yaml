@@ -13,6 +13,10 @@ resources:
   # auto-provisions a per-app Postgres database + role (over CA-verified TLS). n8n is
   # Postgres-first, so this is our first pg-backed recipe.
   db_engine: pg
+  # Persistent volume for n8n's user folder (config/encryption key, binary data, nodes, event log). Mount the
+  # WHOLE home: n8n writes both ~/.n8n and ~/.cache. Needs volumes enabled on the platform; if they are off,
+  # delete this block and set N8N_USER_FOLDER to /tmp below. Verified live (restart keeps data + credentials).
+  volume: { sizeGi: 1, mountPath: /home/node }
 env:
   # --- Postgres connection: individual vars, platform refs mapped one-to-one. ---
   DB_TYPE: "postgresdb"
@@ -41,9 +45,11 @@ env:
   N8N_EDITOR_BASE_URL: "https://n8n.picopaas.xyz"
   GENERIC_TIMEZONE: "UTC"
 
-  # REQUIRED. The image's default HOME isn't writable as the non-root UID, so point n8n's
-  # user folder at /tmp (writable for any UID). Without this n8n can't write .n8n and dies.
-  N8N_USER_FOLDER: "/tmp"
+  # REQUIRED. The image's default HOME isn't writable as the non-root UID, so point n8n's user folder at the
+  # volume mount. (Without a volume use "/tmp" instead: scratch disk, lost on restart.)
+  N8N_USER_FOLDER: "/home/node"
+  # Binary data on the volume instead of the database quota.
+  N8N_DEFAULT_BINARY_DATA_MODE: "filesystem"
 
   # Node heap cap. Keep it BELOW the container memory limit: too low and Node heap-OOMs,
   # too high and the container OOMs. 384 heap inside a 512 MiB container (admin override) works.
@@ -57,7 +63,7 @@ env:
 
   # Behind Traefik (one proxy hop): lets n8n's login rate-limiter see real client IPs.
   N8N_PROXY_HOPS: "1"
-  # Community nodes installed from the UI live in the (ephemeral) user folder and vanish on restart.
+  # Community nodes now live on the volume and survive restarts, but installing one is untested here.
   N8N_COMMUNITY_PACKAGES_ENABLED: "false"
 
   # --- Optional footprint trimming (per the live env). ---
@@ -69,8 +75,9 @@ env:
   NODES_INCLUDE: '["n8n-nodes-base.webhook", "n8n-nodes-base.manualTrigger", "n8n-nodes-base.set", "n8n-nodes-base.httpRequest", "n8n-nodes-base.scheduleTrigger", "n8n-nodes-base.noOp", "n8n-nodes-base.code", "n8n-nodes-base.if", "n8n-nodes-base.respondToWebhook"]'
 
 secrets:
-  # REQUIRED and PINNED. n8n encrypts stored credentials with this key. Set it once and keep
-  # it STABLE: the disk is ephemeral, so if the key isn't pinned, a restart regenerates it and
+  # PINNED. n8n encrypts stored credentials with this key. With the volume n8n keeps its own generated key in
+  # .n8n/config and survives restarts, but pin it anyway so a restored database or a lost volume still decrypts.
+  # Without a volume it is REQUIRED: the disk is ephemeral, so a restart would regenerate the key and
   # every saved credential becomes undecryptable. Set the value in the dashboard's secret
   # editor or via the API — never put it in this file.
   - N8N_ENCRYPTION_KEY

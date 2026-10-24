@@ -269,3 +269,33 @@ dedicated bucket later is a config change plus `restic copy`, not a rewrite (`BA
 - Exact behaviour of a limited-access Spaces key created through the same API `SpacesStore` uses, scoped to the backup bucket with read/write/delete permission.
 - restic memory on the real pod (`GOMEMLIMIT`) under the 320Mi limit with a 1 GiB volume of many small files (WordPress `uploads`); fall back to `--read-concurrency 1`.
 - Whether snapshot CRDs (`VolumeSnapshotClass`) are installed on this DOKS version (phase 3 only).
+
+## 10. Limits, enable/disable and rolloff (2026-10-24)
+
+- Per-app switch: owners toggle `enabled` (audited `backup.config_changed`); new apps take the `backups_enabled_default` setting. Admin lock: `app_backup_config.admin_disabled` (+ `admin_disabled_reason`), set with `PUT /admin/apps/{id}/backups`; blocks scheduled and manual runs and owner re-enable (403), keeps existing backups, final backup on delete still runs. Optional per-app ceiling `max_bytes_override`. Migration `c9d4f1a7b3e2`.
+- Ceilings use the recorded repo sizes (`*_repo_bytes`). Scheduling checks the platform total then the app ceiling and records a skipped backup as a failed set with the reason; `_start_queued` repeats the checks for runs already queued; the manual endpoint answers 409 and rolls off one backup.
+- Retention (`_enforce_retention`, every tick, apps without a backup in flight): over `backup_max_held_per_app` or at the ceiling, `roll_off` deletes via `enqueue_delete_set`. Order (`rolloff_order`): failed and partial sets (oldest first), then successful (oldest first), never the newest successful. One set needing a Job per app per tick (the repo is busy until it ends); failed sets hold nothing and vanish at once.
+- Rate limits: manual backups per app per hour (`backup_manual_per_hour`, counted on backup sets) plus 5x that per account; downloads `backup_export_max_per_hour`, failed exports excluded. A failed export's `error` reaches the UI (`failed_export` on a backup/run); the old-image error ("repository is not configured") is rewritten to say the platform tooling is out of date.
+- The tenant Secret sweep only visits live apps and treats 403/404 from a missing namespace quietly.
+
+## 11. Failure handling and the orphan sweeper (2026-10-24)
+
+Failure states a crash can leave, and who clears them:
+
+| Left behind | Cleared by |
+|---|---|
+| run `running`, Job finished/failed/gone while the API was down | `tick` `_poll` (every minute) and, as a backstop for anything older than the Job deadline, the sweeper: finished normally, or failed with the Job's reason, or `interrupted (platform restart or job lost)` + `backup_failed` event |
+| run `queued` for more than `BACKUP_QUEUED_MAX_SECONDS` (12 h) | sweeper: failed "never started" |
+| source backup `deleting` / set `delete_status=deleting` with no live delete run | sweeper: back to `succeeded` (or settled) + `backup_failed` event "interrupted ... the backup is still there". Not retried automatically: the owner can delete again |
+| Jobs, pods, per-run Secrets (platform ns and tenant `app-*` ns) matching no running run | sweeper, only when older than `BACKUP_ORPHAN_MIN_AGE_SECONDS` (15 min; a Job being started has no committed row yet). `tick` also sweeps unmatched Secrets every minute |
+| expired export objects, failed/partial export objects | `sweep_exports` (older than `BACKUP_EXPORT_TTL_SECONDS`, by prefix and age, whether or not a row exists); the sweeper forces it every sweep |
+| incomplete multipart uploads (killed Job) under the export and repo prefixes | sweeper aborts those older than `BACKUP_STALE_UPLOAD_SECONDS` (24 h) |
+| stale restic locks | `MODE=prune|forget|purge` run `restic unlock` first (removes only locks restic itself calls stale). Needs the backup image republished |
+| backup sets with no runs; runs pointing at a missing set; ready exports whose source run is gone | sweeper (rows removed / `set_id` cleared / export object deleted and row `expired`) |
+| restic snapshots with no DB row; repo prefixes with no `app_backup_config` row | NOT deleted (customer data). Orphan repo app ids are reported in the sweeper result; apps past retention are purged by the normal purge run |
+
+`app/backup_sweeper.py::sweep` is run by `scheduler.backup_sweep_job` (leader only via the `GET_LOCK`, only with
+`RECONCILER_ENABLED=1` and backups usable) every `BACKUP_SWEEP_MINUTES` (10), at most `BACKUP_SWEEP_LIMIT` (50) objects or rows
+per phase, idempotent, each phase isolated. A run younger than its deadline is never touched. A sweep that cleaned anything writes
+one `backup.orphan_cleaned` audit row (counts only). The last result is stored in `platform_settings` (key `backup_sweeper_last`) and
+returned as `sweeper: {last_run_at, cleaned, errors, orphan_repos}` by `GET /admin/health/backups`.

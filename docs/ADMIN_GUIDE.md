@@ -205,10 +205,17 @@ Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav b
   `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`, `user.reset_password`,
   `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`, `apikey.revoke`,
   `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`, `app.resources`,
-  `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`.
+  `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`, `platform_logs.download`.
 - **Health:** nodes, per-app readiness, restarts, CPU and memory against capacity (needs metrics-server), platform
   pods, and database server capacity. Managed databases usually do not expose host CPU or disk externally; use your
   provider's console for those.
+- **Backup health and platform logs:** the Health page shows backup storage used against the platform cap with the
+  largest apps, failed backups from the last days with the reason, owner and kind (and runs stuck far past the job
+  deadline), and a log viewer for platform components (any namespace except `app-*`, `kube-*` and `default`, so new
+  platform workloads appear on their own). Logs can be viewed (last 200 lines by default) or downloaded (up to 10,000
+  lines); each download is recorded in the audit log as `platform_logs.download`. Tenant app logs are never served from
+  here. Storage figures are the repository sizes from each app's last backup, so they can undercount short-lived
+  download exports and bucket overhead.
 
 Every admin action is also an HTTP route under `/admin`; see [API.md](API.md).
 
@@ -287,6 +294,24 @@ replica gets the full per-pod limits and all replicas share the app's one databa
 extra NetworkPolicy lets an app's own pods talk to each other. Replicas must be stateless: an app has one ClusterIP
 Service and no per-pod addressing, so clustered or gossip apps that need named peers are not supported.
 
+## Settings
+
+**Admin > Settings** (API: `GET/PUT /admin/settings`) holds the global limits an admin can change without a redeploy,
+in three groups:
+
+- **Limit ceilings**: the highest value an admin can set for one app (CPU, memory, database connections, scratch disk,
+  database size, blob storage, image size, egress, volume size, replicas).
+- **Defaults and quotas**: user volume ceiling (never above the admin volume ceiling), volumes platform-wide,
+  apps per account, the app limit given to new accounts.
+- **Backups**: platform and per-app backup storage, backups kept per app, on-demand backups and downloads per hour,
+  and whether new apps start with scheduled backups on.
+
+The environment variables in the Configuration section (for example `MAX_REPLICAS`, `OVERRIDE_*`, `MAX_APPS_PER_USER`,
+`VOLUME_MAX_GI`, `BACKUP_MAX_BYTES_*`) now only set the **default** for each setting. A value saved here overrides the
+default; resetting a setting returns it to the env value. Changes take effect within about 5 seconds on every replica and
+are audit-logged (`settings.update`). Lowering a ceiling doesn't touch values already set on apps, it only limits future
+changes. The floors (minimums) are fixed in code.
+
 ## Persistent volumes
 
 Enable with `VOLUMES_ENABLED=1` after the cost is approved. Persistent volumes are block storage, billed per GiB per month for as long as
@@ -322,6 +347,11 @@ user, repo URL and password, the bucket key), runs `mariadb-dump` or `pg_dump` i
 `restic forget --prune` with the retention below, and the platform deletes the Job and Secret once it records the result.
 Each app has its own restic repository per kind (`<BACKUP_PREFIX>apps/<app id>/db` and `.../bucket`) and a random password stored encrypted in the
 platform database (rotated with `FERNET_KEY`; if you lose the key and the database the backups are unreadable).
+
+Controls (Admin > Settings, `backup_*` keys; env vars are only the defaults): `backup_max_bytes_total` (platform ceiling), `backup_max_bytes_per_app` (default per-app ceiling), `backup_max_held_per_app` (default 14), `backup_manual_per_hour` (default 1), `backup_export_max_per_hour` (default 3; failed downloads don't count), `backups_enabled_default` (scheduled backups on for new apps).
+- **Rolloff.** Each tick, an app holding more than the max, or at its ceiling, has one backup deleted through the owner-delete machinery (`restic forget --prune` Job, so space is really freed): failed and partial backups first, then the oldest successful; the newest successful backup is never rolled off. Audit `backup.rolled_off`. A scheduled backup that finds the app or the platform at its ceiling is skipped and recorded as a failed backup with the reason ("Backup storage for this app is full (X of Y)" / "...for the platform is full..."); Health > Backups shows it under failures and the storage block warns (`over_cap`) when the platform total is reached.
+- **Disable backups for one app.** `PUT /admin/apps/{id}/backups {"admin_disabled": true, "reason": "..."}` (lift with `false`). No scheduled or manual backup runs, the owner cannot re-enable (403), existing backups are kept (the final backup on app delete still runs). The owner sees the reason. Audited (`backup.admin_disabled` / `backup.admin_enabled`). The same call sets a per-app ceiling with `"max_bytes"` (null clears it; audit `backup.ceiling_set`).
+- **Deploy order.** The app image and `BACKUP_IMAGE` must move together: an export Job on an older backup image fails with "the repository is not configured" and the owner is told the platform tooling is out of date. Re-pin `BACKUP_IMAGE` (run the backup-image workflow) before or with the app rollout.
 
 Enable:
 1. Create the bucket and a key limited to it (request 0008; keep it separate from the tenant Spaces key and the platform
@@ -439,6 +469,10 @@ tool for this ships with phase 1b).
 - **Single node:** recycling a node (provider upgrades, autoscaling) causes a brief blip, and all platform replicas
   share that node. Spread across nodes for real availability.
 - **Costs and caps:** every new paid resource should be budgeted before you add it.
+
+### Failed backups and the orphan sweeper
+
+Every `BACKUP_SWEEP_MINUTES` (10) the leader runs `app/backup_sweeper.py`. It fails runs stuck in `running`/`queued` whose Job is gone or past its deadline ("interrupted (platform restart or job lost)", with an app event; a Job that actually finished while the API was down is recorded normally), puts a stuck `deleting` backup back to `succeeded`, deletes unmatched backup Jobs, pods and per-run Secrets (platform and `app-*` namespaces, older than 15 min), aborts incomplete multipart uploads older than 24 h, and removes empty sets, dangling set links and exports of vanished runs. Restic snapshots with no DB row and repo prefixes with no config row are never deleted, only listed as `orphan_repos`. Deletions are audited as `backup.orphan_cleaned` (counts only). The last result is `sweeper` in `GET /admin/health/backups` (`last_run_at`, `cleaned`, `errors`, `orphan_repos`). Details: `docs/design/backups.md` section 11.
 
 ## Backups and upgrades
 

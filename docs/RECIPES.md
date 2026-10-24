@@ -159,11 +159,12 @@ Use it to monitor services hosted **outside PicoPaaS** — third-party APIs, sit
 
 It can't reliably monitor services hosted **on PicoPaaS itself**, including your own PicoPaaS apps (whether on a `*.picopaas.xyz` URL or a custom domain) — requests from inside the platform back to its own address don't loop around. To track uptime of your PicoPaaS apps, use an external monitoring service.
 
-## Grafana (dashboards) on MySQL
+## Grafana (dashboards)
 
-The files are in `examples/grafana/` in the repo (`README.md`, `grafana.yaml`). Grafana runs on PicoPaaS
-backed by the platform's MySQL database, with its data persisting across restarts (verified: health `200`,
-dashboards and users survive a redeploy).
+The files are in `examples/grafana/` in the repo (`README.md`, `grafana.yaml` for MySQL, `grafana-postgres.yaml`
+for PostgreSQL). Grafana runs on PicoPaaS backed by the platform's MySQL or PostgreSQL database (your choice), with
+its data persisting across restarts (MySQL verified: health `200`, dashboards and users survive a redeploy). The
+Templates page has one card per engine.
 
 ### No custom image needed
 
@@ -173,17 +174,26 @@ entirely through `GF_*` environment variables — no config-file mount required.
 at the public image and set env vars. Pin a version (`:13.2.4`), not `:latest`, so a silent upstream bump
 can't break your app.
 
-### Point it at the platform MySQL
+### Choose the database engine
 
-Request a database (`db: true`), no bucket, and wire Grafana's database env:
+Request a database (`db: true`), no bucket, and pick the engine with `resources.db_engine` (`mysql` or `pg`). The
+engine is fixed once the app is created. Either way Grafana gets its connection from one variable:
 
-- `GF_DATABASE_TYPE=mysql`
 - `GF_DATABASE_URL=${{ db.url }}` — one ref, the whole value. PicoPaaS only accepts a `${{ ... }}` value that
-  is **exactly one** reference, so you can't build a DSN by concatenating `${{ db.host }}`, `${{ db.port }}`
-  and text. Use `db.url` (it resolves to `mysql://user:password@host:port/name`), which is the one ref that
-  hands Grafana everything in a single string.
+  is **exactly one** reference, so you can't build `GF_DATABASE_HOST` (`host:port`) from `${{ db.host }}`,
+  `${{ db.port }}` and text. `db.url` hands Grafana host, port, name, user and password in a single string.
 
-### TLS and the CA file
+| Engine | `resources.db_engine` | `GF_DATABASE_TYPE` | `db.url` resolves to | TLS variables |
+|---|---|---|---|---|
+| MySQL | `mysql` | `mysql` | `mysql://user:password@host:port/name` | `GF_DATABASE_SSL_MODE=skip-verify`, `GF_DATABASE_CA_CERT_PATH=/etc/ssl/certs/ca-certificates.crt` |
+| PostgreSQL | `pg` | `postgres` | `postgres://user:password@host:port/name?sslmode=require` | `GF_DATABASE_SSL_MODE=require` |
+
+Everything else in the spec is identical. Grafana's PostgreSQL TLS mode comes from `GF_DATABASE_SSL_MODE`, not
+from the URL query, so set it explicitly. `require` encrypts the connection without verifying the server
+certificate, the same encrypted-but-unverified level as the MySQL setup (`verify-full` would need the CA as a
+file, which PicoPaaS can't mount).
+
+### MySQL: TLS and the CA file
 
 Our managed MySQL requires TLS, and Grafana's MySQL driver insists on reading a CA file from disk even when
 you tell it not to verify. So:
@@ -200,7 +210,7 @@ the in-platform MySQL is the honest tradeoff here.
 ### Connection pool cap
 
 Each database user may hold at most **10 connections**. Size Grafana's pool below that so a restart or a surge
-doesn't trip the limit:
+doesn't trip the limit (both engines):
 
 - `GF_DATABASE_MAX_OPEN_CONN=8`
 - `GF_DATABASE_MAX_IDLE_CONN=2`
@@ -242,7 +252,7 @@ HA and clustering are not supported on PicoPaaS. Run Grafana at **one replica**.
 that lets one pod discover and address the others individually. Multi-replica setups that need pods to gossip
 with named peers — Grafana's 2+ replica HA with unified-alerting memberlist, for example — have no way to find
 each other, so they don't work. This is intentional and out of scope: the platform does not offer
-headless/per-pod Services or peer discovery. A single MySQL-backed Grafana is the supported shape, and it's
+headless/per-pod Services or peer discovery. A single-replica Grafana on MySQL or PostgreSQL is the supported shape, and it's
 plenty for a throwaway dashboards instance.
 
 ## Shlink (URL shortener) on MySQL
@@ -510,7 +520,7 @@ cheapest 1 GB Postgres node has only ~22 usable connections total. Size n8n's po
 
 ### Pin the encryption key
 
-Pinning is required so credentials survive restarts. n8n encrypts stored credentials with `N8N_ENCRYPTION_KEY`. The scratch disk is wiped on every restart, so if
+Without a volume, pinning is required so credentials survive restarts (with a volume it is optional; see below). n8n encrypts stored credentials with `N8N_ENCRYPTION_KEY`. The scratch disk is wiped on every restart, so if
 the key isn't pinned, a restart regenerates it and **every saved credential becomes undecryptable**:
 
 - `N8N_ENCRYPTION_KEY` — set it as a **secret**, generate it once, and keep it stable across deploys. This is
@@ -519,19 +529,81 @@ the key isn't pinned, a restart regenerates it and **every saved credential beco
 The workflow definitions and the owner account live in Postgres (not on disk), so with the key pinned they
 survive restarts — which is exactly what we verified.
 
-### `N8N_USER_FOLDER=/tmp` is required
+### Persistent volume (recommended)
+
+Persistent volumes are enabled on picopaas.xyz, and n8n is the app they were made for. n8n keeps its encryption key,
+binary data, community nodes and (by default) its SQLite database in the user folder. Mount a volume there and add
+this to the spec:
+
+```yaml
+resources:
+  db: true
+  db_engine: pg
+  volume: { sizeGi: 1, mountPath: /home/node }
+env:
+  N8N_USER_FOLDER: /home/node
+```
+
+Two details cost us a few failed boots, so copy them exactly:
+
+- **Mount at `/home/node`, not `/home/node/.n8n`.** The image runs as UID 10001 with no usable HOME, so n8n resolves its
+  user folder from `N8N_USER_FOLDER` and creates `<folder>/.n8n` (config, storage, nodes, event log, SQLite) **and**
+  `<folder>/.cache` (the compiled web UI, about 29 MB). Mounting only `.n8n` makes n8n die on boot with
+  `EACCES: mkdir '/home/node/.cache'`. With no `N8N_USER_FOLDER` it tries `/.n8n` and dies the same way. Mounting the
+  whole home puts both on the volume.
+- `N8N_USER_FOLDER=/tmp` (scratch disk) is only for the volume-less setup further down.
+
+Verified live on a throwaway app (pod restarted through `POST /apps/{id}/restart`, about one minute of downtime):
+
+| Check | Result |
+|---|---|
+| Boot with the volume, Postgres variant and SQLite-on-volume variant | Healthy in both. The image passed the 512 MB image cap. |
+| **No `N8N_ENCRYPTION_KEY` set** | n8n generated a key into `.n8n/config` on the volume. After a restart a stored credential still decrypted, the workflow was still active, and the webhook still answered. Pinning the key is no longer needed to survive restarts. |
+| Binary data, `N8N_DEFAULT_BINARY_DATA_MODE=filesystem` | Works. A 200 KB file from a Code node is written under `.n8n/storage/workflows/<id>/executions/<n>/binary_data/` and the execution, with its file, was still there after the restart. It counts against the volume, not the 250 MB scratch disk. |
+| SQLite on the volume (`database.sqlite` plus `-wal`, no `db: true`) | Owner, credential, workflow and executions survived a restart. This is the cheapest setup, with no database quota to manage. It suits one person and light use. |
+| Postgres plus volume | Same results; the volume then holds only key, binary data and nodes. Prefer it when you want the 50 MB quota separated from files or want database backups. |
+| Backups | A manual backup of the Postgres variant succeeded for both parts: `db` (0.5 MB) and `volume` (29 MB, mostly the UI cache). The volume part is a file-level copy, so for the SQLite variant stop writes (or use Postgres) if you need a consistent copy. Restoring a volume is not self-service yet. |
+
+Still pin `N8N_ENCRYPTION_KEY` as a secret if you restore the database into a new app or may lose the volume: the key
+is also what decrypts the credentials stored in Postgres. With a pinned key n8n skips generating one.
+
+What this changes compared with running without a volume:
+
+| In `/home/node/.n8n` | With a volume |
+|---|---|
+| `config` (encryption key) | Survives. |
+| `storage/` (binary data) | Survives; no more scratch-disk pressure. Prune old executions so it doesn't fill the volume. |
+| `nodes/` (community nodes) | Survive restarts. We did not test installing one; keep `N8N_COMMUNITY_PACKAGES_ENABLED=false` unless you need it. |
+| `n8nEventLog.log` | Survives, so interrupted executions recover better. |
+| `database.sqlite` | Survives, so a database is optional. |
+
+Caveats for volume apps:
+
+- **One replica, short outage on every deploy.** The volume attaches to a single pod, so every deploy, restart and node
+  move stops the old pod first (we measured about 56 seconds to Running).
+- **Memory is unchanged: 512 MiB override still required.** With the default 384 MiB cap n8n was OOM-killed in a loop,
+  even on SQLite and with the trimmed `NODES_INCLUDE` list. With the full node catalog it OOMs even at 512 MiB, so keep
+  `NODES_INCLUDE` or ask for a larger override. A volume does not change this.
+- **First boot is slow, and `/healthz` answers early.** On a fresh database n8n runs hundreds of migrations
+  (1 to 2 minutes at 200m CPU). The app can show Running while `/rest/*` still returns 404 for another minute or so, and
+  the first boot may be restarted once by the probes. Wait for `/rest/settings` to return 200 before scripting against it.
+- **The UI cache lives on the volume**, so allow 1 GiB: about 29 MB is cache, the rest is your data.
+
+### Without a volume: `N8N_USER_FOLDER=/tmp`
+
+If volumes are off on your platform, point the user folder at the scratch disk:
 
 - `N8N_USER_FOLDER=/tmp`
 
 The image's default HOME isn't writable as the non-root UID, so n8n can't create its `.n8n` working directory
 and dies on boot. Pointing it at `/tmp` (writable for any UID) fixes it. This is the n8n equivalent of
-Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line.
+Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line. Everything below in this section ("What is lost on restart") applies
+only to this setup; with a volume you can skip it.
 
-### What is lost on restart
+### What is lost on restart (no volume)
 
-Here is what lives outside Postgres. n8n's docs say to keep the user folder on a persistent volume, and PicoPaaS apps have no volumes. We looked inside
-`/tmp/.n8n` on the live instance. Your workflows, credentials, users and execution history are in Postgres and
-survive restarts (verified). These are what live in the folder instead:
+Without a volume, these live in the scratch folder `/tmp/.n8n` instead of Postgres. Your workflows, credentials, users and execution history are in Postgres and
+survive restarts (verified). These are what live in the folder:
 
 | In `/tmp/.n8n` | What it's for | Effect of losing it on restart |
 |---|---|---|
@@ -540,10 +612,10 @@ survive restarts (verified). These are what live in the folder instead:
 | `nodes/` | Community nodes installed from the UI | They're gone after a restart. Stick to built-in nodes. |
 | `n8nEventLog.log` | Event bus log, used to recover executions interrupted by a crash | Weaker crash recovery for executions that were in flight. |
 
-There's no clean fix without volumes. Database binary mode (`N8N_DEFAULT_BINARY_DATA_MODE=database`) survives restarts
-but uses the 50 MB database quota (see below). The S3 mode needs an n8n Enterprise license. So n8n on PicoPaaS suits
+Database binary mode (`N8N_DEFAULT_BINARY_DATA_MODE=database`) survives restarts
+but uses the 50 MB database quota (see below). The S3 mode needs an n8n Enterprise license. So without a volume n8n suits
 **light automation that doesn't handle files**, such as webhooks, API calls and notifications. It doesn't suit file
-pipelines.
+pipelines. Use the volume setup above for those.
 
 ### Prune executions (50 MB)
 
@@ -564,7 +636,7 @@ Three more settings, taken from n8n's own startup warnings:
 - `N8N_PROXY_HOPS=1`. The app sits behind Traefik, which sets `X-Forwarded-For`. Without this, n8n logs
   `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, and its login rate-limiter sees every visitor as the proxy's IP, so one
   person's failed logins can lock everyone out.
-- `N8N_COMMUNITY_PACKAGES_ENABLED=false`. Community nodes installed from the UI live in the user folder and vanish
+- `N8N_COMMUNITY_PACKAGES_ENABLED=false`. Without a volume, community nodes installed from the UI live in the user folder and vanish
   on the next restart, while workflows that use them stay in the database and break. Turning installs off avoids
   that trap.
 - **If you change the app's address, update `N8N_HOST`, `WEBHOOK_URL` and `N8N_EDITOR_BASE_URL` too.** n8n uses

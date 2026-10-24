@@ -7,9 +7,10 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Turn on object versioning for the `picopaas-backups` bucket? (raised 2026-10-24, docs/PENTEST.md "Volume backups and sets review").** Volume backup Jobs carry the backup key into tenant namespaces. The key is now bucket-scoped (bootstrap proves it can't read other buckets), but it still reaches every app's restic repo in that bucket, so a leaked key could delete backups. Versioning keeps deleted/overwritten objects recoverable for a lifecycle window (e.g. 7 days), at the cost of storing that history (small; inside the $5 Spaces allowance at today's sizes). It also means owner deletes and retention prunes free space only after the window. Recommend yes, 7-day noncurrent expiry. — _your answer:_
-
-- **Approve request 0008 (backups)? (raised 2026-10-23).** A second-region Spaces bucket `picopaas-backups` (proposed SFO3) inside the existing $5 Spaces subscription, about $0 marginal; snapshots optional later at about $0.06/GiB/mo. Background: `docs/requests/0008-backups.md`, `docs/design/backups.md`. Default if unanswered: phase 1 uses only the existing allowance (prefix `backups/` in `pico-paas-s3-a`, same region as app buckets). Also confirm the region (SFO3 vs TOR1/AMS3). — _your answer:_
+- **Budget rule vs reality (raised 2026-10-24 after Chas asked about cost drift).** CLAUDE.md says about $60/mo; the real
+  floor is about $75.30/mo (node $28, managed MySQL $15.15, managed PostgreSQL $15.15, LB $12, Spaces $5) and about $103.30 while the
+  autoscaler runs a second node (docs/ARCHITECTURE.md §1). Options: (a) update the rule to ~$75 floor / ~$105 ceiling; (b) cap
+  `max_nodes = 1` so ~$75 is a hard ceiling (new apps queue when the node is full); (c) drop managed PostgreSQL (-$15.15). — _your answer:_
 
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
   shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
@@ -85,6 +86,10 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-24: **Object versioning on `picopaas-backups` (answered: no).** Not enabled. Owner deletes and retention prunes free
+  space immediately; a leaked backup key could delete backups (accepted risk; key is bucket-scoped).
+- 2026-10-24: **Request 0008, second-region backup bucket (answered: not now).** Backups stay in the existing ATL1 `picopaas-backups`
+  bucket. A second-region copy is on docs/ROADMAP.md as a future enhancement.
 - 2026-10-24: **Backups audit (answered: yes).** Creating, deleting and downloading backups all go to the audit log, including one
   `backup.download_link` row each time a download link is issued. Implemented (`backup.create` for scheduled/final, `backup.pruned`,
   `backup.purged`, `backup.export_deleted`, `backup.download_link`); docs/ADMIN_GUIDE.md. The rest of the pentest follow-ups were handled.

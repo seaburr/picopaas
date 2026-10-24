@@ -1,7 +1,7 @@
 # PicoPaaS
 
 A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
-and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB). Each app gets its own HTTPS
+and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB), with nightly automatic backups of both and of an optional persistent volume. Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
@@ -21,6 +21,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - Per-app CPU and memory history (sparklines, about 3 hours) on the app page.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
   auto-redeployed when they move.
+- Backups: nightly, automatic, for the database, bucket and volume. Back up now, download a whole backup as one package, delete backups, per-app on/off, the newest 14 kept (failed ones cleaned first), a per-app storage cap, and a final backup kept 14 days after an app is deleted.
 - Quotas on CPU, memory, scratch disk, image size, database size and bucket size.
 - Administrator approval for new accounts, user and app suspend or delete, and an audit log.
 - API keys, a CLI, and a YAML app spec.
