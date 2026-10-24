@@ -110,9 +110,9 @@ function overCapTip(app: App) {
 function meta(app: App) {
   const bits = [app.image, `port ${app.port}`]
   const extras = [
-    app.want_db ? `database (${dbEngineLabel(app.db_engine)})` : '',
+    app.want_db ? `DB (${dbEngineLabel(app.db_engine)})` : '',
     app.want_storage ? 'blob storage' : '',
-    app.volume ? `persistent volume (${app.volume.size_gi} GiB)` : '',
+    app.volume ? 'volume' : '',
   ].filter(Boolean)
   if (extras.length) bits.push(extras.join(' + '))
   return bits
