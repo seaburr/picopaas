@@ -312,15 +312,15 @@ Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persisten
 ## App backups
 
 Off by default (`BACKUPS_ENABLED=0`): with the flag off nothing runs, no namespace exists and every backup endpoint says so.
-Phase 1a backs up **databases** (MySQL and PostgreSQL) of apps that have one; volume backups, snapshot download and restore
-come next. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
+Backs up **databases** (MySQL and PostgreSQL) and **blob storage buckets** of apps that have them, and gives admins a restore
+helper (below); volume backups and snapshot download come next. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
 
 How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) queues a run per app at its daily slot
 (`BACKUP_SCHEDULE_HOUR` UTC plus a per-app minute offset) and starts a Kubernetes Job in namespace `picopaas-backup`
 (at most `BACKUP_MAX_CONCURRENT`, one dump per DB server at a time). The Job gets an ephemeral Secret (the app's own DB
 user, repo URL and password, the bucket key), runs `mariadb-dump` or `pg_dump` into `restic backup --stdin`, then
 `restic forget --prune` with the retention below, and the platform deletes the Job and Secret once it records the result.
-Each app has its own restic repository (`<BACKUP_PREFIX>apps/<app id>/db`) and a random password stored encrypted in the
+Each app has its own restic repository per kind (`<BACKUP_PREFIX>apps/<app id>/db` and `.../bucket`) and a random password stored encrypted in the
 platform database (rotated with `FERNET_KEY`; if you lose the key and the database the backups are unreadable).
 
 Enable:
@@ -336,7 +336,41 @@ Enable:
    the DB CIDR and HTTPS to public addresses) only while `BACKUPS_ENABLED=1` in `picopaas-env`; it reads the DB CIDR from
    `MYSQL_EGRESS_CIDR` / `PG_EGRESS_CIDR`. Apply it by hand the same way if you deploy manually.
 
-Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 7 / 4 / 6; per-app cap
+**Blob storage (`bucket` kind).** Scheduled in the same nightly window as the database dump, as its own run with its own
+`bucket_last_*` status (an app is `failing` if either kind's last run failed). The Job copies every object of the app's bucket
+into an emptyDir at `/work` with `s5cmd` (pinned, checksum-verified in `images/backup/Dockerfile`), checks that the number of
+files copied equals the number of objects listed, runs `restic backup /work/bucket`, deletes the scratch copy, then forget/prune.
+The app's own bucket key (the platform holds it; there is no separate read-only key per backup) travels in the per-run Secret as
+`SRC_*` and reaches only the `s5cmd` process environment, never an argument; the backup bucket's key is a different pair. The
+emptyDir size is `BACKUP_BUCKET_MAX_BYTES` (default 512 MiB, plus headroom; the namespace quota in `deploy/platform/backup.yaml` allows two such Jobs at once, so raise both together): a bucket whose last measured size is larger fails the
+run with a clear error rather than being half-copied. Bucket repo bytes count toward the per-app and platform caps, and a deleted
+app gets a final bucket backup too. Note that `restic forget --keep-daily` keeps the newest snapshot of each day, so a second
+backup on the same day (for example a manual one) replaces the earlier one when it is pruned.
+
+**Restore helper (admin only).** `POST /admin/backups/{run_id}/restore` with `{"target_app_id": N}` (CLI:
+`picopaas admin backup restore <run_id> --to <app>`) restores a succeeded database or bucket run into the target app. It
+**replaces** what is there: for a database the Job runs as the target app's own DB role, drops every table and view, then loads the
+dump (DEFINER clauses are stripped so views and routines are created as the target role); for a bucket it empties the target
+bucket and uploads the snapshot's files, then checks the object count. The run row belongs to the target app (trigger `restore`,
+`source_run_id` points at the backup), so a target can have only one backup or restore active, and the Job/Secret lifecycle is the
+same as a backup's. Restoring over the app the backup came from is refused unless the body has `"overwrite_source": true`
+**and** the app is suspended (`POST /admin/apps/{id}/suspend` first; checked again when the Job starts). The source may be a
+deleted app whose repository is still within its 14 days. Audit: `backup.restore` (the admin, with run ids), then
+`backup.restore_succeeded` / `backup.restore_failed` (actor system). Restores do not touch the target's own backup summary or
+send the owner an event. Watch progress in `GET /apps/{target}/backups`. Restoring a database snapshot taken on one engine into an app
+on the other fails with "wrong engine". Run ids come from `GET /apps/{id}/backups` (`runs[]`, status `succeeded`). A snapshot
+that retention already pruned fails with "restoring the snapshot from the repository failed".
+
+**A backup Job that shows Running and prints nothing.** Inside the DO VPC the Spaces endpoint resolves to a private IP, which the
+namespace's "public addresses only" rule excludes; restic then retries the connection silently for ~15 minutes per command. The
+platform now keeps a NetworkPolicy `allow-egress-spaces` (the endpoint's private /32s on 443) current from the scheduler tick
+(the Role in `backup.yaml` grants that), the script prints `PICOPAAS_STEP ...` progress lines (read them with
+`kubectl -n picopaas-backup logs job/bk-<run id>` or the diag workflow), every network step runs under `timeout`
+(`QUICK_TIMEOUT` 120 s, `LONG_TIMEOUT` 1500 s), `mariadb-dump --connect-timeout=20` / `PGCONNECT_TIMEOUT=20`, Jobs have
+`backoffLimit: 0` and `activeDeadlineSeconds` (`BACKUP_JOB_DEADLINE_SECONDS`, 1800), and the scheduler fails a run two minutes
+after that deadline even if Kubernetes never reports it, freeing its DB-server slot.
+
+Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 1 / 1 / 1 (Chas, 2026-10-23: owners archive anything older themselves); per-app cap
 `BACKUP_MAX_BYTES_PER_APP` = 2 GiB; platform cap `BACKUP_MAX_BYTES_TOTAL` = 100 GiB (warning at 80%); `BACKUP_UPLOAD_LIMIT_KIB`
 (2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14). Backup bytes do not count against
 the 50 MB database or 100 MB storage caps. Over a cap, the backup is skipped with a failed run and an app event, never silently.

@@ -152,6 +152,19 @@ command for database contents (see below).
 otherwise `problem:` says what is missing and it stays `pending`. `--remove` detaches it; the generated address keeps
 working. Custom domains can be disabled platform-wide (the command then prints the server's explanation).
 
+## admin backup restore
+
+Platform administrators only (the token must belong to an admin with a full-scope key).
+
+```
+picopaas admin backup restore <run_id> --to <app> [--overwrite-source]
+```
+
+Restores a succeeded database or blob storage backup run (ids are in `GET /apps/{id}/backups`) into `<app>` (name, or the numeric id
+when names clash across owners), **replacing** its database tables or bucket contents. The source app is refused unless
+`--overwrite-source` is given and that app is suspended. The restore runs as a Job within a minute; check
+`GET /apps/{id}/backups` for the result.
+
 ## delete
 
 `delete NAME --yes` permanently deletes the app and destroys its database and blob storage data. Without `--yes` it

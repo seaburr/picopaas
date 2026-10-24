@@ -1,5 +1,15 @@
 # Backups for apps (REQ-9): design
 
+Status update 2026-10-23 (backend-dev): **bucket kind and admin restore helpers IMPLEMENTED** (pulled forward from phases 3 and 2),
+migration `d4a9e1b7c3f2`. Bucket: Job copies the app's objects to an emptyDir with `s5cmd` (pinned, sha256-verified), verifies the
+object count, `restic backup /work/bucket` into `apps/<id>/bucket`, then forget/prune; the app's own bucket key goes in the per-run
+Secret (`SRC_*`), no per-backup read-only key; scheduled with the db run, separate `bucket_*` status, counted in the caps, final backup
+on delete, purge covers it; scratch bounded by `BACKUP_BUCKET_MAX_BYTES` (512 MiB; namespace ephemeral-storage quota raised to 3Gi). Restore: `POST /admin/backups/{run_id}/restore`
+`{target_app_id, overwrite_source?}` plus `picopaas admin backup restore`; Job reads the SOURCE repo and writes the TARGET's DB (as its
+own role, tables dropped first, DEFINERs stripped) or bucket (emptied first, count verified); source app refused unless suspended and
+`overwrite_source`; audited. Verified locally against rclone-as-S3, MariaDB and PostgreSQL (sha256 of every object identical).
+Still deferred: volume Jobs, snapshot download, UI, maintenance Job, restore into a NEW app.
+
 Status: **phase 1a IMPLEMENTED (2026-10-23, backend-dev), flag `BACKUPS_ENABLED` off, nothing provisioned.** Done: config knobs,
 migration `c2e8a4f6b1d7` (`app_backup_config`, `backup_runs`), backup image `images/backup/` (ghcr.io/seaburr/picopaas-backup),
 `deploy/platform/backup.yaml` (ns `picopaas-backup`, RBAC, NetworkPolicies), DB dump Jobs via `app/backups.py` +
@@ -23,7 +33,7 @@ WordPress blog (image + 1 GiB RWO volume + managed MySQL database + optional Spa
 | Tool | **restic**, one static binary, client-side encrypted, deduplicated, speaks S3. One repo per app. |
 | Database | Platform-run logical dump (`mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF` / `pg_dump -Fc`) piped into `restic backup --stdin`. DO managed-cluster backups stay as the disaster layer. |
 | Volume | restic file backup from a Job in the app namespace (read-only mount, podAffinity to the app pod). DO volume snapshots are an opt-in phase-3 extra, not the default. |
-| Blob bucket | restic via rclone staging (phase 3, opt-in). Spaces versioning is not the default. |
+| Blob bucket | `s5cmd` copy to an emptyDir, then restic of the directory (implemented, nightly with the db run). Spaces versioning is not the default. |
 | Where | A dedicated platform backup bucket, own scoped key, in a different region from the app buckets and from compute. |
 | Execution | Leader-only scheduler job decides what is due and creates k8s Jobs; DB dumps and maintenance run in a platform namespace, volume backups must run in the app namespace. |
 | Cost | Phase 1 fits inside the existing $5 Spaces subscription: marginal about $0. Snapshots (phase 3, optional) about $0.06/GiB/mo. |
@@ -40,7 +50,7 @@ assume phase 2 endpoints exist (phase 1 is download plus the manual `WP_RESTORE`
 |---|---|---|---|---|
 | App database (MySQL or PostgreSQL) | Daily logical dump into the app's restic repo, taken with the platform's DB credentials. Restores one app without touching the shared cluster. | DO managed-cluster daily backups, 7 days, restore creates a **new cluster** (not per-app, destroyed with the cluster). Documented as "lost the cluster", never as per-app restore. | 24 h (cluster layer: up to 24 h; PITR option at DO restore time) | Layer 1: minutes (stream dump into the app DB). Layer 2: hours (new cluster, repoint, extract one DB). |
 | Persistent volume | Daily restic file backup of the mount path. Core app files that are reproducible from the image are the app's choice to exclude (`backups.exclude`, phase 2). | none today (volume is `reclaimPolicy Delete`; deleting the app deletes the DO volume) | 24 h | Minutes for 1 GiB: stop app, `restic restore`, start. |
-| Blob bucket (Spaces, 100 MB cap) | Phase 3: weekly restic of the bucket contents (rclone to scratch, then restic). | none | 7 days (phase 3 default) | Minutes |
+| Blob bucket (Spaces, 100 MB cap) | Implemented: nightly restic of the bucket contents (s5cmd to scratch, then restic), admin restore helper. | none | 24 h | Minutes |
 | Platform DB (`picopaas`) | Daily dump into the same backup bucket (platform repo). Cheap and closes a real gap: lose the DB plus FERNET_KEY and every per-app repo password is gone. | DO managed MySQL backups | 24 h | Minutes to hours |
 
 ### 1a. Volume: restic Job vs DO snapshots
@@ -88,7 +98,7 @@ Recommended: **restic**, not versioning.
 - **Region**: not ATL1 (app buckets) and not NYC3 (cluster and databases). Candidate: **SFO3** (or TOR1/AMS3). Disaster isolation from a single-region outage in either NYC3 or ATL1. Spaces region list to confirm at provisioning time (docs list nyc3, sfo2/sfo3, ams3, sgp1, fra1, syd1, atl1, blr1, tor1 and others); `BACKUP_REGION` is a variable. Transfer from NYC3 to SFO3 is inbound to Spaces, free; restores read out of Spaces and count against the 1 TiB allowance.
 - **Layout**: `s3:<endpoint>/picopaas-backups/apps/<app_id>/db` and `.../vol` and `.../bucket` (one restic repo per kind, so a corrupt repo or a forgotten password affects one thing; prune locks are independent), `platform/db` for the platform DB, `exports/` (24 h lifecycle) for download staging.
 - **Encryption**: per-repo restic password. **Decision: a random 32-byte password per app, stored Fernet-encrypted in the platform DB** (`app_backup_config.repo_password_enc`), reusing the existing `rotate_encrypted_data` path. Rejected: deriving it from FERNET_KEY (`HMAC(FERNET_KEY, app_id)`), because a FERNET_KEY rotation would orphan every repo (restic cannot re-key without `key add/remove`, so we would have to do it for all repos at rotation time), and one leaked derivation key would unlock all repos. A random per-app password keeps tenant blast radius to one repo. Escrow: the platform DB dump is itself in the bucket but encrypted by a separate **platform repo password held as a platform secret** in `picopaas-env` (`BACKUP_PLATFORM_REPO_PASSWORD`) and printed once by bootstrap for Chas to store offline; admin docs say "if you lose FERNET_KEY and the DB, backups are gone".
-- **Retention default**: 7 daily, 4 weekly, 6 monthly per repo (`restic forget --prune`, weekly maintenance Job; `restic check --read-data-subset=5%` weekly). Admin-overridable per platform (`BACKUP_KEEP_*`), per-app override phase 2. Manual and pre-restore snapshots are tagged and kept 14 days regardless.
+- **Retention default**: CHANGED 2026-10-23 (Chas): 1 daily, 1 weekly, 1 monthly per repo (env-overridable); owners archive anything older by downloading (download endpoint still to build). Originally 7 daily, 4 weekly, 6 monthly per repo (`restic forget --prune`, weekly maintenance Job; `restic check --read-data-subset=5%` weekly). Admin-overridable per platform (`BACKUP_KEEP_*`), per-app override phase 2. Manual and pre-restore snapshots are tagged and kept 14 days regardless.
 - **Quota/accounting**: backup bytes do **not** count against the 100 MB blob cap or the 50 MB DB cap (different purpose; counting them would punish users for backing up and would let backup growth disable their bucket via quota enforcement). They are metered separately: `repo_bytes` per kind from `restic stats --mode raw-data`, with a per-app backup cap **2 GiB** (`BACKUP_MAX_BYTES_PER_APP`, covers a 1 GiB volume plus history; admin override) and a platform total cap (default 100 GiB, 40% of the 250 GiB allowance, health warning at 80%). Over the cap: new backups are skipped with an app event and a failed status, never silent. Volume-app size is already capped (1 GiB user, 10 GiB admin), so the arithmetic is bounded: 10 volumes at the admin cap is already unrealistic.
 - **Cost** (DO pricing as recorded in the repo: Spaces $5/mo includes 250 GiB storage + 1 TiB transfer, $0.02/GiB-mo over): realistic load is a handful of apps, roughly 10 MB to 1.2 GiB each after dedup; ~5 GiB total, about 2% of the allowance. Marginal cost about $0. Assumption to verify in the DO control panel before provisioning: the allowance is account-wide across regions, so a bucket in a second region does not need a second subscription (stated in request 0008). Volume snapshots if chosen: about $0.06/GiB/mo; one 1 GiB volume, 7 retained about $0.42/mo worst case.
 

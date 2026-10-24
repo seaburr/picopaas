@@ -35,6 +35,10 @@ images and forces a non-root numeric UID (10001). So this image:
 3. **Single step**: `${{ app.url }}` gives Ghost its public URL at deploy time, so there is no second deploy.
 4. Finish setup at `/ghost/`.
 
+## Migrating from WordPress
+See [MIGRATING-FROM-WORDPRESS.md](MIGRATING-FROM-WORDPRESS.md) (approach, limits) and the hands-on
+[WORDPRESS-TO-GHOST-WALKTHROUGH.md](WORDPRESS-TO-GHOST-WALKTHROUGH.md). Script: `tools/wp-to-ghost.py`.
+
 ## Uploaded images
 The published image (built by `.github/workflows/examples.yml` with `WITH_S3=1`) includes the
 `ghost-storage-adapter-s3` adapter, so uploads persist in the PicoPaaS blob storage bucket. The entrypoint sets the adapter's

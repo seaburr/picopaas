@@ -366,19 +366,23 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
 
 ## 7b. Backups
 
-When your administrator has turned backups on, an app with a **database** is backed up automatically once a day (a
-bit after 03:00 UTC, staggered per app). Each backup is encrypted and stored outside the cluster; the last 7 daily, 4 weekly and
-6 monthly copies are kept. What is covered:
+When your administrator has turned backups on, an app with a **database** or **blob storage** is backed up automatically once a day (a
+bit after 03:00 UTC, staggered per app). Each backup is encrypted and stored outside the cluster. PicoPaaS keeps the latest daily backup plus one
+weekly and one monthly copy. A backup you start by hand replaces that day's daily copy. Downloading a backup is coming soon; until
+then, keep your own copy of anything you need for the long term (for example, export your data from the app itself). What is covered:
 - **Database: yes.** A full dump of your app's database (MySQL or PostgreSQL).
 - **Persistent volume: next.** Volume backups are the next step; for now a volume is not backed up.
-- **Blob storage: no.** Buckets are not backed up.
+- **Blob storage: yes.** Every object in your bucket is copied and stored the same way (as its own backup, shown as `bucket`
+  in the status). A bucket larger than 512 MB is skipped with an error. Because the backup reads your bucket with your app's own key,
+  it sees exactly what your app sees.
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
 (one per hour). Turn backups off or switch to weekly with `PATCH /apps/{id}/backups`. A failed backup adds an event to your app and
 shows in the status. Backup storage has its own cap (2 GiB per app) and does not count against your database or storage quota.
 When you delete an app the platform takes a final backup and keeps it for 14 days, then deletes it. Restoring is done by an
-administrator for now.
+administrator: ask them to restore a backup run into your app (database tables or the whole bucket are replaced with the backup's
+contents) or into a fresh copy of it.
 
 ## 8. Health checks
 
