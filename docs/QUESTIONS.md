@@ -7,6 +7,8 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Admin settings: cap the CPU/memory ceilings at the node size? (raised 2026-10-24, PENTEST.md 'Feedback round').** Today an admin can set the CPU ceiling up to 8 CPU and memory up to 16 GiB, more than one node has, so a typo could give an app an unschedulable pod. Also: platform logs now require a browser session (an admin API key, even read-only, gets 403); should other admin read endpoints (settings, users, audit) do the same? — _your answer:_
+
 - **Budget rule vs reality (raised 2026-10-24 after Chas asked about cost drift).** CLAUDE.md says about $60/mo; the real
   floor is about $75.30/mo (node $28, managed MySQL $15.15, managed PostgreSQL $15.15, LB $12, Spaces $5) and about $103.30 while the
   autoscaler runs a second node (docs/ARCHITECTURE.md §1). Options: (a) update the rule to ~$75 floor / ~$105 ceiling; (b) cap
