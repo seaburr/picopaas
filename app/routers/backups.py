@@ -172,7 +172,7 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
                             headers={"Retry-After": str(wait)})
     runs = [backups.enqueue(db, app, kind, "manual") for kind in wanted]
     db.commit()
-    audit.record(db, user, "backup.create", "app", app.id, "kinds=" + ",".join(wanted))
+    audit.record(db, user, "backup.create", "app", app.id, "trigger=manual kinds=" + ",".join(wanted))
     return [BackupRunOut.model_validate(r) for r in runs]
 
 
@@ -302,4 +302,8 @@ def get_download(app_id: int, export_id: int, db: Session = Depends(get_db), use
     run = db.get(models.BackupRun, export_id)
     if run is None or run.app_id != app.id or run.trigger != "export":
         raise HTTPException(status_code=404, detail="We can't find that download.")
-    return _export_out(db, app, run, runner)
+    out = _export_out(db, app, run, runner)
+    if out.url:  # never the URL, key or any credential in the detail
+        audit.record(db, user, "backup.download_link", "app", app.id,
+                     f"export={run.id} run={run.source_run_id} kind={run.kind} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
+    return out

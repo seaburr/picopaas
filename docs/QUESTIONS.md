@@ -7,8 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Backups pentest follow-ups (raised 2026-10-24, docs/PENTEST.md "Backups end-to-end review").** OK to add one audit row when a download link is issued? (The double-click race is fixed with a row lock. Image republish/re-pin and the "database dump failed" bug are handled: mariadb-dump rejected `--connect-timeout`, fixed and now caught by a real-DB smoke test in the image build.) — _your answer:_
-
 - **Approve request 0008 (backups)? (raised 2026-10-23).** A second-region Spaces bucket `picopaas-backups` (proposed SFO3) inside the existing $5 Spaces subscription, about $0 marginal; snapshots optional later at about $0.06/GiB/mo. Background: `docs/requests/0008-backups.md`, `docs/design/backups.md`. Default if unanswered: phase 1 uses only the existing allowance (prefix `backups/` in `pico-paas-s3-a`, same region as app buckets). Also confirm the region (SFO3 vs TOR1/AMS3). — _your answer:_
 
 - **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
@@ -85,6 +83,9 @@ background on each item if you want it.
       Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
 
 ## Resolved
+- 2026-10-24: **Backups audit (answered: yes).** Creating, deleting and downloading backups all go to the audit log, including one
+  `backup.download_link` row each time a download link is issued. Implemented (`backup.create` for scheduled/final, `backup.pruned`,
+  `backup.purged`, `backup.export_deleted`, `backup.download_link`); docs/ADMIN_GUIDE.md. The rest of the pentest follow-ups were handled.
 - 2026-10-23: **Persistent volumes (request 0007): APPROVED 2026-10-23.** Enabled on this instance with the defaults (1 GiB users,
   20 GiB admin override, 10 volumes total). `VOLUMES_ENABLED=1` is wired into the bootstrap workflow; takes effect when Chas runs it.
   See `docs/requests/0007-persistent-volumes.md`.

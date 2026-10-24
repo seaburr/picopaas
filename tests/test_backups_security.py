@@ -308,7 +308,7 @@ def test_sweep_only_deletes_old_objects_under_exports(monkeypatch):
     monkeypatch.setattr(config, "BACKUP_BUCKET", "picopaas-backups")
     r = KubeBackupRunner(dynamic_client=object(), core_api=object())
     monkeypatch.setattr(r, "_s3", lambda: S3())
-    assert r.sweep_exports(3600) == 1
+    assert len(r.sweep_exports(3600)) == 1
     assert seen[0]["Prefix"] == "exports/" and deleted == ["exports/1/1.sql.gz"]
 
 

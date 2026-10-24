@@ -225,6 +225,11 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         except Exception as exc:  # noqa: BLE001 - the Secret sweep retries
             log.warning("backup run %s: cleanup failed (%s)", run.id, type(exc).__name__)
     detail = f"{run.kind} {run.trigger}" + ("" if ok else f": {run.error}")
+    if run.trigger == "purge":
+        audit.record(session, None, "backup.purged", "app", run.app_id,
+                     f"run={run.id} kind={run.kind} result={'succeeded' if ok else 'failed'}" + ("" if ok else f": {run.error}"),
+                     actor_email="system")
+        return
     if run.trigger == "export":
         audit.record(session, None, "backup.export_succeeded" if ok else "backup.export_failed", "app", run.app_id,
                      f"run={run.id} from_run={run.source_run_id} {detail}", actor_email="system")
@@ -235,6 +240,10 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         return
     audit.record(session, None, "backup.succeeded" if ok else "backup.failed", "app", run.app_id,
                  f"run={run.id} {detail}", actor_email="system")
+    if ok:  # the backup job ends with `forget --prune` (older snapshots beyond the retention policy are deleted)
+        audit.record(session, None, "backup.pruned", "app", run.app_id,
+                     f"run={run.id} kind={run.kind} keep=daily:{config.BACKUP_KEEP_DAILY},weekly:{config.BACKUP_KEEP_WEEKLY},"
+                     f"monthly:{config.BACKUP_KEEP_MONTHLY}", actor_email="system")
 
 
 def _int(v: Any) -> Optional[int]:
@@ -259,7 +268,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
             log.warning("backup: removed %d leftover job secret(s)", swept)
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: secret sweep failed (%s)", type(exc).__name__)
-    _sweep_exports(runner, now)
+    _sweep_exports(runner, now, session)
     _schedule(session, now)
     _enqueue_purges(session, now)
     _start_queued(session, runner, now)
@@ -276,15 +285,26 @@ def _ensure_egress(runner: BackupRunner) -> None:
 _last_export_sweep: list[datetime] = []
 
 
-def _sweep_exports(runner: BackupRunner, now: datetime) -> None:
+def _audit_export_deletes(session: Session, keys: list[str]) -> None:
+    """One `backup.export_deleted` row per swept object, mapped back to its export run by `export_key`."""
+    rows = session.execute(select(models.BackupRun).where(models.BackupRun.trigger == "export",
+                                                          models.BackupRun.export_key.in_(list(keys)))).scalars().all()
+    for run in rows:
+        audit.record(session, None, "backup.export_deleted", "app", run.app_id,
+                     f"export={run.id} run={run.source_run_id} reason=expired", actor_email="system")
+
+
+def _sweep_exports(runner: BackupRunner, now: datetime, session: Optional[Session] = None) -> None:
     """Delete export objects older than the TTL (at most every 5 minutes). Never raises."""
     if _last_export_sweep and now - _last_export_sweep[0] < timedelta(minutes=5):
         return
     _last_export_sweep[:] = [now]
     try:
-        n = runner.sweep_exports(config.BACKUP_EXPORT_TTL_SECONDS)
-        if n:
-            log.info("backup: removed %d expired export object(s)", n)
+        keys = runner.sweep_exports(config.BACKUP_EXPORT_TTL_SECONDS)
+        if keys:
+            log.info("backup: removed %d expired export object(s)", len(keys))
+            if session is not None:
+                _audit_export_deletes(session, keys)
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: export sweep failed (%s)", type(exc).__name__)
 
@@ -334,6 +354,9 @@ def _schedule(session: Session, now: datetime) -> None:
         for kind in kinds:
             enqueue(session, app, kind, "scheduled", now)
         cfg.next_backup_at = compute_next(app.id, now, cfg.schedule)
+        session.commit()
+        audit.record(session, None, "backup.create", "app", app.id,
+                     "trigger=scheduled kinds=" + ",".join(kinds), actor_email="system")
     session.commit()
 
 
@@ -716,6 +739,8 @@ def final_gate(session: Session, app: models.App, now: Optional[datetime] = None
         for kind in kinds:
             enqueue(session, app, kind, "final", now)
         session.commit()
+        audit.record(session, None, "backup.create", "app", app.id,
+                     "trigger=final kinds=" + ",".join(kinds), actor_email="system")
         return False
     active = [r for r in runs if r.status in ACTIVE]
     if active and all(now - _naive(r.created_at) <= FINAL_MAX_AGE for r in active):

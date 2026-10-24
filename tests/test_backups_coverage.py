@@ -171,7 +171,7 @@ def test_kube_runner_presign_and_sweep_exports(monkeypatch):
     op, kw = calls["presign"]
     assert op == "get_object" and kw["ExpiresIn"] == 900 and kw["Params"]["Key"] == "exports/1/1.gz"
     assert 'filename="a.gz"' in kw["Params"]["ResponseContentDisposition"]
-    assert r.sweep_exports(3600) == 1
+    assert len(r.sweep_exports(3600)) == 1
     assert calls["del"]["Delete"]["Objects"] == [{"Key": "exports/1/1.gz"}]
     monkeypatch.setattr(r, "_s3", lambda: (_ for _ in ()).throw(RuntimeError("endpoint leak")))
     with pytest.raises(BackupRunnerError, match="RuntimeError") as e:

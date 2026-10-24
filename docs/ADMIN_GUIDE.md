@@ -383,6 +383,23 @@ or the final backup, and does not touch the app's backup summary). The tick star
 5 minutes). Limits: 3 downloads per app per hour, one active export per app. Same NetworkPolicy, timeouts, step lines,
 `backoffLimit: 0` and deadline as backups; the Job's scratch emptyDir is 256 MiB (database) or 2 x `BACKUP_BUCKET_MAX_BYTES` + 64 MiB (bucket), so the
 namespace ephemeral-storage quota in `backup.yaml` is 4Gi. Audit `backup.download` / `backup.export_succeeded` / `backup.export_failed`.
+
+Backup audit actions (creating, deleting and downloading backups are all logged; details never hold a URL, object key or credential):
+
+| Action | Actor | When | Detail |
+|---|---|---|---|
+| `backup.create` | the owner, or system | manual POST; scheduled enqueue; final backup on app delete (one row per enqueue, not per kind) | `trigger=manual\|scheduled\|final kinds=db,bucket` |
+| `backup.succeeded` / `backup.failed` | system | a backup run ends | `run=<id> <kind> <trigger>` |
+| `backup.pruned` | system | after a successful backup, `forget --prune` removed snapshots beyond the policy | `run=<id> kind=<kind> keep=daily:1,weekly:1,monthly:1` |
+| `backup.purged` | system | the 14-day purge of a deleted app's repos, success or failure | `run=<id> kind=<kind> result=succeeded\|failed` |
+| `backup.download` | the owner | a new export is requested | `run=<id> kind=<kind> export=<id>` |
+| `backup.download_link` | the owner | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> kind=<kind> expires_in=600` |
+| `backup.export_succeeded` / `backup.export_failed` | system | the export job ends | |
+| `backup.export_deleted` | system | the 1-hour sweep removed an export file (one row per export) | `export=<id> run=<id> reason=expired` |
+| `backup.restore`, `backup.restore_succeeded` / `_failed` | admin / system | admin restore | |
+| `backup.config_changed`, `backup.retained` | owner / system | settings change; repos kept after app delete | |
+
+The audit UI and `GET /admin/audit/export` show actions as plain strings, so the new names need no change there.
 **Going live needs: republish the backup image (backup-image workflow), re-pin `BACKUP_IMAGE` in `picopaas-env`, and deploy (migration `e5b1c7d9a2f4`, quota change).**
 
 Monitoring: `GET /admin/backups` and the `backups` block of `GET /admin/health` give ok / pending / stale (no success in

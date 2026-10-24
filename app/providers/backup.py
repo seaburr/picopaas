@@ -67,9 +67,9 @@ class BackupRunner(ABC):
         platform's backup key. Raises BackupRunnerError."""
         raise BackupRunnerError("downloads are not available")
 
-    def sweep_exports(self, older_than_seconds: int) -> int:
-        """Delete export objects older than `older_than_seconds`. Returns how many. Raises BackupRunnerError."""
-        return 0
+    def sweep_exports(self, older_than_seconds: int) -> list[str]:
+        """Delete export objects older than `older_than_seconds`. Returns the deleted keys. Raises BackupRunnerError."""
+        return []
 
     @abstractmethod
     def sweep(self, active: set[str]) -> int:
@@ -261,7 +261,7 @@ class KubeBackupRunner(BackupRunner):
         except Exception as exc:  # noqa: BLE001 - never echo the error text (it can contain the endpoint)
             raise BackupRunnerError(f"could not sign the download ({type(exc).__name__})") from None
 
-    def sweep_exports(self, older_than_seconds: int) -> int:
+    def sweep_exports(self, older_than_seconds: int) -> list[str]:
         from datetime import datetime, timedelta, timezone
 
         if not config.backup_export_prefix_ok():  # a prefix overlapping the repos would delete backups
@@ -274,7 +274,7 @@ class KubeBackupRunner(BackupRunner):
                 old += [o["Key"] for o in page.get("Contents") or [] if o["LastModified"] < cutoff]
             for i in range(0, len(old), 500):
                 s3.delete_objects(Bucket=config.BACKUP_BUCKET, Delete={"Objects": [{"Key": k} for k in old[i:i + 500]], "Quiet": True})
-            return len(old)
+            return old
         except Exception as exc:  # noqa: BLE001
             raise BackupRunnerError(f"could not sweep exports ({type(exc).__name__})") from None
 

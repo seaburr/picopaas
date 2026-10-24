@@ -457,6 +457,7 @@ class FakeBackupRunner(BackupRunner):
         self.presigned: list[tuple[str, int, str]] = []  # (key, expires_seconds, filename)
         self.export_sweeps: list[int] = []  # older_than_seconds of each sweep_exports call
         self.fail_presign = False
+        self.swept_keys: list[str] = []  # keys the next sweep_exports call reports as deleted
 
     def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
         if self.fail_presign:
@@ -464,9 +465,10 @@ class FakeBackupRunner(BackupRunner):
         self.presigned.append((key, expires_seconds, filename))
         return f"https://backups.example.invalid/{key}?X-Amz-Expires={expires_seconds}&sig=not-a-signature"
 
-    def sweep_exports(self, older_than_seconds: int) -> int:
+    def sweep_exports(self, older_than_seconds: int) -> list[str]:
         self.export_sweeps.append(older_than_seconds)
-        return 0
+        keys, self.swept_keys = self.swept_keys, []
+        return keys
 
     def start(self, spec: BackupJobSpec) -> None:
         if self.fail_start:
