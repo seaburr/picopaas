@@ -73,6 +73,13 @@ Old plugins and themes written for PHP 7 can fatal on 8.x (removed functions suc
 deprecation). Find them in the logs after the restore. Deactivate the fatal ones with `WP_RESTORE_DEACTIVATE=slug1,slug2` (also works later:
 WP-CLI with `--skip-plugins`). Do not edit plugin or theme files in this repo; replace or drop the plugin.
 
+**Code blocks lose their line breaks** (old syntax highlighters such as Code Prettify 1.4 with a bundled Google prettify):
+WordPress 6.x/7.x core styles `.wp-block-code code` with `white-space: break-spaces`, and old prettify only treats an element
+as preformatted when its `white-space` starts with `pre`, so it collapses every newline when it highlights the `<code>`. The
+server HTML is fine. Fix: add `.wp-block-code code { white-space: pre-wrap; }` under **Appearance → Customize → Additional
+CSS** (stored in the database, survives restarts). A restore from an old dump won't carry this rule; add it again afterwards.
+Or drop the highlighter and use WordPress's own code block (no colouring): `WP_REMOVE_PLUGINS=code-prettify`.
+
 ## 7a. Boot actions for after the restore
 Idempotent env-driven actions, run on every boot once WordPress is installed (all via WP-CLI, plugins and themes skipped):
 - `WP_REMOVE_PLUGINS=slug1,slug2`: deactivate and delete plugins that break on current PHP or that you no longer want (for example Jetpack). Names must match `[a-z0-9-]+`; must-use plugins are never touched. Prefer this over `WP_RESTORE_DEACTIVATE` when you want the files gone from the volume.

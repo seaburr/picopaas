@@ -5,6 +5,9 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: commit/push code-block whitespace note in examples/wordpress/MIGRATION.md; gitleaks clean, no findings.
+- 2026-10-23 [wp-expert] NOTE: app 152 (throwaway) now runs :ba235b8 with jetpack + code-prettify removed, password reset done, Chas logged in. Production migration pending backups (REQ-9).
+- 2026-10-23 [scm-security] START: commit/push code-block whitespace docs note.
 - 2026-10-23 [scm-security] DONE: wordpress boot actions ba235b8 pushed; CI, image, examples, deploy green; gitleaks clean. No findings. Ledger lines committed next.
 - 2026-10-23 [scm-security] START: commit/push wordpress boot actions (ba235b8) and ledger; watch CI and examples.
 - 2026-10-23 [release-blogger] DONE: published wordpress-runs-on-picopaas (https://blog.picopaas.xyz/wordpress-runs-on-picopaas/), follow-up to wordpress-on-picopaas. Uncommitted ledger line only.
