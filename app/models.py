@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy import false as sa_false
 from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -316,6 +316,64 @@ class AppStorage(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     app: Mapped["App"] = relationship(back_populates="storage")
+
+
+class AppBackupConfig(Base):
+    """Per-app backup settings and last-result summary (app/backups.py; docs/design/backups.md). Created lazily, only
+    while BACKUPS_ENABLED. One restic repo per app and kind (db | vol) in the backup bucket, one random repo password
+    per app (Fernet-encrypted here, never logged, passed to Jobs only through an ephemeral Secret)."""
+    __tablename__ = "app_backup_config"
+
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), primary_key=True, autoincrement=False)
+    # Default True for apps with a database or volume; users may turn it off.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
+    schedule: Mapped[str] = mapped_column(String(8), nullable=False, default="daily", server_default="daily")  # daily|weekly|off
+    repo_password_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    next_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True, index=True)
+    last_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # newest finished run of any kind
+    last_success_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # succeeded | failed
+    last_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Per kind (db = database dump; vol = volume, phase 1b): last finish time/status/error, bytes added by that run,
+    # and the repo's total size after it (metered separately from the DB/storage quotas).
+    db_last_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    db_last_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    db_last_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    db_last_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    db_repo_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    vol_last_backup_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    vol_last_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    vol_last_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    vol_last_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    vol_repo_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    # Set when the app is deleted after its final backup: repos are purged once this passes (BACKUP_DELETED_RETENTION_DAYS).
+    deleted_retention_until: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    purged_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class BackupRun(Base):
+    """One backup (or purge) Job for one app and kind. queued -> running -> succeeded | failed. Only short, redacted
+    summaries are stored: never restic output, repository URLs or credentials."""
+    __tablename__ = "backup_runs"
+    __table_args__ = (
+        Index("ix_backup_runs_app_created", "app_id", "created_at", "id"),  # leading app_id also serves as the FK index
+        Index("ix_backup_runs_status", "status"),  # the scheduler polls queued/running rows every tick
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | vol
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    bytes_added: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # new data this run stored
+    repo_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)  # repo size after the run
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # restic short snapshot id
+    error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    job_name: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
 
 
 class AuditLog(Base):

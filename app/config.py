@@ -244,3 +244,42 @@ DB_METRICS_ENABLED = os.environ.get("DB_METRICS_ENABLED", "0") != "0"
 DB_METRICS_PORT = int(os.environ.get("DB_METRICS_PORT", "9273"))
 # Optional CA bundle for the metrics TLS cert; empty = reuse MYSQL_SSL_CA (same DO cluster CA), else system CAs.
 DB_METRICS_CA = os.environ.get("DB_METRICS_CA", "")
+
+# --- Backups (docs/design/backups.md, REQ-9). OFF by default: nothing runs and nothing is provisioned until request
+# 0008 is approved and the bucket + key exist. The backup bucket and its scoped key are SEPARATE from the tenant Spaces
+# credentials (SPACES_*); with any of them missing the feature reports "misconfigured" and does nothing.
+BACKUPS_ENABLED = os.environ.get("BACKUPS_ENABLED", "0") == "1"
+BACKUP_BUCKET = os.environ.get("BACKUP_BUCKET", "")
+BACKUP_PREFIX = os.environ.get("BACKUP_PREFIX", "backups/")  # all repos live under <prefix>apps/<app id>/<kind>
+BACKUP_REGION = os.environ.get("BACKUP_REGION", "")
+BACKUP_ENDPOINT = os.environ.get("BACKUP_ENDPOINT", "")  # empty = https://<BACKUP_REGION>.digitaloceanspaces.com
+BACKUP_ACCESS_KEY_ID = os.environ.get("BACKUP_ACCESS_KEY_ID", "")
+BACKUP_SECRET_ACCESS_KEY = os.environ.get("BACKUP_SECRET_ACCESS_KEY", "")
+BACKUP_IMAGE = os.environ.get("BACKUP_IMAGE", "ghcr.io/seaburr/picopaas-backup:latest")  # pin by digest in prod
+BACKUP_NAMESPACE = "picopaas-backup"
+# Retention per repo (restic forget --prune): newest N daily / weekly / monthly snapshots.
+BACKUP_KEEP_DAILY = int(os.environ.get("BACKUP_KEEP_DAILY", 7))
+BACKUP_KEEP_WEEKLY = int(os.environ.get("BACKUP_KEEP_WEEKLY", 4))
+BACKUP_KEEP_MONTHLY = int(os.environ.get("BACKUP_KEEP_MONTHLY", 6))
+# Backup bytes are metered separately from the 50 MB DB / 100 MB storage caps: per app (all repos) and platform total.
+BACKUP_MAX_BYTES_PER_APP = int(os.environ.get("BACKUP_MAX_BYTES_PER_APP", 2 * 1024**3))
+BACKUP_MAX_BYTES_TOTAL = int(os.environ.get("BACKUP_MAX_BYTES_TOTAL", 100 * 1024**3))
+BACKUP_SCHEDULE_HOUR = int(os.environ.get("BACKUP_SCHEDULE_HOUR", 3))  # UTC; each app is staggered by minutes from it
+BACKUP_MAX_CONCURRENT = int(os.environ.get("BACKUP_MAX_CONCURRENT", 2))  # Jobs running at once (shared 2 vCPU node)
+BACKUP_TICK_SECONDS = int(os.environ.get("BACKUP_TICK_SECONDS", 60))
+BACKUP_DELETED_RETENTION_DAYS = int(os.environ.get("BACKUP_DELETED_RETENTION_DAYS", 14))  # repos kept after app delete
+BACKUP_MANUAL_MIN_INTERVAL_MINUTES = 60  # on-demand backups: one per app per hour
+BACKUP_JOB_DEADLINE_SECONDS = int(os.environ.get("BACKUP_JOB_DEADLINE_SECONDS", 1800))
+BACKUP_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_UPLOAD_LIMIT_KIB", 2048))  # per Job, so a backup can't saturate the node
+
+
+def backup_endpoint() -> str:
+    """Bucket endpoint URL (no trailing slash); '' when neither BACKUP_ENDPOINT nor BACKUP_REGION is set."""
+    if BACKUP_ENDPOINT:
+        return BACKUP_ENDPOINT.rstrip("/")
+    return f"https://{BACKUP_REGION}.digitaloceanspaces.com" if BACKUP_REGION else ""
+
+
+def backups_configured() -> bool:
+    """True when the bucket, endpoint and the SEPARATE backup key are all set (the tenant SPACES_* key is never a fallback)."""
+    return bool(BACKUP_BUCKET and backup_endpoint() and BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY)

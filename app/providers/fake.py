@@ -4,6 +4,7 @@ from __future__ import annotations
 import secrets
 from typing import Any, Optional
 
+from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError, JobStatus
 from app.providers.base import (
     ImageInfo,
     PodInfo,
@@ -440,3 +441,45 @@ class FakeDbServerChecker:
         self.calls.append(dict(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert))
         if self.error:
             raise DbServerCheckError(f"Couldn't connect to {host}:{port} as {user}: {self.error}")
+
+
+class FakeBackupRunner(BackupRunner):
+    """Records Jobs/Secrets in memory; tests decide how each Job ends (`outcomes[name]`, default: still running)."""
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, BackupJobSpec] = {}  # live Jobs (name -> spec)
+        self.secrets: dict[str, dict[str, str]] = {}  # live per-run Secrets
+        self.started: list[BackupJobSpec] = []  # every Job ever started, in order
+        self.outcomes: dict[str, JobStatus] = {}
+        self.fail_start = False
+        self.cleaned: list[str] = []
+
+    def start(self, spec: BackupJobSpec) -> None:
+        if self.fail_start:
+            raise BackupRunnerError("could not create the backup job (FakeError)")
+        self.jobs[spec.name] = spec
+        self.secrets[spec.name] = dict(spec.env)
+        self.started.append(spec)
+
+    def finish(self, name: str, result: Optional[dict[str, Any]] = None) -> None:
+        self.outcomes[name] = JobStatus("succeeded", result=result or {"snapshot_id": "ab12cd34", "bytes_added": 1000,
+                                                                       "repo_bytes": 5000})
+
+    def fail(self, name: str, error: str = "database dump failed") -> None:
+        self.outcomes[name] = JobStatus("failed", error=error)
+
+    def status(self, job_name: str) -> JobStatus:
+        if job_name not in self.jobs:
+            return JobStatus("missing")
+        return self.outcomes.get(job_name, JobStatus("running"))
+
+    def cleanup(self, job_name: str) -> None:
+        self.jobs.pop(job_name, None)
+        self.secrets.pop(job_name, None)
+        self.cleaned.append(job_name)
+
+    def sweep(self, active: set[str]) -> int:
+        stale = [n for n in self.secrets if n not in active]
+        for n in stale:
+            del self.secrets[n]
+        return len(stale)

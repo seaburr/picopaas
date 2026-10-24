@@ -613,14 +613,27 @@ def delete_app(
     kube: KubeProvider,
     mysql_admin_factory: MySQLAdminFactory,
     object_store: ObjectStore,
+    backups_active: bool = False,
 ) -> None:
     """Tear down a soft-deleted app's cluster resources, DB, and storage.
+
+    With `backups_active`, the database is not dropped until a final backup attempt has finished (or timed out;
+    app/backups.py final_gate), so nothing is torn down while that dump is still reading it.
 
     Best-effort and idempotent: a failure tearing down one resource doesn't
     stop the others, and doesn't raise — a future `reconcile_all` pass will
     retry (the app stays deleted_at-set / status != 'deleted' until this
     fully succeeds).
     """
+    if backups_active:
+        from app import backups
+
+        try:
+            if not backups.final_gate(session, app):
+                return  # the final backup is queued/running; the next sweep checks again
+        except Exception as exc:  # noqa: BLE001 - never let backups block deletion forever
+            session.rollback()
+            log.warning("app %s: final backup gate failed (%s); deleting without it", app.id, type(exc).__name__)
     namespace = k8s_manifests.namespace_name(app.id)
     failed = False
     try:
@@ -691,6 +704,7 @@ def reconcile_all(
     object_store: ObjectStore,
     settings: Any,
     now: Optional[datetime] = None,
+    backups_active: bool = False,
 ) -> None:
     """One sweep: provision/apply every pending or still-deploying app, and
     clean up every soft-deleted app that isn't fully torn down yet.
@@ -808,4 +822,5 @@ def reconcile_all(
             kube=kube,
             mysql_admin_factory=mysql_admin_factory,
             object_store=object_store,
+            backups_active=backups_active,
         )

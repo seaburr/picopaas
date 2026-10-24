@@ -52,6 +52,7 @@ def _encrypted_columns():
         (models.DbServer, "admin_password_encrypted"),
         (models.AppDatabase, "password_encrypted"),
         (models.AppStorage, "secret_key_encrypted"),
+        (models.AppBackupConfig, "repo_password_enc"),  # nullable until the first backup
     ]
 
 
@@ -64,6 +65,8 @@ def rotate_all(session, fernet: MultiFernet | None = None) -> dict[str, int]:
     for model, col in _encrypted_columns():
         for row in session.query(model).all():
             token = getattr(row, col)
+            if token is None:
+                continue
             try:
                 current.decrypt(token.encode())
                 unchanged += 1

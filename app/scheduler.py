@@ -100,6 +100,7 @@ def _mysql_factory(server: models.DbServer):
 def reconcile_job() -> None:
     if not try_acquire_leader():
         return
+    from app import backups
     from app.providers.kube import KubeClient
     from app.reconciler import reconcile_all
 
@@ -111,6 +112,7 @@ def reconcile_job() -> None:
             mysql_admin_factory=_mysql_factory,
             object_store=_object_store() or _NoStorage(),
             settings=_settings(),
+            backups_active=backups.usable(),
         )
     except Exception:
         log.exception("reconcile_all failed")
@@ -200,6 +202,25 @@ def audit_purge_job() -> None:
     except Exception:
         session.rollback()
         log.exception("audit purge failed")
+    finally:
+        session.close()
+
+
+def backup_job() -> None:
+    """Leader-only: poll running backup Jobs, queue/start due ones, purge expired repos (app/backups.py). Inert unless
+    BACKUPS_ENABLED and the backup bucket/key are configured."""
+    from app import backups
+
+    if not backups.usable() or not try_acquire_leader():
+        return
+    from app.providers.backup import KubeBackupRunner
+
+    session = SessionLocal()
+    try:
+        backups.tick(session, KubeBackupRunner())
+    except Exception:
+        session.rollback()
+        log.exception("backup tick failed")
     finally:
         session.close()
 
@@ -360,6 +381,9 @@ def start_scheduler() -> BackgroundScheduler:
                   coalesce=True, id="metrics_sample", next_run_time=now + timedelta(seconds=45))
     sched.add_job(audit_purge_job, "interval", hours=24, max_instances=1, coalesce=True, id="audit_purge",
                   next_run_time=now + timedelta(minutes=5))
+    if config.BACKUPS_ENABLED:
+        sched.add_job(backup_job, "interval", seconds=config.BACKUP_TICK_SECONDS, max_instances=1, coalesce=True,
+                      id="backup", next_run_time=now + timedelta(seconds=30))
     health.start_background(get_kube)
     sched.start()
     return sched
