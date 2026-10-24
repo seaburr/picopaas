@@ -305,7 +305,7 @@ the count and size caps above bound it. What the platform does for an app with a
 - Grow with `PATCH /admin/apps/{id}/resources {"volume_size_gi": N}` (1 to `OVERRIDE_VOLUME_MAX_GI`, default 10, only up). The claim is expanded online: the API supports growing a volume after creation (DigitalOcean's CSI driver expands the filesystem online), but this is not yet tested live on this platform, so plan the size up front.
   The storage class cannot be changed on an existing claim.
 - Users can't detach a volume; deleting the app is the only way to drop it.
-- Not backed up yet (volume backups are phase 1b of App backups below): add snapshots before relying on it for data that cannot be recreated.
+- Backed up by restic file copies once volume backups are on (`BACKUP_KEY_SCOPED=1`, see "Volume backups" under App backups below); until then a volume is one copy of the data.
 
 Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persistentvolumeclaims` rights to `picopaas-app-ns`).
 
@@ -313,7 +313,7 @@ Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persisten
 
 Off by default (`BACKUPS_ENABLED=0`): with the flag off nothing runs, no namespace exists and every backup endpoint says so.
 Backs up **databases** (MySQL and PostgreSQL) and **blob storage buckets** of apps that have them, and gives admins a restore
-helper (below) and owner downloads; volume backups come next. **Scheduled backups are opt-in per app** (`BACKUP_DEFAULT_ENABLED`, default `0`; set `1` to make new apps default to on): owners enable them with `PATCH /apps/{id}/backups` / `picopaas backup enable`, and an owner can always run a manual backup. Existing config rows keep their value. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
+helper (below), owner downloads and **volume backups** (below, behind `BACKUP_KEY_SCOPED`). **One backup is one set**: a manual click, a scheduled slot or a final backup creates a `backup_sets` row and one run per kind (database, blob storage, volume); the owner sees, downloads (one `.tar.gz` package) and deletes the set as one. **Scheduled backups are opt-in per app** (`BACKUP_DEFAULT_ENABLED`, default `0`; set `1` to make new apps default to on): owners enable them with `PATCH /apps/{id}/backups` / `picopaas backup enable`, and an owner can always run a manual backup. Existing config rows keep their value. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
 
 How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) queues a run per app at its daily slot
 (`BACKUP_SCHEDULE_HOUR` UTC plus a per-app minute offset) and starts a Kubernetes Job in namespace `picopaas-backup`
@@ -372,13 +372,21 @@ after that deadline even if Kubernetes never reports it, freeing its DB-server s
 
 Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 1 / 1 / 1 (Chas, 2026-10-23: owners archive anything older themselves); per-app cap
 `BACKUP_MAX_BYTES_PER_APP` = 2 GiB; platform cap `BACKUP_MAX_BYTES_TOTAL` = 100 GiB (warning at 80%); `BACKUP_UPLOAD_LIMIT_KIB`
-(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14); `BACKUP_DEFAULT_ENABLED` (0); `BACKUP_EXPORT_TTL_SECONDS` (3600). Backup bytes do not count against
+(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14); `BACKUP_DEFAULT_ENABLED` (0); `BACKUP_EXPORT_TTL_SECONDS` (3600); `BACKUP_KEY_SCOPED` (0; the gate for volume backups, see above); `BACKUP_VOLUME_UPLOAD_LIMIT_KIB` (2048); `BACKUP_VOLUME_EXPORT_MAX_BYTES` (1 GiB); `PICOPAAS_VERSION` (`dev`, stamped in a package's manifest). A release that adds sets or volume backups needs the backup image republished and `BACKUP_IMAGE` re-pinned (new `MODE=prune|package`, `KIND=volume`), plus the deploy (migration `a7d3e9b1c5f2` creates `backup_sets` and groups existing runs into sets). Backup bytes do not count against
 the 50 MB database or 100 MB storage caps. Over a cap, the backup is skipped with a failed run and an app event, never silently.
+
+**Volume backups (kind `volume`).** The one backup Job that runs in a TENANT namespace, so it is gated: nothing volume-related runs, and the API/UI say "Volume backups need a bucket-scoped backup key; ask the admin.", until `BACKUP_KEY_SCOPED=1` in `picopaas-env`. Set it only after replacing the shared full-access Spaces key with a key limited to the backup bucket (decisions log 2026-10-23): the volume Job's per-run Secret holds `BACKUP_ACCESS_KEY_ID` / `BACKUP_SECRET_ACCESS_KEY` inside `app-<id>`. What the gate switches on, per app with a volume:
+- A Job `bk-<run id>` plus an ephemeral Secret in `app-<id>`: the PVC mounted `readOnly` at `/volume`, `requiredDuringScheduling` podAffinity to the app pod (`app=app-<id>`, topology hostname; none when the app is suspended, because the RWO volume is detached then), pod `fsGroup` `VOLUME_FS_GROUP` and `runAsUser` the app's `run_as_uid` (default `VOLUME_FS_GROUP`), non-root, read-only root filesystem, all capabilities dropped, seccomp RuntimeDefault, `automountServiceAccountToken: false` (no ServiceAccount), `backoffLimit: 0`, `activeDeadlineSeconds` `BACKUP_JOB_DEADLINE_SECONDS`, `restic --limit-upload` `BACKUP_VOLUME_UPLOAD_LIMIT_KIB` (2048). Requests 50m / 128Mi, limits 200m / 320Mi / 200Mi scratch, clamped to the app's own limits because the namespace LimitRange rejects a container above them. restic backs up `/volume` with `--host app`, so retention groups one series. It needs `App.volume_phase == Bound` (else the run fails "the volume isn't ready yet" instead of waiting for a claim).
+- The reconciler widens `app-quota` by exactly one backup pod (pods +1, CPU, memory, scratch) and renders the `allow-egress-backup` NetworkPolicy: the backup pod (label `picopaas.io/backup=1`) gets DNS plus HTTPS (443) to public addresses and the Spaces endpoint's private VPC /32s, nothing else. The app's own allow-* policies then skip that label (`podSelector` `DoesNotExist`), otherwise the Job would inherit the app's internet and database rules. Apps without a volume, or with the gate off, render exactly what they did before (their policies still select every pod).
+- `deploy/platform/rbac.yaml` (`picopaas-app-ns`) now grants `batch/jobs` get/list/create/delete inside app namespaces (secrets and pod reads were already there). Apply it before turning the gate on; it is a ClusterRole update, so existing RoleBindings pick it up.
+- Retention is NOT in the tenant Job (restic prune is the memory-hungry part): when a volume backup succeeds the platform queues a `trigger=prune` run, a `MODE=prune` Job in `picopaas-backup` (`forget --keep-* --group-by host,paths --prune`), which also records the repo size. Hidden from the owner; audit `backup.pruned` / `backup.prune_failed`. Delete (forget) and purge of a volume repo run in `picopaas-backup` like the other kinds.
+- A leftover per-run Secret in an app namespace is swept by the tick (apps with a volume run in the last 2 days).
+- Files the app's UID cannot read make the volume part fail ("some files on the volume could not be read"; the incomplete snapshot is forgotten), and the set shows `partial`. Restore of a volume is phase 2 (the data is in the repo and downloadable; there is no restore endpoint yet).
 
 **Owner downloads (export).** `POST /apps/{id}/backups/{run_id}/download` queues a `trigger=export` run (it does not block backups
 or the final backup, and does not touch the app's backup summary). The tick starts a Job in `picopaas-backup` with `MODE=export`:
 `restic dump` of the snapshot into one file (`.sql.gz` / `.pgdump` / `.tar.gz`) uploaded with `s5cmd` to the backup bucket under
-`exports/<app id>/<export id>.<ext>` using the backup key; the API presigns a GET (10 minutes) when the owner polls
+`exports/<app id>/<export id>.<ext>` using the backup key. A whole-backup download (`POST /apps/{id}/backups/sets/{set_id}/download`) is ONE `MODE=package` Job (not one per part plus a combine step: an app's repos share a password, so one Secret covers them, and there is no intermediate object to track or sweep): it dumps each succeeded part to scratch, writes `MANIFEST.json` (app, set id, created_at, engine, `PICOPAAS_VERSION`, parts with bytes and sha256) and streams `tar | gzip -1 | s5cmd pipe` straight to `exports/<app>/<export id>.tar.gz`, so the package is never stored a second time. Scratch is the sum of the parts (database 256 MiB, bucket 2 x `BACKUP_BUCKET_MAX_BYTES` + 64, volume `BACKUP_VOLUME_EXPORT_MAX_BYTES` (1 GiB) + 64); a volume snapshot larger than that is refused with a fixed error. Only one package Job runs at a time platform-wide. Set `PICOPAAS_VERSION` in `picopaas-env` to stamp the manifest (default `dev`); the API presigns a GET (10 minutes) when the owner polls
 `GET /apps/{id}/backups/exports/{export_id}`. The scheduler tick deletes export objects older than `BACKUP_EXPORT_TTL_SECONDS` (3600; swept at most every
 5 minutes). Limits: 3 downloads per app per hour, one active export per app. Same NetworkPolicy, timeouts, step lines,
 `backoffLimit: 0` and deadline as backups; the Job's scratch emptyDir is 256 MiB (database) or 2 x `BACKUP_BUCKET_MAX_BYTES` + 64 MiB (bucket), so the
@@ -388,16 +396,16 @@ Backup audit actions (creating, deleting and downloading backups are all logged;
 
 | Action | Actor | When | Detail |
 |---|---|---|---|
-| `backup.create` | the owner, or system | manual POST; scheduled enqueue; final backup on app delete (one row per enqueue, not per kind) | `trigger=manual\|scheduled\|final kinds=db,bucket` |
+| `backup.create` | the owner, or system | manual POST; scheduled enqueue; final backup on app delete (one row per enqueue, not per kind) | `trigger=manual\|scheduled\|final set=<id> kinds=db,bucket,volume` |
 | `backup.succeeded` / `backup.failed` | system | a backup run ends | `run=<id> <kind> <trigger>` |
-| `backup.pruned` | system | after a successful backup, `forget --prune` removed snapshots beyond the policy | `run=<id> kind=<kind> keep=daily:1,weekly:1,monthly:1` |
+| `backup.pruned` / `backup.prune_failed` | system | after a successful db/bucket backup, `forget --prune` removed snapshots beyond the policy; for a volume, the separate prune run ends | `run=<id> kind=<kind> keep=daily:1,weekly:1,monthly:1` |
 | `backup.purged` | system | the 14-day purge of a deleted app's repos, success or failure | `run=<id> kind=<kind> result=succeeded\|failed` |
-| `backup.delete` | the owner or an admin | `DELETE /apps/{id}/backups/{run_id}` accepted | `run=<id> kind=<kind> snapshot=<8 chars>` |
-| `backup.deleted` / `backup.delete_failed` | system | the MODE=forget Job ends | `run=<id> kind=<kind> snapshot=<8 chars> delete_run=<id>` (+ `: <error>` on failure) |
-| `backup.download` | the owner | a new export is requested | `run=<id> kind=<kind> export=<id>` |
-| `backup.download_link` | the owner | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> kind=<kind> expires_in=600` |
+| `backup.delete` | the owner or an admin | `DELETE /apps/{id}/backups/{run_id}` or `.../sets/{set_id}` accepted | `run=<id> kind=<kind> snapshot=<8 chars>`; for a set `set=<id> runs=<ids> kinds=<kinds>` |
+| `backup.deleted` / `backup.delete_failed` | system | the MODE=forget Job ends (one per part) | `run=<id> kind=<kind> snapshot=<8 chars> delete_run=<id> [set=<id>]` (+ `: <error>` on failure) |
+| `backup.download` | the owner | a new export is requested | `run=<id> kind=<kind> export=<id>`; for a package `set=<id> kinds=<kinds> export=<id>` |
+| `backup.download_link` | the owner | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> [set=<id>] kind=<kind> expires_in=600` |
 | `backup.export_succeeded` / `backup.export_failed` | system | the export job ends | |
-| `backup.export_deleted` | system, or the user who deleted the backup | the 1-hour sweep removed an export file (system), or its backup was deleted (user); one row per export | `export=<id> run=<id> reason=expired\|backup_deleted` |
+| `backup.export_deleted` | system, or the user who deleted the backup | the 1-hour sweep removed an export file (system), or its backup was deleted (user); one row per export | `export=<id> run=<id> [set=<id>] reason=expired\|backup_deleted` |
 | `backup.restore`, `backup.restore_succeeded` / `_failed` | admin / system | admin restore | |
 | `backup.config_changed`, `backup.retained` | owner / system | settings change; repos kept after app delete | |
 

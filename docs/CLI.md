@@ -159,14 +159,17 @@ picopaas backup list <app>
 picopaas backup run <app>
 picopaas backup enable <app>      # scheduled (daily) backups on; they are opt-in
 picopaas backup disable <app>     # scheduled backups off; `backup run` still works
-picopaas backup download <app> [run_id] [-o file]
+picopaas backup download <app> [backup_id] [-o file] [--run RUN_ID]
 ```
 
-`list` shows whether scheduled backups are on and the recent runs (ids, kind, how, status, size). `run` queues a backup now (one per
-app per hour). `download` prepares the backup as one file (database: `.sql.gz`, or `.pgdump` for PostgreSQL; bucket: `.tar.gz`),
-waits for it, and saves it. With no run id it fetches the latest successful run of each kind into the current directory, named by the
-platform; with a run id (from `list`) it fetches that one, and `-o` chooses the file name (`-o` needs a run id when the app has two
-kinds). Preparing a file takes from seconds to a few minutes; at most 3 downloads per app per hour.
+A backup is one package of parts (database, blob storage, volume). `list` shows whether scheduled backups are on and the recent
+backups: one row each (id, how, status `running`/`succeeded`/`partial`/`failed`, its parts, size) with the error of any failed part, plus a note when
+the volume is not backed up (it needs a bucket-scoped backup key; ask the admin). `run` queues a backup now (one per app per hour) and prints its id.
+`download` prepares the backup as ONE `.tar.gz` package (`MANIFEST.json`, `database.sql.gz` or `database.pgdump`, `blob-storage.tar.gz`,
+`volume.tar.gz`; only the parts that succeeded), waits for it, and saves it. With no id it fetches the newest finished backup
+(a partial one is fine; a note says what is missing) into the current directory, named by the platform; with an id (from `list`) it
+fetches that one, and `-o` chooses the file name. `--run RUN_ID` fetches a single part (one run, in its own file) instead.
+Preparing a file takes from seconds to a few minutes; at most 3 downloads per app per hour.
 
 ## admin backup restore
 

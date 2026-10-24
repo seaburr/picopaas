@@ -362,23 +362,23 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
   under `mountPath` (default `/data`). Don't mount over directories your image needs to start, unless it copies them in.
 - **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink. Growing a volume after it's created is supported by the API (DigitalOcean's CSI driver expands the filesystem online) but is not yet tested live on this platform, so plan the size up front.
 - **No detaching.** To drop a volume, delete the app; the data is destroyed with it.
-- **Not backed up yet.** Volume backups are coming (see Backups, section 7b). Until then treat it as one copy of the data and keep anything irreplaceable somewhere else too.
+- **Backed up when your administrator allows it.** A volume is part of your backups once the platform has volume backups turned on (they need a bucket-scoped backup key; see Backups, section 7b). If the Backups card says "Volume backups need a bucket-scoped backup key; ask the admin", the volume is not backed up yet: treat it as one copy of the data.
 
 ## 7b. Backups
 
-When your administrator has turned backups on, you can back up an app with a **database** or **blob storage**. Scheduled backups are
+When your administrator has turned backups on, you can back up an app with a **database**, **blob storage** or a **persistent volume**. One backup is one **package**: a "Back up now" click or one scheduled slot produces a single backup, made of one part per thing your app has (database, blob storage, volume). The parts are taken one after another, not at exactly the same instant, so a busy app can differ slightly between them. You see one row per backup, download one file, and delete it as one. Scheduled backups are
 **opt-in**: turn them on for an app and it is backed up once a day (a bit after 03:00 UTC, staggered per app); until you do, nothing runs
 by itself, but you can start a backup by hand at any time. Each backup is encrypted and stored outside the cluster. PicoPaaS keeps the latest daily backup plus one
 weekly and one monthly copy. A backup you start by hand replaces that day's daily copy. Because only those few copies are kept,
 **download** anything you need for the long term (see below). What is covered:
 - **Database: yes.** A full dump of your app's database (MySQL or PostgreSQL).
-- **Persistent volume: next.** Volume backups are the next step; for now a volume is not backed up.
+- **Persistent volume: yes, when enabled.** Every file on the volume is copied (read-only, while your app keeps running) and stored as the `volume` part. The files are read as your app's user, so files that user cannot read make the volume part fail ("some files on the volume could not be read"); the other parts still succeed and the backup shows as **partial** with the error. It is a file-level copy, not an atomic snapshot: an app that keeps a database file on the volume can be caught mid-write. Restoring a volume is not self-service yet (ask an administrator; restore is planned).
 - **Blob storage: yes.** Every object in your bucket is copied and stored the same way (as its own backup, shown as `bucket`
   in the status). A bucket larger than 512 MB is skipped with an error. Because the backup reads your bucket with your app's own key,
   it sees exactly what your app sees.
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
-On the app's health page, the **Backups** card shows the schedule status (daily, weekly or off, and the next run), the last backup per kind with its time and size, a **Back up now** button, and a list of recent runs, labelled automatic or manual. Click the download icon on any successful run (automatic backups too); you can leave the page while it prepares, then come back and click it again within an hour (3 downloads per hour). The trash icon deletes that backup for good: it is marked "deleting" for a minute or two, then disappears (or comes back with an event if the delete failed). You can't delete a backup while another backup, restore, or download of the same kind is running, and a download you already prepared from it is removed too. Deleting is also `DELETE /apps/{id}/backups/{run_id}`. Turn scheduled backups on or off and choose daily or weekly under **Settings**, in the **Backups** section of "Other settings" (the **Backup settings** button on the card jumps there); changes save immediately.
+On the app's health page, the **Backups** card shows the schedule status (daily, weekly or off, and the next run), a **Back up now** button, a "Last backup" line, and one row per backup: its date, an **automatic**, **manual** or **before delete** label, and a status: **running**, **succeeded**, **partial** (some parts failed; the row names the failed part and its error) or **failed**. Small chips under it list the parts (database, blob storage, volume) with the new data each added. If your app has a volume but volume backups are off, the card says so. Click the download icon on a finished backup (automatic backups too); you can leave the page while it prepares, then come back and click it again within an hour (3 downloads per hour, counted per backup). The trash icon deletes the whole backup for good: it is marked "deleting" for a minute or two, then disappears (or comes back with an event if part of the delete failed). You can't delete or download a backup while it is still being taken or while another backup, restore or download of the same kind is running, and a download you already prepared from it is removed too. Deleting is also `DELETE /apps/{id}/backups/sets/{id}`; the older per-part `DELETE /apps/{id}/backups/{run_id}` still works. Turn scheduled backups on or off and choose daily or weekly under **Settings**, in the **Backups** section of "Other settings" (the **Backup settings** button on the card jumps there); changes save immediately.
 
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
 (one per hour; it works whether or not scheduled backups are on). Turn scheduled backups on or off, or switch to weekly, with
@@ -397,11 +397,13 @@ picopaas backup run myapp
 picopaas backup list myapp
 ```
 
-**Downloading a backup.** `picopaas backup download myapp` saves the latest successful backup of each kind (a database dump as
-`.sql.gz`, or `.pgdump` for PostgreSQL; a bucket as `.tar.gz`); add a run id and `-o file` for a specific one. Over the API:
-`POST /apps/{id}/backups/{run_id}/download` starts preparing the file, then poll `GET /apps/{id}/backups/exports/{export_id}` until
+**Downloading a backup.** A download is ONE `.tar.gz` package (`<app>-backup<id>.tar.gz`) holding `MANIFEST.json` (app name, backup id, when it was taken,
+the database engine, the PicoPaaS version, and each part with its size and sha256) plus the parts that succeeded: `database.sql.gz` (or `database.pgdump` for
+PostgreSQL), `blob-storage.tar.gz` and `volume.tar.gz` (the volume's files under a top-level `volume/` folder). `picopaas backup download myapp` saves the newest
+finished backup; add a backup id (from `backup list`) for a specific one and `-o file` to name the file. Over the API:
+`POST /apps/{id}/backups/sets/{set_id}/download` starts preparing the package, then poll `GET /apps/{id}/backups/exports/{export_id}` until
 `status` is `ready` and fetch the `url` (valid 10 minutes; ask again for a fresh one). The prepared file is deleted after an hour. You can
-prepare 3 downloads per app per hour. The download is prepared in the background; you can leave and come back within an hour: `GET /apps/{id}/backups/exports` lists your prepared downloads, and each run in `GET /apps/{id}/backups` carries an `export` field ("Ready to download"). Scheduled and manual backups download the same way.
+prepare 3 downloads per app per hour. The download is prepared in the background; you can leave and come back within an hour: `GET /apps/{id}/backups/exports` lists your prepared downloads, and each backup in `GET /apps/{id}/backups` (`backups[]`) carries an `export` field ("Ready to download"). A volume bigger than 1 GiB is too big for a package; fetch the other parts. You can still download a single part with `POST /apps/{id}/backups/{run_id}/download` (CLI: `backup download myapp --run RUN_ID`).
 
 When you delete an app the platform takes a final backup **only if scheduled backups are on for it**, and keeps it for 14 days,
 then deletes it. If they are off, no final backup is taken, but any backups you made earlier by hand are kept for the same 14 days and

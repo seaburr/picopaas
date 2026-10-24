@@ -1,5 +1,29 @@
 # Backups for apps (REQ-9): design
 
+Status update 2026-10-24 (backend-dev, later): **backup sets and volume backups IMPLEMENTED.**
+(1) One backup = one `backup_sets` row (migration `a7d3e9b1c5f2`, `backup_runs.set_id`) with one `BackupRun` per kind (db, bucket, volume) taken one
+after another; every enqueue path (manual, scheduled, final) makes a set. The owner sees one row (`GET /apps/{id}/backups` -> `backups[]`: status
+running/succeeded/partial/failed/deleting, parts with errors), downloads one `.tar.gz` package (`POST .../sets/{id}/download`) and deletes it as one
+(`DELETE .../sets/{id}`: a `MODE=forget` Job per succeeded part, then the set is `deleted`). The migration grouped existing runs by app + trigger +
+created within 10 s. The package is ONE `MODE=package` Job (not a Job per part plus a combine step: the repos of an app share one password so a
+single Secret covers all parts, and there is no intermediate object to track or sweep): each part is dumped to scratch, `MANIFEST.json` is written,
+and `tar | gzip -1 | s5cmd pipe` streams the package to `exports/` (never stored twice; `s5cmd pipe --part-size 8 --concurrency 2` keeps its buffers inside
+the pod's memory). Files: `database.sql.gz`|`database.pgdump`, `blob-storage.tar.gz`, `volume.tar.gz` (tar paths `volume/...`), `MANIFEST.json`.
+Per-run endpoints stay for compatibility. (2) Volume backups (section 1a, execution row): see "Volume backups as built" below. They are
+gated by `BACKUP_KEY_SCOPED` (Chas's decisions-log condition); with the gate off the volume part is left out and the API says why. Restore of a
+volume is phase 2 and not built.
+
+**Volume backups as built.** A Job in `app-<id>` (PVC `readOnly`, podAffinity to the app pod unless suspended, fsGroup `VOLUME_FS_GROUP`, UID the
+app's `run_as_uid`, non-root, read-only root fs, caps dropped, no service account token, `backoffLimit` 0, deadline, `--limit-upload`), an ephemeral
+per-run Secret in that namespace (deleted after the run, swept by the tick), `restic backup /volume --host app`. Prune never runs there: success queues a
+`trigger=prune` run (`MODE=prune`, platform namespace). Export/delete/purge of a volume repo run in the platform namespace. Because NetworkPolicies are
+additive, the app's allow-* policies skip pods labelled `picopaas.io/backup` and `allow-egress-backup` gives that pod DNS + 443 to public addresses
+and the Spaces private /32s only. The tenant quota gets one backup pod of headroom (pods, CPU, memory, scratch), only for apps with a volume while the gate is
+on. The pod's size is clamped to the app's own limits (the namespace LimitRange would reject more). `picopaas-app-ns` gained `batch/jobs`
+(get, list, create, delete). A volume over `BACKUP_VOLUME_EXPORT_MAX_BYTES` (1 GiB) is refused in a package. Unreadable files (0600 files of another UID) make the part fail
+and the incomplete snapshot is forgotten. Verified by `images/backup/tests/smoke.sh` (backup of a read-only mounted volume, prune, unreadable-file refusal, package
+contents compared with the originals) and by a manual run of `s5cmd pipe` against an rclone S3.
+
 Status update 2026-10-24 (backend-dev): **opt-in and owner downloads IMPLEMENTED.** (1) Scheduled backups are opt-in:
 `BACKUP_DEFAULT_ENABLED` (default 0) sets `enabled` on new `app_backup_config` rows; existing rows keep their value; the scheduler only
 picks enabled rows and no longer creates rows for apps itself. A manual `POST /apps/{id}/backups` works with scheduled backups off (same
@@ -51,7 +75,7 @@ WordPress blog (image + 1 GiB RWO volume + managed MySQL database + optional Spa
 | Cost | Phase 1 fits inside the existing $5 Spaces subscription: marginal about $0. Snapshots (phase 3, optional) about $0.06/GiB/mo. |
 
 **Decisions log**
-- 2026-10-23 (Chas): enable backups on this instance and **reuse the existing platform Spaces credentials** for the backup bucket (no separate key). Phase 1 uses a dedicated bucket `picopaas-backups` in the existing ATL1 region (created by bootstrap, $0 extra) with prefix `backups/`; the second-region bucket (request 0008) is deferred. **Condition**: the shared full-access key must be replaced by a bucket-scoped key before volume backups run in tenant namespaces (phase 1b), because that Secret would then be readable from tenant-adjacent Jobs.
+- 2026-10-23 (Chas): enable backups on this instance and **reuse the existing platform Spaces credentials** for the backup bucket (no separate key). Phase 1 uses a dedicated bucket `picopaas-backups` in the existing ATL1 region (created by bootstrap, $0 extra) with prefix `backups/`; the second-region bucket (request 0008) is deferred. **Condition**: the shared full-access key must be replaced by a bucket-scoped key before volume backups run in tenant namespaces (phase 1b), because that Secret would then be readable from tenant-adjacent Jobs. **MET 2026-10-24 (infra-ops, workflow change, runs on the next bootstrap):** bootstrap creates a DO Spaces key with a single grant `{bucket: picopaas-backups, permission: readwrite}` and stores it as `BACKUP_ACCESS_KEY_*`; idempotent reuse, `rotate_backup_key` input, superseded keys revoked after rollout. Every consumer (restic, boto3 presign/sweep/delete, s5cmd export upload) only needs list/get/put/delete on that bucket. The sections below that still say "platform key" for backups are superseded by this.
 
 ## 1. What is protected and how
 
