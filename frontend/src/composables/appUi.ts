@@ -42,10 +42,13 @@ export function relTime(iso: string, now = Date.now()): string {
   return sec >= 0 ? `in ${span(sec)}` : `${span(sec)} ago`
 }
 
-// "Restarted 3 min ago: your app ran out of memory (limit 384 MB)." from an event message "Restarted: ...".
+// "Restarted 3 min ago: your app ran out of memory (limit 384 MB)." from an event message "Restarted: ...";
+// other events (e.g. a failed backup) read "3 min ago: ...".
 export function eventNote(ev: { at: string; message: string }, now = Date.now()): string {
-  const rest = ev.message.replace(/^Restarted:\s*/, '')
-  return `Restarted ${relTime(ev.at, now)}: ${rest}`
+  const m = ev.message.match(/^Restarted:\s*(.*)$/s)
+  if (m) return `Restarted ${relTime(ev.at, now)}: ${m[1]}`
+  const when = relTime(ev.at, now)
+  return `${when.charAt(0).toUpperCase()}${when.slice(1)}: ${ev.message}`
 }
 
 export function fullTime(iso: string): string {

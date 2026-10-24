@@ -45,7 +45,8 @@ const originalImage = ref('')
 
 const tab = ref<'form' | 'yaml'>('form')
 const suspended = ref(false)
-const loading = ref(isEdit.value)
+// Also true while a template loads: EnvVarEditor copies its rows once on mount, so it must mount after the prefill.
+const loading = ref(isEdit.value || typeof route.query.template === 'string')
 const saving = ref(false)
 const error = ref('')
 const fieldErrors = ref<Record<string, string>>({})
@@ -192,6 +193,8 @@ onMounted(async () => {
       }
     } catch {
       error.value = "Couldn't load the template."
+    } finally {
+      loading.value = false
     }
   }
 })

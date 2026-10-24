@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
         <div v-for="k in info.kinds" :key="k.kind" class="rounded-md border border-pico-border p-3 text-sm">
           <div class="font-medium">{{ kindLabel(k.kind) }}</div>
           <div v-if="k.last_backup_at" class="meta" :title="fullTime(k.last_backup_at)">
-            Last: {{ when(k.last_backup_at) }}<template v-if="k.last_bytes != null"> · {{ fmtBytes(k.last_bytes) }}</template>
+            Last: {{ when(k.last_backup_at) }}<template v-if="k.last_bytes != null && k.last_status !== 'failed'"> · {{ fmtBytes(k.last_bytes) }}</template>
             <span :class="[statusClass(k.last_status === 'ok' ? 'succeeded' : k.last_status ?? ''), 'ml-1']">{{ k.last_status }}</span>
           </div>
           <div v-else class="meta">No backup yet.</div>
