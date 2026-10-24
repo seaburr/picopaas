@@ -148,13 +148,13 @@ function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) 
   else if (kind === 'reset')
     confirm.value = { title: `Reset password for ${u.email}`, message: 'This generates a temporary password. Their current password stops working immediately. Give them the new one; they should change it right away.', label: 'Reset password', run: () => resetPassword(u) }
   else
-    confirm.value = { title: `Delete ${u.email}`, message: 'This permanently deletes the user and all of their apps, databases and storage. This cannot be undone.', label: 'Delete user and data', require: u.email, run: () => act(() => deleteUser(u.id), `${u.email} deleted.`, "Couldn't delete the user") }
+    confirm.value = { title: `Delete ${u.email}`, message: 'This permanently deletes the user and all of their apps, databases and blob storage. This cannot be undone.', label: 'Delete user and data', require: u.email, run: () => act(() => deleteUser(u.id), `${u.email} deleted.`, "Couldn't delete the user") }
 }
 function askApp(kind: 'suspend' | 'delete', a: AdminApp) {
   confirm.value =
     kind === 'suspend'
       ? { title: `Suspend ${a.name}`, message: "The app is stopped. Its owner can't edit or restart it until you unsuspend it.", label: 'Suspend app', run: () => act(() => suspendApp(a.id), `${a.name} suspended.`, "Couldn't suspend the app") }
-      : { title: `Delete ${a.name}`, message: `Permanently deletes ${a.name}, its database and its storage bucket. This cannot be undone.`, label: 'Delete app', require: a.name, run: () => act(() => deleteAdminApp(a.id), `${a.name} deleted.`, "Couldn't delete the app") }
+      : { title: `Delete ${a.name}`, message: `Permanently deletes ${a.name}, its database and its blob storage bucket. This cannot be undone.`, label: 'Delete app', require: a.name, run: () => act(() => deleteAdminApp(a.id), `${a.name} deleted.`, "Couldn't delete the app") }
 }
 
 // ---- approve ----
@@ -310,7 +310,7 @@ const overrideSummary = (a: AdminApp) => {
   if (r.ephemeral_limit_mi !== d.ephemeral_limit_mi) out.push(`disk ${gb(r.ephemeral_limit_mi)}`)
   if (a.want_db && r.db_max_connections !== d.db_max_connections) out.push(`${r.db_max_connections} conns`)
   if (a.want_db && r.db_quota_mb !== d.db_quota_mb) out.push(`db ${gb(r.db_quota_mb)}`)
-  if (a.want_storage && r.storage_quota_mb !== d.storage_quota_mb) out.push(`bucket ${gb(r.storage_quota_mb)}`)
+  if (a.want_storage && r.storage_quota_mb !== d.storage_quota_mb) out.push(`blob ${gb(r.storage_quota_mb)}`)
   if (r.egress_mbit !== d.egress_mbit) out.push(`${d.egress_mbit}→${r.egress_mbit} Mbit/s`)
   if (r.image_size_mb !== d.image_size_mb) out.push(`img ${gb(r.image_size_mb)}`)
   return out.join(' · ')

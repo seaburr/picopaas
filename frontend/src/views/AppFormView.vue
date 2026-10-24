@@ -106,7 +106,7 @@ function volumePayload(): { size_gi?: number; mount_path?: string } | undefined 
   if (vol.mount !== originalMount.value) out.mount_path = vol.mount
   return Object.keys(out).length ? out : undefined
 }
-const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB bucket, S3-compatible`)
+const bucketLabel = computed(() => `${limits.value?.bucket_mb ?? 100} MB`)
 const imageMb = computed(() => limits.value?.image_mb ?? 512)
 
 const imageError = computed(() => {
@@ -459,8 +459,9 @@ async function onSubmit() {
               <label class="flex items-start gap-2 text-sm text-zinc-200">
                 <input v-model="form.want_storage" type="checkbox" :disabled="isEdit || storageOff" class="check mt-0.5" />
                 <span>
-                  Storage <span class="text-zinc-400">({{ bucketLabel }})</span>
-                  <span v-if="storageOff && !isEdit" class="help block !mt-0">Storage buckets aren't available right now.</span>
+                  Blob storage <span class="text-zinc-400">({{ bucketLabel }})</span>
+                  <span class="help block !mt-0">S3-compatible bucket for files your app reads and writes over the network.</span>
+                  <span v-if="storageOff && !isEdit" class="help block !mt-0">Blob storage isn't available right now.</span>
                 </span>
               </label>
             </div>
@@ -469,6 +470,7 @@ async function onSubmit() {
 
           <fieldset v-if="volumesOn || volAttached">
             <legend class="label">Persistent volume</legend>
+            <p class="help !mt-0 mb-1">A disk mounted into your container that survives restarts.</p>
             <label class="flex items-start gap-2 text-sm text-zinc-200">
               <input v-model="vol.enabled" type="checkbox" :disabled="volAttached" class="check mt-0.5" />
               <span>Add a persistent volume <span v-if="volAttached" class="text-zinc-400">(attached; can't be removed except by deleting the app)</span></span>

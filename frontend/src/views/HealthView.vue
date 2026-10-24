@@ -203,7 +203,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
                 :class="st === 'error' && (data.workloads.by_status[st] ?? 0) > 0 ? 'font-semibold text-status-error' : ''"
               >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</span>
             </div>
-            <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with storage<template v-if="data.workloads.with_volume"> · {{ data.workloads.with_volume }} with volume</template></div>
+            <div class="text-xs text-zinc-400">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with blob storage<template v-if="data.workloads.with_volume"> · {{ data.workloads.with_volume }} with volume</template></div>
             <div v-if="data.workloads.by_db_engine" class="text-xs text-zinc-400">{{ data.workloads.by_db_engine.mysql }} MySQL · {{ data.workloads.by_db_engine.postgres }} PostgreSQL</div>
           </div>
         </section>

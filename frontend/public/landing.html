@@ -59,7 +59,7 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <li><strong>Tested recipes.</strong> Step-by-step guides for Ghost, Grafana, Shlink, Directus, n8n (on PostgreSQL) and a Gatus status page, each verified on the platform. Ghost and an nginx static site are also one-click starters.</li>
 <li><strong>Safe deploys.</strong> Images are pinned by digest, the last few versions are kept for one-click rollback, and a new image that fails to start is reverted to the last working one. Floating tags like <code>:latest</code> are re-checked and redeployed when they change.</li>
 <li><strong>Visibility.</strong> Live status, downloadable logs, restarts, and recent CPU and memory history as sparklines.</li>
-<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform: separate network policy, per-app database users and bucket keys, and enforced resource and storage quotas.</li>
+<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform: separate network policy, per-app database users and bucket keys, and enforced resource and blob storage quotas.</li>
 </ul>
 </section>
 <section>
@@ -87,7 +87,7 @@ https://&lt;generated-name&gt;.picopaas.xyz</pre>
 <tr><td>Scratch disk per app</td><td>250 MB</td></tr>
 <tr><td>Image size</td><td>512 MB</td></tr>
 <tr><td>Database (PostgreSQL or MySQL)</td><td>50 MB</td></tr>
-<tr><td>Storage bucket (S3-compatible)</td><td>100 MB</td></tr>
+<tr><td>Blob storage (S3-compatible bucket)</td><td>100 MB</td></tr>
 </table>
 <div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
 </section>

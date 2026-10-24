@@ -99,9 +99,9 @@ function insertRef(ref: string) {
 const envGrid = 'sm:grid sm:grid-cols-[14rem_minmax(0,1fr)_6rem] sm:items-center sm:gap-2'
 const groups = computed(() => [
   ...(props.wantDb ? [{ title: 'Database', refs: DB_REFS }] : []),
-  ...(props.wantStorage ? [{ title: 'Storage', refs: STORAGE_REFS }] : []),
+  ...(props.wantStorage ? [{ title: 'Blob storage', refs: STORAGE_REFS }] : []),
 ])
-const explainer = 'Use ' + refLabel('db.url') + ' references to inject database and storage credentials.'
+const explainer = 'Use ' + refLabel('db.url') + ' references to inject database and blob storage credentials.'
 </script>
 
 <template>
@@ -202,6 +202,6 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
         </div>
       </div>
     </div>
-    <p v-else class="help">Tick Database or Storage above to get <code class="mono">{{ refLabel('…') }}</code> references for their credentials.</p>
+    <p v-else class="help">Tick Database or Blob storage above to get <code class="mono">{{ refLabel('…') }}</code> references for their credentials.</p>
   </div>
 </template>

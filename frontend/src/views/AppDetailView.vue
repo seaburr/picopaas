@@ -274,7 +274,7 @@ async function confirmFree(body: { prefix: string } | { all: true }) {
     const left = (r.size_bytes / 1024 / 1024).toFixed(1)
     toast.success(
       r.over_quota
-        ? `Deleted ${r.deleted} objects, but the bucket is still over its cap (${left} MB).`
+        ? `Deleted ${r.deleted} objects, but the blob storage bucket is still over its cap (${left} MB).`
         : `Deleted ${r.deleted} objects. Writes are coming back; the app restarts to pick up new keys.`,
     )
     if (r.truncated) toast.info('Some objects remain. Run it again to continue.')
@@ -382,16 +382,16 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <h2 id="h-usage" class="section-title mb-2">Usage</h2>
             <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <UsageBar v-if="app.quota?.db" label="Database" :usage="app.quota.db" />
-              <UsageBar v-if="app.quota?.storage" label="Storage" :usage="app.quota.storage" />
+              <UsageBar v-if="app.quota?.storage" label="Blob storage" :usage="app.quota.storage" />
             </div>
             <p v-if="app.quota?.db?.over_quota" role="alert" class="alert-warn mt-3">
               Database is over its {{ dbLimitMb }} MB cap and is read-only. Delete rows or drop tables to free space; writes come back within a minute.
             </p>
             <div v-if="app.quota?.storage?.over_quota" role="alert" class="alert-warn mt-3 flex flex-wrap items-center justify-between gap-2">
-              <span>Storage bucket is over its {{ storageLimitMb }} MB cap and is read-only.</span>
+              <span>Blob storage bucket is over its {{ storageLimitMb }} MB cap and is read-only.</span>
               <button type="button" class="btn-secondary btn-sm" :disabled="suspended" @click="freeOpen = true">Free up space</button>
             </div>
-            <p class="help mt-2">Sizes refresh about every minute (database) and every five minutes (storage). To shrink a database, TRUNCATE or DROP TABLE; DELETE alone may not reduce the size.</p>
+            <p class="help mt-2">Sizes refresh about every minute (database) and every five minutes (blob storage). To shrink a database, TRUNCATE or DROP TABLE; DELETE alone may not reduce the size.</p>
           </section>
 
           <section id="logs" class="card card-pad scroll-mt-4" aria-labelledby="h-logs">
@@ -481,7 +481,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <dd class="text-zinc-200">{{ app.want_db ? `Attached (${dbEngineLabel(app.db_engine)}, ${limits?.db_mb ?? 50} MB)` : 'Not enabled' }}</dd>
               </div>
               <div>
-                <dt class="meta">Storage</dt>
+                <dt class="meta">Blob storage</dt>
                 <dd class="text-zinc-200">{{ app.want_storage ? `Attached (${limits?.bucket_mb ?? 100} MB, S3-compatible)` : 'Not enabled' }}</dd>
               </div>
               <div v-if="app.volume">
@@ -514,7 +514,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                   <p class="mono break-all">{{ DB_REFS.map(refLabel).join('  ') }}</p>
                 </div>
                 <div v-if="app.want_storage">
-                  <p class="mb-1 font-medium text-zinc-200">Storage references</p>
+                  <p class="mb-1 font-medium text-zinc-200">Blob storage references</p>
                   <p class="mono break-all">{{ STORAGE_REFS.map(refLabel).join('  ') }}</p>
                 </div>
               </div>

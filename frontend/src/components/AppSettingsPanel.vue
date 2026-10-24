@@ -38,7 +38,7 @@ async function confirmRotate() {
   rotateBusy.value = true
   try {
     await rotateCredentials(app.value.id, target)
-    toast.success(target === 'db' ? 'Database password rotated. Restarting the app to pick it up.' : 'Storage keys rotated. Restarting the app to pick them up.')
+    toast.success(target === 'db' ? 'Database password rotated. Restarting the app to pick it up.' : 'Blob storage keys rotated. Restarting the app to pick them up.')
     rotating.value = null
     setApp(await store.fetchOne(app.value.id))
   } catch (e) {
@@ -283,7 +283,7 @@ const suspended = computed(() => app.value.status === 'suspended')
             <h2 id="h-danger" class="section-title text-danger-light">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">
-                Delete this app{{ hasAddons ? ', its database and storage bucket' : '' }}. This can't be undone.
+                Delete this app{{ hasAddons ? ', its database and blob storage bucket' : '' }}. This can't be undone.
               </p>
               <button type="button" class="btn-danger shrink-0" @click="deleteOpen = true">Delete app…</button>
             </div>
@@ -293,7 +293,7 @@ const suspended = computed(() => app.value.status === 'suspended')
               </p>
               <div class="flex shrink-0 flex-wrap gap-2">
                 <button v-if="app.want_db" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'db'">Rotate database password</button>
-                <button v-if="app.want_storage" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate storage keys</button>
+                <button v-if="app.want_storage" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate blob storage keys</button>
               </div>
             </div>
             <div v-if="cdom" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -307,7 +307,7 @@ const suspended = computed(() => app.value.status === 'suspended')
         </div>
     <ConfirmDialog
       :open="rotating !== null"
-      :title="rotating === 'db' ? 'Rotate database password' : 'Rotate storage keys'"
+      :title="rotating === 'db' ? 'Rotate database password' : 'Rotate blob storage keys'"
       message="New credentials are generated and the old ones stop working. The app restarts to pick them up."
       confirm-label="Rotate"
       busy-label="Rotating…"

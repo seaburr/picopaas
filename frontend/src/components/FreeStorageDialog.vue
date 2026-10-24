@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 
-// Frees bucket space with the platform's credentials. Delete everything, or only objects under a prefix.
+// Frees blob storage space with the platform's credentials. Delete everything, or only objects under a prefix.
 const props = defineProps<{ open: boolean; busy?: boolean }>()
 const emit = defineEmits<{ confirm: [body: { prefix: string } | { all: true }]; cancel: [] }>()
 
@@ -24,7 +24,7 @@ function confirm() {
 <template>
   <ConfirmDialog
     :open="open"
-    title="Free up space"
+    title="Free up blob storage space"
     message="Deleted objects can't be recovered. Write access comes back as soon as the bucket is under its cap, and the app restarts to pick up the new keys."
     confirm-label="Delete objects"
     busy-label="Deleting…"
