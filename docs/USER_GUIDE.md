@@ -378,6 +378,8 @@ weekly and one monthly copy. A backup you start by hand replaces that day's dail
   it sees exactly what your app sees.
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
+On the app's health page, the **Backups** card shows the same thing: a switch for scheduled backups (off until you turn it on), the last backup per kind with its time and size, a **Back up now** button, and a list of recent runs with a **Download** button on each successful one (3 downloads per hour; the link works for 10 minutes).
+
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
 (one per hour; it works whether or not scheduled backups are on). Turn scheduled backups on or off, or switch to weekly, with
 `PATCH /apps/{id}/backups`. A failed backup adds an event to your app and

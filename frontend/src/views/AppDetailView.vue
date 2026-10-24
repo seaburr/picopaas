@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import BackupsCard from '../components/BackupsCard.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
@@ -393,6 +394,8 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </div>
             <p class="help mt-2">Sizes refresh about every minute (database) and every five minutes (blob storage). To shrink a database, TRUNCATE or DROP TABLE; DELETE alone may not reduce the size.</p>
           </section>
+
+          <BackupsCard :app-id="app.id" :suspended="suspended" :has-data="!!(app.want_db || app.want_storage)" />
 
           <section id="logs" class="card card-pad scroll-mt-4" aria-labelledby="h-logs">
             <div class="mb-2 flex flex-wrap items-center justify-between gap-2">

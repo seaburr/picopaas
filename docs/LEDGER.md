@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [frontend-dev] DONE (uncommitted): Backups card on App health page (frontend/src/components/BackupsCard.vue, api/backups.ts, types.ts, AppDetailView.vue, docs/USER_GUIDE.md 7b). typecheck + build pass; no frontend test setup exists.
+- 2026-10-24 [frontend-dev] START: owner Backups card.
 - 2026-10-24 [scm-security] DONE: templates refresh, backups opt-in/downloads/CLI, docs pushed; gitleaks clean on all commits. Backup image must be republished and BACKUP_IMAGE re-pinned before live. No findings.
 - 2026-10-24 [scm-security] START: commit/push templates refresh + backups opt-in/downloads/CLI + docs; watch CI/image/backup-image/deploy.
 - 2026-10-24 [backend-dev] DONE (uncommitted): chunk 3 owner CLI `picopaas backup list|run|enable|disable|download [run_id] [-o]` (cli/picopaas.py, tests/test_cli_commands.py, docs/CLI.md). Chunk 2 owner downloads: `POST /apps/{id}/backups/{run_id}/download` + `GET /apps/{id}/backups/exports/{export_id}` (10 min presigned GET), `trigger=export` BackupRun (migration e5b1c7d9a2f4 adds backup_runs.export_key), MODE=export in images/backup/picopaas-backup.sh, 3/app/hour, 1 active/app, sweep of exports/ after 1 h in the tick, audit backup.download; backup.yaml ephemeral quota 3Gi -> 4Gi. Chunk 1 opt-in: BACKUP_DEFAULT_ENABLED (default 0). MUST BEFORE LIVE: republish the backup image (backup-image workflow), re-pin BACKUP_IMAGE in picopaas-env, run deploy (migration + quota). Docs: USER_GUIDE, API, ADMIN_GUIDE, CLI, design/backups.md.
@@ -859,3 +861,5 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-22 [release-blogger] DONE: published 8 posts (release-managed-postgresql, release-n8n-on-postgresql, release-directus-on-mysql-and-s3, release-docs-overhaul, release-cli-ten-new-commands, release-api-limits-timeouts-engines, release-abuse-hardening-egress-bandwidth-terms, release-app-page-health-and-settings). Uncommitted ledger line for scm-security.
 - 2026-10-22 [scm-security] DONE: footer pin/settings header committed (85b0891), CI/image/deploy green; gitleaks clean. No findings.
 - 2026-10-23 [scm-security] DONE: WordPress example 6bee6a6 + docs 6bece32 pushed; CI, image, examples (wordpress matrix), deploy green; gitleaks clean. Reminder: make GHCR package public (QUESTIONS to-do). No findings.
+- 2026-10-24 [scm-security] START: commit/push frontend Backups card, watch CI/image/deploy.
+- 2026-10-24 [scm-security] NOTE: bootstrap run 40093548475 succeeded; it re-pinned BACKUP_IMAGE to sha256:68d20f57380bcc0a740a4f6d59a17b4d4fd49983026a37b186095de0e5c11b73 (built from 4e1be21, MODE=export).

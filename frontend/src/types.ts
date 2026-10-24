@@ -387,3 +387,54 @@ export interface ClusterHealth {
     by_db_engine?: { mysql: number; postgres: number }
   }
 }
+
+// Backups (app/routers/backups.py). Datetimes are naive UTC strings; use parseTs().
+export type BackupKind = 'db' | 'volume' | 'bucket'
+export interface BackupRun {
+  id: number
+  kind: BackupKind | string
+  trigger: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  bytes_added: number | null
+  repo_bytes: number | null
+  snapshot_id: string | null
+  error: string | null
+  source_run_id: number | null
+}
+export interface BackupKindStatus {
+  kind: BackupKind | string
+  last_backup_at: string | null
+  last_status: string | null
+  last_error: string | null
+  last_bytes: number | null
+  repo_bytes: number
+}
+export interface BackupsInfo {
+  feature_enabled: boolean
+  configured: boolean
+  enabled: boolean
+  schedule: 'daily' | 'weekly' | 'off' | string
+  state: string
+  kinds: BackupKindStatus[]
+  runs: BackupRun[]
+  next_backup_at: string | null
+  last_backup_at: string | null
+  last_success_at: string | null
+  cap_bytes: number
+}
+export interface BackupExport {
+  export_id: number
+  run_id: number
+  kind: string
+  status: 'queued' | 'running' | 'ready' | 'failed' | 'expired'
+  filename: string | null
+  size_bytes: number | null
+  url: string | null
+  url_expires_in: number | null
+  available_until: string | null
+  error: string | null
+  created_at: string
+}
