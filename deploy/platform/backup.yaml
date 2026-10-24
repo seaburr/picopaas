@@ -28,7 +28,7 @@ spec:
     requests.cpu: "500m"
     limits.cpu: "1"
     limits.memory: 1536Mi
-    limits.ephemeral-storage: 3Gi  # two concurrent bucket Jobs: 200Mi + BACKUP_BUCKET_MAX_BYTES scratch + 64Mi each
+    limits.ephemeral-storage: 4Gi  # two concurrent bucket exports: 200Mi + (2 x BACKUP_BUCKET_MAX_BYTES + 64Mi) scratch each
 ---
 # Minimal namespaced grant for the platform ServiceAccount: create/inspect/delete backup Jobs and their per-run Secrets,
 # read pods and their logs (the result line), delete finished pods. Nothing cluster-wide, nothing in other namespaces.

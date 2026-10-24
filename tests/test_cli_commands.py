@@ -288,3 +288,94 @@ def test_admin_backup_restore(monkeypatch, capsys):
     refuse = {**routes, ("POST", "/admin/backups/12/restore"): httpx.Response(409, json={"detail": "That would overwrite the app."})}
     code, _, err, _ = run(["admin", "backup", "restore", "12", "--to", "5"], refuse, monkeypatch, capsys)
     assert code == 1 and "overwrite" in err
+
+
+BK = {"feature_enabled": True, "configured": True, "enabled": False, "schedule": "daily", "state": "disabled",
+      "last_success_at": None, "next_backup_at": None,
+      "runs": [
+          {"id": 31, "kind": "bucket", "trigger": "manual", "status": "succeeded", "created_at": "2026-10-24T01:00:00", "bytes_added": 2048},
+          {"id": 30, "kind": "db", "trigger": "manual", "status": "failed", "created_at": "2026-10-24T00:50:00", "error": "database dump failed"},
+          {"id": 29, "kind": "db", "trigger": "scheduled", "status": "succeeded", "created_at": "2026-10-23T03:00:00", "bytes_added": 1048576},
+          {"id": 28, "kind": "db", "trigger": "scheduled", "status": "succeeded", "created_at": "2026-10-22T03:00:00", "bytes_added": 10}]}
+
+
+def test_backup_list_run_enable_disable(monkeypatch, capsys):
+    routes = {("GET", "/apps/5/backups"): httpx.Response(200, json=BK)}
+    code, out, _, _ = run(["backup", "list", "demo"], routes, monkeypatch, capsys)
+    assert code == 0 and "off (scheduled backups are opt-in" in out and "database dump failed" in out and "31" in out
+    code, out, _, _ = run(["backup", "list", "demo"], {("GET", "/apps/5/backups"): httpx.Response(200, json={**BK, "feature_enabled": False})}, monkeypatch, capsys)
+    assert code == 1
+    routes = {("POST", "/apps/5/backups"): httpx.Response(202, json=[{"id": 40, "kind": "db"}, {"id": 41, "kind": "bucket"}])}
+    code, out, _, _ = run(["backup", "run", "demo"], routes, monkeypatch, capsys)
+    assert code == 0 and "db, bucket" in out
+    routes = {("POST", "/apps/5/backups"): httpx.Response(429, json={"detail": "You can start one backup per hour."})}
+    code, _, err, _ = run(["backup", "run", "demo"], routes, monkeypatch, capsys)
+    assert code == 1 and "one backup per hour" in err
+    bodies = []
+
+    def patch(req):
+        bodies.append(json.loads(req.content))
+        return httpx.Response(200, json={**BK, "enabled": bodies[-1]["enabled"]})
+
+    routes = {("PATCH", "/apps/5/backups"): patch}
+    code, out, _, _ = run(["backup", "enable", "demo"], routes, monkeypatch, capsys)
+    assert code == 0 and bodies[-1] == {"enabled": True} and "on for demo" in out
+    code, out, _, _ = run(["backup", "disable", "demo"], routes, monkeypatch, capsys)
+    assert code == 0 and bodies[-1] == {"enabled": False} and "still run one" in out
+
+
+def _download_routes(states):
+    polls = iter(states)
+
+    def poll(req):
+        st = next(polls)
+        if st == "ready":
+            return httpx.Response(200, json={"export_id": 90, "status": "ready", "filename": "demo-db-backup29.sql.gz",
+                                             "url": "https://bk.spaces.test/exports/5/90.sql.gz?sig=1"})
+        return httpx.Response(200, json={"export_id": 90, "status": st, "error": "uploading the file failed" if st == "failed" else None})
+
+    return {("GET", "/apps/5/backups"): httpx.Response(200, json=BK),
+            ("POST", "/apps/5/backups/29/download"): httpx.Response(202, json={"export_id": 90, "status": "queued"}),
+            ("GET", "/apps/5/backups/exports/90"): poll,
+            ("GET", "/exports/5/90.sql.gz"): httpx.Response(200, content=b"dump")}
+
+
+def test_backup_download_specific_run_polls_then_saves(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(picopaas, "_POLL_S", 0)
+    out_file = tmp_path / "db.sql.gz"
+    code, out, err, seen = run(["backup", "download", "demo", "29", "-o", str(out_file)],
+                               _download_routes(["queued", "running", "ready"]), monkeypatch, capsys)
+    assert code == 0 and out_file.read_bytes() == b"dump" and "Downloaded db backup 29" in out
+    assert "queued" in err and "running" in err
+    assert not any("pp_sk_" in str(r.url) for r in seen if r.url.host != "pp.test")  # the token never goes to the storage host
+
+
+def test_backup_download_default_is_latest_of_each_kind(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(picopaas, "_POLL_S", 0)
+    monkeypatch.chdir(tmp_path)
+    routes = _download_routes(["ready"])
+    # latest db = 29 (30 failed), latest bucket = 31
+    routes[("POST", "/apps/5/backups/31/download")] = httpx.Response(202, json={"export_id": 91, "status": "queued"})
+    routes[("GET", "/apps/5/backups/exports/91")] = httpx.Response(200, json={"export_id": 91, "status": "ready", "filename": "demo-bucket-backup31.tar.gz", "url": "https://bk.spaces.test/exports/5/91.tar.gz"})
+    routes[("GET", "/exports/5/91.tar.gz")] = httpx.Response(200, content=b"tar")
+    code, out, _, seen = run(["backup", "download", "demo"], routes, monkeypatch, capsys)
+    assert code == 0, out
+    assert (tmp_path / "demo-db-backup29.sql.gz").read_bytes() == b"dump" and (tmp_path / "demo-bucket-backup31.tar.gz").read_bytes() == b"tar"
+    assert ("POST", "/apps/5/backups/30/download") not in [(r.method, r.url.path) for r in seen]
+    code, _, err, _ = run(["backup", "download", "demo", "-o", "x"], routes, monkeypatch, capsys)
+    assert code == 1 and "-o is ambiguous" in err
+
+
+def test_backup_download_errors(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(picopaas, "_POLL_S", 0)
+    code, _, err, _ = run(["backup", "download", "demo", "30"], _download_routes([]), monkeypatch, capsys)
+    assert code == 1 and "not a successful" in err
+    code, _, err, _ = run(["backup", "download", "demo", "29", "-o", str(tmp_path / "x")], _download_routes(["running", "failed"]), monkeypatch, capsys)
+    assert code == 1 and "uploading the file failed" in err
+    routes = _download_routes([])
+    routes[("POST", "/apps/5/backups/29/download")] = httpx.Response(429, json={"detail": "You can prepare 3 downloads per hour."})
+    code, _, err, _ = run(["backup", "download", "demo", "29"], routes, monkeypatch, capsys)
+    assert code == 1 and "3 downloads per hour" in err
+    none = {("GET", "/apps/5/backups"): httpx.Response(200, json={**BK, "runs": []})}
+    code, _, err, _ = run(["backup", "download", "demo"], none, monkeypatch, capsys)
+    assert code == 1 and "no successful backup" in err

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -19,6 +20,8 @@ class CliError(Exception):
 TIMEOUT_S = 30
 _TRANSPORT: Optional[httpx.BaseTransport] = None  # tests inject one for the presigned-URL transfer
 _VERBOSE = False
+_POLL_S = 3  # seconds between checks while a backup download is being prepared
+_DOWNLOAD_WAIT_S = 20 * 60
 # What the UI calls these states (the API keeps the raw values).
 _STATUS_WORDS = {"error": "failed", "pending": "queued"}
 
@@ -470,6 +473,114 @@ def cmd_admin_backup_restore(c, args) -> None:
           f"replaces what is there. Watch it: GET /apps/{target['id']}/backups")
 
 
+def _backups(c, a: dict) -> dict:
+    return _request(c, "GET", f"/apps/{a['id']}/backups").json()
+
+
+def _need_backups(b: dict) -> None:
+    if not b.get("feature_enabled"):
+        raise CliError("Backups aren't enabled on this platform.")
+
+
+def cmd_backup_list(c, args) -> None:
+    a = _find_app(c, args.name)
+    b = _backups(c, a)
+    _need_backups(b)
+    sched = f"{b['schedule']}" if b.get("enabled") else "off (scheduled backups are opt-in: picopaas backup enable " + a["name"] + ")"
+    print(f"{a['name']}: scheduled backups {sched}; state {b['state']}")
+    if b.get("last_success_at"):
+        print(f"last success: {_ago_text(b['last_success_at'])}")
+    if b.get("enabled") and b.get("next_backup_at"):
+        print(f"next backup: {b['next_backup_at']}")
+    runs = b.get("runs") or []
+    if not runs:
+        print("No backups yet. Run one with: picopaas backup run " + a["name"])
+        return
+    print(f"{'RUN':>6}  {'KIND':<8} {'HOW':<10} {'STATUS':<10} {'SIZE':>9}  WHEN")
+    for r in runs:
+        size = f"{_mb(r['bytes_added'])} MB" if r.get("bytes_added") is not None else "-"
+        line = f"{r['id']:>6}  {r['kind']:<8} {r['trigger']:<10} {r['status']:<10} {size:>9}  {_ago_text(r['created_at'])}"
+        print(line + (f"  ({r['error']})" if r.get("error") else ""))
+
+
+def cmd_backup_run(c, args) -> None:
+    a = _find_app(c, args.name)
+    runs = _request(c, "POST", f"/apps/{a['id']}/backups").json()
+    kinds = ", ".join(r["kind"] for r in runs)
+    print(f"Backup queued for {a['name']} ({kinds}); it starts within a minute. Check it with: picopaas backup list {a['name']}")
+
+
+def cmd_backup_enable(c, args) -> None:
+    a = _find_app(c, args.name)
+    on = args.backup_cmd == "enable"
+    b = _request(c, "PATCH", f"/apps/{a['id']}/backups", json={"enabled": on}).json()
+    if on:
+        print(f"Scheduled backups are on for {a['name']} ({b['schedule']}). The first one starts within a minute or two.")
+    else:
+        print(f"Scheduled backups are off for {a['name']}. You can still run one with: picopaas backup run {a['name']}")
+
+
+def _wait_export(c, a: dict, export_id: int) -> dict:
+    deadline = time.monotonic() + _DOWNLOAD_WAIT_S
+    shown = None
+    while True:
+        e = _request(c, "GET", f"/apps/{a['id']}/backups/exports/{export_id}").json()
+        if e["status"] == "ready":
+            return e
+        if e["status"] in ("failed", "expired"):
+            raise CliError(f"Preparing the download {e['status']}" + (f": {e['error']}" if e.get("error") else ".") + " Try again.")
+        if e["status"] != shown:
+            print(f"Preparing the download ({e['status']})...", file=sys.stderr)
+            shown = e["status"]
+        if time.monotonic() > deadline:
+            raise CliError("The download is taking too long to prepare. Try again in a few minutes.")
+        time.sleep(_POLL_S)
+
+
+def _fetch(url: str, out: str) -> int:
+    total = 0
+    with httpx.Client(timeout=None, transport=_TRANSPORT) as raw:
+        try:
+            with raw.stream("GET", url) as resp:
+                if resp.status_code >= 300:
+                    raise CliError(f"The storage service refused the download ({resp.status_code}). Run the command again.")
+                with open(out, "wb") as f:
+                    for b in resp.iter_bytes():
+                        f.write(b)
+                        total += len(b)
+        except httpx.HTTPError as exc:
+            raise CliError(f"Download failed ({exc.__class__.__name__}). Try again.")
+    return total
+
+
+def cmd_backup_download(c, args) -> None:
+    a = _find_app(c, args.name)
+    b = _backups(c, a)
+    _need_backups(b)
+    ok = [r for r in b.get("runs") or [] if r["status"] == "succeeded" and r["trigger"] != "restore" and r["kind"] in ("db", "bucket")]
+    if args.run_id is not None:
+        picks = [r for r in ok if r["id"] == args.run_id]
+        if not picks:
+            raise CliError(f"Run {args.run_id} is not a successful database or blob storage backup of {a['name']}. "
+                           f"See: picopaas backup list {a['name']}")
+    else:
+        picks, seen = [], set()
+        for r in ok:  # newest first: the latest successful run of each kind
+            if r["kind"] not in seen:
+                seen.add(r["kind"])
+                picks.append(r)
+        if not picks:
+            raise CliError(f"{a['name']} has no successful backup yet. Run one with: picopaas backup run {a['name']}")
+    if args.output and len(picks) > 1:
+        raise CliError("This app has more than one kind of backup, so -o is ambiguous. Pass a run id (see `picopaas backup list`).")
+    for r in picks:
+        e = _request(c, "POST", f"/apps/{a['id']}/backups/{r['id']}/download").json()
+        e = _wait_export(c, a, e["export_id"])
+        out = args.output or e.get("filename") or f"backup-{r['id']}"
+        total = _fetch(e["url"], out)
+        print(f"Downloaded {r['kind']} backup {r['id']} ({_mb(total)} MB) to {out}.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="picopaas",
@@ -550,6 +661,23 @@ def build_parser() -> argparse.ArgumentParser:
     g3.add_argument("--verify", action="store_true", help="check the DNS records and activate the domain")
     g3.add_argument("--remove", action="store_true", help="detach the custom domain")
     dm.set_defaults(fn=cmd_domain)
+    bk = sub.add_parser("backup", help="list, run, enable or download an app's backups")
+    bsub = bk.add_subparsers(dest="backup_cmd", required=True)
+    bl = bsub.add_parser("list", help="show backup settings and recent runs")
+    bl.add_argument("name", help="the app's name")
+    bl.set_defaults(fn=cmd_backup_list)
+    br = bsub.add_parser("run", help="start a backup now (one per app per hour)")
+    br.add_argument("name", help="the app's name")
+    br.set_defaults(fn=cmd_backup_run)
+    for word, h in (("enable", "turn on scheduled (daily) backups"), ("disable", "turn off scheduled backups (manual backups still work)")):
+        be = bsub.add_parser(word, help=h)
+        be.add_argument("name", help="the app's name")
+        be.set_defaults(fn=cmd_backup_enable)
+    bd = bsub.add_parser("download", help="download a backup as one file (default: the latest successful run of each kind)")
+    bd.add_argument("name", help="the app's name")
+    bd.add_argument("run_id", nargs="?", type=int, help="a run id from `backup list` (default: latest of each kind)")
+    bd.add_argument("-o", "--output", help="local file (default: the name the platform suggests)")
+    bd.set_defaults(fn=cmd_backup_download)
     ad = sub.add_parser("admin", help="platform administrator commands")
     asub = ad.add_subparsers(dest="admin_command", required=True)
     ab = asub.add_parser("backup", help="backup helpers").add_subparsers(dest="backup_command", required=True)

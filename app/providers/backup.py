@@ -62,6 +62,15 @@ class BackupRunner(ABC):
         """Allow the backup Jobs to reach the private-range IPs `endpoint` resolves to, on 443 (Spaces resolves to a private
         VPC IP inside DO, which the namespace's "public addresses only" rule excludes). Default: nothing to do (tests)."""
 
+    def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
+        """Presigned GET (as a download named `filename`) for an export object in the backup bucket, signed with the
+        platform's backup key. Raises BackupRunnerError."""
+        raise BackupRunnerError("downloads are not available")
+
+    def sweep_exports(self, older_than_seconds: int) -> int:
+        """Delete export objects older than `older_than_seconds`. Returns how many. Raises BackupRunnerError."""
+        return 0
+
     @abstractmethod
     def sweep(self, active: set[str]) -> int:
         """Delete Secrets labelled picopaas.io/backup whose name is not in `active` (a crash between Job end and
@@ -233,6 +242,39 @@ class KubeBackupRunner(BackupRunner):
         }
         self._kube.apply([policy])
         _egress_applied[:] = ips
+
+    def _s3(self) -> Any:
+        import boto3
+        from botocore.config import Config
+
+        return boto3.client(
+            "s3", region_name=config.BACKUP_REGION or "us-east-1", endpoint_url=config.backup_endpoint(),
+            aws_access_key_id=config.BACKUP_ACCESS_KEY_ID, aws_secret_access_key=config.BACKUP_SECRET_ACCESS_KEY,
+            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
+
+    def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
+        try:
+            return self._s3().generate_presigned_url(
+                "get_object", ExpiresIn=expires_seconds, HttpMethod="GET",
+                Params={"Bucket": config.BACKUP_BUCKET, "Key": key,
+                        "ResponseContentDisposition": f'attachment; filename="{filename}"'})
+        except Exception as exc:  # noqa: BLE001 - never echo the error text (it can contain the endpoint)
+            raise BackupRunnerError(f"could not sign the download ({type(exc).__name__})") from None
+
+    def sweep_exports(self, older_than_seconds: int) -> int:
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
+        try:
+            s3 = self._s3()
+            old: list[str] = []
+            for page in s3.get_paginator("list_objects_v2").paginate(Bucket=config.BACKUP_BUCKET, Prefix=config.BACKUP_EXPORT_PREFIX):
+                old += [o["Key"] for o in page.get("Contents") or [] if o["LastModified"] < cutoff]
+            for i in range(0, len(old), 500):
+                s3.delete_objects(Bucket=config.BACKUP_BUCKET, Delete={"Objects": [{"Key": k} for k in old[i:i + 500]], "Quiet": True})
+            return len(old)
+        except Exception as exc:  # noqa: BLE001
+            raise BackupRunnerError(f"could not sweep exports ({type(exc).__name__})") from None
 
     def sweep(self, active: set[str]) -> int:
         from app.providers.kube import _as_dict

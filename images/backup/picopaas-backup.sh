@@ -4,12 +4,14 @@
 #   MODE=backup   KIND=bucket  copy the app's bucket objects to $WORK/bucket (s5cmd, the app's own key), restic that dir
 #   MODE=restore  KIND=db      restic restore SNAPSHOT, drop the target DB's tables, load the dump (as the target's role)
 #   MODE=restore  KIND=bucket  restic restore SNAPSHOT, empty the target bucket, upload the files
+#   MODE=export   KIND=db|bucket  restic dump SNAPSHOT as ONE file (db: .sql.gz or .pgdump, bucket: .tar.gz) and upload it to
+#                              s3://$EXPORT_BUCKET/$EXPORT_KEY with the backup key (owner download; the API presigns it)
 #   MODE=purge                 forget every snapshot of the repo and prune (deleted-app retention expired)
 # Inputs (env, from the per-run Secret): ENGINE (mysql|pg), DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_CA,
 # SRC_ENDPOINT SRC_BUCKET SRC_REGION SRC_ACCESS_KEY SRC_SECRET_KEY (bucket kind: the app whose bucket is read; for a
 # restore, the TARGET app's bucket), RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 # AWS_DEFAULT_REGION (the backup repo's key only), SNAPSHOT (restore), KEEP_DAILY KEEP_WEEKLY KEEP_MONTHLY, TAG,
-# LIMIT_UPLOAD_KIB (optional), WORK_DIR (scratch, default /work; tests override).
+# EXPORT_ENDPOINT EXPORT_BUCKET EXPORT_KEY (export), LIMIT_UPLOAD_KIB (optional), WORK_DIR (scratch, default /work; tests override).
 # Output: the LAST stdout line is `PICOPAAS_RESULT {json}`; failures print `PICOPAAS_ERROR <short fixed text>` and exit
 # non-zero. Nothing here ever prints credentials, object keys, the repository URL or restic's own output on failure.
 # The app's bucket key reaches s5cmd only through that one command's environment (s3 below), never through arguments.
@@ -44,7 +46,7 @@ step "start mode=$MODE kind=$KIND"
 # Create the repo on first use ("cat config" succeeds only when it exists). A restore never creates one.
 step "opening the backup repository"
 if ! $RQ cat config >/dev/null 2>&1; then
-  [ "$MODE" = "restore" ] && fail "the backup repository could not be opened"
+  [ "$MODE" = "restore" ] || [ "$MODE" = "export" ] && fail "the backup repository could not be opened"
   step "creating the backup repository"
   $RQ init --quiet >/dev/null 2>&1 || fail "could not open or create the backup repository"
 fi
@@ -85,6 +87,38 @@ need_db() {
   fi
 }
 CA=""
+
+# --- export (owner download) ------------------------------------------------------------------
+
+if [ "$MODE" = "export" ]; then
+  : "${SNAPSHOT:?}" "${EXPORT_ENDPOINT:?}" "${EXPORT_BUCKET:?}" "${EXPORT_KEY:?}"
+  rm -rf "$WORK/restore" "$WORK/export.out"
+  mkdir -p "$WORK/restore"
+  step "reading the snapshot from the repository"
+  if [ "$KIND" = "bucket" ]; then
+    $RESTIC restore "$SNAPSHOT:$WORK/bucket" --target "$WORK/restore" >/dev/null 2>&1 \
+      || fail "restoring the snapshot from the repository failed"
+    step "packing the files"
+    tar -czf "$WORK/export.out" -C "$WORK/restore" . >/dev/null 2>&1 || fail "packing the files failed"
+  else
+    case "$EXPORT_KEY" in
+      *.pgdump) $RESTIC dump "$SNAPSHOT" db.pgdump > "$WORK/export.out" 2>/dev/null || fail "reading the snapshot from the repository failed" ;;
+      *) $RESTIC dump "$SNAPSHOT" db.sql 2>/dev/null | gzip -c > "$WORK/export.out"
+         # a pipeline's status is gzip's: a snapshot with no db.sql (wrong engine) dumps nothing, which gzip turns into a header
+         [ "$(gzip -dc "$WORK/export.out" | head -c 1 | wc -c | tr -d ' ')" = "1" ] || fail "the snapshot is not a MySQL dump" ;;
+    esac
+    [ -s "$WORK/export.out" ] || fail "reading the snapshot from the repository failed"
+  fi
+  rm -rf "$WORK/restore"
+  SIZE="$(wc -c < "$WORK/export.out" | tr -d ' ')"
+  step "uploading the file"
+  AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}" timeout -k 10 "$LONG_TIMEOUT" \
+    s5cmd --endpoint-url "$EXPORT_ENDPOINT" cp "$WORK/export.out" "s3://$EXPORT_BUCKET/$EXPORT_KEY" >/dev/null 2>"$TMP/s3.err" \
+    || fail "uploading the file failed"
+  rm -f "$WORK/export.out"
+  echo "PICOPAAS_RESULT {\"exported\":true,\"bytes\":$SIZE}"
+  exit 0
+fi
 
 # --- restore ----------------------------------------------------------------------------------
 

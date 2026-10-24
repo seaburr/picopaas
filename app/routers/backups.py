@@ -2,12 +2,16 @@
 
 The API never touches the cluster: POST only queues a `BackupRun`; the leader's scheduler tick (app/backups.py) starts
 the Job. Read-scope API keys can list but not create (the global read-only gate blocks every non-GET). Owner or
-platform admin only; anyone else gets 404. Download of a snapshot (presigned URL) is phase 1b.
+platform admin only; anyone else gets 404.
+
+Download: `POST /apps/{id}/backups/{run_id}/download` queues an export Job (the snapshot as one .sql.gz / .pgdump / .tar.gz file in
+the backup bucket's exports/ prefix, swept after an hour); `GET /apps/{id}/backups/exports/{export_id}` is polled and returns a
+10-minute presigned URL once the file is ready.
 
 Admin restore (`POST /admin/backups/{run_id}/restore`) queues a restore Job like a backup: it is admin-only, restores
 into ANOTHER app by default, and only over the source app when `overwrite_source` is set and that app is suspended.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +21,7 @@ from sqlalchemy.orm import Session
 from app import audit, backups, config, models
 from app.db import get_db
 from app.dependencies import get_active_user, require_platform_admin
+from app.providers.backup import BackupRunner, BackupRunnerError, KubeBackupRunner
 from app.routers.app_ops import _get_app_or_404
 
 router = APIRouter(prefix="/apps", tags=["backups"])
@@ -25,6 +30,11 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(
 DISABLED_MSG = "Backups aren't enabled on this platform."
 MISCONFIGURED_MSG = "Backups are enabled but the backup storage isn't configured yet. Ask an administrator."
 RUNS_SHOWN = 30
+
+
+def get_backup_runner() -> BackupRunner:
+    """Signs download URLs only (the API never starts Jobs). Overridden in tests with FakeBackupRunner."""
+    return KubeBackupRunner()
 
 
 class BackupRunOut(BaseModel):
@@ -86,7 +96,7 @@ def _out(db: Session, app: models.App) -> BackupsOut:
     runs = []
     if backups.enabled():
         runs = (db.query(models.BackupRun)
-                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger != "purge")
+                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export")))
                 .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc()).limit(RUNS_SHOWN).all())
     kinds = []
     for kind in backups.eligible_kinds(app):
@@ -95,7 +105,7 @@ def _out(db: Session, app: models.App) -> BackupsOut:
             kind=kind, last_backup_at=getattr(cfg, f"{p}_last_backup_at", None), last_status=getattr(cfg, f"{p}_last_status", None),
             last_error=getattr(cfg, f"{p}_last_error", None), last_bytes=getattr(cfg, f"{p}_last_bytes", None),
             repo_bytes=getattr(cfg, f"{p}_repo_bytes", 0) or 0))
-    on = cfg.enabled if cfg is not None else (backups.wants_backups(app) and backups.enabled())
+    on = cfg.enabled if cfg is not None else (backups.default_enabled(app) and backups.enabled())
     return BackupsOut(
         feature_enabled=backups.enabled(), configured=config.backups_configured(), enabled=on,
         schedule=cfg.schedule if cfg is not None else "daily",
@@ -204,3 +214,66 @@ def restore_backup(run_id: int, body: RestoreIn, db: Session = Depends(get_db),
                  f"run={run.id} from_run={source.id} from_app={source.app_id} kind={source.kind}"
                  + (" overwrite_source" if target.id == source.app_id else ""))
     return BackupRunOut.model_validate(run)
+
+
+class BackupExportOut(BaseModel):
+    export_id: int
+    run_id: int  # the backup run being downloaded
+    kind: str
+    status: str  # queued | running | ready | failed | expired
+    filename: Optional[str] = None
+    size_bytes: Optional[int] = None  # once ready
+    url: Optional[str] = None  # only when status == ready: presigned GET, valid url_expires_in seconds from this response
+    url_expires_in: Optional[int] = None
+    available_until: Optional[datetime] = None  # the file is deleted from staging after this
+    error: Optional[str] = None
+    created_at: datetime
+
+
+def _export_out(db: Session, app: models.App, run: models.BackupRun, runner: Optional[BackupRunner]) -> BackupExportOut:
+    source = db.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+    state = backups.export_state(run)
+    ext = (run.export_key or "").split(".", 1)[-1]
+    out = BackupExportOut(
+        export_id=run.id, run_id=run.source_run_id or 0, kind=run.kind, status=state, created_at=run.created_at,
+        filename=backups.export_filename(app, source, ext) if source is not None and run.export_key else None,
+        error=run.error if state == "failed" else None)
+    if state == "ready" and runner is not None and run.export_key and out.filename:
+        out.size_bytes = run.bytes_added
+        out.available_until = (run.finished_at or run.created_at) + timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)
+        try:
+            out.url = runner.presign_export(run.export_key, config.BACKUP_EXPORT_URL_SECONDS, out.filename)
+        except BackupRunnerError:
+            raise HTTPException(status_code=503, detail="We couldn't prepare the download link. Try again in a minute.") from None
+        out.url_expires_in = config.BACKUP_EXPORT_URL_SECONDS
+    return out
+
+
+@router.post("/{app_id}/backups/{run_id}/download", response_model=BackupExportOut, status_code=202)
+def start_download(app_id: int, run_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Prepare a succeeded database or blob storage backup as a single file (3 per app per hour). 202 + poll the export."""
+    app = _get_app_or_404(db, app_id, user)
+    _require_usable()
+    source = db.get(models.BackupRun, run_id)
+    if source is None or source.app_id != app.id:
+        raise HTTPException(status_code=404, detail="We can't find that backup run.")
+    try:
+        run, new = backups.enqueue_export(db, app, source)
+    except backups.ExportRefused as exc:
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(status_code=exc.status, detail=str(exc), headers=headers) from None
+    db.commit()
+    if new:
+        audit.record(db, user, "backup.download", "app", app.id, f"run={source.id} kind={source.kind} export={run.id}")
+    return _export_out(db, app, run, None)
+
+
+@router.get("/{app_id}/backups/exports/{export_id}", response_model=BackupExportOut)
+def get_download(app_id: int, export_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
+                 runner: BackupRunner = Depends(get_backup_runner)):
+    """Poll a download. When status is ready, `url` is a fresh 10-minute presigned GET (keep polling for another)."""
+    app = _get_app_or_404(db, app_id, user)
+    run = db.get(models.BackupRun, export_id)
+    if run is None or run.app_id != app.id or run.trigger != "export":
+        raise HTTPException(status_code=404, detail="We can't find that download.")
+    return _export_out(db, app, run, runner)

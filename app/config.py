@@ -249,6 +249,8 @@ DB_METRICS_CA = os.environ.get("DB_METRICS_CA", "")
 # 0008 is approved and the bucket + key exist. The backup bucket and its scoped key are SEPARATE from the tenant Spaces
 # credentials (SPACES_*); with any of them missing the feature reports "misconfigured" and does nothing.
 BACKUPS_ENABLED = os.environ.get("BACKUPS_ENABLED", "0") == "1"
+# Scheduled backups are opt-in: new per-app configs start disabled unless this is "1". Manual backups work regardless.
+BACKUP_DEFAULT_ENABLED = os.environ.get("BACKUP_DEFAULT_ENABLED", "0") == "1"
 BACKUP_BUCKET = os.environ.get("BACKUP_BUCKET", "")
 BACKUP_PREFIX = os.environ.get("BACKUP_PREFIX", "backups/")  # all repos live under <prefix>apps/<app id>/<kind>
 BACKUP_REGION = os.environ.get("BACKUP_REGION", "")
@@ -273,6 +275,10 @@ BACKUP_JOB_DEADLINE_SECONDS = int(os.environ.get("BACKUP_JOB_DEADLINE_SECONDS", 
 BACKUP_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_UPLOAD_LIMIT_KIB", 2048))  # per Job, so a backup can't saturate the node
 # Blob storage ("bucket" kind) is copied to an emptyDir before restic reads it, so the scratch size bounds what can be
 # backed up (the default bucket quota is 100 MB; admin overrides can go higher). Bigger buckets fail with a clear error.
+BACKUP_EXPORT_PREFIX = "exports/"  # owner download staging objects in the backup bucket
+BACKUP_EXPORT_TTL_SECONDS = int(os.environ.get("BACKUP_EXPORT_TTL_SECONDS", 3600))  # export objects are swept after this
+BACKUP_EXPORT_URL_SECONDS = 600  # presigned GET lifetime
+BACKUP_EXPORT_MAX_PER_HOUR = 3  # download requests per app per hour
 BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 1024**2))  # keep 2 Jobs inside deploy/platform/backup.yaml quota
 
 

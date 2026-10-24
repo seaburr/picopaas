@@ -325,7 +325,7 @@ class AppBackupConfig(Base):
     __tablename__ = "app_backup_config"
 
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), primary_key=True, autoincrement=False)
-    # Default True for apps with a database or volume; users may turn it off.
+    # Opt-in: new rows take config.BACKUP_DEFAULT_ENABLED (default off); existing rows keep their value.
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     schedule: Mapped[str] = mapped_column(String(8), nullable=False, default="daily", server_default="daily")  # daily|weekly|off
     repo_password_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -370,7 +370,7 @@ class BackupRun(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
     kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | volume | bucket
-    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore | export
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -383,6 +383,9 @@ class BackupRun(Base):
     # trigger == "restore": app_id is the TARGET app; this is the backup run (succeeded snapshot) being restored.
     # No FK: the source run/app may be long gone from the app's point of view (retained repo after deletion).
     source_run_id: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # trigger == "export": app_id owns the source run (source_run_id); the finished export is this object in the backup
+    # bucket (deleted ~1 hour after it is written). The bytes of the export are stored in bytes_added.
+    export_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
 
 class AuditLog(Base):

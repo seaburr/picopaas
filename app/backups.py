@@ -71,8 +71,14 @@ def eligible_kinds(app: models.App) -> list[str]:
 
 
 def wants_backups(app: models.App) -> bool:
-    """Default for the per-app setting: on for apps with a database, blob storage or volume (the unrecoverable resources)."""
+    """True when the app has (or asked for) a database, blob storage or volume, i.e. something worth backing up."""
     return bool(app.want_db or app.want_storage or app.volume_size_gi)
+
+
+def default_enabled(app: models.App) -> bool:
+    """Initial value of the per-app "scheduled backups" setting. Opt-in: off unless BACKUP_DEFAULT_ENABLED is set (and then
+    only for apps with something to back up). Existing rows keep their value; manual backups work either way."""
+    return config.BACKUP_DEFAULT_ENABLED and wants_backups(app)
 
 
 # --- scheduling -------------------------------------------------------------------------------
@@ -91,7 +97,7 @@ def compute_next(app_id: int, after: datetime, schedule: str) -> Optional[dateti
 def ensure_config(session: Session, app: models.App, now: Optional[datetime] = None) -> models.AppBackupConfig:
     cfg = session.get(models.AppBackupConfig, app.id)
     if cfg is None:
-        cfg = models.AppBackupConfig(app_id=app.id, enabled=wants_backups(app), schedule="daily",
+        cfg = models.AppBackupConfig(app_id=app.id, enabled=default_enabled(app), schedule="daily",
                                      next_backup_at=_now(now))  # first backup right away, then the daily slot
         session.add(cfg)
         session.commit()
@@ -116,7 +122,8 @@ def repo_url(app_id: int, kind: str) -> str:
 
 def active_run(session: Session, app_id: int) -> Optional[models.BackupRun]:
     return session.execute(
-        select(models.BackupRun).where(models.BackupRun.app_id == app_id, models.BackupRun.status.in_(ACTIVE))
+        select(models.BackupRun).where(models.BackupRun.app_id == app_id, models.BackupRun.status.in_(ACTIVE),
+                                       models.BackupRun.trigger != "export")  # a download never blocks a backup
         .order_by(models.BackupRun.id).limit(1)
     ).scalar_one_or_none()
 
@@ -169,13 +176,15 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     run.status = "succeeded" if ok else "failed"
     run.finished_at = now
     run.error = None if ok else (redact(error) or "the backup failed")[:255]
-    if ok and run.trigger not in ("purge", "restore"):
+    if ok and run.trigger == "export":
+        run.bytes_added = _int(result.get("bytes"))
+    elif ok and run.trigger not in ("purge", "restore"):
         run.snapshot_id = str(result.get("snapshot_id") or "")[:64] or None
         run.bytes_added = _int(result.get("bytes_added"))
         run.repo_bytes = _int(result.get("repo_bytes"))
     cfg = session.get(models.AppBackupConfig, run.app_id)
-    if run.trigger == "restore":
-        pass  # a restore changes nothing about the app's own backup summary
+    if run.trigger in ("restore", "export"):
+        pass  # neither changes anything about the app's own backup summary
     elif cfg is not None and run.trigger == "purge":
         if ok:
             cfg.purged_at = now
@@ -193,7 +202,7 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
             if run.repo_bytes is not None:
                 setattr(cfg, f"{p}_repo_bytes", run.repo_bytes)
             cfg.last_success_at = now
-    if not ok and run.trigger not in ("purge", "restore"):
+    if not ok and run.trigger not in ("purge", "restore", "export"):
         _event(session, run.app_id, run.id,
                f"Backup of your {KIND_LABEL.get(run.kind, run.kind)} failed: {run.error}. "
                "Open Settings > Backups for details.", now)
@@ -204,6 +213,10 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         except Exception as exc:  # noqa: BLE001 - the Secret sweep retries
             log.warning("backup run %s: cleanup failed (%s)", run.id, type(exc).__name__)
     detail = f"{run.kind} {run.trigger}" + ("" if ok else f": {run.error}")
+    if run.trigger == "export":
+        audit.record(session, None, "backup.export_succeeded" if ok else "backup.export_failed", "app", run.app_id,
+                     f"run={run.id} from_run={run.source_run_id} {detail}", actor_email="system")
+        return
     if run.trigger == "restore":
         audit.record(session, None, "backup.restore_succeeded" if ok else "backup.restore_failed", "app", run.app_id,
                      f"run={run.id} from_run={run.source_run_id} {detail}", actor_email="system")
@@ -234,6 +247,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
             log.warning("backup: removed %d leftover job secret(s)", swept)
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: secret sweep failed (%s)", type(exc).__name__)
+    _sweep_exports(runner, now)
     _schedule(session, now)
     _enqueue_purges(session, now)
     _start_queued(session, runner, now)
@@ -245,6 +259,22 @@ def _ensure_egress(runner: BackupRunner) -> None:
         runner.ensure_spaces_egress(config.backup_endpoint())
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: could not update the Spaces egress policy (%s)", type(exc).__name__)
+
+
+_last_export_sweep: list[datetime] = []
+
+
+def _sweep_exports(runner: BackupRunner, now: datetime) -> None:
+    """Delete export objects older than the TTL (at most every 5 minutes). Never raises."""
+    if _last_export_sweep and now - _last_export_sweep[0] < timedelta(minutes=5):
+        return
+    _last_export_sweep[:] = [now]
+    try:
+        n = runner.sweep_exports(config.BACKUP_EXPORT_TTL_SECONDS)
+        if n:
+            log.info("backup: removed %d expired export object(s)", n)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("backup: export sweep failed (%s)", type(exc).__name__)
 
 
 def _running(session: Session) -> list[models.BackupRun]:
@@ -272,12 +302,13 @@ def _poll(session: Session, runner: BackupRunner, now: datetime) -> None:
 
 
 def _schedule(session: Session, now: datetime) -> None:
-    """Give every app with a database a config row, then queue a run for each app that is due."""
+    """Give every app with something to back up a config row (only when scheduled backups are on by default; otherwise
+    rows appear when the owner opts in or runs a manual backup), then queue a run for each enabled app that is due."""
     have = set(session.execute(select(models.AppBackupConfig.app_id)).scalars())
     for app in session.execute(
         select(models.App).where(models.App.deleted_at.is_(None))
     ).scalars():
-        if app.id not in have and wants_backups(app) and eligible_kinds(app):
+        if app.id not in have and default_enabled(app) and eligible_kinds(app):
             ensure_config(session, app, now)
     due = session.execute(
         select(models.AppBackupConfig, models.App).join(models.App, models.App.id == models.AppBackupConfig.app_id)
@@ -322,7 +353,7 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
     if not queued:
         return
     running = _running(session)
-    busy_servers = _db_servers(session, [r for r in running if r.kind == "db"])
+    busy_servers = _db_servers(session, [r for r in running if r.kind == "db" and r.trigger != "export"])
     total = session.execute(select(func.coalesce(func.sum(
         models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes
         + models.AppBackupConfig.bucket_repo_bytes), 0))).scalar() or 0
@@ -332,7 +363,8 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
         app = session.get(models.App, run.app_id)
         cfg = session.get(models.AppBackupConfig, run.app_id)
         restore = run.trigger == "restore"
-        if app is None or (cfg is None and not restore):
+        export = run.trigger == "export"
+        if app is None or (cfg is None and not restore and not export):
             _finish(session, run, None, ok=False, error="the app no longer exists", now=now)
             continue
         if app.deleted_at is not None and run.trigger not in ("final", "purge"):
@@ -340,13 +372,13 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
             continue
         server_id = app.database.db_server_id if app.database is not None else None
         # one dump or restore at a time per DB server (connection budget)
-        if run.kind == "db" and run.trigger != "purge":
+        if run.kind == "db" and run.trigger not in ("purge", "export"):
             if server_id is None:
                 _finish(session, run, None, ok=False, error="the app has no database", now=now)
                 continue
             if server_id in busy_servers:
                 continue
-        if run.kind in ("db", "bucket") and run.trigger not in ("purge", "restore"):
+        if run.kind in ("db", "bucket") and run.trigger not in ("purge", "restore", "export"):
             if repo_bytes(cfg) >= config.BACKUP_MAX_BYTES_PER_APP:
                 _finish(session, run, None, ok=False,
                         error=f"this app's backups reached the {config.BACKUP_MAX_BYTES_PER_APP // 1024**2} MB backup storage cap", now=now)
@@ -359,7 +391,10 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
                         error=f"the bucket is larger than the {config.BACKUP_BUCKET_MAX_BYTES // 1024**2} MB a backup can copy", now=now)
                 continue
         try:
-            env = _build_restore_env(session, run, app, now) if restore else _build_env(session, app, cfg, run)
+            if export:
+                env = _build_export_env(session, run)
+            else:
+                env = _build_restore_env(session, run, app, now) if restore else _build_env(session, app, cfg, run)
             spec = BackupJobSpec(name=f"bk-{run.id}", run_id=run.id, app_id=app.id, kind=run.kind, env=env,
                                  scratch_mib=_scratch_mib(run))
         except ValueError as exc:
@@ -379,6 +414,8 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
 
 
 def _scratch_mib(run: models.BackupRun) -> int:
+    if run.trigger == "export":  # bucket: the restored tree plus the tarball; db: the compressed dump
+        return 2 * (config.BACKUP_BUCKET_MAX_BYTES // 1024**2) + 64 if run.kind == "bucket" else 256
     if run.kind != "bucket" or run.trigger == "purge":
         return 0
     return config.BACKUP_BUCKET_MAX_BYTES // 1024**2 + 64
@@ -522,6 +559,85 @@ def _build_restore_env(session: Session, run: models.BackupRun, target: models.A
             raise ValueError("the target app has no database")
         env.update(_db_env(target.database))
     return env
+
+
+# --- owner download (export) ------------------------------------------------------------------
+
+EXPORT_STATES = ("queued", "running", "ready", "failed", "expired")
+
+
+class ExportRefused(Exception):
+    """Raised by enqueue_export with a message that is safe to show to the caller."""
+
+    def __init__(self, message: str, status: int = 422, retry_after: Optional[int] = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+def export_extension(app: models.App, kind: str) -> str:
+    if kind == "bucket":
+        return "tar.gz"
+    return "pgdump" if app.database is not None and app.database.server is not None and app.database.server.engine == "pg" else "sql.gz"
+
+
+def export_filename(app: models.App, source: models.BackupRun, ext: str) -> str:
+    return f"{app.name}-{source.kind}-backup{source.id}.{ext}"
+
+
+def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
+                   now: Optional[datetime] = None) -> tuple[models.BackupRun, bool]:
+    """Queue the materialisation of `source` (a succeeded db/bucket backup of `app`) as ONE downloadable file. Idempotent for a
+    snapshot that already has a live export (returned with created=False); at most one active export per app and BACKUP_EXPORT_MAX_PER_HOUR new ones per hour."""
+    now = _now(now)
+    if source.app_id != app.id or source.trigger in ("purge", "restore", "export") or source.kind not in RESTORABLE:
+        raise ExportRefused("Only database and blob storage backups can be downloaded.")
+    if source.status != "succeeded" or not source.snapshot_id:
+        raise ExportRefused("That backup run didn't finish successfully, so there is nothing to download.")
+    cfg = session.get(models.AppBackupConfig, app.id)
+    if cfg is None or cfg.repo_password_enc is None or cfg.purged_at is not None:
+        raise ExportRefused("The repository for that backup has been purged.", 410)
+    exports = list(session.execute(
+        select(models.BackupRun).where(models.BackupRun.app_id == app.id, models.BackupRun.trigger == "export")
+        .order_by(models.BackupRun.id.desc())).scalars())
+    live = [e for e in exports if e.source_run_id == source.id and (
+        e.status in ACTIVE or (e.status == "succeeded" and e.finished_at is not None
+                               and now - _naive(e.finished_at) < timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)))]
+    if live:
+        return live[0], False
+    if any(e.status in ACTIVE for e in exports):
+        raise ExportRefused("Another download is being prepared for this app. Wait for it to finish.", 409)
+    recent = sorted(_naive(e.created_at) for e in exports if now - _naive(e.created_at) < timedelta(hours=1))
+    if len(recent) >= config.BACKUP_EXPORT_MAX_PER_HOUR:
+        wait = int((recent[0] + timedelta(hours=1) - now).total_seconds()) + 1
+        raise ExportRefused(f"You can prepare {config.BACKUP_EXPORT_MAX_PER_HOUR} downloads per hour. "
+                            f"Try again in {max(1, wait // 60)} minutes.", 429, retry_after=wait)
+    run = models.BackupRun(app_id=app.id, kind=source.kind, trigger="export", status="queued", created_at=now,
+                           source_run_id=source.id)
+    session.add(run)
+    session.flush()
+    run.export_key = f"{config.BACKUP_EXPORT_PREFIX}{app.id}/{run.id}.{export_extension(app, source.kind)}"
+    return run, True
+
+
+def _build_export_env(session: Session, run: models.BackupRun) -> dict[str, str]:
+    source = session.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
+    cfg = session.get(models.AppBackupConfig, source.app_id) if source is not None else None
+    if source is None or cfg is None or not source.snapshot_id or cfg.purged_at is not None or not run.export_key:
+        raise ValueError("the backup to download is gone")
+    env = _repo_env(session, source.app_id, source.kind, cfg)
+    env.update({"MODE": "export", "KIND": source.kind, "SNAPSHOT": source.snapshot_id, "TAG": "export",
+                "EXPORT_ENDPOINT": config.backup_endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET,
+                "EXPORT_KEY": run.export_key})
+    return env
+
+
+def export_state(run: models.BackupRun, now: Optional[datetime] = None) -> str:
+    """queued | running | ready | failed | expired (the object is swept EXPORT_TTL after the Job finished)."""
+    if run.status == "succeeded":
+        age = _now(now) - _naive(run.finished_at or run.created_at)
+        return "expired" if age >= timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS) else "ready"
+    return run.status
 
 
 # --- app delete -------------------------------------------------------------------------------

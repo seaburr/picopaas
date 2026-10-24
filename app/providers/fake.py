@@ -454,6 +454,19 @@ class FakeBackupRunner(BackupRunner):
         self.fail_start = False
         self.cleaned: list[str] = []
         self.egress_endpoints: list[str] = []
+        self.presigned: list[tuple[str, int, str]] = []  # (key, expires_seconds, filename)
+        self.export_sweeps: list[int] = []  # older_than_seconds of each sweep_exports call
+        self.fail_presign = False
+
+    def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
+        if self.fail_presign:
+            raise BackupRunnerError("could not sign the download (FakeError)")
+        self.presigned.append((key, expires_seconds, filename))
+        return f"https://backups.example.invalid/{key}?X-Amz-Expires={expires_seconds}&sig=not-a-signature"
+
+    def sweep_exports(self, older_than_seconds: int) -> int:
+        self.export_sweeps.append(older_than_seconds)
+        return 0
 
     def start(self, spec: BackupJobSpec) -> None:
         if self.fail_start:

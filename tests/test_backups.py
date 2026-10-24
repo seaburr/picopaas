@@ -24,6 +24,7 @@ def on(monkeypatch):
     monkeypatch.setattr(config, "BACKUP_REGION", "sfo3")
     monkeypatch.setattr(config, "BACKUP_ACCESS_KEY_ID", "backup-key-id")
     monkeypatch.setattr(config, "BACKUP_SECRET_ACCESS_KEY", "not-the-backup-secret")
+    monkeypatch.setattr(config, "BACKUP_DEFAULT_ENABLED", True)  # the original (on-by-default) behaviour; see "opt-in" tests
 
 
 @pytest.fixture()
@@ -1051,3 +1052,334 @@ def test_script_db_dump_has_connect_timeouts_and_step_lines():
     assert "mariadb-dump --connect-timeout=20" in text and "PGCONNECT_TIMEOUT=20" in text
     assert "timeout -k 10 $QUICK_TIMEOUT restic" in text and "timeout -k 10 $LONG_TIMEOUT restic" in text
     assert "dumping the database into the repository" in text
+
+
+# --- opt-in: scheduled backups are off by default ---
+
+@pytest.fixture()
+def optin(on, monkeypatch):
+    monkeypatch.setattr(config, "BACKUP_DEFAULT_ENABLED", False)
+
+
+def test_default_is_opt_in(monkeypatch):
+    import importlib
+    monkeypatch.delenv("BACKUP_DEFAULT_ENABLED", raising=False)
+    assert importlib.reload(config).BACKUP_DEFAULT_ENABLED is False
+    monkeypatch.setenv("BACKUP_DEFAULT_ENABLED", "1")
+    assert importlib.reload(config).BACKUP_DEFAULT_ENABLED is True
+    monkeypatch.delenv("BACKUP_DEFAULT_ENABLED")
+    importlib.reload(config)
+
+
+def test_optin_scheduler_creates_no_rows_and_runs_nothing(optin, user, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    backups.tick(db_session, runner, NOW)
+    assert runner.started == [] and db_session.get(models.AppBackupConfig, aid) is None
+    out = user.get(f"/apps/{aid}/backups").json()
+    assert out["enabled"] is False and out["state"] == "disabled"
+
+
+def test_optin_user_can_enable_then_it_runs(optin, user, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    r = user.patch(f"/apps/{aid}/backups", json={"enabled": True})
+    assert r.status_code == 200 and r.json()["enabled"] is True
+    backups.tick(db_session, runner, datetime.utcnow() + timedelta(minutes=1))  # the first backup is due right away
+    assert [s.env["MODE"] for s in runner.started] == ["backup"]
+    assert db_session.query(models.BackupRun).one().trigger == "scheduled"
+
+
+def test_optin_manual_backup_works_while_scheduled_disabled(optin, user, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    assert user.post(f"/apps/{aid}/backups").status_code == 202
+    cfg = db_session.get(models.AppBackupConfig, aid)
+    assert cfg.enabled is False  # the manual run did not opt the app in
+    assert user.post(f"/apps/{aid}/backups").status_code == 409  # active-run rule unchanged
+    backups.tick(db_session, runner, NOW)
+    assert len(runner.started) == 1
+    runner.finish(runner.started[0].name)
+    backups.tick(db_session, runner, NOW + timedelta(minutes=2))
+    assert db_session.query(models.BackupRun).one().status == "succeeded"
+    backups.tick(db_session, runner, NOW + timedelta(days=3))  # still no scheduled run
+    assert len(runner.started) == 1
+    assert user.post(f"/apps/{aid}/backups").status_code in (202, 429)  # hourly limit unchanged (429 within the hour)
+
+
+def test_existing_rows_keep_their_value(optin, user, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    cfg = backups.ensure_config(db_session, db_session.get(models.App, aid), NOW)
+    cfg.enabled = True
+    db_session.commit()
+    backups.tick(db_session, runner, NOW)
+    assert len(runner.started) == 1
+
+
+def test_optin_delete_after_manual_backup_keeps_repos_without_final_backup(optin, user, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    user.post(f"/apps/{aid}/backups")
+    backups.tick(db_session, runner, NOW)
+    runner.finish(runner.started[0].name)
+    backups.tick(db_session, runner, NOW)
+    user.delete(f"/apps/{aid}")
+    _sweep(db_session, FakeKubeProvider())
+    assert db_session.get(models.App, aid).status == "deleted"
+    assert db_session.query(models.BackupRun).filter_by(trigger="final").count() == 0
+    assert db_session.get(models.AppBackupConfig, aid).deleted_retention_until is not None
+
+
+# --- owner downloads (export) ---
+
+@pytest.fixture()
+def dl(on, user, admin, db_session, runner):
+    from app.main import app as fastapi_app
+    from app.routers.backups import get_backup_runner
+    fastapi_app.dependency_overrides[get_backup_runner] = lambda: runner
+    aid = _ghost_like(user, db_session, "devlog")
+    run_db = _succeeded(db_session, aid, "db", "d0d0d0d0")
+    run_bk = _succeeded(db_session, aid, "bucket", "b0b0b0b0")
+    db_session.get(models.AppBackupConfig, aid).next_backup_at = NOW + timedelta(days=30)
+    db_session.commit()
+    return aid, run_db, run_bk
+
+
+def _finish_export(db_session, runner, now=None):
+    backups.tick(db_session, runner, now or datetime.utcnow())
+    name = [s.name for s in runner.started][-1]
+    runner.finish(name, {"exported": True, "bytes": 4242})
+    backups.tick(db_session, runner, now or datetime.utcnow())
+
+
+def test_download_flow_db(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    r = user.post(f"/apps/{aid}/backups/{run_db}/download")
+    assert r.status_code == 202, r.text
+    ex = r.json()
+    assert ex["status"] == "queued" and ex["run_id"] == run_db and ex["url"] is None and ex["kind"] == "db"
+    assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "queued"
+    backups.tick(db_session, runner, datetime.utcnow())
+    spec = runner.started[-1]
+    env = spec.env
+    assert env["MODE"] == "export" and env["KIND"] == "db" and env["SNAPSHOT"] == "d0d0d0d0"
+    assert env["RESTIC_REPOSITORY"].endswith(f"/backups/apps/{aid}/db")
+    assert env["EXPORT_BUCKET"] == "picopaas-backups" and env["EXPORT_KEY"] == f"exports/{aid}/{ex['export_id']}.sql.gz"
+    assert "DB_PASSWORD" not in env and "SRC_SECRET_KEY" not in env  # an export never touches the app's own credentials
+    assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "running"
+    runner.finish(spec.name, {"exported": True, "bytes": 4242})
+    backups.tick(db_session, runner, datetime.utcnow())
+    got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
+    assert got["status"] == "ready" and got["size_bytes"] == 4242 and got["url_expires_in"] == 600
+    assert got["filename"] == f"devlog-db-backup{run_db}.sql.gz" and got["url"].startswith("https://")
+    assert runner.presigned[-1] == (f"exports/{aid}/{ex['export_id']}.sql.gz", 600, got["filename"])
+    log = db_session.query(models.AuditLog).filter_by(action="backup.download").all()
+    assert len(log) == 1 and "https://" not in log[0].detail and "sig=" not in log[0].detail
+
+
+def test_download_bucket_and_scratch(dl, user, db_session, runner):
+    aid, _, run_bk = dl
+    ex = user.post(f"/apps/{aid}/backups/{run_bk}/download").json()
+    backups.tick(db_session, runner, datetime.utcnow())
+    spec = runner.started[-1]
+    assert spec.env["KIND"] == "bucket" and spec.env["EXPORT_KEY"].endswith(".tar.gz")
+    assert spec.scratch_mib == 2 * (config.BACKUP_BUCKET_MAX_BYTES // 1024**2) + 64
+    secret, job = job_manifests(spec)
+    assert job["spec"]["backoffLimit"] == 0 and job["spec"]["activeDeadlineSeconds"] == config.BACKUP_JOB_DEADLINE_SECONDS
+
+
+def test_download_postgres_extension(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    db_session.get(models.App, aid).database.server.engine = "pg"
+    db_session.commit()
+    ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").status_code == 200
+    assert db_session.get(models.BackupRun, ex["export_id"]).export_key.endswith(".pgdump")
+
+
+def test_download_does_not_block_backups_or_show_in_runs(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    user.post(f"/apps/{aid}/backups/{run_db}/download")
+    backups.tick(db_session, runner, datetime.utcnow())
+    assert user.post(f"/apps/{aid}/backups").status_code == 202  # export is running; manual backup still allowed
+    runs = user.get(f"/apps/{aid}/backups").json()["runs"]
+    assert all(r["trigger"] != "export" for r in runs)
+    cfg = db_session.get(models.AppBackupConfig, aid)
+    assert cfg.last_status is None  # an export never touches the backup summary
+
+
+def test_download_idempotent_one_active_and_rate_limit(dl, user, db_session, runner):
+    aid, run_db, run_bk = dl
+    a = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    assert user.post(f"/apps/{aid}/backups/{run_db}/download").json()["export_id"] == a["export_id"]  # same snapshot: reuse
+    assert user.post(f"/apps/{aid}/backups/{run_bk}/download").status_code == 409  # one active export per app
+    assert db_session.query(models.AuditLog).filter_by(action="backup.download").count() == 1
+    now = datetime.utcnow()
+    for _ in range(2):  # finish it, then make two more to reach 3 in the hour
+        _finish_export(db_session, runner, now)
+        row = db_session.query(models.BackupRun).filter_by(trigger="export").order_by(models.BackupRun.id.desc()).first()
+        row.finished_at = now - timedelta(hours=2)  # no longer a live export, still counted by created_at
+        db_session.commit()
+        r = user.post(f"/apps/{aid}/backups/{run_db}/download")
+        assert r.status_code == 202
+    _finish_export(db_session, runner, now)
+    db_session.query(models.BackupRun).filter_by(trigger="export").update({"finished_at": now - timedelta(hours=2)})
+    db_session.commit()
+    r = user.post(f"/apps/{aid}/backups/{run_db}/download")
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+    # an hour later it is allowed again
+    for e in db_session.query(models.BackupRun).filter_by(trigger="export"):
+        e.created_at = now - timedelta(hours=2)
+    db_session.commit()
+    assert user.post(f"/apps/{aid}/backups/{run_db}/download").status_code == 202
+
+
+def test_download_expires_and_failure_reports_error(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    _finish_export(db_session, runner)
+    row = db_session.get(models.BackupRun, ex["export_id"])
+    row.finished_at = datetime.utcnow() - timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS + 5)
+    db_session.commit()
+    got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
+    assert got["status"] == "expired" and got["url"] is None
+    row.status, row.error, row.created_at = "failed", "uploading the file failed", datetime.utcnow()
+    db_session.commit()
+    got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
+    assert got["status"] == "failed" and got["error"] == "uploading the file failed"
+
+
+def test_download_failure_cleans_up_and_audits_without_event(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    backups.tick(db_session, runner, datetime.utcnow())
+    runner.fail(runner.started[-1].name, "uploading the file failed")
+    backups.tick(db_session, runner, datetime.utcnow())
+    assert runner.secrets == {} and runner.cleaned
+    assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "failed"
+    assert db_session.query(models.AuditLog).filter_by(action="backup.export_failed").count() == 1
+    assert db_session.query(models.AppEvent).filter_by(kind="backup_failed").count() == 0
+
+
+def test_download_authz_and_validation(dl, user, other, admin, db_session, runner):
+    aid, run_db, _ = dl
+    assert other.post(f"/apps/{aid}/backups/{run_db}/download").status_code == 404
+    ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    assert other.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").status_code == 404
+    assert admin.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").status_code == 200  # admins can fetch
+    assert user.post(f"/apps/{aid}/backups/9999/download").status_code == 404
+    assert user.get(f"/apps/{aid}/backups/exports/{run_db}").status_code == 404  # not an export row
+    # a run of another app is not reachable through this app's path
+    other_app = _app_with_db(user, db_session, "other-app")
+    foreign = _succeeded(db_session, other_app, "db", "f0f0f0f0")
+    assert user.post(f"/apps/{aid}/backups/{foreign}/download").status_code == 404
+    failed = models.BackupRun(app_id=aid, kind="db", trigger="manual", status="failed", created_at=NOW)
+    db_session.add(failed)
+    db_session.commit()
+    assert user.post(f"/apps/{aid}/backups/{failed.id}/download").status_code == 422
+
+
+def test_download_admin_can_start_and_purged_repo_is_gone(dl, user, admin, db_session, runner):
+    aid, run_db, _ = dl
+    assert admin.post(f"/apps/{aid}/backups/{run_db}/download").status_code == 202
+    db_session.query(models.BackupRun).filter_by(trigger="export").delete()
+    db_session.get(models.AppBackupConfig, aid).purged_at = NOW
+    db_session.commit()
+    assert user.post(f"/apps/{aid}/backups/{run_db}/download").status_code == 410
+
+
+def test_download_flag_off_and_presign_failure(dl, user, db_session, runner, monkeypatch):
+    aid, run_db, _ = dl
+    ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
+    _finish_export(db_session, runner)
+    runner.fail_presign = True
+    assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").status_code == 503
+    monkeypatch.setattr(config, "BACKUPS_ENABLED", False)
+    assert user.post(f"/apps/{aid}/backups/{run_db}/download").status_code == 422
+
+
+def test_tick_sweeps_export_objects_after_ttl(on, runner, db_session):
+    from app.backups import _last_export_sweep
+    _last_export_sweep.clear()
+    backups.tick(db_session, runner, NOW)
+    assert runner.export_sweeps == [config.BACKUP_EXPORT_TTL_SECONDS] == [3600]
+    backups.tick(db_session, runner, NOW + timedelta(minutes=1))
+    assert len(runner.export_sweeps) == 1  # throttled
+    backups.tick(db_session, runner, NOW + timedelta(minutes=6))
+    assert len(runner.export_sweeps) == 2
+
+
+def test_migration_adds_export_key():
+    from alembic.script import ScriptDirectory
+    from alembic.config import Config
+    sd = ScriptDirectory.from_config(Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini")))
+    assert sd.get_heads() == ["e5b1c7d9a2f4"] or len(sd.get_heads()) == 1
+    assert sd.get_revision("e5b1c7d9a2f4").down_revision == "d4a9e1b7c3f2"
+
+
+def _export_stubs(tmp_path):
+    import stat
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    calls = tmp_path / "calls.log"
+    up = tmp_path / "uploaded"
+    up.mkdir()
+
+    def stub(name, body):
+        p = bindir / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+
+    stub("restic", f'echo "restic $@" >> {calls}\n'
+         'CMD=""; for a in "$@"; do case "$a" in dump|restore|cat) CMD=$a; break;; esac; done\n'
+         'case "$CMD" in\n'
+         '  dump) case "$*" in *db.sql*) echo "CREATE TABLE t (id int);";; *db.pgdump*) printf PGDMP;; esac; exit 0;;\n'
+         '  restore) T=""; while [ $# -gt 0 ]; do [ "$1" = --target ] && T="$2"; shift; done; mkdir -p "$T/sub"; echo one > "$T/a.txt"; echo two > "$T/sub/b.txt"; exit 0;;\n'
+         'esac\nexit 0\n')
+    stub("s5cmd", f'echo "s5cmd $@ KEY=$AWS_ACCESS_KEY_ID" >> {calls}\n'
+         'while [ "$1" != cp ]; do shift; done; shift\n'
+         f'cp "$1" {up}/out.bin; exit 0\n')
+    work, scratch = tmp_path / "work", tmp_path / "tmp"
+    work.mkdir()
+    scratch.mkdir()
+    env = {"PATH": f"{bindir}:/usr/bin:/bin", "RESTIC_REPOSITORY": "s3:x/y", "RESTIC_PASSWORD": "not-the-password",
+           "AWS_ACCESS_KEY_ID": "backup-key-id", "AWS_SECRET_ACCESS_KEY": "not-the-backup-secret", "MODE": "export",
+           "SNAPSHOT": "cafe0123", "EXPORT_ENDPOINT": "https://s3.example", "EXPORT_BUCKET": "bk",
+           "WORK_DIR": str(work), "TMP_DIR": str(scratch)}
+    return env, calls, up
+
+
+def test_script_export_db_gzips_and_uploads(tmp_path):
+    import gzip
+    env, calls, up = _export_stubs(tmp_path)
+    r = _run_script({**env, "KIND": "db", "EXPORT_KEY": "exports/1/2.sql.gz"}, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    last = r.stdout.strip().splitlines()[-1]
+    assert last.startswith('PICOPAAS_RESULT {"exported":true,"bytes":')
+    assert gzip.decompress((up / "out.bin").read_bytes()).decode().startswith("CREATE TABLE")
+    log = calls.read_text()
+    assert "dump cafe0123 db.sql" in log and "cp " in log and "s3://bk/exports/1/2.sql.gz" in log
+    assert "init" not in log and "not-the-backup-secret" not in r.stdout + r.stderr  # never creates a repo
+    assert "PICOPAAS_STEP uploading the file" in r.stdout
+
+
+def test_script_export_pg_and_bucket(tmp_path):
+    import tarfile
+    env, calls, up = _export_stubs(tmp_path)
+    r = _run_script({**env, "KIND": "db", "EXPORT_KEY": "exports/1/3.pgdump"}, tmp_path)
+    assert r.returncode == 0 and (up / "out.bin").read_bytes() == b"PGDMP"
+    r = _run_script({**env, "KIND": "bucket", "EXPORT_KEY": "exports/1/4.tar.gz"}, tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    with tarfile.open(up / "out.bin") as t:
+        names = sorted(n.lstrip("./") for n in t.getnames())
+    assert "a.txt" in names and "sub/b.txt" in names
+    assert f"restore cafe0123:{tmp_path}/work/bucket --target {tmp_path}/work/restore" in calls.read_text()
+    assert not (tmp_path / "work" / "restore").exists()
+
+
+def test_script_export_wrong_engine_and_missing_repo_fail_closed(tmp_path):
+    env, calls, up = _export_stubs(tmp_path)
+    # restic dump of a name that is not in the snapshot prints nothing
+    (tmp_path / "bin" / "restic").write_text("#!/bin/sh\nexit 0\n")
+    r = _run_script({**env, "KIND": "db", "EXPORT_KEY": "exports/1/2.sql.gz"}, tmp_path)
+    assert r.returncode == 1 and "PICOPAAS_ERROR the snapshot is not a MySQL dump" in r.stdout
+    assert not (up / "out.bin").exists()
+    (tmp_path / "bin" / "restic").write_text("#!/bin/sh\n[ \"$1\" = cat ] && exit 1\nexit 0\n")
+    r = _run_script({**env, "KIND": "db", "EXPORT_KEY": "exports/1/2.sql.gz"}, tmp_path)
+    assert r.returncode == 1 and "PICOPAAS_ERROR the backup repository could not be opened" in r.stdout
