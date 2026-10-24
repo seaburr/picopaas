@@ -5,6 +5,12 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] START: committing backups race lock + exports (backend, frontend, docs) in chunks.
+- 2026-10-24 [scm-security] DONE: committed backups race lock/exports (api, frontend, docs); gitleaks clean, no findings; pushed, watching CI/image/deploy.
+- 2026-10-24 [backend-dev] DONE (uncommitted): backups double-click race closed (backups.lock_app: FOR UPDATE on AppBackupConfig in manual backup + export enqueue; PENTEST fixed; QUESTIONS trimmed) and owner come-back-later downloads (GET /apps/{id}/backups/exports, `export` on runs[]; API/USER_GUIDE/design docs; tests/test_backups_race_exports.py).
+- 2026-10-24 [backend-dev] START: backups race lock + exports listing.
+- 2026-10-24 [frontend-dev] DONE (uncommitted): BackupsCard async downloads: per-run export state from run.export (prepare / preparing+spinner / ready+available until+Download with fresh URL fetch / failed+retry), 4s poll while backup or export in flight, ready toast, double-click guards, automatic/manual labels, missing export treated as null. Typecheck+build ok; not tested against the live backend.
+- 2026-10-24 [frontend-dev] START: BackupsCard async export downloads.
 - 2026-10-24 [scm-security] DONE: smoke.sh cleanup now removes UID-10001-owned restic repos from inside a container (resolves the BLOCKED backup-image cleanup line below); committing and pushing, watching backup-image.
 - 2026-10-24 [scm-security] BLOCKED (owner: backend-dev/infra-ops): backup-image run 40096619735 failed AFTER 'SMOKE OK' (MySQL + PostgreSQL backup/restore passed): cleanup `rm -rf` of the temp dir fails with 'Permission denied' on mysql/repo and pg/repo (repo files written by the container's non-root user), so the step exits 1 and the image is not pushed. Fix in images/backup/tests/smoke.sh cleanup: remove the repos via the container (docker run --rm -v ... rm -rf) or chmod/`|| true`; then republish. CI, image, deploy green.
 - 2026-10-24 [scm-security] DONE: pushed f00128f (backup dump fix+smoke+pentest), fe33092 (coverage tests), 7d18845 (UI fixes); gitleaks clean. Backup image must be republished and BACKUP_IMAGE re-pinned. No findings.
