@@ -5,6 +5,12 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-24 [scm-security] DONE: backup delete 08676df and Backups card rework 502b7f1 committed; gitleaks clean. No findings. Backup image must be re-pinned (BACKUP_IMAGE) before delete works live.
+- 2026-10-24 [scm-security] START: commit/push backup owner delete + Backups card rework; tests 1480 passed, typecheck/build ok.
+- 2026-10-24 [backend-dev] DONE (uncommitted): owner delete of one backup, `DELETE /apps/{id}/backups/{run_id}` (202 {run_id,status:deleting,delete_run_id}; 404/403/409/422; backups.lock_app; trigger=delete run + MODE=forget Job in picopaas-backup.sh, missing snapshot = success; source succeeded->deleting->deleted (row kept, hidden) or back to succeeded + backup_failed event; ready export of the run deleted+expired; audit backup.delete/deleted/delete_failed). Files: app/backups.py, app/routers/backups.py, app/providers/{backup,fake}.py, app/models.py (comment only, no migration: status is a plain String(12)), images/backup/picopaas-backup.sh + tests/smoke.sh (smoke OK locally), tests/test_backups_delete.py, docs API/USER_GUIDE/ADMIN_GUIDE/design/backups. **The backup image must be republished and BACKUP_IMAGE re-pinned before delete works live.**
+- 2026-10-24 [backend-dev] START: owner delete of one backup.
+- 2026-10-24 [frontend-dev] DONE (uncommitted): Backups card: one download icon per run (auto-download when ready), delete icon + confirm, mobile stacked rows, grid-cols-1 overflow fix; backup config moved to Settings (BackupSettings.vue, #backups); USER_GUIDE updated. typecheck + build pass.
+- 2026-10-24 [frontend-dev] START: backups UI feedback (icons, delete, mobile, settings).
 - 2026-10-24 [scm-security] DONE: committed backup audit completeness (fcd4a52); gitleaks clean, no security findings; pushed, watching CI/image/deploy.
 - 2026-10-24 [scm-security] START: committing backup audit completeness (tests 1446 passed).
 - 2026-10-24 [backend-dev] DONE (uncommitted): backup audit gaps closed: backup.create (scheduled/final, trigger=), backup.pruned, backup.purged, backup.export_deleted (sweep_exports now returns deleted keys), backup.download_link; tests/test_backups_audit.py; ADMIN_GUIDE, design/backups.md, QUESTIONS resolved.
