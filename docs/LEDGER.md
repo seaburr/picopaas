@@ -5,6 +5,14 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: volume ceiling bf16df9, Blob storage UI c4978d0, docs 37819fc; gitleaks clean. No findings.
+- 2026-10-23 [scm-security] START: commit/push volume ceiling + Blob storage rename; watch CI.
+- 2026-10-23 [tech-writer] DONE (uncommitted): prose rename Storage -> Blob storage across USER/ADMIN/CLI/API/ARCHITECTURE/ROADMAP docs, README, ghost example, WP migration; blob storage vs persistent volume table in USER_GUIDE section 7. Contracts untouched; no anchor links affected.
+- 2026-10-23 [tech-writer] START: Blob storage prose rename.
+- 2026-10-23 [backend-dev] DONE (uncommitted): OVERRIDE_VOLUME_MAX_GI default 20 to 10 (env-overridable), VOLUME_MAX_GI clamped to it with a warning, limits.volume_override_max_gi in /auth/me, ResourcesDialog reads it, tests + docs (ADMIN/USER/API/infrastructure/0007 note).
+- 2026-10-23 [backend-dev] START: configurable 10 GiB max volume size.
+- 2026-10-23 [frontend-dev] DONE (uncommitted): UI label rename Storage -> Blob storage (display text only; API fields, spec keys, refs untouched), helper lines under blob storage and persistent volume in app form; typecheck + build pass.
+- 2026-10-23 [frontend-dev] START: rename Storage to Blob storage in UI labels.
 - 2026-10-23 [scm-security] DONE: commit/push code-block whitespace note in examples/wordpress/MIGRATION.md; gitleaks clean, no findings.
 - 2026-10-23 [wp-expert] NOTE: app 152 (throwaway) now runs :ba235b8 with jetpack + code-prettify removed, password reset done, Chas logged in. Production migration pending backups (REQ-9).
 - 2026-10-23 [scm-security] START: commit/push code-block whitespace docs note.
