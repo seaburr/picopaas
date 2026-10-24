@@ -103,13 +103,17 @@ function trySample() {
 }
 
 function overCapTip(app: App) {
-  const what = [app.quota?.db?.over_quota ? 'database' : '', app.quota?.storage?.over_quota ? 'storage' : ''].filter(Boolean)
+  const what = [app.quota?.db?.over_quota ? 'database' : '', app.quota?.storage?.over_quota ? 'blob storage' : ''].filter(Boolean)
   return `Over its cap (${what.join(' and ')}): read-only until space is freed.`
 }
 
 function meta(app: App) {
   const bits = [app.image, `port ${app.port}`]
-  const extras = [app.want_db ? `database (${dbEngineLabel(app.db_engine)})` : '', app.want_storage ? 'blob storage' : ''].filter(Boolean)
+  const extras = [
+    app.want_db ? `database (${dbEngineLabel(app.db_engine)})` : '',
+    app.want_storage ? 'blob storage' : '',
+    app.volume ? `persistent volume (${app.volume.size_gi} GiB)` : '',
+  ].filter(Boolean)
   if (extras.length) bits.push(extras.join(' + '))
   return bits
 }
