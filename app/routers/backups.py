@@ -37,6 +37,13 @@ def get_backup_runner() -> BackupRunner:
     return KubeBackupRunner()
 
 
+class RunExportOut(BaseModel):
+    """The latest live download of a backup run (queued, running or ready), so a UI can show "Ready to download"."""
+    id: int
+    status: str  # queued | running | ready
+    available_until: Optional[datetime] = None  # once ready
+
+
 class BackupRunOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,6 +59,7 @@ class BackupRunOut(BaseModel):
     snapshot_id: Optional[str] = None
     error: Optional[str] = None
     source_run_id: Optional[int] = None  # restore runs: the backup run that was restored
+    export: Optional[RunExportOut] = None  # GET /apps/{id}/backups only
 
 
 class BackupKindOut(BaseModel):
@@ -91,6 +99,14 @@ class BackupConfigIn(BaseModel):
     schedule: Optional[Literal["daily", "weekly", "off"]] = None
 
 
+def _run_out(run: models.BackupRun, export: Optional[models.BackupRun]) -> BackupRunOut:
+    out = BackupRunOut.model_validate(run)
+    if export is not None:
+        state = backups.export_state(export)
+        out.export = RunExportOut(id=export.id, status=state, available_until=backups.export_available_until(export) if state == "ready" else None)
+    return out
+
+
 def _out(db: Session, app: models.App) -> BackupsOut:
     cfg = db.get(models.AppBackupConfig, app.id)
     runs = []
@@ -98,6 +114,7 @@ def _out(db: Session, app: models.App) -> BackupsOut:
         runs = (db.query(models.BackupRun)
                 .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export")))
                 .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc()).limit(RUNS_SHOWN).all())
+    live = backups.live_exports_by_run(db, app.id, [r.id for r in runs]) if runs else {}
     kinds = []
     for kind in backups.eligible_kinds(app):
         p = backups.prefix(kind)
@@ -113,7 +130,7 @@ def _out(db: Session, app: models.App) -> BackupsOut:
         kinds=kinds, last_backup_at=cfg.last_backup_at if cfg else None, last_success_at=cfg.last_success_at if cfg else None,
         last_status=cfg.last_status if cfg else None, last_error=cfg.last_error if cfg else None,
         next_backup_at=cfg.next_backup_at if cfg else None, repo_bytes=backups.repo_bytes(cfg),
-        cap_bytes=config.BACKUP_MAX_BYTES_PER_APP, runs=[BackupRunOut.model_validate(r) for r in runs])
+        cap_bytes=config.BACKUP_MAX_BYTES_PER_APP, runs=[_run_out(r, live.get(r.id)) for r in runs])
 
 
 def _require_usable() -> None:
@@ -146,13 +163,13 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
     if not wanted or any(k not in available for k in wanted):
         raise HTTPException(status_code=422, detail="This app has no database to back up yet." if app.want_db
                             else "This app has no database, blob storage or volume to back up.")
+    backups.lock_app(db, app)  # per-app row lock until the commit below: a double click gets 409/429, not a second run
     if backups.active_run(db, app.id) is not None:
         raise HTTPException(status_code=409, detail="A backup is already queued or running for this app.")
     wait = backups.manual_cooldown(db, app.id)
     if wait is not None:
         raise HTTPException(status_code=429, detail=f"You can start one backup per hour. Try again in {max(1, wait // 60)} minutes.",
                             headers={"Retry-After": str(wait)})
-    backups.ensure_config(db, app)
     runs = [backups.enqueue(db, app, kind, "manual") for kind in wanted]
     db.commit()
     audit.record(db, user, "backup.create", "app", app.id, "kinds=" + ",".join(wanted))
@@ -238,9 +255,10 @@ def _export_out(db: Session, app: models.App, run: models.BackupRun, runner: Opt
         export_id=run.id, run_id=run.source_run_id or 0, kind=run.kind, status=state, created_at=run.created_at,
         filename=backups.export_filename(app, source, ext) if source is not None and run.export_key else None,
         error=run.error if state == "failed" else None)
-    if state == "ready" and runner is not None and run.export_key and out.filename:
+    if state == "ready" and run.export_key and out.filename:
         out.size_bytes = run.bytes_added
-        out.available_until = (run.finished_at or run.created_at) + timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)
+        out.available_until = backups.export_available_until(run)
+    if state == "ready" and runner is not None and run.export_key and out.filename:
         try:
             out.url = runner.presign_export(run.export_key, config.BACKUP_EXPORT_URL_SECONDS, out.filename)
         except BackupRunnerError:
@@ -266,6 +284,14 @@ def start_download(app_id: int, run_id: int, db: Session = Depends(get_db), user
     if new:
         audit.record(db, user, "backup.download", "app", app.id, f"run={source.id} kind={source.kind} export={run.id}")
     return _export_out(db, app, run, None)
+
+
+@router.get("/{app_id}/backups/exports", response_model=List[BackupExportOut])
+def list_downloads(app_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """The app's downloads that are not expired (queued, running, ready, and failed ones from the last hour), newest first.
+    `url` is always null here: GET the single export for a fresh 10-minute link while it is ready."""
+    app = _get_app_or_404(db, app_id, user)
+    return [_export_out(db, app, r, None) for r in backups.listed_exports(db, app.id)]
 
 
 @router.get("/{app_id}/backups/exports/{export_id}", response_model=BackupExportOut)

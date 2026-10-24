@@ -104,6 +104,18 @@ def ensure_config(session: Session, app: models.App, now: Optional[datetime] = N
     return cfg
 
 
+def lock_app(session: Session, app: models.App) -> models.AppBackupConfig:
+    """Serialise enqueue paths per app: `SELECT ... FOR UPDATE` on the app's AppBackupConfig row, held until the caller commits.
+    Call BEFORE the "anything active?" and rate-limit checks. The open transaction is committed first so InnoDB's
+    REPEATABLE READ snapshot starts after the lock is won and the checks see what the other request just committed.
+    SQLite ignores FOR UPDATE but serialises writers; the checks after the lock are still correct on their own."""
+    ensure_config(session, app)
+    session.commit()
+    cfg = session.execute(select(models.AppBackupConfig).where(models.AppBackupConfig.app_id == app.id)
+                          .with_for_update().execution_options(populate_existing=True)).scalar_one()
+    return cfg
+
+
 def repo_password(cfg: models.AppBackupConfig) -> str:
     """The app's restic password (random, Fernet-encrypted at rest); generated on first use. Raises ValueError if the
     stored value can't be decrypted (FERNET_KEY lost): the repo is then unreadable and must not be re-initialised."""
@@ -602,8 +614,10 @@ def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
         raise ExportRefused("Only database and blob storage backups can be downloaded.")
     if source.status != "succeeded" or not source.snapshot_id:
         raise ExportRefused("That backup run didn't finish successfully, so there is nothing to download.")
-    cfg = session.get(models.AppBackupConfig, app.id)
-    if cfg is None or cfg.repo_password_enc is None or cfg.purged_at is not None:
+    if session.get(models.AppBackupConfig, app.id) is None:
+        raise ExportRefused("The repository for that backup has been purged.", 410)
+    cfg = lock_app(session, app)  # serialise per app before the active / rate-limit checks
+    if cfg.repo_password_enc is None or cfg.purged_at is not None:
         raise ExportRefused("The repository for that backup has been purged.", 410)
     exports = list(session.execute(
         select(models.BackupRun).where(models.BackupRun.app_id == app.id, models.BackupRun.trigger == "export")
@@ -646,6 +660,34 @@ def export_state(run: models.BackupRun, now: Optional[datetime] = None) -> str:
         age = _now(now) - _naive(run.finished_at or run.created_at)
         return "expired" if age >= timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS) else "ready"
     return run.status
+
+
+def export_available_until(run: models.BackupRun) -> datetime:
+    return _naive(run.finished_at or run.created_at) + timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)
+
+
+def listed_exports(session: Session, app_id: int, now: Optional[datetime] = None) -> list[models.BackupRun]:
+    """Exports worth showing: queued, running, ready, and failed within the last hour. Newest first."""
+    now = _now(now)
+    out = []
+    for e in session.execute(select(models.BackupRun).where(models.BackupRun.app_id == app_id, models.BackupRun.trigger == "export")
+                             .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc())).scalars():
+        state = export_state(e, now)
+        if state == "expired":
+            continue
+        if state == "failed" and now - _naive(e.finished_at or e.created_at) >= timedelta(hours=1):
+            continue
+        out.append(e)
+    return out
+
+
+def live_exports_by_run(session: Session, app_id: int, run_ids: list[int], now: Optional[datetime] = None) -> dict[int, models.BackupRun]:
+    """Latest queued/running/ready export per source run id."""
+    found: dict[int, models.BackupRun] = {}
+    for e in listed_exports(session, app_id, now):
+        if e.source_run_id in run_ids and export_state(e, now) != "failed" and e.source_run_id not in found:
+            found[e.source_run_id] = e
+    return found
 
 
 # --- app delete -------------------------------------------------------------------------------
