@@ -428,6 +428,21 @@ jobs:
             echo "backup key: new key created, scoped to $BACKUP_BUCKET (readwrite) and verified"
           fi
           rm -rf "$KD"
+          # Negative proof (every run, reused key included): the backup key must NOT read another bucket. Volume backups
+          # put this key in tenant namespaces, so BACKUP_KEY_SCOPED=1 is set only when this check passes.
+          BACKUP_KEY_SCOPED=0
+          other=$(AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            aws s3api list-buckets --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" --query 'Buckets[].Name' --output text 2>/dev/null \
+            | tr '\t' '\n' | grep -vx "$BACKUP_BUCKET" | head -n1 || true)
+          if [ -z "$other" ]; then
+            echo "::warning::no other bucket to test the backup key against; volume backups stay off (BACKUP_KEY_SCOPED=0)"
+          elif AWS_ACCESS_KEY_ID="$BACKUP_KEY_ID" AWS_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
+              aws s3api list-objects-v2 --bucket "$other" --max-items 1 --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" >/dev/null 2>&1; then
+            echo "::warning::the backup key can read another bucket, so it is not bucket-scoped; volume backups stay off (BACKUP_KEY_SCOPED=0)"
+          else
+            BACKUP_KEY_SCOPED=1
+            echo "backup key: confirmed it cannot read other buckets; volume backups on (BACKUP_KEY_SCOPED=1)"
+          fi
           # The backup pod must get a digest-pinned image. Use the workflow input, else resolve :latest now
           # (package ghcr.io/seaburr/picopaas-backup must be Public; build it with backup-image.yml first).
           BACKUP_IMAGE_DIGEST="${BACKUP_IMAGE_DIGEST_INPUT:-}"
@@ -465,6 +480,7 @@ jobs:
             --from-literal=BACKUP_IMAGE="$BACKUP_IMAGE" \
             --from-literal=BACKUP_ACCESS_KEY_ID="$BACKUP_KEY_ID" \
             --from-literal=BACKUP_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
+            --from-literal=BACKUP_KEY_SCOPED="$BACKUP_KEY_SCOPED" \
             --from-literal=RECONCILER_ENABLED=1 \
             --from-literal=MAX_NODES=2 \
             --from-literal=VOLUMES_ENABLED=1 \
