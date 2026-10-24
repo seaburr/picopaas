@@ -5,6 +5,14 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-23 [scm-security] DONE: backups 1a committed in 3 chunks + ledger; gitleaks clean. See push/CI below.
+- 2026-10-23 [scm-security] START: commit/push backups 1a; watch CI, backup-image, deploy.
+- 2026-10-23 [security-reviewer] DONE (uncommitted): backups 1a review. Fixed: truncated-snapshot cleanup in picopaas-backup.sh, retention when owner disabled backups, workflow action SHA pins, deploy.yml empty-CIDR guard (+2 tests). Findings in docs/PENTEST.md; decisions: shared bucket key blast radius, final-backup churn.
+- 2026-10-23 [security-reviewer] START: backups phase 1a security review.
+- 2026-10-23 [backend-dev] DONE (uncommitted): backups phase 1a. Flag BACKUPS_ENABLED (off) + BACKUP_* config; migration c2e8a4f6b1d7 (app_backup_config, backup_runs); images/backup (restic 0.19.1 sha-pinned + mariadb-client + postgresql17-client, uid 10001) + .github/workflows/backup-image.yml (ghcr.io/seaburr/picopaas-backup, package must be set Public once); deploy/platform/backup.yaml (ns picopaas-backup, minimal Role, netpols; deploy.yml applies it only when BACKUPS_ENABLED=1); app/backups.py + app/providers/backup.py (+FakeBackupRunner) + scheduler backup_job; GET/POST/PATCH /apps/{id}/backups, GET /admin/backups, Health `backups` block; final backup on delete, 14-day retention, purge; docs (ADMIN/API/USER, design status). Deferred to 1b: volume Jobs, snapshot download, UI, CLI, maintenance Job. tests/test_backups.py 32 tests; full suite 1303 passed, 1 skipped. Nothing provisioned, nothing committed.
+- 2026-10-23 [backend-dev] START: backups phase 1a (flag/config, migration, backup image, DB dump Jobs, API, final backup on delete, docs).
+- 2026-10-23 [infra-ops] DONE (uncommitted): docs/design/backups.md + docs/requests/0008-backups.md + QUESTIONS line. Design: restic per-app repos (DB dump stream, volume Job in app ns with podAffinity, bucket phase 3), separate-region backup bucket, random per-app repo password Fernet-encrypted in DB, scheduler-created Jobs, 14-day purge after app delete. Phase 1 = L, within existing Spaces allowance (~$0). Nothing provisioned or touched.
+- 2026-10-23 [infra-ops] START: REQ-9 backups design (docs only, no code/provisioning).
 - 2026-10-23 [scm-security] DONE: committed CRD + AWS research and ledger; gitleaks clean, only <acct>/<id> placeholders in aws-port.md. No findings.
 - 2026-10-23 [scm-security] START: commit/push CRD + AWS research + ledger.
 - 2026-10-23 [infra-ops] DONE (uncommitted): docs/research/aws-port.md. AWS port ~20 agent-days (~16 for EC2+k3s); S3 is native so bootstrap.md contract untouched. EKS like-for-like ~$155/mo vs DO $75.30 (cheapest EKS ~$120); EC2+k3s+RDS+S3 ~$62 ($48 no PG). Nothing provisioned; no cloud account or local kubectl touched.
