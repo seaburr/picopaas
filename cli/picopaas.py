@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import shlex
 import sys
 import time
 from datetime import datetime, timezone
@@ -507,7 +508,7 @@ def cmd_backup_run(c, args) -> None:
     a = _find_app(c, args.name)
     runs = _request(c, "POST", f"/apps/{a['id']}/backups").json()
     kinds = ", ".join(r["kind"] for r in runs)
-    print(f"Backup queued for {a['name']} ({kinds}); it starts within a minute. Check it with: picopaas backup list {a['name']}")
+    print(f"Backup queued for {a['name']} ({kinds}); it starts within a minute. Check it with: picopaas backup list {shlex.quote(a['name'])}")
 
 
 def cmd_backup_enable(c, args) -> None:
@@ -517,7 +518,7 @@ def cmd_backup_enable(c, args) -> None:
     if on:
         print(f"Scheduled backups are on for {a['name']} ({b['schedule']}). The first one starts within a minute or two.")
     else:
-        print(f"Scheduled backups are off for {a['name']}. You can still run one with: picopaas backup run {a['name']}")
+        print(f"Scheduled backups are off for {a['name']}. You can still run one with: picopaas backup run {shlex.quote(a['name'])}")
 
 
 def _wait_export(c, a: dict, export_id: int) -> dict:
@@ -562,7 +563,7 @@ def cmd_backup_download(c, args) -> None:
         picks = [r for r in ok if r["id"] == args.run_id]
         if not picks:
             raise CliError(f"Run {args.run_id} is not a successful database or blob storage backup of {a['name']}. "
-                           f"See: picopaas backup list {a['name']}")
+                           f"See: picopaas backup list {shlex.quote(a['name'])}")
     else:
         picks, seen = [], set()
         for r in ok:  # newest first: the latest successful run of each kind
@@ -570,13 +571,13 @@ def cmd_backup_download(c, args) -> None:
                 seen.add(r["kind"])
                 picks.append(r)
         if not picks:
-            raise CliError(f"{a['name']} has no successful backup yet. Run one with: picopaas backup run {a['name']}")
+            raise CliError(f"{a['name']} has no successful backup yet. Run one with: picopaas backup run {shlex.quote(a['name'])}")
     if args.output and len(picks) > 1:
         raise CliError("This app has more than one kind of backup, so -o is ambiguous. Pass a run id (see `picopaas backup list`).")
     for r in picks:
         e = _request(c, "POST", f"/apps/{a['id']}/backups/{r['id']}/download").json()
         e = _wait_export(c, a, e["export_id"])
-        out = args.output or e.get("filename") or f"backup-{r['id']}"
+        out = args.output or os.path.basename(e.get("filename") or "") or f"backup-{r['id']}"
         total = _fetch(e["url"], out)
         print(f"Downloaded {r['kind']} backup {r['id']} ({_mb(total)} MB) to {out}.")
 

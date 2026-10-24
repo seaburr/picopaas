@@ -289,6 +289,15 @@ def backup_endpoint() -> str:
     return f"https://{BACKUP_REGION}.digitaloceanspaces.com" if BACKUP_REGION else ""
 
 
+def backup_export_prefix_ok() -> bool:
+    """The export staging prefix must be a non-empty folder that neither contains nor sits inside the restic repos
+    (`<BACKUP_PREFIX>apps/`): the export sweep deletes by prefix and age, so an overlap would delete repository data."""
+    ep = BACKUP_EXPORT_PREFIX
+    rp = BACKUP_PREFIX.strip("/")
+    repo_root = (f"{rp}/" if rp else "") + "apps/"
+    return bool(ep) and ep.endswith("/") and not ep.startswith("/") and not repo_root.startswith(ep) and not ep.startswith(repo_root)
+
+
 def backups_configured() -> bool:
     """True when the bucket, endpoint and the SEPARATE backup key are all set (the tenant SPACES_* key is never a fallback)."""
     return bool(BACKUP_BUCKET and backup_endpoint() and BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY)

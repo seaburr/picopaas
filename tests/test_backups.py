@@ -1049,7 +1049,10 @@ def test_script_prints_progress_and_checks_password(tmp_path):
 def test_script_db_dump_has_connect_timeouts_and_step_lines():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     text = open(os.path.join(root, "images", "backup", "picopaas-backup.sh")).read()
-    assert "mariadb-dump --connect-timeout=20" in text and "PGCONNECT_TIMEOUT=20" in text
+    # mariadb-dump rejects --connect-timeout ("unknown variable"; every MySQL backup failed on 2026-10-24): the dump is
+    # bounded by `timeout` instead. images/backup/tests/smoke.sh checks the real client in the image build.
+    assert "mariadb-dump --connect-timeout" not in text
+    assert 'timeout -k 10 "$LONG_TIMEOUT" mariadb-dump' in text and "PGCONNECT_TIMEOUT=20" in text
     assert "timeout -k 10 $QUICK_TIMEOUT restic" in text and "timeout -k 10 $LONG_TIMEOUT restic" in text
     assert "dumping the database into the repository" in text
 

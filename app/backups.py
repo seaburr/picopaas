@@ -205,7 +205,7 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     if not ok and run.trigger not in ("purge", "restore", "export"):
         _event(session, run.app_id, run.id,
                f"Backup of your {KIND_LABEL.get(run.kind, run.kind)} failed: {run.error}. "
-               "Open Settings > Backups for details.", now)
+               "See the Backups card on the app page for details.", now)
     session.commit()
     if runner is not None and run.job_name:
         try:
@@ -581,8 +581,14 @@ def export_extension(app: models.App, kind: str) -> str:
     return "pgdump" if app.database is not None and app.database.server is not None and app.database.server.engine == "pg" else "sql.gz"
 
 
+_FILENAME_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
 def export_filename(app: models.App, source: models.BackupRun, ext: str) -> str:
-    return f"{app.name}-{source.kind}-backup{source.id}.{ext}"
+    """Download name. App names are free text (quotes, slashes, control characters, any script), so only a conservative
+    ASCII subset reaches the Content-Disposition header and a CLI's local path."""
+    stem = _FILENAME_UNSAFE.sub("_", app.name).strip("._-")[:60] or "app"
+    return f"{stem}-{source.kind}-backup{source.id}.{ext}"
 
 
 def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
@@ -590,6 +596,8 @@ def enqueue_export(session: Session, app: models.App, source: models.BackupRun,
     """Queue the materialisation of `source` (a succeeded db/bucket backup of `app`) as ONE downloadable file. Idempotent for a
     snapshot that already has a live export (returned with created=False); at most one active export per app and BACKUP_EXPORT_MAX_PER_HOUR new ones per hour."""
     now = _now(now)
+    if not config.backup_export_prefix_ok():
+        raise ExportRefused("Downloads aren't available right now. Ask an administrator.", 503)
     if source.app_id != app.id or source.trigger in ("purge", "restore", "export") or source.kind not in RESTORABLE:
         raise ExportRefused("Only database and blob storage backups can be downloaded.")
     if source.status != "succeeded" or not source.snapshot_id:

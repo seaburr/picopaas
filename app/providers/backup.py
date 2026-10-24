@@ -264,6 +264,8 @@ class KubeBackupRunner(BackupRunner):
     def sweep_exports(self, older_than_seconds: int) -> int:
         from datetime import datetime, timedelta, timezone
 
+        if not config.backup_export_prefix_ok():  # a prefix overlapping the repos would delete backups
+            raise BackupRunnerError("could not sweep exports (unsafe export prefix)")
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)
         try:
             s3 = self._s3()

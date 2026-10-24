@@ -74,6 +74,12 @@ s3_count() {
     grep -q "no object found" "$TMP/s3.err" 2>/dev/null && { echo 0; return 0; }
     return 1
   fi
+  # An object name with a ".." segment would make the copy write outside the scratch directory (s5cmd keeps the key's
+  # directory structure and does not clean it), so refuse such a bucket before copying anything.
+  if [ "$(printf '%s\n' "$OUT" | jq -rs '[.[] | select(.key? and (.key | split("/") | any(. == "..")))] | length' 2>/dev/null)" != "0" ]; then
+    echo UNSAFE
+    return 0
+  fi
   printf '%s\n' "$OUT" | jq -rs '[.[] | select(.key? and (.key | endswith("/") | not))] | length' 2>/dev/null
 }
 files_in() { find "$1" -type f | wc -l | tr -d ' '; }
@@ -87,6 +93,20 @@ need_db() {
   fi
 }
 CA=""
+# Why a dump failed, as fixed text: the client's own stderr can carry host names and user names, so it is never printed.
+dump_reason() {
+  E="$TMP/dump.err"
+  [ -s "$E" ] || { echo ": the dump stopped without an error message"; return; }
+  if grep -qiE "max_user_connections|too many connections" "$E"; then echo ": the app's database user is at its connection limit"
+  elif grep -qiE "access denied|authentication failed|password authentication" "$E"; then echo ": access denied"
+  elif grep -qiE "ssl|tls|certificate" "$E"; then echo ": TLS or certificate verification failed"
+  elif grep -qiE "can't connect|could not connect|connection refused|timed out|timeout|unknown .*host|could not translate host" "$E"; then echo ": could not connect to the database"
+  elif grep -qiE "unknown database|does not exist" "$E"; then echo ": the database does not exist"
+  elif grep -qiE "privilege|permission denied|command denied" "$E"; then echo ": the app's database user lacks a privilege the dump needs"
+  elif grep -qiE "lost connection|gone away|server closed" "$E"; then echo ": the database connection dropped mid-dump"
+  else echo ": unrecognised client error"
+  fi
+}
 
 # --- export (owner download) ------------------------------------------------------------------
 
@@ -197,6 +217,7 @@ if [ "$KIND" = "bucket" ]; then
   step "listing the bucket"
   EXPECT="$(s3_count)"
   [ -n "$EXPECT" ] || fail "listing the bucket failed"
+  [ "$EXPECT" != UNSAFE ] || fail "the bucket has object names that can't be backed up safely"
   step "copying $EXPECT objects"
   if [ "$EXPECT" -gt 0 ]; then
     s3 cp "s3://$SRC_BUCKET/*" "$WORK/bucket/" >/dev/null 2>"$TMP/s3.err" || fail "copying the bucket's objects failed"
@@ -230,7 +251,9 @@ else
     echo "$HELP" | grep -q -- '--set-gtid-purged' && FLAGS="$FLAGS --set-gtid-purged=OFF"
     SSL=""
     [ -n "$CA" ] && SSL="--ssl-ca=$CA --ssl-verify-server-cert"
-    ( MYSQL_PWD="$DB_PASSWORD" mariadb-dump --connect-timeout=20 -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" $SSL $FLAGS "$DB_NAME" 2>"$TMP/dump.err"
+    # mariadb-dump has no --connect-timeout (only the mariadb client does; it fails with "unknown variable"), so the
+    # whole dump runs under timeout instead.
+    ( MYSQL_PWD="$DB_PASSWORD" timeout -k 10 "$LONG_TIMEOUT" mariadb-dump -h "$DB_HOST" -P "${DB_PORT:-3306}" -u "$DB_USER" $SSL $FLAGS "$DB_NAME" 2>"$TMP/dump.err"
       echo $? > "$TMP/dump.status" ) \
     | $RESTIC backup --stdin --stdin-filename "$NAME" --json $TAGARG --host "app" > "$TMP/backup.json" 2>/dev/null
   fi
@@ -240,7 +263,7 @@ else
     # restore would trust. Remove it before failing (the next run's forget --prune reclaims the space).
     BAD="$(grep '"message_type":"summary"' "$TMP/backup.json" 2>/dev/null | tail -n1 | jq -r '.snapshot_id // empty' 2>/dev/null)"
     [ -n "$BAD" ] && $RQ forget "$BAD" >/dev/null 2>&1
-    fail "database dump failed"
+    fail "database dump failed$(dump_reason)"
   fi
   [ "$RESTIC_RC" = "0" ] || fail "writing the backup failed"
 fi

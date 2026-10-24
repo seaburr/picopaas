@@ -38,6 +38,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Build for the smoke test
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: images/backup
+          platforms: linux/amd64
+          load: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: picopaas-backup:smoke
+          cache-from: type=gha
+
+      # The script's pytest tests stub the DB clients and restic; this runs the built image against real MySQL 8.4 and
+      # PostgreSQL 17 (backup + restore) so a client flag the packaged tools reject fails the build, not production.
+      - name: Smoke test against real databases
+        run: images/backup/tests/smoke.sh picopaas-backup:smoke
+
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
