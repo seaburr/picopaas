@@ -57,6 +57,13 @@ rules:
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Volume backups (BACKUP_KEY_SCOPED): a Job in the app namespace that mounts the PVC read-only (app/backups.py). Its per-run
+  # Secret is covered by the secrets rule above and its pod is read by the cluster-wide pods/pods/log get+list. The platform
+  # creates and deletes these; tenants cannot create Jobs (they hold no rights in their namespace).
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+
   # Default-deny + allow-* NetworkPolicies, and the primary + custom-domain Ingresses (delete_ingress on suspend / detach).
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies", "ingresses"]

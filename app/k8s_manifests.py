@@ -78,6 +78,7 @@ EGRESS_EXCEPT_CIDRS = PRIVATE_CIDRS + RESERVED_CIDRS
 MYSQL_PORT = 3306
 
 
+BACKUP_EGRESS_POLICY = "allow-egress-backup"  # only rendered while volume backups are on for an app with a volume
 SAME_NAMESPACE_POLICY = "allow-same-namespace"  # only rendered when replicas > 1
 
 
@@ -151,9 +152,24 @@ def _eph(e: dict[str, int]) -> int:
     return e.get("ephemeral_limit_mi") or EPHEMERAL_LIMIT_MI
 
 
+BACKUP_POD_LABEL = "picopaas.io/backup"  # on every backup Job pod (app/providers/backup.py LABEL); apps' own pods never have it
+
+
+def backup_pod_resources(resources: dict[str, int] | None = None) -> dict[str, int]:
+    """Size of the one volume-backup pod that runs in an app namespace: the platform's backup pod (200m / 320Mi / 200Mi scratch)
+    clamped to the app's own per-container limits, because the namespace LimitRange rejects a container above them."""
+    e = _res(resources)
+    eph = min(200, _eph(e))
+    return {
+        "cpu_limit_m": min(200, e["cpu_limit_m"]), "mem_limit_mi": min(320, e["mem_limit_mi"]), "eph_limit_mi": eph,
+        "cpu_request_m": min(50, e["cpu_limit_m"]), "mem_request_mi": min(128, e["mem_limit_mi"]), "eph_request_mi": min(64, eph),
+    }
+
+
 def resource_quota_manifest(
     app_id: int, resources: dict[str, int] | None = None, used_limits: dict[str, int] | None = None,
     custom_domain: bool = False, replicas: int = 1, volume: dict[str, Any] | None = None,
+    backup_pod: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Quota = max((replicas + 1) x new limits, limits already used by existing pods + new limits): the surge pod of a rollout
     runs the NEW limits while the old pod still consumes its own (possibly bigger) limits. `used_limits`
@@ -161,7 +177,10 @@ def resource_quota_manifest(
 
     `custom_domain` gives one extra Service and one extra Pod of headroom: cert-manager's HTTP-01 solver creates a
     temporary (ClusterIP) Service + Pod in this namespace while issuing/renewing the custom-domain cert, which would
-    otherwise be rejected by the services=1 / pods=2 caps. NodePort/LoadBalancer services stay forbidden."""
+    otherwise be rejected by the services=1 / pods=2 caps. NodePort/LoadBalancer services stay forbidden.
+
+    `backup_pod` (backup_pod_resources(), only for an app with a volume while volume backups are on) adds exactly one backup
+    pod's worth of pods / CPU / memory / scratch on top, so a backup Job fits next to the app and its rollout surge pod."""
     e = _res(resources)
     used = used_limits or {}
     slots = max(1, int(replicas)) + 1  # steady replicas + one rolling-update surge pod
@@ -174,6 +193,11 @@ def resource_quota_manifest(
     solver_headroom = 1 if custom_domain else 0
     pods_total = max(slots + solver_headroom, (used.get("pods") or 0) + 1 + solver_headroom)
     services_total = int(QUOTA_SERVICES) + solver_headroom
+    if backup_pod:
+        cpu_total += backup_pod["cpu_limit_m"]
+        mem_total += backup_pod["mem_limit_mi"]
+        eph_total += backup_pod["eph_limit_mi"]
+        pods_total += 1
     # With a volume: exactly one PVC and exactly its size, so nothing in the namespace can claim more storage.
     volume_quota = (
         {"persistentvolumeclaims": "1", "requests.storage": f"{int(volume['size_gi'])}Gi"} if volume else {}
@@ -281,8 +305,11 @@ def network_policies(
     storage_ips: list[str] | None = None,
     custom_domain: bool = False,
     replicas: int = 1,
+    backup_ips: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Default-deny plus narrow allow rules.
+    """Default-deny plus narrow allow rules. `backup_ips` (not None) means volume backups run in this namespace: the app's
+    allow-* rules then skip the backup Job pod (label picopaas.io/backup) and a dedicated `allow-egress-backup` policy gives
+    that pod DNS plus the backup bucket on 443 and nothing else (`backup_ips` = the bucket endpoint's private VPC IPs).
 
     Kubernetes NetworkPolicy semantics are additive per matched pod: the
     "default-deny" policy below isolates every pod in the namespace for both
@@ -292,6 +319,11 @@ def network_policies(
     """
     namespace = namespace_name(app_id)
     all_pods_selector: dict[str, Any] = {"podSelector": {}}
+    # NetworkPolicies are additive per pod, so a Job pod would otherwise inherit the app's internet / database / storage rules.
+    app_pods_selector: dict[str, Any] = (
+        {"podSelector": {}} if backup_ips is None
+        else {"podSelector": {"matchExpressions": [{"key": BACKUP_POD_LABEL, "operator": "DoesNotExist"}]}}
+    )
 
     default_deny = {
         "apiVersion": "networking.k8s.io/v1",
@@ -310,7 +342,7 @@ def network_policies(
         "kind": "NetworkPolicy",
         "metadata": {"name": "allow-ingress-controller", "namespace": namespace},
         "spec": {
-            **all_pods_selector,
+            **app_pods_selector,
             "policyTypes": ["Ingress"],
             "ingress": [
                 {
@@ -359,7 +391,7 @@ def network_policies(
         "kind": "NetworkPolicy",
         "metadata": {"name": "allow-egress-internet", "namespace": namespace},
         "spec": {
-            **all_pods_selector,
+            **app_pods_selector,
             "policyTypes": ["Egress"],
             "egress": [
                 {
@@ -396,7 +428,7 @@ def network_policies(
         "kind": "NetworkPolicy",
         "metadata": {"name": "allow-egress-mysql", "namespace": namespace},
         "spec": {
-            **all_pods_selector,
+            **app_pods_selector,
             "policyTypes": ["Egress"],
             "egress": [
                 {
@@ -443,7 +475,7 @@ def network_policies(
             "kind": "NetworkPolicy",
             "metadata": {"name": SAME_NAMESPACE_POLICY, "namespace": namespace},
             "spec": {
-                **all_pods_selector,
+                **app_pods_selector,
                 "policyTypes": ["Ingress", "Egress"],
                 "ingress": [{"from": [{"podSelector": {}}]}],
                 "egress": [{"to": [{"podSelector": {}}]}],
@@ -457,7 +489,7 @@ def network_policies(
             "kind": "NetworkPolicy",
             "metadata": {"name": "allow-egress-storage", "namespace": namespace},
             "spec": {
-                **all_pods_selector,
+                **app_pods_selector,
                 "policyTypes": ["Egress"],
                 "egress": [
                     {
@@ -465,6 +497,21 @@ def network_policies(
                         "ports": [{"protocol": "TCP", "port": 443}],
                     }
                 ],
+            },
+        })
+    if backup_ips is not None:
+        backup_to: list[dict[str, Any]] = [{"ipBlock": {"cidr": "0.0.0.0/0", "except": list(EGRESS_EXCEPT_CIDRS)}}]
+        backup_to += [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(backup_ips))]
+        policies.append({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": BACKUP_EGRESS_POLICY, "namespace": namespace},
+            "spec": {
+                "podSelector": {"matchLabels": {BACKUP_POD_LABEL: "1"}},
+                "policyTypes": ["Egress"],
+                # The backup bucket only: HTTPS to public addresses (Spaces has no fixed range) plus the endpoint's private VPC /32s.
+                # DNS comes from allow-egress-dns, which still selects every pod. No database, no other namespace, no metadata.
+                "egress": [{"to": backup_to, "ports": [{"protocol": "TCP", "port": 443}]}],
             },
         })
     return policies
@@ -751,16 +798,19 @@ def render_app_manifests(
     platform_subdomain: str | None = None,
     health_check_timeout_seconds: int | None = None,
     volume: dict[str, Any] | None = None,
+    volume_backup: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
         "namespace": namespace_manifest(app_id),
         "role_binding": role_binding_manifest(app_id),
         "resource_quota": resource_quota_manifest(app_id, resources, used_limits, custom_domain=bool(custom_host),
-                                                  replicas=replicas, volume=volume),
+                                                  replicas=replicas, volume=volume,
+                                                  backup_pod=volume_backup["pod"] if volume_backup else None),
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips,
-                                              custom_domain=bool(custom_host), replicas=replicas),
+                                              custom_domain=bool(custom_host), replicas=replicas,
+                                              backup_ips=list(volume_backup["ips"]) if volume_backup else None),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,

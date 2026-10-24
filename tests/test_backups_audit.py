@@ -14,7 +14,7 @@ def test_manual_create_has_trigger(on, user, db_session, runner):
     aid = _app_with_db(user, db_session)
     assert user.post(f"/apps/{aid}/backups").status_code == 202
     (r,) = rows(db_session, "backup.create")
-    assert r.actor_email == "user@example.com" and r.detail.startswith("trigger=manual kinds=")
+    assert r.actor_email == "user@example.com" and r.detail.startswith("trigger=manual set=") and " kinds=" in r.detail
 
 
 def test_scheduled_create_one_row_per_enqueue_and_prune(on, user, db_session, runner):
@@ -22,7 +22,7 @@ def test_scheduled_create_one_row_per_enqueue_and_prune(on, user, db_session, ru
     backups.tick(db_session, runner, NOW)
     (r,) = rows(db_session, "backup.create")  # db + bucket queued together: one row
     assert r.actor_id is None and r.actor_email == "system" and r.target_id == str(aid)
-    assert r.detail.startswith("trigger=scheduled kinds=") and "db" in r.detail and "bucket" in r.detail
+    assert r.detail.startswith("trigger=scheduled set=") and " kinds=" in r.detail and "db" in r.detail and "bucket" in r.detail
     for s in list(runner.started):
         runner.finish(s.name)
     backups.tick(db_session, runner, NOW)
@@ -45,7 +45,7 @@ def test_final_and_purge_audited(on, user, db_session, runner):
     backups.ensure_config(db_session, app, NOW)
     assert backups.final_gate(db_session, app, NOW) is False
     (r,) = rows(db_session, "backup.create")
-    assert r.actor_email == "system" and r.detail.startswith("trigger=final kinds=")
+    assert r.actor_email == "system" and r.detail.startswith("trigger=final set=") and " kinds=" in r.detail
     assert backups.final_gate(db_session, app, NOW + timedelta(minutes=1)) is False
     assert len(rows(db_session, "backup.create")) == 1  # not re-enqueued
     # purge: success then failure

@@ -369,8 +369,8 @@ class BackupRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
-    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | volume | bucket
-    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore | export | delete
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # db | volume | bucket (| package: a set export)
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final | purge | restore | export | delete | prune
     # queued | running | succeeded | failed; a backup also passes through `deleting` and ends `deleted` (hidden); an export may be `expired`.
     status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
@@ -387,6 +387,24 @@ class BackupRun(Base):
     # trigger == "export": app_id owns the source run (source_run_id); the finished export is this object in the backup
     # bucket (deleted ~1 hour after it is written). The bytes of the export are stored in bytes_added.
     export_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # The backup package (BackupSet) this run belongs to: a db/bucket/volume part of a backup (trigger scheduled|manual|final), the
+    # per-part delete of a set, or the ONE export of a set (trigger == "export", kind "package"). NULL for purge/restore/prune and for
+    # per-run exports.
+    set_id: Mapped[Optional[int]] = mapped_column(ForeignKey("backup_sets.id", ondelete="SET NULL"), nullable=True, index=True)
+
+
+class BackupSet(Base):
+    """One backup as the owner sees it: everything one "Back up now" / scheduled slot / final backup produced (db, bucket and
+    volume parts are separate BackupRuns with this set_id, taken one after another, not at one instant). Status is derived
+    from the parts (app/backups.py::set_status); only the owner delete is stored, in `delete_status`."""
+    __tablename__ = "backup_sets"
+    __table_args__ = (Index("ix_backup_sets_app_created", "app_id", "created_at", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"), nullable=False)
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    delete_status: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # NULL | deleting | deleted
 
 
 class AuditLog(Base):

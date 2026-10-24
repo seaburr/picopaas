@@ -460,6 +460,7 @@ class FakeBackupRunner(BackupRunner):
         self.swept_keys: list[str] = []  # keys the next sweep_exports call reports as deleted
         self.deleted_exports: list[str] = []  # keys passed to delete_exports
         self.fail_delete_exports = False
+        self.swept_namespaces: list[list[str]] = []  # namespaces handed to each sweep_namespaces call
 
     def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
         if self.fail_presign:
@@ -494,12 +495,12 @@ class FakeBackupRunner(BackupRunner):
     def fail(self, name: str, error: str = "database dump failed") -> None:
         self.outcomes[name] = JobStatus("failed", error=error)
 
-    def status(self, job_name: str) -> JobStatus:
+    def status(self, job_name: str, namespace: Optional[str] = None) -> JobStatus:
         if job_name not in self.jobs:
             return JobStatus("missing")
         return self.outcomes.get(job_name, JobStatus("running"))
 
-    def cleanup(self, job_name: str) -> None:
+    def cleanup(self, job_name: str, namespace: Optional[str] = None) -> None:
         self.jobs.pop(job_name, None)
         self.secrets.pop(job_name, None)
         self.cleaned.append(job_name)
@@ -509,3 +510,7 @@ class FakeBackupRunner(BackupRunner):
         for n in stale:
             del self.secrets[n]
         return len(stale)
+
+    def sweep_namespaces(self, namespaces: list[str], active: set[str]) -> int:
+        self.swept_namespaces.append(list(namespaces))
+        return 0

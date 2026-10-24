@@ -33,6 +33,8 @@ class BackupJobSpec:
     kind: str
     env: dict[str, str] = field(repr=False)  # includes credentials: never logged, only written to the per-run Secret
     scratch_mib: int = 0  # >0: mount an emptyDir of this size at /work (bucket backups and restores copy objects there)
+    namespace: Optional[str] = None  # None = the platform backup namespace; a volume backup runs in the app's own namespace
+    volume: Optional[dict[str, Any]] = None  # volume backup only, see volume_job_spec() in app/backups.py
 
 
 @dataclass
@@ -52,11 +54,11 @@ class BackupRunner(ABC):
         """Create the per-run Secret, then the Job. Raises BackupRunnerError when it cannot."""
 
     @abstractmethod
-    def status(self, job_name: str) -> JobStatus: ...
+    def status(self, job_name: str, namespace: Optional[str] = None) -> JobStatus: ...
 
     @abstractmethod
-    def cleanup(self, job_name: str) -> None:
-        """Delete the Job (and its pods) and the Secret. Idempotent."""
+    def cleanup(self, job_name: str, namespace: Optional[str] = None) -> None:
+        """Delete the Job (and its pods) and the Secret. Idempotent. `namespace` None = the platform backup namespace."""
 
     def ensure_spaces_egress(self, endpoint: str) -> None:
         """Allow the backup Jobs to reach the private-range IPs `endpoint` resolves to, on 443 (Spaces resolves to a private
@@ -79,10 +81,17 @@ class BackupRunner(ABC):
         """Delete Secrets labelled picopaas.io/backup whose name is not in `active` (a crash between Job end and
         cleanup would leave one behind). Returns how many were deleted."""
 
+    def sweep_namespaces(self, namespaces: list[str], active: set[str]) -> int:
+        """The same sweep inside these (app) namespaces, where volume backups keep their per-run Secret. Default: nothing."""
+        return 0
+
 
 def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
-    """(Secret, Job) for one run. Pure function; asserted on in tests."""
-    ns = config.BACKUP_NAMESPACE
+    """(Secret, Job) for one run. Pure function; asserted on in tests. A volume backup (spec.volume) is the one Job that runs in
+    a tenant namespace: it mounts the app's PVC read-only, sits next to the app pod when there is one, and carries no
+    ServiceAccount (the namespace default has no token and no rights)."""
+    ns = spec.namespace or config.BACKUP_NAMESPACE
+    vol = spec.volume
     labels = {LABEL: "1", "picopaas.io/backup-run": str(spec.run_id)}
     secret = {
         "apiVersion": "v1", "kind": "Secret",
@@ -91,12 +100,51 @@ def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
         "stringData": dict(spec.env),
     }
     limits = {"cpu": "200m", "memory": "320Mi", "ephemeral-storage": "200Mi"}
+    requests = {"cpu": "50m", "memory": "128Mi", "ephemeral-storage": "64Mi"}
+    tmp_size = "200Mi"
+    if vol:  # the namespace LimitRange caps a container at the app's own limits, so the Job never asks for more than that
+        limits = {"cpu": f"{vol['cpu_limit_m']}m", "memory": f"{vol['mem_limit_mi']}Mi", "ephemeral-storage": f"{vol['eph_limit_mi']}Mi"}
+        requests = {"cpu": f"{vol['cpu_request_m']}m", "memory": f"{vol['mem_request_mi']}Mi", "ephemeral-storage": f"{vol['eph_request_mi']}Mi"}
+        tmp_size = f"{vol['eph_limit_mi']}Mi"
     mounts = [{"name": "tmp", "mountPath": "/tmp"}]
-    volumes: list[dict[str, Any]] = [{"name": "tmp", "emptyDir": {"sizeLimit": "200Mi"}}]
+    volumes: list[dict[str, Any]] = [{"name": "tmp", "emptyDir": {"sizeLimit": tmp_size}}]
     if spec.scratch_mib:
         limits["ephemeral-storage"] = f"{200 + spec.scratch_mib}Mi"
         mounts.append({"name": "work", "mountPath": "/work"})
         volumes.append({"name": "work", "emptyDir": {"sizeLimit": f"{spec.scratch_mib}Mi"}})
+    pod_security: dict[str, Any] = {
+        "runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001,
+        "seccompProfile": {"type": "RuntimeDefault"},
+    }
+    pod_spec: dict[str, Any] = {
+        "restartPolicy": "Never",
+        "automountServiceAccountToken": False,
+        "enableServiceLinks": False,
+    }
+    container: dict[str, Any] = {
+        "name": "backup",
+        "image": config.BACKUP_IMAGE,
+        "envFrom": [{"secretRef": {"name": spec.name}}],
+        "resources": {"requests": requests, "limits": limits},
+        "securityContext": {
+            "allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+            "capabilities": {"drop": ["ALL"]},
+        },
+        "volumeMounts": mounts,
+    }
+    if vol:
+        pod_security.update({"runAsUser": vol["uid"], "runAsGroup": vol["fs_group"], "fsGroup": vol["fs_group"]})
+        # Same non-root UID/fsGroup as the app pod, so group-readable files are readable; the volume is never writable here.
+        volumes.append({"name": "data", "persistentVolumeClaim": {"claimName": vol["claim"], "readOnly": True}})
+        mounts.append({"name": "data", "mountPath": config.BACKUP_VOLUME_MOUNT, "readOnly": True})
+        container["env"] = [{"name": "GOMEMLIMIT", "value": f"{int(vol['mem_limit_mi'] * 0.8)}MiB"}]
+        if vol.get("app_pod_label"):  # RWO volume: another pod can mount it only on the node it is already attached to
+            pod_spec["affinity"] = {"podAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": [{
+                "labelSelector": {"matchLabels": {"app": vol["app_pod_label"]}},
+                "topologyKey": "kubernetes.io/hostname"}]}}
+    else:
+        pod_spec["serviceAccountName"] = "backup-job"
+    pod_spec.update({"securityContext": pod_security, "containers": [container], "volumes": volumes})
     job = {
         "apiVersion": "batch/v1", "kind": "Job",
         "metadata": {"name": spec.name, "namespace": ns, "labels": dict(labels)},
@@ -104,33 +152,7 @@ def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
             "backoffLimit": 0,  # a failed run is recorded and retried at the next slot, never silently re-run
             "activeDeadlineSeconds": config.BACKUP_JOB_DEADLINE_SECONDS,
             "ttlSecondsAfterFinished": 3600,  # safety net; the scheduler deletes finished Jobs itself
-            "template": {
-                "metadata": {"labels": dict(labels)},
-                "spec": {
-                    "restartPolicy": "Never",
-                    "serviceAccountName": "backup-job",
-                    "automountServiceAccountToken": False,
-                    "securityContext": {
-                        "runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001,
-                        "seccompProfile": {"type": "RuntimeDefault"},
-                    },
-                    "containers": [{
-                        "name": "backup",
-                        "image": config.BACKUP_IMAGE,
-                        "envFrom": [{"secretRef": {"name": spec.name}}],
-                        "resources": {
-                            "requests": {"cpu": "50m", "memory": "128Mi", "ephemeral-storage": "64Mi"},
-                            "limits": limits,
-                        },
-                        "securityContext": {
-                            "allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
-                            "capabilities": {"drop": ["ALL"]},
-                        },
-                        "volumeMounts": mounts,
-                    }],
-                    "volumes": volumes,
-                },
-            },
+            "template": {"metadata": {"labels": dict(labels)}, "spec": pod_spec},
         },
     }
     return secret, job
@@ -163,41 +185,40 @@ class KubeBackupRunner(BackupRunner):
 
     def start(self, spec: BackupJobSpec) -> None:
         secret, job = job_manifests(spec)
-        ns = config.BACKUP_NAMESPACE
+        ns = spec.namespace or config.BACKUP_NAMESPACE
         try:
             self._res("v1", "Secret").create(body=secret, namespace=ns)
             try:
                 self._res("batch/v1", "Job").create(body=job, namespace=ns)
             except Exception:
-                self._delete("v1", "Secret", spec.name)  # never leave credentials behind a Job that did not start
+                self._delete("v1", "Secret", spec.name, ns)  # never leave credentials behind a Job that did not start
                 raise
         except Exception as exc:  # noqa: BLE001 - the k8s error text can echo manifest content; keep only the type
             raise BackupRunnerError(f"could not create the backup job ({type(exc).__name__})") from None
 
-    def status(self, job_name: str) -> JobStatus:
+    def status(self, job_name: str, namespace: Optional[str] = None) -> JobStatus:
         from app.providers.kube import _as_dict
         from kubernetes.dynamic.exceptions import NotFoundError
 
-        ns = config.BACKUP_NAMESPACE
+        ns = namespace or config.BACKUP_NAMESPACE
         try:
             job = _as_dict(self._res("batch/v1", "Job").get(name=job_name, namespace=ns))
         except NotFoundError:
             return JobStatus("missing")
         st = job.get("status") or {}
         if st.get("succeeded"):
-            result, _ = self._pod_output(job_name)
+            result, _ = self._pod_output(job_name, ns)
             return JobStatus("succeeded", result=result)
         failed_cond = any(c.get("type") == "Failed" and c.get("status") == "True" for c in st.get("conditions") or [])
         if failed_cond:
-            _, error = self._pod_output(job_name)
+            _, error = self._pod_output(job_name, ns)
             reason = next((c.get("reason") for c in st.get("conditions") or [] if c.get("type") == "Failed"), None)
             if not error:
                 error = "the backup took too long and was stopped" if reason == "DeadlineExceeded" else "the backup job failed"
             return JobStatus("failed", error=error)
         return JobStatus("running")
 
-    def _pod_output(self, job_name: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
-        ns = config.BACKUP_NAMESPACE
+    def _pod_output(self, job_name: str, ns: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
         try:
             pods = self._kube.core.list_namespaced_pod(ns, label_selector=f"job-name={job_name}").items
             pods = sorted(pods, key=lambda p: p.metadata.creation_timestamp, reverse=True)
@@ -209,22 +230,22 @@ class KubeBackupRunner(BackupRunner):
             return None, None
         return parse_pod_output(str(text).splitlines())
 
-    def _delete(self, api_version: str, kind: str, name: str) -> None:
+    def _delete(self, api_version: str, kind: str, name: str, namespace: Optional[str] = None) -> None:
         from kubernetes.dynamic.exceptions import NotFoundError
 
         try:
-            kw: dict[str, Any] = {"name": name, "namespace": config.BACKUP_NAMESPACE}
+            kw: dict[str, Any] = {"name": name, "namespace": namespace or config.BACKUP_NAMESPACE}
             if kind == "Job":
                 kw["body"] = {"propagationPolicy": "Background"}
             self._res(api_version, kind).delete(**kw)
         except NotFoundError:
             pass
 
-    def cleanup(self, job_name: str) -> None:
+    def cleanup(self, job_name: str, namespace: Optional[str] = None) -> None:
         errors = []
         for api_version, kind in (("batch/v1", "Job"), ("v1", "Secret")):
             try:
-                self._delete(api_version, kind, job_name)
+                self._delete(api_version, kind, job_name, namespace)
             except Exception as exc:  # noqa: BLE001
                 errors.append(type(exc).__name__)
         if errors:
@@ -292,14 +313,26 @@ class KubeBackupRunner(BackupRunner):
             raise BackupRunnerError(f"could not delete exports ({type(exc).__name__})") from None
 
     def sweep(self, active: set[str]) -> int:
+        return self._sweep_ns(config.BACKUP_NAMESPACE, active)
+
+    def sweep_namespaces(self, namespaces: list[str], active: set[str]) -> int:
+        n = 0
+        for ns in namespaces:
+            try:
+                n += self._sweep_ns(ns, active)
+            except Exception as exc:  # noqa: BLE001 - a namespace that is gone or not readable must not stop the others
+                log.warning("backup: secret sweep in %s failed (%s)", ns, type(exc).__name__)
+        return n
+
+    def _sweep_ns(self, namespace: str, active: set[str]) -> int:
         from app.providers.kube import _as_dict
 
         res = self._res("v1", "Secret")
-        items = _as_dict(res.get(namespace=config.BACKUP_NAMESPACE, label_selector=LABEL)).get("items", [])
+        items = _as_dict(res.get(namespace=namespace, label_selector=LABEL)).get("items", [])
         n = 0
         for it in items:
             name = (it.get("metadata") or {}).get("name")
             if name and name not in active:
-                self._delete("v1", "Secret", name)
+                self._delete("v1", "Secret", name, namespace)
                 n += 1
         return n

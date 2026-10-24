@@ -493,7 +493,27 @@ def cmd_backup_list(c, args) -> None:
         print(f"last success: {_ago_text(b['last_success_at'])}")
     if b.get("enabled") and b.get("next_backup_at"):
         print(f"next backup: {b['next_backup_at']}")
-    runs = b.get("runs") or []
+    vb = b.get("volume_backups") or {}
+    if vb.get("note"):
+        print(f"volume: not backed up. {vb['note']}")
+    sets = b.get("backups")
+    if sets is None:  # an older server: only the flat list of runs
+        _print_runs(a, b.get("runs") or [])
+        return
+    if not sets:
+        print("No backups yet. Run one with: picopaas backup run " + a["name"])
+        return
+    print(f"{'ID':>6}  {'HOW':<10} {'STATUS':<10} {'PARTS':<22} {'SIZE':>9}  WHEN")
+    for st in sets:
+        parts = ",".join(f"{p['kind']}{'' if p['status'] == 'succeeded' else ' (' + p['status'] + ')'}" for p in st["parts"])
+        print(f"{st['id']:>6}  {st['trigger']:<10} {st['status']:<10} {parts:<22} {_mb(st.get('size_bytes') or 0):>6} MB  {_ago_text(st['created_at'])}")
+        for p in st["parts"]:
+            if p.get("error"):
+                print(f"{'':>8}{p['kind']}: {p['error']}")
+    print(f"Download one with: picopaas backup download {shlex.quote(a['name'])} [ID]")
+
+
+def _print_runs(a: dict, runs: list) -> None:
     if not runs:
         print("No backups yet. Run one with: picopaas backup run " + a["name"])
         return
@@ -508,7 +528,8 @@ def cmd_backup_run(c, args) -> None:
     a = _find_app(c, args.name)
     runs = _request(c, "POST", f"/apps/{a['id']}/backups").json()
     kinds = ", ".join(r["kind"] for r in runs)
-    print(f"Backup queued for {a['name']} ({kinds}); it starts within a minute. Check it with: picopaas backup list {shlex.quote(a['name'])}")
+    set_id = next((r["set_id"] for r in runs if r.get("set_id")), None)
+    print(f"Backup{f' {set_id}' if set_id else ''} queued for {a['name']} ({kinds}); it starts within a minute. Check it with: picopaas backup list {shlex.quote(a['name'])}")
 
 
 def cmd_backup_enable(c, args) -> None:
@@ -558,22 +579,37 @@ def cmd_backup_download(c, args) -> None:
     a = _find_app(c, args.name)
     b = _backups(c, a)
     _need_backups(b)
-    ok = [r for r in b.get("runs") or [] if r["status"] == "succeeded" and r["trigger"] != "restore" and r["kind"] in ("db", "bucket")]
-    if args.run_id is not None:
-        picks = [r for r in ok if r["id"] == args.run_id]
-        if not picks:
-            raise CliError(f"Run {args.run_id} is not a successful database or blob storage backup of {a['name']}. "
+    if args.run is not None:
+        if args.set_id is not None:
+            raise CliError("Pass either a backup ID or --run, not both.")
+        return _download_runs(c, a, b, args)
+    sets = [st for st in b.get("backups") or [] if st["status"] in ("succeeded", "partial")]
+    if args.set_id is not None:
+        picks = [st for st in b.get("backups") or [] if st["id"] == args.set_id]
+        if not picks or picks[0]["status"] not in ("succeeded", "partial"):
+            raise CliError(f"Backup {args.set_id} is not a finished backup of {a['name']}. "
                            f"See: picopaas backup list {shlex.quote(a['name'])}")
+        st = picks[0]
+    elif sets:
+        st = sets[0]  # newest first
     else:
-        picks, seen = [], set()
-        for r in ok:  # newest first: the latest successful run of each kind
-            if r["kind"] not in seen:
-                seen.add(r["kind"])
-                picks.append(r)
-        if not picks:
-            raise CliError(f"{a['name']} has no successful backup yet. Run one with: picopaas backup run {shlex.quote(a['name'])}")
-    if args.output and len(picks) > 1:
-        raise CliError("This app has more than one kind of backup, so -o is ambiguous. Pass a run id (see `picopaas backup list`).")
+        raise CliError(f"{a['name']} has no successful backup yet. Run one with: picopaas backup run {shlex.quote(a['name'])}")
+    if st["status"] == "partial":
+        bad = ", ".join(p["kind"] for p in st["parts"] if p["status"] != "succeeded")
+        print(f"Note: backup {st['id']} is partial ({bad} failed); the package holds the parts that succeeded.", file=sys.stderr)
+    e = _request(c, "POST", f"/apps/{a['id']}/backups/sets/{st['id']}/download").json()
+    e = _wait_export(c, a, e["export_id"])
+    out = args.output or os.path.basename(e.get("filename") or "") or f"backup-{st['id']}.tar.gz"
+    total = _fetch(e["url"], out)
+    print(f"Downloaded backup {st['id']} ({_mb(total)} MB) to {out}.")
+
+
+def _download_runs(c, a: dict, b: dict, args) -> None:
+    ok = [r for r in b.get("runs") or [] if r["status"] == "succeeded" and r["trigger"] != "restore" and r["kind"] in ("db", "bucket", "volume")]
+    picks = [r for r in ok if r["id"] == args.run]
+    if not picks:
+        raise CliError(f"Run {args.run} is not a successful backup part of {a['name']}. "
+                       f"See: picopaas backup list {shlex.quote(a['name'])}")
     for r in picks:
         e = _request(c, "POST", f"/apps/{a['id']}/backups/{r['id']}/download").json()
         e = _wait_export(c, a, e["export_id"])
@@ -664,7 +700,7 @@ def build_parser() -> argparse.ArgumentParser:
     dm.set_defaults(fn=cmd_domain)
     bk = sub.add_parser("backup", help="list, run, enable or download an app's backups")
     bsub = bk.add_subparsers(dest="backup_cmd", required=True)
-    bl = bsub.add_parser("list", help="show backup settings and recent runs")
+    bl = bsub.add_parser("list", help="show backup settings and recent backups")
     bl.add_argument("name", help="the app's name")
     bl.set_defaults(fn=cmd_backup_list)
     br = bsub.add_parser("run", help="start a backup now (one per app per hour)")
@@ -674,9 +710,10 @@ def build_parser() -> argparse.ArgumentParser:
         be = bsub.add_parser(word, help=h)
         be.add_argument("name", help="the app's name")
         be.set_defaults(fn=cmd_backup_enable)
-    bd = bsub.add_parser("download", help="download a backup as one file (default: the latest successful run of each kind)")
+    bd = bsub.add_parser("download", help="download a backup as one .tar.gz package (default: the newest finished backup)")
     bd.add_argument("name", help="the app's name")
-    bd.add_argument("run_id", nargs="?", type=int, help="a run id from `backup list` (default: latest of each kind)")
+    bd.add_argument("set_id", nargs="?", type=int, help="a backup ID from `backup list` (default: the newest finished one)")
+    bd.add_argument("--run", type=int, metavar="RUN_ID", help="download one part (a single run) instead of the whole package")
     bd.add_argument("-o", "--output", help="local file (default: the name the platform suggests)")
     bd.set_defaults(fn=cmd_backup_download)
     ad = sub.add_parser("admin", help="platform administrator commands")

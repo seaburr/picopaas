@@ -189,7 +189,7 @@ def test_admin_can_delete_users_backup(dl, user, admin, db_session):
     assert a.actor_email == "admin@example.com"
 
 
-@pytest.mark.parametrize("mut", ["failed", "queued", "running", "nosnap", "restore", "export", "purge", "volume"])
+@pytest.mark.parametrize("mut", ["failed", "queued", "running", "nosnap", "restore", "export", "purge", "prune"])
 def test_422_not_deletable(dl, user, db_session, mut):
     aid, _, _ = dl
     run = models.BackupRun(app_id=aid, kind="db", trigger="scheduled", status="succeeded", snapshot_id="cc11cc11",
@@ -198,8 +198,6 @@ def test_422_not_deletable(dl, user, db_session, mut):
         run.status = mut
     elif mut == "nosnap":
         run.snapshot_id = None
-    elif mut == "volume":
-        run.kind = "volume"
     else:
         run.trigger = mut
         run.status = "succeeded"

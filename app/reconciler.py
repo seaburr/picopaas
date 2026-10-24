@@ -81,6 +81,16 @@ def _volume_of(app: models.App) -> Optional[dict[str, Any]]:
     return {"size_gi": app.volume_size_gi, "mount_path": app.volume_mount_path or config.VOLUME_DEFAULT_MOUNT_PATH}
 
 
+def _volume_backup_of(app: models.App, eff: dict[str, int]) -> Optional[dict[str, Any]]:
+    """What an app namespace needs for volume backups (one backup pod of quota headroom, the egress policy for the backup
+    bucket), or None: backups off, no BACKUP_KEY_SCOPED, or no volume rendered."""
+    from app import backups  # late: app.backups reaches back into this module for the private-IP lookup
+
+    if _volume_of(app) is None or not backups.volume_backups_on():
+        return None
+    return {"pod": k8s_manifests.backup_pod_resources(eff), "ips": _private_storage_ips(config.backup_endpoint())}
+
+
 def refresh_volume_phase(app: models.App, kube: KubeProvider) -> None:
     """Record the PVC phase on the app (read-only kube call; failures keep the old value)."""
     try:
@@ -484,6 +494,7 @@ def reconcile_app(
         custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
         volume=_volume_of(app),
     )
+    render_kwargs["volume_backup"] = _volume_backup_of(app, render_kwargs["resources"])
 
     def _hash(flat_manifests: list[dict[str, Any]]) -> str:
         # Only the digest is stored (the manifests include the resolved Secret). Keyed: unguessable offline.
@@ -506,11 +517,12 @@ def reconcile_app(
         log.warning("app %s: reading used limits failed: %s", app.id, _kube_error_summary(exc))
         used = None
     slots = max(1, render_kwargs["replicas"]) + 1  # steady replicas + one surge pod (matches the quota floor)
+    bk = render_kwargs["volume_backup"]["pod"] if render_kwargs["volume_backup"] else {}  # plus one backup pod's headroom
     if used and (
-        (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > slots * eff["cpu_limit_m"]
-        or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > slots * eff["mem_limit_mi"]
-        or (used.get("ephemeral_limit_mi") or 0) + eff["ephemeral_limit_mi"] > slots * eff["ephemeral_limit_mi"]
-        or (used.get("pods") or 0) + 1 > slots
+        (used.get("cpu_limit_m") or 0) + eff["cpu_limit_m"] > slots * eff["cpu_limit_m"] + bk.get("cpu_limit_m", 0)
+        or (used.get("mem_limit_mi") or 0) + eff["mem_limit_mi"] > slots * eff["mem_limit_mi"] + bk.get("mem_limit_mi", 0)
+        or (used.get("ephemeral_limit_mi") or 0) + eff["ephemeral_limit_mi"] > slots * eff["ephemeral_limit_mi"] + bk.get("eph_limit_mi", 0)
+        or (used.get("pods") or 0) + 1 > slots + (1 if bk else 0)
     ):
         flat = k8s_manifests.flatten_manifests(
             k8s_manifests.render_app_manifests(**render_kwargs, used_limits=used)

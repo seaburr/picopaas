@@ -128,6 +128,16 @@ def _aware_ts(v: Any) -> datetime | None:
     return v.astimezone(timezone.utc)
 
 
+def _is_backup_pod(pod: dict[str, Any]) -> bool:
+    """A platform backup Job pod that runs in the app's namespace (volume backups). It is not the app: it must not drive the
+    app's status, appear in its pod picker / logs / events, or be addressable by pod name through the tenant-facing log API."""
+    return "picopaas.io/backup" in ((pod.get("metadata") or {}).get("labels") or {})
+
+
+def _app_pods(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [p for p in items if not _is_backup_pod(p)]
+
+
 def _pod_info(pod: dict[str, Any]) -> PodInfo:
     meta = pod.get("metadata") or {}
     st = pod.get("status") or {}
@@ -221,7 +231,7 @@ class KubeClientProvider(KubeProvider):
         """'running' | 'deploying' | 'error: <code>' (codes: image_pull, crash_loop, oom, config, root_image,
         quota, replica_failure; the reconciler maps them to human text)."""
         pods = self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)
-        items = _as_dict(pods).get("items", [])
+        items = _app_pods(_as_dict(pods).get("items", []))
         # Evicted pods linger as Failed; once a replacement is serving they are history, not an error.
         serving = any(
             (p.get("status") or {}).get("phase") == "Running"
@@ -287,12 +297,12 @@ class KubeClientProvider(KubeProvider):
         out: dict[str, list[dict[str, Any]]] = {}
         for pod in pods:
             ns = (pod.get("metadata") or {}).get("namespace") or ""
-            if ns.startswith("app-"):
+            if ns.startswith("app-") and not _is_backup_pod(pod):
                 out.setdefault(ns, []).extend(pod_events(pod))
         return out
 
     def pending_hint(self, namespace: str) -> str:
-        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        pods = _app_pods(_as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", []))
         hint = "none"
         for pod in pods:
             st = pod.get("status") or {}
@@ -310,7 +320,7 @@ class KubeClientProvider(KubeProvider):
         # Only ever app namespaces (app-<id>); callers derive the name from the app id, never from user input.
         if not namespace.startswith("app-"):
             raise ValueError("not an app namespace")
-        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        pods = _app_pods(_as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", []))
         pods = [p for p in pods if not (p.get("metadata") or {}).get("deletionTimestamp")] or pods
         if not pods:
             return PodLogs(pod=None, lines=[], note="No running pod yet.")
@@ -353,7 +363,7 @@ class KubeClientProvider(KubeProvider):
     def pod_events(self, namespace: str, pod: str) -> list[dict[str, Any]]:
         if not namespace.startswith("app-"):
             raise ValueError("not an app namespace")
-        pods = _as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", [])
+        pods = _app_pods(_as_dict(self.dyn.resources.get(api_version="v1", kind="Pod").get(namespace=namespace)).get("items", []))
         if pod not in [(p.get("metadata") or {}).get("name") for p in pods]:
             raise LookupError(pod)
         evs = self.core.list_namespaced_event(namespace=namespace, field_selector=f"involvedObject.name={pod}").items

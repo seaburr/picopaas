@@ -5,7 +5,9 @@
 # (MYSQL_EGRESS_CIDR / PG_EGRESS_CIDR, same VPC CIDR as tenant apps' DB egress). Never apply this file unsubstituted.
 #
 # Backup pods run the platform's own image (ghcr.io/seaburr/picopaas-backup), never tenant code, in this namespace only.
-# Volume backups (phase 1b) run in the app namespace and are not covered here.
+# Volume backups (BACKUP_KEY_SCOPED=1) run in the app namespace (app/backups.py, app/k8s_manifests.py): their Job, quota headroom
+# and egress policy are rendered per app, not here; their retention prune and downloads run in this namespace like the rest.
+# The ephemeral-storage quota below holds one package download (up to ~2 GiB scratch) next to one bucket backup.
 apiVersion: v1
 kind: Namespace
 metadata:

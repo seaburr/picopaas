@@ -2,10 +2,18 @@
 # Entry point of the backup image. One run = one app repo (KIND) = one Job.
 #   MODE=backup   KIND=db      dump the app's database into a restic repo, then `forget --prune` with the retention policy
 #   MODE=backup   KIND=bucket  copy the app's bucket objects to $WORK/bucket (s5cmd, the app's own key), restic that dir
+#   MODE=backup   KIND=volume  restic backup $VOLUME_DIR (the app's PVC mounted read-only; this one Job runs in the app's own
+#                              namespace). No retention here: `restic prune` is memory-hungry, so MODE=prune runs afterwards in the
+#                              platform namespace
+#   MODE=prune    KIND=volume  forget by the KEEP_* policy (grouped by host+path) and prune; prints {"pruned":true,"repo_bytes":N}
 #   MODE=restore  KIND=db      restic restore SNAPSHOT, drop the target DB's tables, load the dump (as the target's role)
 #   MODE=restore  KIND=bucket  restic restore SNAPSHOT, empty the target bucket, upload the files
-#   MODE=export   KIND=db|bucket  restic dump SNAPSHOT as ONE file (db: .sql.gz or .pgdump, bucket: .tar.gz) and upload it to
+#   MODE=export   KIND=db|bucket|volume  restic dump SNAPSHOT as ONE file (db: .sql.gz or .pgdump, bucket/volume: .tar.gz) and upload it to
 #                              s3://$EXPORT_BUCKET/$EXPORT_KEY with the backup key (owner download; the API presigns it)
+#   MODE=package  PARTS="db=<snap>,bucket=<snap>,volume=<snap>" REPO_BASE=<repo url without the kind>  one .tar.gz holding
+#                              database.sql.gz|database.pgdump, blob-storage.tar.gz, volume.tar.gz (only the parts listed) and
+#                              MANIFEST.json (app, set, parts with sizes and sha256, engine, version); streamed to $EXPORT_KEY
+#                              (EXPORT_TO_FILE=<path> writes it to a local file instead: used by images/backup/tests/smoke.sh only)
 #   MODE=forget   KIND=db|bucket  SNAPSHOT=<id>  `restic forget <id> --prune` (owner deleted one backup); a snapshot that is already gone
 #                              (pruned by retention) counts as success; prints {"forgotten":true,"repo_bytes":N}
 #   MODE=purge                 forget every snapshot of the repo and prune (deleted-app retention expired)
@@ -31,10 +39,10 @@ if ! command -v timeout >/dev/null 2>&1; then
   timeout() { [ "$1" = -k ] && shift 2; shift; "$@"; }
 fi
 
-[ -n "${RESTIC_REPOSITORY:-}" ] || fail "the repository is not configured"
-[ -n "${RESTIC_PASSWORD:-}" ] || fail "the repository password is missing"
 MODE="${MODE:-backup}"
 KIND="${KIND:-db}"
+[ "$MODE" = "package" ] || [ -n "${RESTIC_REPOSITORY:-}" ] || fail "the repository is not configured"
+[ -n "${RESTIC_PASSWORD:-}" ] || fail "the repository password is missing"
 LIMIT="${LIMIT_UPLOAD_KIB:-0}"
 QUICK_TIMEOUT="${QUICK_TIMEOUT:-120}"
 LONG_TIMEOUT="${LONG_TIMEOUT:-1500}"
@@ -45,18 +53,29 @@ TMP="${TMP_DIR:-/tmp}"
 export PGCONNECT_TIMEOUT=20
 
 step "start mode=$MODE kind=$KIND"
-# Create the repo on first use ("cat config" succeeds only when it exists). A restore never creates one.
-step "opening the backup repository"
-if ! $RQ cat config >/dev/null 2>&1; then
-  [ "$MODE" = "restore" ] || [ "$MODE" = "export" ] || [ "$MODE" = "forget" ] && fail "the backup repository could not be opened"
-  step "creating the backup repository"
-  $RQ init --quiet >/dev/null 2>&1 || fail "could not open or create the backup repository"
+if [ "$MODE" != "package" ]; then
+  # Create the repo on first use ("cat config" succeeds only when it exists). Nothing but a backup ever creates one.
+  step "opening the backup repository"
+  if ! $RQ cat config >/dev/null 2>&1; then
+    case "$MODE" in restore|export|forget|prune) fail "the backup repository could not be opened" ;; esac
+    step "creating the backup repository"
+    $RQ init --quiet >/dev/null 2>&1 || fail "could not open or create the backup repository"
+  fi
+  step "backup repository ready"
 fi
-step "backup repository ready"
 
 if [ "$MODE" = "purge" ]; then
   $RESTIC forget --keep-tag picopaas-keep-nothing --prune >/dev/null 2>&1 || fail "purge failed"
   echo 'PICOPAAS_RESULT {"purged":true}'
+  exit 0
+fi
+
+if [ "$MODE" = "prune" ]; then
+  step "applying retention"
+  $RESTIC forget --keep-daily "${KEEP_DAILY:-1}" --keep-weekly "${KEEP_WEEKLY:-1}" --keep-monthly "${KEEP_MONTHLY:-1}" \
+    --group-by host,paths --prune >/dev/null 2>&1 || fail "retention cleanup failed"
+  REPO="$($RQ stats --mode raw-data --json 2>/dev/null | jq -r '.total_size // 0')"
+  echo "PICOPAAS_RESULT {\"pruned\":true,\"repo_bytes\":${REPO:-0}}"
   exit 0
 fi
 
@@ -134,6 +153,23 @@ dump_reason() {
   fi
 }
 
+# --- shared by export and package -------------------------------------------------------------
+
+# The volume snapshot as a gzipped tar (the restic tar dump, paths relative to the volume root) at $2. A snapshot bigger than a
+# download can hold is refused up front instead of filling the scratch disk.
+volume_tar() {
+  VDIR="${VOLUME_DIR:-/volume}"
+  VSIZE="$($RQ stats "$1" --mode restore-size --json 2>/dev/null | jq -r '.total_size // empty' 2>/dev/null)"
+  [ -n "$VSIZE" ] || fail "reading the volume snapshot failed"
+  [ "$VSIZE" -le "${MAX_VOLUME_BYTES:-1073741824}" ] || fail "the volume backup is too big to download as one file"
+  rm -f "$TMP/vt.status"
+  # pipefail is not POSIX sh: restic's own exit status goes through a marker file, so a dump that died half way is a failure
+  # and not a truncated (but valid-looking) .tar.gz.
+  ( $RESTIC dump "$1" "$VDIR" --archive tar 2>/dev/null; echo $? > "$TMP/vt.status" ) | gzip -c > "$2"
+  [ "$(cat "$TMP/vt.status" 2>/dev/null || echo 1)" = "0" ] || fail "reading the volume snapshot failed"
+  [ "$(gzip -dc "$2" 2>/dev/null | head -c 1 | wc -c | tr -d ' ')" = "1" ] || fail "reading the volume snapshot failed"
+}
+
 # --- export (owner download) ------------------------------------------------------------------
 
 if [ "$MODE" = "export" ]; then
@@ -146,6 +182,8 @@ if [ "$MODE" = "export" ]; then
       || fail "restoring the snapshot from the repository failed"
     step "packing the files"
     tar -czf "$WORK/export.out" -C "$WORK/restore" . >/dev/null 2>&1 || fail "packing the files failed"
+  elif [ "$KIND" = "volume" ]; then
+    volume_tar "$SNAPSHOT" "$WORK/export.out"
   else
     case "$EXPORT_KEY" in
       *.pgdump) $RESTIC dump "$SNAPSHOT" db.pgdump > "$WORK/export.out" 2>/dev/null || fail "reading the snapshot from the repository failed" ;;
@@ -163,6 +201,79 @@ if [ "$MODE" = "export" ]; then
     || fail "uploading the file failed"
   rm -f "$WORK/export.out"
   echo "PICOPAAS_RESULT {\"exported\":true,\"bytes\":$SIZE}"
+  exit 0
+fi
+
+# --- package (owner download of a whole backup) ------------------------------------------------
+
+if [ "$MODE" = "package" ]; then
+  : "${REPO_BASE:?}" "${PARTS:?}" "${EXPORT_ENDPOINT:?}" "${EXPORT_BUCKET:?}" "${EXPORT_KEY:?}"
+  PK="$WORK/pkg"
+  rm -rf "$PK" "$WORK/restore"
+  mkdir -p "$PK"
+  FILES=""
+  PJSON='[]'
+  ENGINE_FOUND=""
+  OLDIFS="$IFS"; IFS=,; set -- $PARTS; IFS="$OLDIFS"
+  for spec in "$@"; do
+    pk="${spec%%=*}"; snap="${spec#*=}"
+    case "$pk" in db|bucket|volume) ;; *) fail "a backup part is not valid" ;; esac
+    case "$snap" in ""|*[!0-9a-f]*) fail "a snapshot id is not valid" ;; esac
+    export RESTIC_REPOSITORY="$REPO_BASE/$pk"
+    step "reading the $pk backup"
+    case "$pk" in
+      db)
+        LS="$($RQ ls "$snap" 2>/dev/null)" || fail "reading the database backup failed"
+        if printf '%s\n' "$LS" | grep -q '/db\.pgdump$'; then
+          NAME=database.pgdump; ENGINE_FOUND=postgresql
+          $RESTIC dump "$snap" db.pgdump > "$PK/$NAME" 2>/dev/null || fail "reading the database backup failed"
+          [ -s "$PK/$NAME" ] || fail "reading the database backup failed"
+        elif printf '%s\n' "$LS" | grep -q '/db\.sql$'; then
+          NAME=database.sql.gz; ENGINE_FOUND=mysql
+          $RESTIC dump "$snap" db.sql 2>/dev/null | gzip -c > "$PK/$NAME"
+          [ "$(gzip -dc "$PK/$NAME" | head -c 1 | wc -c | tr -d ' ')" = "1" ] || fail "reading the database backup failed"
+        else
+          fail "the database backup holds no dump"
+        fi ;;
+      bucket)
+        NAME=blob-storage.tar.gz
+        mkdir -p "$WORK/restore"
+        $RESTIC restore "$snap:$WORK/bucket" --target "$WORK/restore" >/dev/null 2>&1 || fail "reading the blob storage backup failed"
+        tar -czf "$PK/$NAME" -C "$WORK/restore" . >/dev/null 2>&1 || fail "packing the blob storage files failed"
+        rm -rf "$WORK/restore" ;;
+      volume)
+        NAME=volume.tar.gz
+        volume_tar "$snap" "$PK/$NAME" ;;
+    esac
+    BYTES="$(wc -c < "$PK/$NAME" | tr -d ' ')"
+    SHA="$(sha256sum "$PK/$NAME" | cut -d' ' -f1)"
+    PJSON="$(printf '%s' "$PJSON" | jq -c --arg k "$pk" --arg f "$NAME" --arg s "$snap" --arg b "$BYTES" --arg h "$SHA" \
+      '. + [{kind: $k, file: $f, snapshot: $s, bytes: ($b | tonumber), sha256: $h}]')" || fail "writing the manifest failed"
+    FILES="$FILES $NAME"
+  done
+  step "writing the manifest"
+  jq -n --arg app "${APP_NAME:-}" --arg set "${SET_ID:-0}" --arg created "${SET_CREATED_AT:-}" --arg engine "$ENGINE_FOUND" \
+    --arg ver "${PICOPAAS_VERSION:-}" --argjson parts "$PJSON" \
+    '{format: 1, app: $app, set_id: ($set | tonumber), created_at: $created, engine: (if $engine == "" then null else $engine end),
+      picopaas_version: $ver, parts: $parts}' > "$PK/MANIFEST.json" || fail "writing the manifest failed"
+  step "uploading the package"
+  rm -f "$TMP/pkg.status"
+  if [ -n "${EXPORT_TO_FILE:-}" ]; then  # test hook (images/backup/tests/smoke.sh): same stream, a local file as the target
+    ( tar -cf - -C "$PK" MANIFEST.json $FILES 2>/dev/null; echo $? > "$TMP/pkg.status" ) | gzip -1 > "$EXPORT_TO_FILE"
+    SIZE="$(wc -c < "$EXPORT_TO_FILE" | tr -d ' ')"
+  else
+    # Streamed: the parts are already on scratch once, the package is never stored a second time. Small parts keep
+    # s5cmd's upload buffers (part size x concurrency) well inside the pod's memory limit.
+    ( tar -cf - -C "$PK" MANIFEST.json $FILES 2>/dev/null; echo $? > "$TMP/pkg.status" ) | gzip -1 \
+      | AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}" timeout -k 10 "$LONG_TIMEOUT" \
+          s5cmd --endpoint-url "$EXPORT_ENDPOINT" pipe --part-size 8 --concurrency 2 "s3://$EXPORT_BUCKET/$EXPORT_KEY" >/dev/null 2>"$TMP/s3.err" \
+      || fail "uploading the package failed"
+    SIZE="$(AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}" timeout -k 10 "$QUICK_TIMEOUT" \
+      s5cmd --endpoint-url "$EXPORT_ENDPOINT" --json ls "s3://$EXPORT_BUCKET/$EXPORT_KEY" 2>/dev/null | jq -rs '.[0].size // 0' 2>/dev/null)"
+  fi
+  [ "$(cat "$TMP/pkg.status" 2>/dev/null || echo 1)" = "0" ] || fail "packing the files failed"
+  rm -rf "$PK"
+  echo "PICOPAAS_RESULT {\"exported\":true,\"bytes\":${SIZE:-0}}"
   exit 0
 fi
 
@@ -236,7 +347,21 @@ fi
 TAGARG=""
 [ -n "${TAG:-}" ] && TAGARG="--tag $TAG"
 
-if [ "$KIND" = "bucket" ]; then
+if [ "$KIND" = "volume" ]; then
+  VDIR="${VOLUME_DIR:-/volume}"
+  [ -d "$VDIR" ] || fail "the volume is not mounted"
+  step "writing the snapshot"
+  # The mount is read-only and the path is always the same, so retention (host + path grouping) sees one series of snapshots.
+  $RESTIC backup "$VDIR" --json $TAGARG --host "app" > "$TMP/backup.json" 2>/dev/null
+  RESTIC_RC=$?
+  if [ "$RESTIC_RC" = "3" ]; then
+    # restic sealed a snapshot that is missing the files it could not read (typically 0600 files of another UID): not a backup to rely on.
+    BAD="$(grep '"message_type":"summary"' "$TMP/backup.json" 2>/dev/null | tail -n1 | jq -r '.snapshot_id // empty' 2>/dev/null)"
+    [ -n "$BAD" ] && $RQ forget "$BAD" >/dev/null 2>&1
+    fail "some files on the volume could not be read"
+  fi
+  [ "$RESTIC_RC" = "0" ] || fail "writing the backup failed"
+elif [ "$KIND" = "bucket" ]; then
   need_bucket
   rm -rf "$WORK/bucket"; mkdir -p "$WORK/bucket"
   # restic cannot read S3 as a source: copy to scratch first (bounded by the Job's emptyDir sizeLimit).
@@ -298,6 +423,11 @@ SUMMARY="$(grep '"message_type":"summary"' "$TMP/backup.json" | tail -n1)"
 SNAP="$(echo "$SUMMARY" | jq -r '.snapshot_id // empty' | cut -c1-8)"
 ADDED="$(echo "$SUMMARY" | jq -r '.data_added // 0')"
 [ -n "$SNAP" ] || fail "backup finished without a snapshot"
+
+if [ "$KIND" = "volume" ]; then  # no prune in the tenant namespace: the platform queues MODE=prune for this repo next
+  echo "PICOPAAS_RESULT {\"snapshot_id\":\"$SNAP\",\"bytes_added\":${ADDED:-0}}"
+  exit 0
+fi
 
 step "applying retention"
 $RESTIC forget --keep-daily "${KEEP_DAILY:-1}" --keep-weekly "${KEEP_WEEKLY:-1}" --keep-monthly "${KEEP_MONTHLY:-1}" \

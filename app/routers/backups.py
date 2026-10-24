@@ -4,6 +4,10 @@ The API never touches the cluster: POST only queues a `BackupRun`; the leader's 
 the Job. Read-scope API keys can list but not create (the global read-only gate blocks every non-GET). Owner or
 platform admin only; anyone else gets 404.
 
+A backup is a SET (`backups[]`): the db, blob storage and volume parts one "Back up now" / schedule slot produced, shown, downloaded
+(`POST .../backups/sets/{set_id}/download`, ONE .tar.gz package) and deleted (`DELETE .../backups/sets/{set_id}`) as one. The per-run
+endpoints below keep working for single parts.
+
 Download: `POST /apps/{id}/backups/{run_id}/download` queues an export Job (the snapshot as one .sql.gz / .pgdump / .tar.gz file in
 the backup bucket's exports/ prefix, swept after an hour); `GET /apps/{id}/backups/exports/{export_id}` is polled and returns a
 10-minute presigned URL once the file is ready.
@@ -59,7 +63,40 @@ class BackupRunOut(BaseModel):
     snapshot_id: Optional[str] = None
     error: Optional[str] = None
     source_run_id: Optional[int] = None  # restore runs: the backup run that was restored
+    set_id: Optional[int] = None  # the backup (set) this run is a part of
     export: Optional[RunExportOut] = None  # GET /apps/{id}/backups only
+
+
+class SetPartOut(BaseModel):
+    run_id: int
+    kind: str  # db | bucket | volume
+    status: str  # queued | running | succeeded | failed | deleting
+    bytes_added: Optional[int] = None
+    error: Optional[str] = None
+
+
+class SetExportOut(BaseModel):
+    id: int  # export id: GET /apps/{id}/backups/exports/{id}
+    status: str  # queued | running | ready
+    available_until: Optional[datetime] = None  # once ready
+
+
+class BackupSetOut(BaseModel):
+    """One backup: all the parts one trigger produced. status: running | succeeded | partial (some parts failed) | failed | deleting."""
+    id: int
+    trigger: str  # scheduled | manual | final
+    created_at: datetime
+    finished_at: Optional[datetime] = None  # null while a part is queued or running
+    status: str
+    size_bytes: int = 0  # new data stored by the succeeded parts (restic deduplicates, so later backups add little)
+    parts: List[SetPartOut] = []
+    export: Optional[SetExportOut] = None  # the latest live package download (queued, running or ready), else null
+
+
+class VolumeBackupsOut(BaseModel):
+    has_volume: bool
+    available: bool  # the volume is part of backups (admin turned volume backups on)
+    note: Optional[str] = None  # why not, in words for the UI (null when available or no volume)
 
 
 class BackupKindOut(BaseModel):
@@ -85,7 +122,9 @@ class BackupsOut(BaseModel):
     next_backup_at: Optional[datetime] = None
     repo_bytes: int = 0
     cap_bytes: int
-    runs: List[BackupRunOut] = []
+    backups: List[BackupSetOut] = []  # newest first
+    volume_backups: VolumeBackupsOut
+    runs: List[BackupRunOut] = []  # the same parts, flat (kept for older clients)
 
 
 class BackupCreateIn(BaseModel):
@@ -107,15 +146,28 @@ def _run_out(run: models.BackupRun, export: Optional[models.BackupRun]) -> Backu
     return out
 
 
+def _set_out(st: models.BackupSet, parts: List[models.BackupRun], export: Optional[models.BackupRun]) -> BackupSetOut:
+    out = BackupSetOut(
+        id=st.id, trigger=st.trigger, created_at=st.created_at, finished_at=backups.set_finished_at(parts),
+        status=backups.set_status(st, parts), size_bytes=backups.set_size(parts),
+        parts=[SetPartOut(run_id=p.id, kind=p.kind, status=p.status, bytes_added=p.bytes_added, error=p.error) for p in parts])
+    if export is not None:
+        state = backups.export_state(export)
+        out.export = SetExportOut(id=export.id, status=state, available_until=backups.export_available_until(export) if state == "ready" else None)
+    return out
+
+
 def _out(db: Session, app: models.App) -> BackupsOut:
     cfg = db.get(models.AppBackupConfig, app.id)
     runs = []
     if backups.enabled():
         runs = (db.query(models.BackupRun)
-                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export", "delete")),
+                .filter(models.BackupRun.app_id == app.id, models.BackupRun.trigger.notin_(("purge", "export", "delete", "prune")),
                         models.BackupRun.status != "deleted")
                 .order_by(models.BackupRun.created_at.desc(), models.BackupRun.id.desc()).limit(RUNS_SHOWN).all())
     live = backups.live_exports_by_run(db, app.id, [r.id for r in runs]) if runs else {}
+    sets = backups.listed_sets(db, app.id, RUNS_SHOWN) if backups.enabled() else []
+    set_live = backups.live_exports_by_set(db, app.id, [st.id for st, _ in sets]) if sets else {}
     kinds = []
     for kind in backups.eligible_kinds(app):
         p = backups.prefix(kind)
@@ -131,7 +183,10 @@ def _out(db: Session, app: models.App) -> BackupsOut:
         kinds=kinds, last_backup_at=cfg.last_backup_at if cfg else None, last_success_at=cfg.last_success_at if cfg else None,
         last_status=cfg.last_status if cfg else None, last_error=cfg.last_error if cfg else None,
         next_backup_at=cfg.next_backup_at if cfg else None, repo_bytes=backups.repo_bytes(cfg),
-        cap_bytes=config.BACKUP_MAX_BYTES_PER_APP, runs=[_run_out(r, live.get(r.id)) for r in runs])
+        cap_bytes=config.BACKUP_MAX_BYTES_PER_APP, runs=[_run_out(r, live.get(r.id)) for r in runs],
+        backups=[_set_out(st, parts, set_live.get(st.id)) for st, parts in sets],
+        volume_backups=VolumeBackupsOut(has_volume=backups.has_volume(app), available="volume" in backups.eligible_kinds(app),
+                                        note=backups.volume_backup_note(app)))
 
 
 def _require_usable() -> None:
@@ -156,14 +211,14 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
     available = backups.eligible_kinds(app)
     wanted = list(body.kinds) if body and body.kinds else list(available)
     if "volume" in wanted and "volume" not in available:
-        raise HTTPException(status_code=422, detail="Volume backups aren't available yet." if app.volume_size_gi
-                            else "This app has no volume to back up.")
+        raise HTTPException(status_code=422, detail=backups.volume_backup_note(app) or "This app has no volume to back up.")
     if "bucket" in wanted and "bucket" not in available:
         raise HTTPException(status_code=422, detail="This app has no blob storage to back up yet." if app.want_storage
                             else "This app has no blob storage to back up.")
     if not wanted or any(k not in available for k in wanted):
-        raise HTTPException(status_code=422, detail="This app has no database to back up yet." if app.want_db
-                            else "This app has no database, blob storage or volume to back up.")
+        raise HTTPException(status_code=422, detail=backups.volume_backup_note(app) or (
+            "This app has no database to back up yet." if app.want_db
+            else "This app has no database, blob storage or volume to back up."))
     backups.lock_app(db, app)  # per-app row lock until the commit below: a double click gets 409/429, not a second run
     if backups.active_run(db, app.id) is not None:
         raise HTTPException(status_code=409, detail="A backup is already queued or running for this app.")
@@ -171,9 +226,9 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
     if wait is not None:
         raise HTTPException(status_code=429, detail=f"You can start one backup per hour. Try again in {max(1, wait // 60)} minutes.",
                             headers={"Retry-After": str(wait)})
-    runs = [backups.enqueue(db, app, kind, "manual") for kind in wanted]
+    st, runs = backups.enqueue_set(db, app, wanted, "manual")
     db.commit()
-    audit.record(db, user, "backup.create", "app", app.id, "trigger=manual kinds=" + ",".join(wanted))
+    audit.record(db, user, "backup.create", "app", app.id, f"trigger=manual set={st.id} kinds=" + ",".join(wanted))
     return [BackupRunOut.model_validate(r) for r in runs]
 
 
@@ -236,7 +291,8 @@ def restore_backup(run_id: int, body: RestoreIn, db: Session = Depends(get_db),
 
 class BackupExportOut(BaseModel):
     export_id: int
-    run_id: int  # the backup run being downloaded
+    run_id: int = 0  # the backup run being downloaded (0 for a whole-backup package: see set_id)
+    set_id: Optional[int] = None  # the backup (set) being downloaded as one package
     kind: str
     status: str  # queued | running | ready | failed | expired
     filename: Optional[str] = None
@@ -252,10 +308,13 @@ def _export_out(db: Session, app: models.App, run: models.BackupRun, runner: Opt
     source = db.get(models.BackupRun, run.source_run_id) if run.source_run_id else None
     state = backups.export_state(run)
     ext = (run.export_key or "").split(".", 1)[-1]
+    if run.set_id and run.kind == "package":
+        filename = backups.export_set_filename(app, run.set_id) if run.export_key else None
+    else:
+        filename = backups.export_filename(app, source, ext) if source is not None and run.export_key else None
     out = BackupExportOut(
-        export_id=run.id, run_id=run.source_run_id or 0, kind=run.kind, status=state, created_at=run.created_at,
-        filename=backups.export_filename(app, source, ext) if source is not None and run.export_key else None,
-        error=run.error if state == "failed" else None)
+        export_id=run.id, run_id=run.source_run_id or 0, set_id=run.set_id, kind=run.kind, status=state, created_at=run.created_at,
+        filename=filename, error=run.error if state == "failed" else None)
     if state == "ready" and run.export_key and out.filename:
         out.size_bytes = run.bytes_added
         out.available_until = backups.export_available_until(run)
@@ -306,7 +365,7 @@ def get_download(app_id: int, export_id: int, db: Session = Depends(get_db), use
     out = _export_out(db, app, run, runner)
     if out.url:  # never the URL, key or any credential in the detail
         audit.record(db, user, "backup.download_link", "app", app.id,
-                     f"export={run.id} run={run.source_run_id} kind={run.kind} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
+                     f"export={run.id} run={run.source_run_id}{backups.set_tag(run)} kind={run.kind} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
     return out
 
 
@@ -338,3 +397,59 @@ def delete_backup(app_id: int, run_id: int, db: Session = Depends(get_db), user:
     for e in exports:
         audit.record(db, user, "backup.export_deleted", "app", app.id, f"export={e.id} run={source.id} reason=backup_deleted")
     return BackupDeleteOut(run_id=source.id, status="deleting", delete_run_id=run.id)
+
+
+# --- whole backups (sets) ---------------------------------------------------------------------
+
+def _get_set_or_404(db: Session, app: models.App, set_id: int) -> models.BackupSet:
+    st = db.get(models.BackupSet, set_id)
+    if st is None or st.app_id != app.id or st.delete_status == "deleted":
+        raise HTTPException(status_code=404, detail="We can't find that backup.")
+    return st
+
+
+@router.post("/{app_id}/backups/sets/{set_id}/download", response_model=BackupExportOut, status_code=202)
+def start_set_download(app_id: int, set_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Prepare a whole backup as ONE .tar.gz package: `database.sql.gz` or `database.pgdump`, `blob-storage.tar.gz`, `volume.tar.gz`
+    (only the parts that succeeded) and `MANIFEST.json`. 202 + poll GET .../exports/{export_id}, exactly like a single-run download.
+    Counts as one of the 3 downloads per app per hour; 409 while a part is still running or another download is being prepared."""
+    app = _get_app_or_404(db, app_id, user)
+    _require_usable()
+    st = _get_set_or_404(db, app, set_id)
+    try:
+        run, new = backups.enqueue_set_export(db, app, st)
+    except backups.ExportRefused as exc:
+        db.rollback()
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(status_code=exc.status, detail=str(exc), headers=headers) from None
+    db.commit()
+    if new:
+        audit.record(db, user, "backup.download", "app", app.id, f"set={st.id} kinds={','.join(p.kind for p in backups.set_parts(db, st))} export={run.id}")
+    return _export_out(db, app, run, None)
+
+
+class SetDeleteOut(BaseModel):
+    set_id: int
+    status: str  # deleting | deleted (a backup with nothing to forget is deleted at once)
+    delete_run_ids: List[int] = []
+
+
+@router.delete("/{app_id}/backups/sets/{set_id}", response_model=SetDeleteOut, status_code=202)
+def delete_backup_set(app_id: int, set_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
+                      runner: BackupRunner = Depends(get_backup_runner)):
+    """Delete a whole backup: every part's snapshot is forgotten and pruned. 202; the set shows `status: "deleting"` in
+    GET /apps/{id}/backups until the last Job ends, then disappears. 409 while a part is running or a download is being prepared."""
+    app = _get_app_or_404(db, app_id, user)
+    _require_usable()
+    st = _get_set_or_404(db, app, set_id)
+    try:
+        runs, exports = backups.enqueue_delete_set(db, app, st, runner)
+    except backups.DeleteRefused as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    db.commit()
+    audit.record(db, user, "backup.delete", "app", app.id,
+                 f"set={st.id} runs={','.join(str(r.source_run_id) for r in runs) or '-'} kinds={','.join(r.kind for r in runs) or '-'}")
+    for e in exports:
+        audit.record(db, user, "backup.export_deleted", "app", app.id, f"export={e.id} set={st.id} reason=backup_deleted")
+    return SetDeleteOut(set_id=st.id, status=st.delete_status or "deleted", delete_run_ids=[r.id for r in runs])

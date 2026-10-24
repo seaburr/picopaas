@@ -280,6 +280,16 @@ BACKUP_EXPORT_TTL_SECONDS = int(os.environ.get("BACKUP_EXPORT_TTL_SECONDS", 3600
 BACKUP_EXPORT_URL_SECONDS = 600  # presigned GET lifetime
 BACKUP_EXPORT_MAX_PER_HOUR = 3  # download requests per app per hour
 BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 1024**2))  # keep 2 Jobs inside deploy/platform/backup.yaml quota
+# Volume backups ("volume" kind) run in the TENANT namespace and put the backup key in a per-run Secret there, so they stay off
+# until an admin confirms the key is bucket-scoped (docs/design/backups.md decisions log, 2026-10-23). Default 0: no volume part.
+BACKUP_KEY_SCOPED = os.environ.get("BACKUP_KEY_SCOPED", "0") == "1"
+# Upload limit for the tenant-namespace Job (so a volume backup does not saturate the node's egress), KiB/s.
+BACKUP_VOLUME_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_VOLUME_UPLOAD_LIMIT_KIB", 2048))
+BACKUP_VOLUME_MOUNT = "/volume"  # where the Job mounts the app's PVC (stable, so retention groups by host+path)
+# The volume part of a download is gzipped to scratch first; a volume backup bigger than this is not offered in the package.
+BACKUP_VOLUME_EXPORT_MAX_BYTES = int(os.environ.get("BACKUP_VOLUME_EXPORT_MAX_BYTES", 1024**3))
+PICOPAAS_VERSION = os.environ.get("PICOPAAS_VERSION", "dev")  # recorded in a backup package's MANIFEST.json
+VOLUME_BACKUP_NEEDS_KEY_MSG = "Volume backups need a bucket-scoped backup key; ask the admin."
 
 
 def backup_endpoint() -> str:
