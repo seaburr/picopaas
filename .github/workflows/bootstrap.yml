@@ -13,6 +13,10 @@ on:
       backup_image_digest:
         description: "Optional sha256:<64 hex> of ghcr.io/seaburr/picopaas-backup to pin; default = resolve :latest at run time"
         required: false
+      rotate_backup_key:
+        description: "Create a fresh bucket-scoped backup Spaces key (picopaas-backups only) and revoke the old one after the rollout"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -281,6 +285,7 @@ jobs:
         env:
           PICOPAAS_FERNET_KEY: ${{ secrets.PICOPAAS_FERNET_KEY }}
           BACKUP_IMAGE_DIGEST_INPUT: ${{ inputs.backup_image_digest }}
+          ROTATE_BACKUP_KEY: ${{ inputs.rotate_backup_key }}
         run: |
           set -euo pipefail
           ns=picopaas-system
@@ -347,6 +352,82 @@ jobs:
               aws s3api create-bucket --bucket "$BACKUP_BUCKET" --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" \
               || { echo "::error::could not create backup bucket $BACKUP_BUCKET (name taken by another account? change BACKUP_BUCKET)"; exit 1; }
           fi
+          # ---- Bucket-scoped backup key (condition of the 2026-10-23 decision, docs/design/backups.md) ----
+          # BACKUP_ACCESS_KEY_ID/SECRET are a DO Spaces key limited to the one bucket ($BACKUP_BUCKET, readwrite),
+          # NOT the platform key. The DO API returns a key's secret only in the create response, so the secret's only
+          # home is this cluster Secret. Rules:
+          #   - reuse: the Secret holds an id AND a secret, that id still exists under our name, and (when the list shows
+          #     grants) it is scoped to this bucket only -> keep both values untouched;
+          #   - otherwise (first run, secret missing/lost, key gone, wrong grant, or rotate_backup_key) create a NEW key
+          #     (random name suffix, so a name clash can never block it) and prove it works before it is stored;
+          #   - superseded/orphaned keys (same name prefix, id != the one in the Secret) are revoked by the last step
+          #     of this workflow, AFTER the platform rolled out with the new key, never before.
+          # DIGITALOCEAN_TOKEN needs spaces_key:read, spaces_key:create_credentials and spaces_key:delete (a full-access
+          # token has them; the platform already uses the same token for per-app keys). Nothing here prints a secret.
+          BK_BASE="picopaas-backups-scoped"
+          KD=$(mktemp -d)
+          do_api() { # METHOD PATH [JSON]; response body -> $KD/do.out; prints only the HTTP status
+            curl -sS -o "$KD/do.out" -w '%{http_code}' -X "$1" -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+              -H 'Content-Type: application/json' ${3:+-d "$3"} "https://api.digitalocean.com$2"
+          }
+          list_bk_keys() { # JSON array of {access_key,name,grants} for keys named $BK_BASE or $BK_BASE-*
+            local page=1 all='[]' code n
+            while :; do
+              code=$(do_api GET "/v2/spaces/keys?page=$page&per_page=200")
+              [ "$code" = 200 ] || { echo "::error::listing Spaces keys failed (HTTP $code); DIGITALOCEAN_TOKEN needs spaces_key:read" >&2; return 1; }
+              all=$(jq -c --argjson a "$all" --arg b "$BK_BASE" \
+                '$a + [(.keys // [])[] | select(.name == $b or ((.name // "") | startswith($b + "-"))) | {access_key, name, grants}]' "$KD/do.out")
+              n=$(jq '(.keys // []) | length' "$KD/do.out")
+              [ "$n" -ge 200 ] || break
+              page=$((page+1))
+            done
+            echo "$all"
+          }
+          cur_id=$(get BACKUP_ACCESS_KEY_ID); cur_sec=$(get BACKUP_SECRET_ACCESS_KEY)
+          [ -z "$cur_id" ] || echo "::add-mask::$cur_id"   # public repo: key ids stay out of the logs too
+          [ -z "$cur_sec" ] || echo "::add-mask::$cur_sec"
+          bk_keys=$(list_bk_keys)
+          reuse=no
+          if [ "${ROTATE_BACKUP_KEY:-false}" != "true" ] && [ -n "$cur_id" ] && [ -n "$cur_sec" ] \
+              && jq -e --arg id "$cur_id" --arg b "$BACKUP_BUCKET" '.[] | select(.access_key == $id)
+                   | (.grants == null) or ((.grants | length) == 1 and .grants[0].bucket == $b and .grants[0].permission == "readwrite")' \
+                   <<<"$bk_keys" >/dev/null; then
+            reuse=yes
+          fi
+          if [ "$reuse" = yes ]; then
+            BACKUP_KEY_ID="$cur_id"; BACKUP_KEY_SECRET="$cur_sec"
+            echo "backup key: reusing the existing bucket-scoped key (secret already in the cluster Secret)"
+          else
+            if [ "${ROTATE_BACKUP_KEY:-false}" = "true" ]; then echo "backup key: rotation requested, creating a new bucket-scoped key"
+            elif [ -z "$cur_sec" ] || [ -z "$cur_id" ]; then echo "backup key: no stored key/secret, creating a bucket-scoped key"
+            else echo "backup key: stored key is not a valid $BK_BASE key for $BACKUP_BUCKET, creating a new one"; fi
+            body=$(jq -nc --arg n "$BK_BASE-$(openssl rand -hex 3)" --arg b "$BACKUP_BUCKET" \
+              '{name: $n, grants: [{bucket: $b, permission: "readwrite"}]}')
+            code=$(do_api POST /v2/spaces/keys "$body")
+            case "$code" in 200|201) ;; *)
+              rm -rf "$KD"; echo "::error::creating the backup Spaces key failed (HTTP $code); DIGITALOCEAN_TOKEN needs spaces_key:create_credentials"; exit 1;; esac
+            BACKUP_KEY_SECRET=$(jq -r '.key.secret_key // empty' "$KD/do.out")
+            [ -z "$BACKUP_KEY_SECRET" ] || echo "::add-mask::$BACKUP_KEY_SECRET"
+            BACKUP_KEY_ID=$(jq -r '.key.access_key // empty' "$KD/do.out")
+            [ -z "$BACKUP_KEY_ID" ] || echo "::add-mask::$BACKUP_KEY_ID"
+            grants_ok=$(jq -r --arg b "$BACKUP_BUCKET" '.key.grants // null | if . == null then "unknown"
+              elif (length == 1 and .[0].bucket == $b and .[0].permission == "readwrite") then "yes" else "no" end' "$KD/do.out")
+            rm -f "$KD/do.out"
+            [ -n "$BACKUP_KEY_ID" ] && [ -n "$BACKUP_KEY_SECRET" ] || { rm -rf "$KD"; echo "::error::DO returned no key material"; exit 1; }
+            [ "$grants_ok" != no ] || { rm -rf "$KD"; echo "::error::new backup key is not scoped to $BACKUP_BUCKET only; refusing to store it (the stray key will be revoked on the next run)"; exit 1; }
+            # Prove the key works for what the platform does (list + restic/s5cmd/sweep need list, get, put, delete on this
+            # bucket) BEFORE it replaces anything. New keys can take a few seconds to propagate.
+            ok=no
+            for i in 1 2 3 4 5 6 7 8; do
+              if AWS_ACCESS_KEY_ID="$BACKUP_KEY_ID" AWS_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
+                  aws s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --max-items 1 --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" >/dev/null 2>&1; then
+                ok=yes; break; fi
+              sleep 5
+            done
+            [ "$ok" = yes ] || { rm -rf "$KD"; echo "::error::the new backup key cannot list $BACKUP_BUCKET after 40 s; the existing Secret is untouched"; exit 1; }
+            echo "backup key: new key created, scoped to $BACKUP_BUCKET (readwrite) and verified"
+          fi
+          rm -rf "$KD"
           # The backup pod must get a digest-pinned image. Use the workflow input, else resolve :latest now
           # (package ghcr.io/seaburr/picopaas-backup must be Public; build it with backup-image.yml first).
           BACKUP_IMAGE_DIGEST="${BACKUP_IMAGE_DIGEST_INPUT:-}"
@@ -361,8 +442,8 @@ jobs:
           echo "backup image: $BACKUP_IMAGE"
 
           # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
-          # BACKUP_ACCESS_KEY_ID/SECRET below reuse the platform Spaces key BY DECISION 2026-10-23 (Chas); must be
-          # replaced with a bucket-scoped key before volume backups in tenant namespaces (docs/design/backups.md).
+          # BACKUP_ACCESS_KEY_ID/SECRET below are the bucket-scoped key from above (picopaas-backups only), never the
+          # platform SPACES_* key.
           kubectl -n $ns create secret generic picopaas-env \
             --from-literal=ENVIRONMENT=production \
             --from-literal=FERNET_KEY="$FERNET_KEY" \
@@ -382,8 +463,8 @@ jobs:
             --from-literal=BACKUP_REGION="$SPACES_REGION" \
             --from-literal=BACKUP_ENDPOINT="$BACKUP_ENDPOINT" \
             --from-literal=BACKUP_IMAGE="$BACKUP_IMAGE" \
-            --from-literal=BACKUP_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
-            --from-literal=BACKUP_SECRET_ACCESS_KEY="$SPACES_SECRET_ACCESS_KEY" \
+            --from-literal=BACKUP_ACCESS_KEY_ID="$BACKUP_KEY_ID" \
+            --from-literal=BACKUP_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
             --from-literal=RECONCILER_ENABLED=1 \
             --from-literal=MAX_NODES=2 \
             --from-literal=VOLUMES_ENABLED=1 \
@@ -418,6 +499,37 @@ jobs:
               deploy/platform/deployment.yaml | kubectl apply -f -
           kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
           kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s
+
+      # Revoke backup keys superseded by a rotation / re-create, orphans from an interrupted run included. Runs only after
+      # the platform rolled out with the key now stored in picopaas-env, and refuses to delete anything unless that key is
+      # itself found among our keys.
+      - name: Revoke superseded backup Spaces keys
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -uo pipefail
+          BK_BASE="picopaas-backups-scoped"
+          cur=$(kubectl -n picopaas-system get secret picopaas-env -o jsonpath='{.data.BACKUP_ACCESS_KEY_ID}' | base64 -d || true)
+          [ -n "$cur" ] || { echo "::notice::no BACKUP_ACCESS_KEY_ID in picopaas-env; nothing to revoke"; exit 0; }
+          KD=$(mktemp -d)
+          ids=""; page=1
+          while :; do
+            code=$(curl -sS -o "$KD/o" -w '%{http_code}' -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+              "https://api.digitalocean.com/v2/spaces/keys?page=$page&per_page=200")
+            [ "$code" = 200 ] || { echo "::warning::could not list Spaces keys (HTTP $code); old backup keys not revoked"; exit 0; }
+            ids="$ids $(jq -r --arg b "$BK_BASE" '(.keys // [])[] | select(.name == $b or ((.name // "") | startswith($b + "-"))) | .access_key' "$KD/o")"
+            [ "$(jq '(.keys // []) | length' "$KD/o")" -ge 200 ] || break
+            page=$((page+1))
+          done
+          rm -rf "$KD"
+          case " $(echo $ids) " in *" $cur "*) ;; *) echo "::warning::the stored backup key was not found among Spaces keys; revoking nothing"; exit 0;; esac
+          for id in $ids; do
+            echo "::add-mask::$id"
+            [ "$id" != "$cur" ] || continue
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+              "https://api.digitalocean.com/v2/spaces/keys/$id")
+            # Public repo, public logs: never print key ids.
+            case "$code" in 204|200|404) echo "revoked one superseded backup key";; *) echo "::warning::could not revoke a superseded backup key (HTTP $code)";; esac
+          done
 
       - name: Health check (waits for the certificate, up to ~10 min)
         if: steps.gate.outputs.run == 'true'
