@@ -254,3 +254,18 @@ This is a hobby/dev deployment. Before any real production use (tracked in docs/
 - **Scope the cloud credentials.** The API pod's `picopaas-env` secret currently holds an account-wide DigitalOcean API token and a full-access Spaces key, so a code-execution bug in the API reaches the whole DO account. Replace with a DO token scoped to only what bootstrap/the reconciler need and a Spaces key limited as far as DO allows; update the GitHub/k8s secrets and re-run bootstrap.
 - **CI/CD:** protect `main` (require PRs + checks) and move the Actions secrets into a protected GitHub Environment rather than repo-level. (Left open now because the repo is private and single-maintainer.)
 - The 2026-10-20 pentest pass (SSRF/rebinding, registry content verification, auth rate limiting, security headers, per-namespace RBAC, CI hardening) is already fixed and deployed; these two are the remaining account-level items.
+
+## Alternatives considered (2026-10-23)
+Curiosity studies, no action planned. Details, prices (with sources and dates) and effort estimates are in the linked docs.
+
+- **Other clouds: staying on DigitalOcean.** Like-for-like managed Kubernetes costs about $121/mo on Azure (AKS) and
+  $155/mo on AWS (EKS) against $75 on DO. Only a self-run k3s VM beats DO (Azure ~$68, AWS ~$62, less without managed
+  PostgreSQL), at the cost of running our own control plane. AWS is the better fallback (native S3 keeps tenant SDKs and
+  the S3-compatible contract; ~20 agent-days vs ~26 for Azure, where Blob has no S3 API). Both would let us drop the
+  long-lived cloud token via GitHub OIDC and workload identity. See [research/azure-port.md](research/azure-port.md) and
+  [research/aws-port.md](research/aws-port.md).
+- **CRD / operator model: not needed.** The reconciler already is an operator in all but name: the platform database is
+  the desired state, and a leader-elected loop converges the cluster to it every 15 s. A CRD would mainly add GitOps and
+  `kubectl get apps`, but a true source-of-truth CRD needs per-tenant namespaces and kube credentials, which reverses the
+  zero-kube-credentials tenant model. GitOps is not a goal for a multi-tenant platform: programmatic deploys go through the
+  REST API and API keys, and later a Terraform provider (ROADMAP). See [research/crd.md](research/crd.md).
