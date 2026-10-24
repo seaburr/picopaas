@@ -19,3 +19,7 @@ export const getBackupExport = (id: number, exportId: number) =>
   apiFetch<BackupExport>(`/apps/${id}/backups/exports/${exportId}`)
 
 export const listBackupExports = (id: number) => apiFetch<BackupExport[]>(`/apps/${id}/backups/exports`)
+
+// 202 {run_id, status: "deleting"}; the run shows status "deleting" until it leaves runs[]. 409 busy (active export/job), 404 gone.
+export const deleteBackupRun = (id: number, runId: number) =>
+  apiFetch<{ run_id: number; status: string }>(`/apps/${id}/backups/${runId}`, { method: 'DELETE' })

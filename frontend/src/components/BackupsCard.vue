@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { backUpNow, getBackupExport, getBackups, setBackupConfig, startBackupDownload } from '../api/backups'
+import { Download, Trash2 } from 'lucide-vue-next'
+import ConfirmDialog from './ConfirmDialog.vue'
+import IconButton from './IconButton.vue'
+import { backUpNow, deleteBackupRun, getBackupExport, getBackups, startBackupDownload } from '../api/backups'
 import { ApiError } from '../api/client'
 import { fullTime, relTime, parseTs, useNow } from '../composables/appUi'
 import { useToastStore } from '../stores/toast'
@@ -13,11 +16,14 @@ const now = useNow()
 
 const info = ref<BackupsInfo | null>(null)
 const loadError = ref('')
-const busy = ref(false)
 const runBusy = ref(false)
 // run ids whose prepare request is awaiting a response; export ids being fetched for a fresh URL
 const preparing = ref<Set<number>>(new Set())
 const fetching = ref<Set<number>>(new Set())
+// run ids the user asked to download on this page: download starts by itself when the export turns ready
+const wantDownload = new Set<number>()
+const delTarget = ref<BackupRun | null>(null)
+const delBusy = ref(false)
 let poll: ReturnType<typeof setInterval> | null = null
 let gone = false
 
@@ -34,7 +40,7 @@ function fmtBytes(n: number | null | undefined): string {
 
 const available = computed(() => !!info.value && info.value.feature_enabled && info.value.configured)
 const visible = computed(() => available.value && (props.hasData || (info.value?.kinds.length ?? 0) > 0))
-const inFlight = computed(() => (info.value?.runs ?? []).some((r) => r.status === 'queued' || r.status === 'running'))
+const inFlight = computed(() => (info.value?.runs ?? []).some((r) => r.status === 'queued' || r.status === 'running' || r.status === 'deleting'))
 const live = (x: BackupRunExport | null | undefined) => !!x && (x.status === 'queued' || x.status === 'running')
 const exportInFlight = computed(() => (info.value?.runs ?? []).some((r) => live(r.export)))
 
@@ -45,12 +51,13 @@ async function load(quiet = false) {
     if (gone) return
     info.value = next
     loadError.value = ''
-    // An export we saw preparing is now ready: tell the user, but don't auto-download.
+    // An export we saw preparing is now ready: download it if the user asked on this page, else just say so.
     for (const r of next.runs) {
       const prev = before.get(r.id)
       if ((prev === 'queued' || prev === 'running') && r.export?.status === 'ready') {
-        toast.success(`${kindLabel(r.kind)} download is ready. It stays available for about an hour.`)
-      }
+        if (wantDownload.delete(r.id)) void download(r)
+        else toast.success(`${kindLabel(r.kind)} download is ready. It stays available for about an hour.`)
+      } else if (wantDownload.has(r.id) && r.export?.status === 'failed') wantDownload.delete(r.id)
     }
   } catch (e) {
     if (!quiet) loadError.value = e instanceof ApiError ? e.message : "Couldn't load backups."
@@ -73,21 +80,6 @@ function errMsg(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback
 }
 
-async function toggle() {
-  if (!info.value || busy.value) return
-  busy.value = true
-  try {
-    const on = !info.value.enabled
-    // Turning on with schedule "off" would do nothing: pick daily.
-    info.value = await setBackupConfig(props.appId, on, on && info.value.schedule === 'off' ? 'daily' : undefined)
-    toast.success(on ? 'Scheduled backups turned on.' : 'Scheduled backups turned off.')
-  } catch (e) {
-    toast.error(`Couldn't change scheduled backups: ${errMsg(e, 'try again.')}`)
-  } finally {
-    busy.value = false
-  }
-}
-
 async function runNow() {
   runBusy.value = true
   try {
@@ -105,10 +97,12 @@ async function runNow() {
 async function prepare(run: BackupRun) {
   if (preparing.value.has(run.id) || live(run.export)) return
   preparing.value = new Set(preparing.value).add(run.id)
+  wantDownload.add(run.id)
   try {
     await startBackupDownload(props.appId, run.id)
     await load(true)
   } catch (e) {
+    wantDownload.delete(run.id)
     const s = e instanceof ApiError ? e.status : 0
     const m = errMsg(e, "Couldn't start the download.")
     if (s === 409) {
@@ -157,14 +151,39 @@ function openUrl(url: string, filename: string | null) {
   a.remove()
 }
 
+function onDownload(run: BackupRun) {
+  if (exState(run) === 'ready') void download(run)
+  else void prepare(run)
+}
+
+async function confirmDelete() {
+  const run = delTarget.value
+  if (!run || delBusy.value) return
+  delBusy.value = true
+  try {
+    await deleteBackupRun(props.appId, run.id)
+    toast.success('Deleting the backup.')
+  } catch (e) {
+    const s = e instanceof ApiError ? e.status : 0
+    if (s === 404) toast.info('That backup is already gone.')
+    else toast.error(errMsg(e, "Couldn't delete the backup."))
+  } finally {
+    delBusy.value = false
+    delTarget.value = null
+    await load(true)
+  }
+}
+
 const exState = (r: BackupRun) => {
   const s = r.export?.status
   return !s || s === 'expired' ? 'none' : s === 'queued' || s === 'running' ? 'busy' : s
 }
+const nextAt = computed(() => (info.value?.next_backup_at ? clock(info.value.next_backup_at) : ''))
 const clock = (iso: string) => parseTs(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 const triggerLabel = (t: string) => (t === 'manual' ? 'manual' : t === 'scheduled' || t === 'schedule' ? 'automatic' : t)
 
 const statusClass = (s: string) => (s === 'succeeded' ? 'badge-ok' : s === 'failed' ? 'badge-error' : 'badge-neutral')
+const delMessage = computed(() => (delTarget.value ? `Delete this ${kindLabel(delTarget.value.kind).toLowerCase()} backup from ${clock(delTarget.value.created_at)}? It can't be undone.` : ''))
 const sizeOf = (r: BackupRun) => fmtBytes(r.bytes_added)
 const when = (iso: string | null) => (iso && !isNaN(parseTs(iso).getTime()) ? relTime(iso, now.value) : '–')
 
@@ -177,67 +196,91 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section v-if="loadError || visible" class="card card-pad" aria-labelledby="h-backups">
+  <section v-if="loadError || visible" class="card card-pad min-w-0" aria-labelledby="h-backups">
     <h2 id="h-backups" class="section-title mb-2">Backups</h2>
     <p v-if="loadError" role="alert" class="alert-warn">{{ loadError }}</p>
     <template v-else-if="info">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" role="switch" :checked="info.enabled" :disabled="busy || suspended" :aria-label="'Scheduled backups'" @change="toggle" />
-          <span class="font-medium">Scheduled backups</span>
-          <span class="meta">{{ info.enabled ? info.schedule : 'off' }}<template v-if="info.enabled && info.next_backup_at"> · next {{ when(info.next_backup_at) }}</template></span>
-        </label>
-        <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended" @click="runNow">
-          {{ runBusy ? 'Starting…' : inFlight ? 'Backup running…' : 'Back up now' }}
-        </button>
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p class="min-w-0 text-sm">
+          <span class="font-medium">Scheduled backups:</span>
+          {{ info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="info.enabled && info.schedule !== 'off' && nextAt"> · next {{ nextAt }}</template>
+        </p>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <RouterLink :to="`/apps/${appId}/edit#backups`" class="btn-secondary btn-sm">Backup settings</RouterLink>
+          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended" @click="runNow">
+            {{ runBusy ? 'Starting…' : inFlight ? 'Backup running…' : 'Back up now' }}
+          </button>
+        </div>
       </div>
-      <p class="help mt-1">Backups are off unless you turn them on. "Back up now" works either way (one per hour).</p>
-      <p v-if="suspended" class="help mt-1">This app is suspended, so backups can't be started or changed. You can still download existing backups.</p>
+      <p class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way (one per hour).</p>
+      <p v-if="suspended" class="help mt-1">This app is suspended, so backups can't be started or deleted. You can still download existing backups.</p>
 
-      <div v-if="info.kinds.length" class="mt-3 grid gap-3 sm:grid-cols-2">
-        <div v-for="k in info.kinds" :key="k.kind" class="rounded-md border border-pico-border p-3 text-sm">
+      <div v-if="info.kinds.length" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div v-for="k in info.kinds" :key="k.kind" class="min-w-0 rounded-md border border-pico-border p-3 text-sm">
           <div class="font-medium">{{ kindLabel(k.kind) }}</div>
           <div v-if="k.last_backup_at" class="meta" :title="fullTime(k.last_backup_at)">
             Last: {{ when(k.last_backup_at) }}<template v-if="k.last_bytes != null && k.last_status !== 'failed'"> · {{ fmtBytes(k.last_bytes) }}</template>
             <span :class="[statusClass(k.last_status === 'ok' ? 'succeeded' : k.last_status ?? ''), 'ml-1']">{{ k.last_status }}</span>
           </div>
           <div v-else class="meta">No backup yet.</div>
-          <p v-if="k.last_error" class="mt-1 text-xs text-danger-light">{{ k.last_error }}</p>
+          <p v-if="k.last_error" class="mt-1 break-words text-xs text-danger-light">{{ k.last_error }}</p>
         </div>
       </div>
 
       <div v-if="info.runs.length" class="mt-3">
         <h3 class="table-th mb-1">Recent runs</h3>
         <ul class="divide-y divide-pico-border text-sm">
-          <li v-for="r in info.runs" :key="r.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
-            <span class="w-28 shrink-0">{{ kindLabel(r.kind) }}</span>
-            <span :class="statusClass(r.status)">{{ r.status }}</span>
-            <span class="meta" :title="fullTime(r.created_at)">{{ when(r.created_at) }}</span>
-            <span class="badge-neutral" :title="r.trigger === 'manual' ? 'Started by you' : 'Started by the schedule; it can be downloaded too'">{{ triggerLabel(r.trigger) }}</span>
-            <span v-if="r.status === 'succeeded'" class="meta">{{ sizeOf(r) }}</span>
-            <span v-if="r.error" class="min-w-0 basis-full truncate text-xs text-danger-light" :title="r.error">{{ r.error }}</span>
-            <span v-if="r.status === 'succeeded' && r.kind !== 'volume'" class="ml-auto flex flex-wrap items-center gap-2">
-              <template v-if="exState(r) === 'busy'">
-                <span class="meta inline-flex items-center gap-1.5" role="status">
-                  <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
-                  Preparing… you can leave this page
-                </span>
-              </template>
-              <template v-else-if="exState(r) === 'ready'">
-                <span v-if="r.export?.available_until" class="meta" :title="fullTime(r.export.available_until)">available until {{ clock(r.export.available_until) }} ({{ when(r.export.available_until) }})</span>
-                <button type="button" class="btn-secondary btn-sm" :disabled="fetching.has(r.export!.id)" @click="download(r)">Download</button>
-              </template>
-              <template v-else>
-                <span v-if="exState(r) === 'failed'" class="text-xs text-danger-light">Download failed{{ r.export?.error ? `: ${r.export.error}` : '' }}</span>
-                <button type="button" class="btn-secondary btn-sm" :disabled="preparing.has(r.id)" @click="prepare(r)">
-                  {{ preparing.has(r.id) ? 'Starting…' : exState(r) === 'failed' ? 'Retry' : 'Prepare download' }}
+          <li v-for="r in info.runs" :key="r.id" class="min-w-0 py-1.5">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="font-medium">{{ kindLabel(r.kind) }}</span>
+              <span :class="statusClass(r.status)">{{ r.status }}</span>
+              <span class="badge-neutral" :title="r.trigger === 'manual' ? 'Started by you' : 'Started by the schedule; it can be downloaded too'">{{ triggerLabel(r.trigger) }}</span>
+            </div>
+            <div class="mt-1 flex min-w-0 items-center justify-between gap-2">
+              <span class="meta min-w-0" :title="fullTime(r.created_at)">{{ when(r.created_at) }}<template v-if="r.status === 'succeeded'"> · {{ sizeOf(r) }}</template></span>
+              <span v-if="r.status === 'succeeded' || r.status === 'deleting'" class="flex min-w-0 items-center justify-end gap-1.5">
+                <template v-if="r.kind !== 'volume' && r.status === 'succeeded'">
+                <span v-if="exState(r) === 'busy'" class="meta text-right" role="status">preparing, you can leave this page</span>
+                <span v-else-if="exState(r) === 'ready' && r.export?.available_until" class="meta text-right" :title="fullTime(r.export.available_until)">ready until {{ clock(r.export.available_until) }}</span>
+                <span v-else-if="exState(r) === 'failed'" class="min-w-0 break-words text-right text-xs text-danger-light">Download failed{{ r.export?.error ? `: ${r.export.error}` : '' }}. Click to retry.</span>
+                <button
+                  v-if="exState(r) === 'busy' || preparing.has(r.id)"
+                  type="button"
+                  class="btn-icon"
+                  disabled
+                  aria-label="Preparing download…"
+                  title="Preparing download…"
+                >
+                  <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
                 </button>
-              </template>
-            </span>
+                <IconButton
+                  v-else
+                  :icon="Download"
+                  label="Download backup"
+                  :disabled="(r.export ? fetching.has(r.export.id) : false) || delBusy"
+                  @click="onDownload(r)"
+                />
+                </template>
+                <IconButton :icon="Trash2" label="Delete backup" danger :disabled="suspended || delBusy || r.status === 'deleting'" @click="delTarget = r" />
+              </span>
+            </div>
+            <p v-if="r.error" class="mt-1 break-words text-xs text-danger-light">{{ r.error }}</p>
           </li>
         </ul>
       </div>
       <p v-else class="meta mt-3">No backups yet.</p>
     </template>
+
+    <ConfirmDialog
+      :open="delTarget !== null"
+      title="Delete backup"
+      :message="delMessage"
+      confirm-label="Delete backup"
+      busy-label="Deleting…"
+      danger
+      :busy="delBusy"
+      @confirm="confirmDelete"
+      @cancel="delTarget = null"
+    />
   </section>
 </template>

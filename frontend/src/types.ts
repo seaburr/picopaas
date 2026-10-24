@@ -394,7 +394,7 @@ export interface BackupRun {
   id: number
   kind: BackupKind | string
   trigger: string
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'deleting' | string
   created_at: string
   started_at: string | null
   finished_at: string | null

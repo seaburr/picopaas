@@ -460,7 +460,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
 
           <section class="card card-pad" aria-labelledby="h-conf">
             <h2 id="h-conf" class="section-title mb-3">Configuration</h2>
-            <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 [&>div]:min-w-0 [&_dd]:break-words">
               <div class="min-w-0">
                 <dt class="meta">Image</dt>
                 <dd class="mono truncate text-zinc-200" :title="app.image">{{ app.image }}</dd>

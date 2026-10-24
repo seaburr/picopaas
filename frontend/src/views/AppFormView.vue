@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import BackupSettings from '../components/BackupSettings.vue'
 import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import HostLink from '../components/HostLink.vue'
@@ -605,6 +606,7 @@ async function onSubmit() {
       <section v-if="isEdit && loadedApp" class="mt-6" aria-labelledby="h-other">
         <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
         <AppSettingsPanel :app="loadedApp" @update:app="onPanelUpdate" />
+        <BackupSettings class="mt-3" :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
       </section>
       </template>
     </main>
