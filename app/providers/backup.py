@@ -22,6 +22,9 @@ RESULT_PREFIX = "PICOPAAS_RESULT "
 ERROR_PREFIX = "PICOPAAS_ERROR "
 
 
+_egress_applied: list[str] = []
+
+
 @dataclass
 class BackupJobSpec:
     name: str  # Job and Secret name, e.g. bk-12
@@ -29,6 +32,7 @@ class BackupJobSpec:
     app_id: int
     kind: str
     env: dict[str, str] = field(repr=False)  # includes credentials: never logged, only written to the per-run Secret
+    scratch_mib: int = 0  # >0: mount an emptyDir of this size at /work (bucket backups and restores copy objects there)
 
 
 @dataclass
@@ -54,6 +58,10 @@ class BackupRunner(ABC):
     def cleanup(self, job_name: str) -> None:
         """Delete the Job (and its pods) and the Secret. Idempotent."""
 
+    def ensure_spaces_egress(self, endpoint: str) -> None:
+        """Allow the backup Jobs to reach the private-range IPs `endpoint` resolves to, on 443 (Spaces resolves to a private
+        VPC IP inside DO, which the namespace's "public addresses only" rule excludes). Default: nothing to do (tests)."""
+
     @abstractmethod
     def sweep(self, active: set[str]) -> int:
         """Delete Secrets labelled picopaas.io/backup whose name is not in `active` (a crash between Job end and
@@ -70,11 +78,18 @@ def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
         "type": "Opaque",
         "stringData": dict(spec.env),
     }
+    limits = {"cpu": "200m", "memory": "320Mi", "ephemeral-storage": "200Mi"}
+    mounts = [{"name": "tmp", "mountPath": "/tmp"}]
+    volumes: list[dict[str, Any]] = [{"name": "tmp", "emptyDir": {"sizeLimit": "200Mi"}}]
+    if spec.scratch_mib:
+        limits["ephemeral-storage"] = f"{200 + spec.scratch_mib}Mi"
+        mounts.append({"name": "work", "mountPath": "/work"})
+        volumes.append({"name": "work", "emptyDir": {"sizeLimit": f"{spec.scratch_mib}Mi"}})
     job = {
         "apiVersion": "batch/v1", "kind": "Job",
         "metadata": {"name": spec.name, "namespace": ns, "labels": dict(labels)},
         "spec": {
-            "backoffLimit": 1,
+            "backoffLimit": 0,  # a failed run is recorded and retried at the next slot, never silently re-run
             "activeDeadlineSeconds": config.BACKUP_JOB_DEADLINE_SECONDS,
             "ttlSecondsAfterFinished": 3600,  # safety net; the scheduler deletes finished Jobs itself
             "template": {
@@ -93,15 +108,15 @@ def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
                         "envFrom": [{"secretRef": {"name": spec.name}}],
                         "resources": {
                             "requests": {"cpu": "50m", "memory": "128Mi", "ephemeral-storage": "64Mi"},
-                            "limits": {"cpu": "200m", "memory": "320Mi", "ephemeral-storage": "200Mi"},
+                            "limits": limits,
                         },
                         "securityContext": {
                             "allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
                             "capabilities": {"drop": ["ALL"]},
                         },
-                        "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}],
+                        "volumeMounts": mounts,
                     }],
-                    "volumes": [{"name": "tmp", "emptyDir": {"sizeLimit": "200Mi"}}],
+                    "volumes": volumes,
                 },
             },
         },
@@ -202,6 +217,22 @@ class KubeBackupRunner(BackupRunner):
                 errors.append(type(exc).__name__)
         if errors:
             raise BackupRunnerError(f"cleanup of {job_name} failed ({', '.join(errors)})")
+
+    def ensure_spaces_egress(self, endpoint: str) -> None:
+        from app.reconciler import _private_storage_ips  # same resolution as the tenant allow-egress-storage policy
+
+        ips = _private_storage_ips(endpoint)
+        if not ips or ips == _egress_applied:  # the runner is rebuilt every tick: remember the last applied answer
+            return
+        policy = {
+            "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+            "metadata": {"name": "allow-egress-spaces", "namespace": config.BACKUP_NAMESPACE},
+            "spec": {"podSelector": {}, "policyTypes": ["Egress"],
+                     "egress": [{"to": [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(ips))],
+                                 "ports": [{"protocol": "TCP", "port": 443}]}]},
+        }
+        self._kube.apply([policy])
+        _egress_applied[:] = ips
 
     def sweep(self, active: set[str]) -> int:
         from app.providers.kube import _as_dict

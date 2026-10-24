@@ -453,6 +453,7 @@ class FakeBackupRunner(BackupRunner):
         self.outcomes: dict[str, JobStatus] = {}
         self.fail_start = False
         self.cleaned: list[str] = []
+        self.egress_endpoints: list[str] = []
 
     def start(self, spec: BackupJobSpec) -> None:
         if self.fail_start:
@@ -460,6 +461,9 @@ class FakeBackupRunner(BackupRunner):
         self.jobs[spec.name] = spec
         self.secrets[spec.name] = dict(spec.env)
         self.started.append(spec)
+
+    def ensure_spaces_egress(self, endpoint: str) -> None:
+        self.egress_endpoints.append(endpoint)
 
     def finish(self, name: str, result: Optional[dict[str, Any]] = None) -> None:
         self.outcomes[name] = JobStatus("succeeded", result=result or {"snapshot_id": "ab12cd34", "bytes_added": 1000,
