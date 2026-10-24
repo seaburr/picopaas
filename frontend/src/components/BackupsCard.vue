@@ -4,7 +4,7 @@ import { backUpNow, getBackupExport, getBackups, setBackupConfig, startBackupDow
 import { ApiError } from '../api/client'
 import { fullTime, relTime, parseTs, useNow } from '../composables/appUi'
 import { useToastStore } from '../stores/toast'
-import type { BackupExport, BackupRun, BackupsInfo } from '../types'
+import type { BackupRun, BackupRunExport, BackupsInfo } from '../types'
 
 // Backups card for the App health page. Hidden when the platform has backups off / unconfigured / nothing to back up.
 const props = defineProps<{ appId: number; suspended: boolean; hasData: boolean }>()
@@ -15,10 +15,10 @@ const info = ref<BackupsInfo | null>(null)
 const loadError = ref('')
 const busy = ref(false)
 const runBusy = ref(false)
-// run id -> export being prepared (or last failed state)
-const exportsByRun = ref<Record<number, BackupExport>>({})
-const timers = new Map<number, ReturnType<typeof setTimeout>>()
-let runsPoll: ReturnType<typeof setInterval> | null = null
+// run ids whose prepare request is awaiting a response; export ids being fetched for a fresh URL
+const preparing = ref<Set<number>>(new Set())
+const fetching = ref<Set<number>>(new Set())
+let poll: ReturnType<typeof setInterval> | null = null
 let gone = false
 
 const KIND_LABEL: Record<string, string> = { db: 'Database', bucket: 'Blob storage', volume: 'Volume' }
@@ -35,24 +35,39 @@ function fmtBytes(n: number | null | undefined): string {
 const available = computed(() => !!info.value && info.value.feature_enabled && info.value.configured)
 const visible = computed(() => available.value && (props.hasData || (info.value?.kinds.length ?? 0) > 0))
 const inFlight = computed(() => (info.value?.runs ?? []).some((r) => r.status === 'queued' || r.status === 'running'))
+const live = (x: BackupRunExport | null | undefined) => !!x && (x.status === 'queued' || x.status === 'running')
+const exportInFlight = computed(() => (info.value?.runs ?? []).some((r) => live(r.export)))
 
 async function load(quiet = false) {
+  const before = new Map((info.value?.runs ?? []).map((r) => [r.id, r.export?.status]))
   try {
-    info.value = await getBackups(props.appId)
+    const next = await getBackups(props.appId)
+    if (gone) return
+    info.value = next
     loadError.value = ''
+    // An export we saw preparing is now ready: tell the user, but don't auto-download.
+    for (const r of next.runs) {
+      const prev = before.get(r.id)
+      if ((prev === 'queued' || prev === 'running') && r.export?.status === 'ready') {
+        toast.success(`${kindLabel(r.kind)} download is ready. It stays available for about an hour.`)
+      }
+    }
   } catch (e) {
     if (!quiet) loadError.value = e instanceof ApiError ? e.message : "Couldn't load backups."
   }
 }
 
-// Refresh while a backup is queued/running.
-watch(inFlight, (on) => {
-  if (on && !runsPoll) runsPoll = setInterval(() => load(true), 5000)
-  else if (!on && runsPoll) {
-    clearInterval(runsPoll)
-    runsPoll = null
-  }
-})
+// Refresh every 4s while a backup run or an export is queued/running.
+watch(
+  () => inFlight.value || exportInFlight.value,
+  (on) => {
+    if (on && !poll) poll = setInterval(() => load(true), 4000)
+    else if (!on && poll) {
+      clearInterval(poll)
+      poll = null
+    }
+  },
+)
 
 function errMsg(e: unknown, fallback: string): string {
   return e instanceof ApiError ? e.message : fallback
@@ -87,6 +102,51 @@ async function runNow() {
   }
 }
 
+async function prepare(run: BackupRun) {
+  if (preparing.value.has(run.id) || live(run.export)) return
+  preparing.value = new Set(preparing.value).add(run.id)
+  try {
+    await startBackupDownload(props.appId, run.id)
+    await load(true)
+  } catch (e) {
+    const s = e instanceof ApiError ? e.status : 0
+    const m = errMsg(e, "Couldn't start the download.")
+    if (s === 409) {
+      toast.info(m || 'A download is already being prepared.')
+      await load(true)
+    } else if (s === 429) toast.error(m || 'You have used the 3 downloads per hour. Try again later.')
+    else if (s === 410) toast.error(m || 'That backup is no longer available.')
+    else if (s === 503) toast.error(m || "Downloads aren't available right now. Try again in a minute.")
+    else toast.error(m)
+  } finally {
+    const n = new Set(preparing.value)
+    n.delete(run.id)
+    preparing.value = n
+  }
+}
+
+// Always fetch the single export for a fresh 10-minute URL; never reuse an old one.
+async function download(run: BackupRun) {
+  const id = run.export?.id
+  if (id == null || fetching.value.has(id)) return
+  fetching.value = new Set(fetching.value).add(id)
+  try {
+    const ex = await getBackupExport(props.appId, id)
+    if (ex.status === 'ready' && ex.url) openUrl(ex.url, ex.filename)
+    else {
+      toast.error(ex.status === 'expired' ? 'That download expired. Prepare it again.' : 'That download is not ready.')
+      await load(true)
+    }
+  } catch (e) {
+    toast.error(errMsg(e, "Couldn't get the download link."))
+    await load(true)
+  } finally {
+    const n = new Set(fetching.value)
+    n.delete(id)
+    fetching.value = n
+  }
+}
+
 function openUrl(url: string, filename: string | null) {
   const a = document.createElement('a')
   a.href = url
@@ -97,61 +157,12 @@ function openUrl(url: string, filename: string | null) {
   a.remove()
 }
 
-function stopPoll(runId: number) {
-  const t = timers.get(runId)
-  if (t) clearTimeout(t)
-  timers.delete(runId)
+const exState = (r: BackupRun) => {
+  const s = r.export?.status
+  return !s || s === 'expired' ? 'none' : s === 'queued' || s === 'running' ? 'busy' : s
 }
-
-function pollExport(runId: number, exportId: number) {
-  const t = setTimeout(async () => {
-    timers.delete(runId)
-    if (gone) return
-    try {
-      const ex = await getBackupExport(props.appId, exportId)
-      if (gone) return
-      if (ex.status === 'ready' && ex.url) {
-        delete exportsByRun.value[runId]
-        toast.success(`Download ready${ex.size_bytes != null ? ` (${fmtBytes(ex.size_bytes)})` : ''}. The link works for 10 minutes.`)
-        openUrl(ex.url, ex.filename)
-      } else if (ex.status === 'failed' || ex.status === 'expired') {
-        exportsByRun.value[runId] = ex
-        toast.error(ex.status === 'expired' ? 'That download expired. Start it again.' : `The download failed: ${ex.error ?? 'try again.'}`)
-      } else {
-        exportsByRun.value[runId] = ex
-        pollExport(runId, exportId)
-      }
-    } catch (e) {
-      delete exportsByRun.value[runId]
-      toast.error(errMsg(e, "Couldn't check the download."))
-    }
-  }, 3000)
-  timers.set(runId, t)
-}
-
-async function download(run: BackupRun) {
-  if (exportsByRun.value[run.id] && ['queued', 'running'].includes(exportsByRun.value[run.id].status)) return
-  try {
-    const ex = await startBackupDownload(props.appId, run.id)
-    exportsByRun.value[run.id] = ex
-    stopPoll(run.id)
-    pollExport(run.id, ex.export_id)
-  } catch (e) {
-    const s = e instanceof ApiError ? e.status : 0
-    const m = errMsg(e, "Couldn't start the download.")
-    if (s === 409) toast.info(m || 'Another download is being prepared. Wait for it to finish.')
-    else if (s === 429) toast.error(m || 'You have used the 3 downloads per hour. Try again later.')
-    else if (s === 410) toast.error(m || 'That backup is no longer available.')
-    else if (s === 503) toast.error(m || "Downloads aren't available right now. Try again in a minute.")
-    else toast.error(m)
-  }
-}
-
-const exportBusy = (run: BackupRun) => {
-  const s = exportsByRun.value[run.id]?.status
-  return s === 'queued' || s === 'running'
-}
-const anyExportBusy = computed(() => Object.values(exportsByRun.value).some((x) => x.status === 'queued' || x.status === 'running'))
+const clock = (iso: string) => parseTs(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const triggerLabel = (t: string) => (t === 'manual' ? 'manual' : t === 'scheduled' || t === 'schedule' ? 'automatic' : t)
 
 const statusClass = (s: string) => (s === 'succeeded' ? 'badge-ok' : s === 'failed' ? 'badge-error' : 'badge-neutral')
 const sizeOf = (r: BackupRun) => fmtBytes(r.bytes_added)
@@ -160,9 +171,8 @@ const when = (iso: string | null) => (iso && !isNaN(parseTs(iso).getTime()) ? re
 onMounted(() => load())
 onBeforeUnmount(() => {
   gone = true
-  for (const t of timers.values()) clearTimeout(t)
-  timers.clear()
-  if (runsPoll) clearInterval(runsPoll)
+  if (poll) clearInterval(poll)
+  poll = null
 })
 </script>
 
@@ -202,19 +212,27 @@ onBeforeUnmount(() => {
           <li v-for="r in info.runs" :key="r.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
             <span class="w-28 shrink-0">{{ kindLabel(r.kind) }}</span>
             <span :class="statusClass(r.status)">{{ r.status }}</span>
-            <span class="meta" :title="fullTime(r.created_at)">{{ when(r.created_at) }} · {{ r.trigger }}</span>
+            <span class="meta" :title="fullTime(r.created_at)">{{ when(r.created_at) }}</span>
+            <span class="badge-neutral" :title="r.trigger === 'manual' ? 'Started by you' : 'Started by the schedule; it can be downloaded too'">{{ triggerLabel(r.trigger) }}</span>
             <span v-if="r.status === 'succeeded'" class="meta">{{ sizeOf(r) }}</span>
             <span v-if="r.error" class="min-w-0 basis-full truncate text-xs text-danger-light" :title="r.error">{{ r.error }}</span>
-            <span class="ml-auto flex items-center gap-2">
-              <span v-if="exportsByRun[r.id] && exportBusy(r)" class="meta" role="status">Preparing download ({{ exportsByRun[r.id].status }})…</span>
-              <span v-else-if="exportsByRun[r.id]?.status === 'failed'" class="text-xs text-danger-light">Download failed</span>
-              <button
-                v-if="r.status === 'succeeded' && r.kind !== 'volume'"
-                type="button"
-                class="btn-secondary btn-sm"
-                :disabled="anyExportBusy"
-                @click="download(r)"
-              >{{ exportBusy(r) ? 'Preparing…' : 'Download' }}</button>
+            <span v-if="r.status === 'succeeded' && r.kind !== 'volume'" class="ml-auto flex flex-wrap items-center gap-2">
+              <template v-if="exState(r) === 'busy'">
+                <span class="meta inline-flex items-center gap-1.5" role="status">
+                  <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
+                  Preparing… you can leave this page
+                </span>
+              </template>
+              <template v-else-if="exState(r) === 'ready'">
+                <span v-if="r.export?.available_until" class="meta" :title="fullTime(r.export.available_until)">available until {{ clock(r.export.available_until) }} ({{ when(r.export.available_until) }})</span>
+                <button type="button" class="btn-secondary btn-sm" :disabled="fetching.has(r.export!.id)" @click="download(r)">Download</button>
+              </template>
+              <template v-else>
+                <span v-if="exState(r) === 'failed'" class="text-xs text-danger-light">Download failed{{ r.export?.error ? `: ${r.export.error}` : '' }}</span>
+                <button type="button" class="btn-secondary btn-sm" :disabled="preparing.has(r.id)" @click="prepare(r)">
+                  {{ preparing.has(r.id) ? 'Starting…' : exState(r) === 'failed' ? 'Retry' : 'Prepare download' }}
+                </button>
+              </template>
             </span>
           </li>
         </ul>

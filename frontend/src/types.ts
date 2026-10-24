@@ -403,6 +403,14 @@ export interface BackupRun {
   snapshot_id: string | null
   error: string | null
   source_run_id: number | null
+  // Absent before the async-export backend deploys: treat as null.
+  export?: BackupRunExport | null
+}
+export interface BackupRunExport {
+  id: number
+  status: 'queued' | 'running' | 'ready' | 'failed' | 'expired'
+  available_until: string | null
+  error?: string | null
 }
 export interface BackupKindStatus {
   kind: BackupKind | string

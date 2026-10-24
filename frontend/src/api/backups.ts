@@ -17,3 +17,5 @@ export const startBackupDownload = (id: number, runId: number) =>
 
 export const getBackupExport = (id: number, exportId: number) =>
   apiFetch<BackupExport>(`/apps/${id}/backups/exports/${exportId}`)
+
+export const listBackupExports = (id: number) => apiFetch<BackupExport[]>(`/apps/${id}/backups/exports`)
