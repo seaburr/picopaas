@@ -24,6 +24,8 @@ change it right away on the **Account** page.
 A suspended account gets `403` ("Your account is suspended..."), and its apps are scaled to zero until the
 administrator restores the account.
 
+**Timezone.** On the **Account** page you can pick your timezone so times show in local time; leave it unset to use your browser's. Server-written text (audit CSV, notices) stays in UTC.
+
 ## 2. Platform rules
 
 | Rule | Value |
