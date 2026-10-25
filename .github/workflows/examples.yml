@@ -22,7 +22,25 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [ghost, status, wordpress]
+        app: [status, wordpress]
+        include:
+          # Ghost is built twice during the 5 -> 6 migration (docs: examples/ghost/README.md "Upgrading to Ghost 6").
+          # The live blogs track :latest, which stays on Ghost 5 until every blog has been cut over.
+          # Ghost 6 ships as :6 / :6-<sha>. At cutover, move :latest to the 6 build (see README), then drop the g5 row.
+          - app: ghost
+            ghost_major: "5"
+            tag_main: latest
+            tag_sha_prefix: ""
+          - app: ghost
+            ghost_major: "6"
+            tag_main: "6"
+            tag_sha_prefix: "6-"
+          - app: status
+            tag_main: latest
+            tag_sha_prefix: ""
+          - app: wordpress
+            tag_main: latest
+            tag_sha_prefix: ""
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.4.0
 
@@ -48,9 +66,11 @@ jobs:
           push: true
           pull: true
           no-cache: ${{ github.event_name == 'schedule' }}
-          build-args: WITH_S3=1
+          build-args: |
+            WITH_S3=1
+            GHOST_MAJOR=${{ matrix.ghost_major || '6' }}
           tags: |
-            ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:latest
-            ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:${{ steps.vars.outputs.sha_short }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:${{ matrix.tag_main }}
+            ghcr.io/seaburr/picopaas-example-${{ matrix.app }}:${{ matrix.tag_sha_prefix }}${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha,scope=${{ matrix.app }}${{ matrix.ghost_major }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}${{ matrix.ghost_major }}

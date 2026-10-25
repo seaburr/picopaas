@@ -1,11 +1,13 @@
 # Ghost on PicoPaaS: a real blog within the platform's constraints.
 # - Runs as a non-root numeric UID (PicoPaaS forces 10001); the stock Ghost image starts as root and
 #   su-exec's down, which PicoPaaS rejects — so we drop to a fixed UID at build and skip the root steps.
-# - Content lives in PicoPaaS MySQL (survives restarts). ghost:5-alpine is ~168 MB compressed, under the cap.
+# - Content lives in PicoPaaS MySQL (survives restarts). ghost:N-alpine is ~170 MB compressed, under the cap.
 # - WITH_S3=1 adds the S3 storage adapter so uploaded images persist in the PicoPaaS bucket. That pulls in
 #   aws-sdk v2, which (even pruned) pushes the image near/over the 256 MB cap, so it is OFF by default; the
 #   lean default image stores uploads on the ephemeral disk (lost on restart) but keeps all content in MySQL.
-FROM ghost:5-alpine
+# GHOST_MAJOR picks the base: 6 (default) or 5 (kept building for blogs not yet cut over; see README).
+ARG GHOST_MAJOR=6
+FROM ghost:${GHOST_MAJOR}-alpine
 
 ARG WITH_S3=0
 
