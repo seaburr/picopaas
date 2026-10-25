@@ -737,7 +737,24 @@ def _enforce_retention(session: Session, runner: BackupRunner, now: datetime) ->
         log.warning("backup: retention pass failed (%s)", type(exc).__name__)
 
 
+def _retain_orphans(session: Session, now: datetime) -> None:
+    """Deleted apps that still hold repos but never got a retention date (deleted before retention existed, or while
+    backups were switched off so final_gate returned early) would never be purged: date them from deleted_at."""
+    rows = session.execute(
+        select(models.AppBackupConfig, models.App).join(models.App, models.App.id == models.AppBackupConfig.app_id).where(
+            models.App.deleted_at.is_not(None), models.AppBackupConfig.purged_at.is_(None),
+            models.AppBackupConfig.deleted_retention_until.is_(None))).all()
+    for cfg, app in rows:
+        if cfg.last_success_at is None and repo_bytes(cfg) <= 0:
+            continue
+        cfg.deleted_retention_until = _naive(app.deleted_at) + timedelta(days=config.BACKUP_DELETED_RETENTION_DAYS)
+        audit.record(session, None, "backup.retained", "app", app.id,
+                     f"repos kept until {cfg.deleted_retention_until.date().isoformat()}", actor_email="system")
+    session.commit()
+
+
 def _enqueue_purges(session: Session, now: datetime) -> None:
+    _retain_orphans(session, now)
     rows = session.execute(
         select(models.AppBackupConfig).where(models.AppBackupConfig.purged_at.is_(None),
                                              models.AppBackupConfig.deleted_retention_until.is_not(None),

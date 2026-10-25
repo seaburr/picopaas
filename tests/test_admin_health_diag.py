@@ -131,3 +131,47 @@ def test_unknown_pod_404(make_client, kube):
     admin = _admin(make_client)
     assert admin.get("/admin/health/logs?namespace=traefik&pod=nope&container=traefik").status_code == 404
     assert admin.get("/admin/health/logs?namespace=traefik&pod=t-0&container=other").status_code == 404
+
+
+def test_deleted_apps_hidden_from_failures_and_purged_rows(make_client, kube, db_session):
+    admin = _admin(make_client)
+    db = db_session
+    ids = {}
+    for n in ("live", "gone", "purged", "empty"):
+        ids[n] = admin.post("/apps", json={**APP, "name": n}).json()["id"]
+    until = NOW() + timedelta(days=5)
+    for n in ("gone", "purged", "empty"):
+        db.get(models.App, ids[n]).deleted_at = NOW()
+    db.add(models.AppBackupConfig(app_id=ids["live"], db_repo_bytes=10))
+    db.add(models.AppBackupConfig(app_id=ids["gone"], db_repo_bytes=2000, deleted_retention_until=until))
+    db.add(models.AppBackupConfig(app_id=ids["purged"], db_repo_bytes=0, purged_at=NOW()))
+    db.add(models.AppBackupConfig(app_id=ids["empty"]))
+    for n in ("live", "gone"):
+        db.add(models.BackupRun(app_id=ids[n], kind="db", trigger="scheduled", status="failed", created_at=NOW(), error="boom"))
+    db.commit()
+    j = admin.get("/admin/health/backups").json()
+    assert [f["app_id"] for f in j["failures"]] == [ids["live"]]
+    top = {a["name"]: a for a in j["storage"]["top_apps"]}
+    assert set(top) == {"live", "gone"}
+    assert top["live"]["purge_after"] is None
+    assert top["gone"]["purge_after"] == until.isoformat()
+
+
+def test_orphaned_deleted_repos_get_a_retention_date(db_session):
+    from app import backups
+    u = models.User(email="o@example.com", password_hash="x")
+    db_session.add(u)
+    db_session.flush()
+    a = models.App(owner_id=u.id, name="orph", hostname="orph.test", image="x", port=80, deleted_at=NOW() - timedelta(days=3))
+    db_session.add(a)
+    db_session.flush()
+    db_session.add(models.AppBackupConfig(app_id=a.id, db_repo_bytes=500))
+    empty = models.App(owner_id=u.id, name="orph2", hostname="orph2.test", image="x", port=80, deleted_at=NOW())
+    db_session.add(empty)
+    db_session.flush()
+    db_session.add(models.AppBackupConfig(app_id=empty.id))
+    db_session.commit()
+    backups._retain_orphans(db_session, NOW())
+    cfg = db_session.get(models.AppBackupConfig, a.id)
+    assert cfg.deleted_retention_until == a.deleted_at + timedelta(days=backups.config.BACKUP_DELETED_RETENTION_DAYS)
+    assert db_session.get(models.AppBackupConfig, empty.id).deleted_retention_until is None
