@@ -28,7 +28,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import audit, config, crypto, k8s_manifests, models, platform_settings, resources
+from app import audit, config, crypto, k8s_manifests, models, platform_settings, resources, volume_stat
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
@@ -341,6 +341,8 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         run.snapshot_id = str(result.get("snapshot_id") or "")[:64] or None
         run.bytes_added = _int(result.get("bytes_added"))
         run.repo_bytes = _int(result.get("repo_bytes"))
+    if ok and run.kind == "volume" and run.trigger in BACKUP_TRIGGERS:
+        volume_stat.record(session.get(models.App, run.app_id), result.get("used_bytes"), now)  # a backup measures the mount too
     cfg = session.get(models.AppBackupConfig, run.app_id)
     if run.trigger in ("restore", "export"):
         pass  # neither changes anything about the app's own backup summary
@@ -515,7 +517,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
     _ensure_egress(runner)
     _poll(session, runner, now)
     try:
-        swept = runner.sweep({r.job_name for r in _running(session) if r.job_name})
+        swept = runner.sweep(active_jobs(session))
         if swept:
             log.warning("backup: removed %d leftover job secret(s)", swept)
     except Exception as exc:  # noqa: BLE001
@@ -526,6 +528,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
     _schedule(session, now)
     _enqueue_purges(session, now)
     _start_queued(session, runner, now)
+    volume_stat.tick(session, runner, now)
 
 
 def _ensure_egress(runner: BackupRunner) -> None:
@@ -538,9 +541,13 @@ def _ensure_egress(runner: BackupRunner) -> None:
 
 def tenant_app_ids(session: Session, now: datetime) -> list[int]:
     """Live apps that had a volume backup in the last TENANT_SWEEP_DAYS days: the only tenant namespaces a backup object can be in."""
-    return list(session.execute(select(models.BackupRun.app_id).join(models.App, models.App.id == models.BackupRun.app_id).where(
+    since = now - timedelta(days=TENANT_SWEEP_DAYS)
+    ids = set(session.execute(select(models.BackupRun.app_id).join(models.App, models.App.id == models.BackupRun.app_id).where(
         models.BackupRun.kind == "volume", models.BackupRun.trigger.in_(BACKUP_TRIGGERS), models.App.deleted_at.is_(None),
-        models.BackupRun.created_at >= now - timedelta(days=TENANT_SWEEP_DAYS)).distinct()).scalars().all())
+        models.BackupRun.created_at >= since).distinct()).scalars().all())
+    ids |= set(session.execute(select(models.App.id).where(  # a volume "stat" Job leaves the same kind of Job/Secret behind
+        models.App.deleted_at.is_(None), models.App.volume_stat_at >= since)).scalars().all())
+    return sorted(ids)
 
 
 def _sweep_tenant_secrets(session: Session, runner: BackupRunner, now: datetime) -> None:
@@ -548,13 +555,10 @@ def _sweep_tenant_secrets(session: Session, runner: BackupRunner, now: datetime)
     (apps with a volume backup in the last SWEEP_DAYS days; a deleted app's namespace is gone). Not gated on BACKUP_KEY_SCOPED:
     turning the gate off again must still clean up what an earlier run left behind. Never raises."""
     try:
-        # Only live apps: a deleted app's namespace is gone (and the reconciler's role may not read it any more).
-        ids = session.execute(select(models.BackupRun.app_id).join(models.App, models.App.id == models.BackupRun.app_id).where(
-            models.BackupRun.kind == "volume", models.BackupRun.trigger.in_(BACKUP_TRIGGERS), models.App.deleted_at.is_(None),
-            models.BackupRun.created_at >= now - timedelta(days=TENANT_SWEEP_DAYS)).distinct()).scalars().all()
+        ids = tenant_app_ids(session, now)  # only live apps: a deleted app's namespace is gone
         if ids:
             runner.sweep_namespaces([k8s_manifests.namespace_name(i) for i in ids],
-                                    {r.job_name for r in _running(session) if r.job_name})
+                                    active_jobs(session))
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: tenant secret sweep failed (%s)", type(exc).__name__)
 
@@ -584,6 +588,13 @@ def _sweep_exports(runner: BackupRunner, now: datetime, session: Optional[Sessio
                 _audit_export_deletes(session, keys)
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: export sweep failed (%s)", type(exc).__name__)
+
+
+def active_jobs(session: Session) -> set[str]:
+    """Names of every Job that is legitimately alive: running backup runs and in-flight volume stat Jobs."""
+    names = {r.job_name for r in _running(session) if r.job_name}
+    names |= set(session.execute(select(models.App.volume_stat_job).where(models.App.volume_stat_job.is_not(None))).scalars())
+    return names
 
 
 def _running(session: Session) -> list[models.BackupRun]:
@@ -764,6 +775,8 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
         cfg = session.get(models.AppBackupConfig, run.app_id)
         restore = run.trigger == "restore"
         export = run.trigger == "export"
+        if run.trigger in ("delete", "prune", "purge") and any(r.app_id == run.app_id and r.kind == run.kind for r in running):
+            continue  # forget --prune takes the repo's exclusive lock: wait until nothing else runs on this (app, kind) repo
         if run.kind == "package" and any(r.kind == "package" for r in running):
             continue  # a package's scratch is the biggest Job there is: one at a time (deploy/platform/backup.yaml quota)
         if app is None or (cfg is None and not restore and not export):
@@ -1032,11 +1045,15 @@ class DeleteRefused(Exception):
         self.status = status
 
 
-def _repo_busy(session: Session, app_id: int, kind: str) -> bool:
+def _repo_busy(session: Session, app_id: int, kind: str, *, ignore_deletes: bool = False) -> bool:
     """Any backup, restore (into this app, or from this repo into another app), export or delete queued/running that touches
-    this app's repo of `kind`."""
-    own = session.execute(select(models.BackupRun.id).where(
-        models.BackupRun.app_id == app_id, models.BackupRun.kind == kind, models.BackupRun.status.in_(ACTIVE)).limit(1)).first()
+    this app's repo of `kind`. `ignore_deletes`: another queued delete does not count (deletes queue up and run one at a time,
+    see _start_queued)."""
+    q = select(models.BackupRun.id).where(
+        models.BackupRun.app_id == app_id, models.BackupRun.kind == kind, models.BackupRun.status.in_(ACTIVE))
+    if ignore_deletes:
+        q = q.where(models.BackupRun.trigger != "delete")
+    own = session.execute(q.limit(1)).first()
     if own is not None:
         return True
     repo_runs = select(models.BackupRun.id).where(models.BackupRun.app_id == app_id, models.BackupRun.kind == kind)
@@ -1061,7 +1078,7 @@ def enqueue_delete(session: Session, app: models.App, source: models.BackupRun, 
     if (source.app_id != app.id or source.trigger not in BACKUP_TRIGGERS or source.kind not in DOWNLOADABLE
             or source.status != "succeeded" or not source.snapshot_id):
         raise DeleteRefused("Only a finished database, blob storage or volume backup can be deleted.")
-    if _repo_busy(session, app.id, source.kind):
+    if _repo_busy(session, app.id, source.kind, ignore_deletes=True):
         raise DeleteRefused(f"A backup, restore, download or delete is already queued or running for this app's "
                             f"{KIND_LABEL.get(source.kind, source.kind)} backups. Try again when it finishes.", 409)
     # The exports that hold this backup: its own per-run download AND the whole-backup package of its set (a package is not
@@ -1108,7 +1125,7 @@ def enqueue_delete_set(session: Session, app: models.App, st: models.BackupSet, 
         raise DeleteRefused("That backup is still being taken. Try again when it finishes.", 409)
     ok_parts = [p for p in parts if p.status == "succeeded" and p.snapshot_id]
     for kind in {p.kind for p in ok_parts}:
-        if _repo_busy(session, app.id, kind):
+        if _repo_busy(session, app.id, kind, ignore_deletes=True):
             raise DeleteRefused(f"A backup, restore, download or delete is already queued or running for this app's "
                                 f"{KIND_LABEL.get(kind, kind)} backups. Try again when it finishes.", 409)
     part_ids = [p.id for p in parts]

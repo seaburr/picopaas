@@ -239,7 +239,7 @@ def test_409_for_active_delete_restore_and_second_delete(dl, user, admin, db_ses
     again = user.delete(url(aid, run_db))
     assert again.status_code == 409 and "already being deleted" in again.json()["detail"]
     older = _succeeded(db_session, aid, "db", "0ldd0ld0")
-    assert user.delete(url(aid, older)).status_code == 409  # a delete job is active for the db repo
+    assert user.delete(url(aid, older)).status_code == 202  # another delete of the db repo queues behind it
     # restore from this repo into another app
     tgt = user.post("/apps", json={"name": "tgt", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}).json()["id"]
     db_session.add(models.BackupRun(app_id=tgt, kind="bucket", trigger="restore", status="running", created_at=NOW, source_run_id=run_bk))
@@ -412,3 +412,22 @@ def test_script_forget_check_failure_and_bad_id(tmp_path):
     env["SNAPSHOT"] = "--keep-last"
     r = run_script(env, d)
     assert r.returncode == 1 and "PICOPAAS_ERROR the snapshot id is not valid" in r.stdout and "forget" not in calls.read_text()
+
+
+def test_second_delete_queues_and_runs_after_the_first_finishes(dl, user, db_session, runner):
+    aid, run_db, _ = dl
+    older = _succeeded(db_session, aid, "db", "0ldd0ld0")
+    d1 = user.delete(url(aid, run_db)).json()["delete_run_id"]
+    d2 = user.delete(url(aid, older))
+    assert d2.status_code == 202, d2.text
+    d2 = d2.json()["delete_run_id"]
+    backups.tick(db_session, runner, datetime.utcnow())
+    db_session.expire_all()
+    # forget --prune holds the repo's exclusive lock: only one starts, the other waits queued
+    assert [db_session.get(models.BackupRun, i).status for i in (d1, d2)] == ["running", "queued"]
+    assert user.post(f"/apps/{aid}/backups").status_code == 409  # a delete still blocks new backups
+    runner.finish(f"bk-{d1}", {"forgotten": True, "repo_bytes": 10})
+    backups.tick(db_session, runner, datetime.utcnow())
+    db_session.expire_all()
+    assert db_session.get(models.BackupRun, d1).status == "succeeded"
+    assert db_session.get(models.BackupRun, d2).status == "running"
