@@ -156,6 +156,24 @@ def _available_db_engines(db: Session) -> list[str]:
 
 @router.get("/me", response_model=schemas.MeOut)
 def me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _me_out(current_user, db)
+
+
+@router.patch("/me", response_model=schemas.MeOut)
+def update_me(
+    payload: schemas.ProfileUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service profile change (currently the display timezone; null = browser's)."""
+    current_user.timezone = payload.timezone
+    db.commit()
+    audit.record(db, current_user, "user.update_profile", "user", current_user.id,
+                 f"timezone={payload.timezone}")
+    return _me_out(current_user, db)
+
+
+def _me_out(current_user: models.User, db: Session) -> schemas.MeOut:
     out = schemas.UserOut.model_validate(current_user).model_dump()
     db_engines = _available_db_engines(db)
     return schemas.MeOut(

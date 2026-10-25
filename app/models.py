@@ -29,6 +29,8 @@ class User(Base):
     terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     # Set by an admin password reset; cleared when the user changes their password.
     must_change_password: Mapped[bool] = mapped_column(default=False, server_default="0", nullable=False)
+    # IANA timezone name for display; NULL = use the browser's timezone.
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
