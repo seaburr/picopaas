@@ -34,7 +34,7 @@ everywhere a user is accepted except where marked "session only".
 | POST, GET | `/apps/{app_id}/backups/{run_id}/download`, `/apps/{app_id}/backups/exports`, `/apps/{app_id}/backups/exports/{export_id}` | owner or admin; POST needs a full-scope key |
 | GET, PUT | `/admin/apps/{app_id}/backups` | admin; PUT needs a full-scope key (lock backups off for an app, per-app ceiling) |
 | POST | `/admin/backups/{run_id}/restore` | admin, full-scope key |
-| GET | `/admin/users`, `/admin/apps`, `/admin/audit`, `/admin/audit/export`, `/admin/db-servers`, `/admin/health`, `/admin/health/backups`, `/admin/health/logs[/pods|/download]`, `/admin/backups`, `/admin/docs/admin-guide` | admin |
+| GET | `/admin/users`*, `/admin/apps`, `/admin/audit`*, `/admin/audit/export`*, `/admin/settings`*, `/admin/db-servers`, `/admin/health`, `/admin/health/backups`, `/admin/health/logs[/pods|/download]`, `/admin/backups`, `/admin/docs/admin-guide` | admin (*browser session only: 403 with an API key, any scope) |
 | PATCH | `/admin/users/{user_id}` | admin |
 | POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote` | admin |
 | DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
@@ -49,7 +49,7 @@ everywhere a user is accepted except where marked "session only".
 | Method | How |
 |---|---|
 | Session cookie | `POST /auth/login` or `/auth/register` sets an HttpOnly `session` cookie (JWT, 7 days, `SameSite=Lax`, `Secure` outside dev). The UI uses this. |
-| API key | `Authorization: Bearer pp_sk_...` (created on the **API keys** page — browser only). A `full` key works on every endpoint that accepts a user; a `read` key is limited to safe methods (see API keys below). The cookie is checked first. |
+| API key | `Authorization: Bearer pp_sk_...` (created under **Account → API keys** — browser only). A `full` key works on every endpoint that accepts a user; a `read` key is limited to safe methods (see API keys below). The cookie is checked first. |
 
 Auth levels used below:
 
@@ -125,6 +125,8 @@ change a scope). Pre-existing keys are `full`.
 | POST | `/api/keys` | Optional body `{"name": "...", "scope": "read"\|"full"}` (name trimmed, printable, max 64, blank = unnamed; scope defaults `full`; unknown fields and other scope values rejected 422). 201 `{id, key, prefix, name, scope, created_at}`. The raw `key` is shown **once**. **Session only** (403 if called with an API key). |
 | GET | `/api/keys` | List of `{id, prefix, name, scope, created_at, last_used_at, revoked_at}` for your keys, newest first. `last_used_at` is updated at most every 5 minutes. |
 | DELETE | `/api/keys/{key_id}` | 204. Revokes (idempotent). **Session only** (403 if called with an API key). 404 if not yours. |
+| GET | `/admin/users/{user_id}/api-keys` | Admin only. Same row shape as `GET /api/keys` (`{id, prefix, name, scope, created_at, last_used_at, revoked_at}`, newest first, never the secret/hash) for that user. 404 unknown user. |
+| DELETE | `/admin/users/{user_id}/api-keys/{key_id}` | Admin only, **session only** (403 with an API key). 204, idempotent; 404 if the key is not that user's. Audit `apikey.admin_revoke`; the user is not notified (their next call gets 401). `GET /admin/users` rows also carry `api_key_count` (active keys). |
 
 ## Templates (`/templates`, active)
 
@@ -387,8 +389,8 @@ replicas within about 5 seconds. Every change is audit-logged (`settings.update`
 
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
-| GET | `/admin/settings` | | `{groups: [{name, settings: [{key, label, description, type ("int"/"bool"), unit, value, default, overridden, min, max, updated_at, updated_by}]}]}` |
-| PUT | `/admin/settings` | `{settings: {key: value-or-null, ...}}` | Partial update; `null` resets that key to its default. Same shape as GET. 422 (string `detail`) for unknown keys, wrong type, out of `min`/`max`, or a broken rule (`volume_max_gi` <= `override_volume_max_gi`, `default_app_limit` <= `max_apps_per_user`, `backup_max_bytes_per_app` <= `backup_max_bytes_total`). Nothing is saved on error. |
+| GET | `/admin/settings` | | `{groups: [{name, settings: [{key, label, description, type ("int"/"bool"), unit, value, default, overridden, min, max, ceiling_key, updated_at, updated_by}]}]}` |
+| PUT | `/admin/settings` | `{settings: {key: value-or-null, ...}}` | Partial update; `null` resets that key to its default. Same shape as GET. 422 (string `detail`) for unknown keys, wrong type, out of `min`/`max`, or a broken rule (`default_*` <= its ceiling, e.g. `default_cpu_limit_m` <= `cpu_limit_max_m`; `cpu_limit_max_m` <= 1500 m and `mem_limit_max_mi` <= 2560 MiB, the node size caps, env `NODE_CPU_CAP_M`/`NODE_MEM_CAP_MI`; `volume_max_gi` <= `override_volume_max_gi`, `default_app_limit` <= `max_apps_per_user`, `backup_max_bytes_per_app` <= `backup_max_bytes_total`). Nothing is saved on error. |
 
 Lowering a ceiling doesn't change values already set on apps; it limits future changes.
 

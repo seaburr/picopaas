@@ -74,7 +74,7 @@ enter secret values under **Secret values**. Applying a name you already use upd
 
 ### 3c. API with curl
 
-Create an API key under **API keys** in the UI. The key starts with `pp_sk_` and is shown once.
+Create an API key under **Account → API keys** in the UI. The key starts with `pp_sk_` and is shown once.
 
 ```bash
 export PP=https://platform.picopaas.xyz

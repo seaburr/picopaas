@@ -7,87 +7,29 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Admin settings: cap the CPU/memory ceilings at the node size? (raised 2026-10-24, PENTEST.md 'Feedback round').** Today an admin can set the CPU ceiling up to 8 CPU and memory up to 16 GiB, more than one node has, so a typo could give an app an unschedulable pod. Also: platform logs now require a browser session (an admin API key, even read-only, gets 403); should other admin read endpoints (settings, users, audit) do the same? — _your answer:_
-
-- **Budget rule vs reality (raised 2026-10-24 after Chas asked about cost drift).** CLAUDE.md says about $60/mo; the real
-  floor is about $75.30/mo (node $28, managed MySQL $15.15, managed PostgreSQL $15.15, LB $12, Spaces $5) and about $103.30 while the
-  autoscaler runs a second node (docs/ARCHITECTURE.md §1). Options: (a) update the rule to ~$75 floor / ~$105 ceiling; (b) cap
-  `max_nodes = 1` so ~$75 is a hard ceiling (new apps queue when the node is full); (c) drop managed PostgreSQL (-$15.15). — _your answer:_
-
-- **Long term: shared database servers vs a dedicated database per app? (raised by Chas 2026-10-22, pentest F3).** On a
-  shared PostgreSQL server any tenant role can read `pg_database` and `pg_roles`, so it sees the *names* of other apps'
-  databases and roles (no data, no password hashes; cross-tenant CONNECT is denied). Apps don't need those catalogs to
-  run, but we can't seal them: they're shared catalogs owned by the cluster superuser, DO's `doadmin` isn't superuser,
-  and even with superuser the names leak through `pg_stat_activity`, `pg_shdepend` and error-message differences. Shared
-  PG platforms (Supabase, RDS, other shared hosting tiers) accept this. The only real seal is one database instance per app,
-  which costs per app (a 1 GiB managed instance is ~$15/mo). **Accepted for now.** Revisit if PicoPaaS moves toward
-  app-specific hosting or a tenant that cares about name confidentiality shows up. Optional: Claude can test on a
-  throwaway database exactly how much DO lets us revoke. — _your answer:_
-
 - **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
   secret holds an **account-wide** DO API token and a **full-access** Spaces key, so a code-execution bug in the API reaches
   the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
 
-- **API key scopes — worth adding? (raised by Chas 2026-10-20).** Today an API key authenticates as the **whole
-  account**: `app/dependencies.py` loads the key's user and gives it everything a browser session has — create/delete
-  apps, rotate DB/Spaces creds, read env secrets, and (if the account is an admin) every admin action. There is no
-  read-only vs read/write distinction and no per-resource limiting (`ApiKey` has no `scope` column). This becomes more
-  pressing with two things on the roadmap: a Terraform provider and CI deploy tokens, where you want a key that can
-  deploy without being able to, say, delete every app or change the password. Proposed minimum: a `scope` on `ApiKey`
-  (`read` | `deploy` | `admin`), default `deploy`, enforced in the auth dependency; show/choose it on the API-keys
-  page; never let a key mint a key or escalate scope. **Do you want this, and with what scope set?** (Small, API-only,
-  no infra.) — _your answer:_ Yes and I think read-only and admin are enough here. Why? What good is an API key you can deploy an app with if you cannot edit it (unless deploy includes this). A user who can deploy is a user who can delete. KISS and do 2 tiers of acces.
-  → **DONE 2026-10-20 (uncommitted).** Implemented two tiers: `read` (read-only — safe HTTP methods only) and `full`
-  (everything the account can do; the default, so your existing keys keep working). I named the full tier `full`
-  rather than `admin` so it doesn't read as the platform-admin *role* — same model you described; rename if you'd
-  rather. Also hardened per the proposal: an API key (any tier) can't create or revoke keys — that's browser-session
-  only, so a leaked key can't mint more or change scope. Pick the tier on the API-keys page. See `docs/API.md`.
-
 ## To-dos (only you can do these)
 
-- [x] **Make the GHCR package `picopaas-example-wordpress` public after its first build.** _(Claude 2026-10-23: already anonymously pullable — HTTP 200 on the manifest without credentials; nothing to do.)_ New GHCR packages are private by
-      default and the cluster pulls anonymously, so deploys fail with an image-pull error until this is done. Go to
-      https://github.com/users/seaburr/packages/container/picopaas-example-wordpress/settings, then **Change visibility**,
-      choose **Public**, confirm. (The package only exists after the examples workflow has built it once. The ledger does not
-      record how `picopaas-example-ghost` was made public, only that it became anonymously pullable; same steps apply.)
-
-- [x] **Update CLAUDE.md's "Budget: under $40/mo" hard rule.** It predates the approved ~$60/mo setup (about $88 with the
-      second node). Update it if you agree. Background: `docs/ARCHITECTURE.md` §1, `docs/requests/0001-core-infra.md`.
-
-- [x] **Add GitHub secrets `E2E_USER_TOKEN` and `E2E_ADMIN_TOKEN` so the weekly quota test can run.**
-
-      *What it is.* `.github/workflows/quota-e2e.yml` runs every Monday (and on demand from the Actions tab). It logs in to the
-      live platform as a test customer, deploys throwaway "probe" apps with a database and a bucket, fills them past the
-      50 MB / 100 MB caps, and checks that: writes get blocked, reads keep working, one long-running connection can't blow far
-      past the cap, and the user can recover (empty the table / "Free up space") and get write access back. Then it deletes the
-      apps. It takes up to about an hour (the DB check runs every minute, the bucket check every 5).
-
-      *Why.* On 2026-10-19 a live run found a DB could reach 6x its cap and a full bucket could never recover; both were fixed.
-      Nothing else would notice if a later change broke enforcement again. This turns "the caps work" into something
-      re-proven every week.
-
-      *What the two secrets are.* Both are PicoPaaS API keys (`pp_sk_…`, made on the **API keys** page), not GitHub tokens:
-      - `E2E_USER_TOKEN`: a key for an ordinary approved, non-admin test account (today: `jimmy@gmail.com`). The test acts as
-        this customer.
-      - `E2E_ADMIN_TOKEN`: a key for your admin account. The test uses it to raise the test user's app limit during the run,
-        restore it afterwards, and delete the test apps even if something fails halfway.
-
-      *Security note.* The admin key can do anything an admin can, and any workflow on `main` could read it. Make a
-      **dedicated** key for this (name it `ci-quota-e2e`), not one you use yourself, so you can revoke it on its own. If you'd
-      rather not keep an admin key in GitHub at all, say so and Claude can narrow what the test needs.
-
-      *How (about 5 minutes).*
-      1. Log in as the test user, open **API keys**, click **Create key**, name it `ci-quota-e2e`, and copy it.
-      2. Log in as yourself (admin) and do the same.
-      3. In GitHub, go to repo **Settings → Secrets and variables → Actions → New repository secret** and add `E2E_USER_TOKEN`
-         and `E2E_ADMIN_TOKEN` with those values. Or from a terminal: `gh secret set E2E_USER_TOKEN` (it prompts; paste the key).
-      4. Optional: **Actions → quota-e2e → Run workflow** to see it pass once.
-
-      Until both exist the workflow skips itself with a notice; nothing breaks. Details: `tests/e2e/README.md`.
+None right now.
 
 ## Resolved
+- 2026-10-25: **Admin CPU/memory ceilings and admin read endpoints (answered: fix it).** Chas: cap the ceilings at what a
+  node can hold, require a browser session for the other admin read endpoints (settings, users, audit) as platform logs
+  already do, and move the default resources every app gets into Admin settings, with a default and a ceiling for each.
+  Queued for engineering (ledger).
+- 2026-10-25: **Budget rule vs reality (answered: leave as-is).** No change; Chas was just curious. Floor ~$75.30/mo,
+  ~$103.30 with the second node (docs/ARCHITECTURE.md §1).
+- 2026-10-25: **Shared database servers vs one per app, pentest F3 (answered: leave as-is).** Accepted for now; added to
+  docs/ROADMAP.md backlog to test and enhance later.
+- 2026-10-20: **API key scopes (answered and shipped).** Two tiers, `read` (safe methods only) and `full` (default);
+  keys can't create or revoke keys (browser session only). See docs/API.md.
+- 2026-10-23: **All to-dos done:** GHCR `picopaas-example-wordpress` already public; CLAUDE.md budget rule updated;
+  `E2E_USER_TOKEN` / `E2E_ADMIN_TOKEN` added (weekly quota-e2e runs; details in tests/e2e/README.md).
 - 2026-10-24: **Object versioning on `picopaas-backups` (answered: no).** Not enabled. Owner deletes and retention prunes free
   space immediately; a leaked backup key could delete backups (accepted risk; key is bucket-scoped).
 - 2026-10-24: **Request 0008, second-region backup bucket (answered: not now).** Backups stay in the existing ATL1 `picopaas-backups`
@@ -126,7 +68,6 @@ background on each item if you want it.
   rewrite both reached running under the narrowed grant): cluster-wide secrets/resourcequotas/limitranges/services removed from
   ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual:
   the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
-- 2026-10-20: PENTEST #19 step 2 (superseded by the line above): cluster-wide secrets/resourcequotas/limitranges/services removed from ClusterRole `picopaas-reconciler`; the SA now has them only via per-namespace RoleBindings (app-*, picopaas-system). Residual: the SA keeps `bind` on `picopaas-app-ns` (documented caveat, acceptable).
 - 2026-10-20: GitHub issue #9 (vague status_detail) closed (Chas).
 - 2026-10-20: Signup wording chosen: "Sign up, and if your account is approved, a PicoPaaS platform admin will reach out." Applied to landing, privacy, dev banner, register, login and pending views.
 - 2026-10-20: Role `uberadmin` renamed to `platform_admin` (breaking API change, approved by Chas); UI label "Platform admin"; migration `b4c8e2f6a1d3`.

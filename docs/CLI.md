@@ -6,7 +6,7 @@ It needs Python 3 and `httpx` (`pip install httpx`).
 
 ## Setup
 
-Create a `pp_sk_` API key on the **API keys** page, then:
+Create a `pp_sk_` API key under **Account → API keys**, then:
 
 ```bash
 export PICOPAAS_TOKEN=pp_sk_...            # PICOPAAS_URL defaults to https://platform.picopaas.xyz

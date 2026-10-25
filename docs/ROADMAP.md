@@ -108,6 +108,9 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 - Build from a Dockerfile/source in-cluster (kaniko/BuildKit Job → GHCR). Highest-impact (removes the
   "bring a prebuilt public image" barrier) but the one item that adds real node CPU/disk at build time, so
   opt-in + quota-bounded, not strictly free.
+- Database name isolation on shared servers (pentest F3, Chas 2026-10-25: test/enhance later). Tenants can see other
+  apps' database and role *names* via shared PostgreSQL catalogs (no data, no hashes). Test on a throwaway database how
+  much DO lets us revoke; the only full seal is a dedicated instance per app (~$15/mo each).
 
 ## Persistent volumes (block storage): backend built, disabled (Chas, 2026-10-22)
 **Status 2026-10-23:** the backend is implemented behind `VOLUMES_ENABLED` (default off): `resources.volume` in the API and

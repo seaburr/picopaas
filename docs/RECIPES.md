@@ -87,7 +87,7 @@ every value is a platform ref, not a literal secret. (`${{ app.url }}` resolves 
 so there's no second step to set it; `${{ db.* }}` / `${{ storage.* }}` are injected from the database and bucket
 you requested under `resources`.)
 
-Get an API key from the **API keys** page and export it:
+Get an API key from **Account → API keys** and export it:
 
 ```bash
 export PICOPAAS_TOKEN=pp_sk_...

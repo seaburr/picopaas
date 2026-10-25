@@ -297,14 +297,23 @@ Service and no per-pod addressing, so clustered or gossip apps that need named p
 ## Settings
 
 **Admin > Settings** (API: `GET/PUT /admin/settings`) holds the global limits an admin can change without a redeploy,
-in three groups:
+in four groups:
 
 - **Limit ceilings**: the highest value an admin can set for one app (CPU, memory, database connections, scratch disk,
   database size, blob storage, image size, egress, volume size, replicas).
+- **Per-app defaults**: what every app gets unless overridden: CPU, memory, scratch disk, image size, database size,
+  blob storage, egress (`default_*` keys). Each default is bounded by the matching ceiling above (default <= ceiling);
+  an app with no override follows the default, so a change reaches existing apps at their next deploy or restart.
+  Apps that have their own override keep it. Replicas, database connections and volume size have no default setting yet.
 - **Defaults and quotas**: user volume ceiling (never above the admin volume ceiling), volumes platform-wide,
   apps per account, the app limit given to new accounts.
 - **Backups**: platform and per-app backup storage, backups kept per app, on-demand backups and downloads per hour,
   and whether new apps start with scheduled backups on.
+
+The CPU and memory ceilings can't exceed what one node can schedule (`NODE_CPU_CAP_M`, default 1500m, and
+`NODE_MEM_CAP_MI`, default 2560 MiB, for the 2 vCPU / 4 GB node; raise them with the node size). Per-app overrides
+(Apps > Limits) are validated against the ceilings. Settings, users and audit reads (`GET /admin/settings`,
+`/admin/users`, `/admin/audit`, `/admin/audit/export`) need a browser session; an admin API key, any scope, gets 403.
 
 The environment variables in the Configuration section (for example `MAX_REPLICAS`, `OVERRIDE_*`, `MAX_APPS_PER_USER`,
 `VOLUME_MAX_GI`, `BACKUP_MAX_BYTES_*`) now only set the **default** for each setting. A value saved here overrides the
