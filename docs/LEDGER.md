@@ -963,3 +963,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-24 [manager] DONE: Chas UI round shipped (2a5678b..32d8cf9), blog posted. BLOCKED on Chas: bootstrap re-pin of BACKUP_IMAGE (classifier denied dispatch) so volume MODE=stat works; alembic head d1e5a7c3b9f2 unconfirmed in deploy log.
 - 2026-10-25 [scm-security] START: commit/push admin API keys, admin settings defaults/caps, account UI, docs.
 - 2026-10-25 [scm-security] DONE: pushed c8fcb53 (admin keys/settings), 1544c8e (frontend), 2c1dd70 (docs), d8f798a (agent rule); CI 40186014431, image 40186014400, deploy 40186085846 green; gitleaks clean. No findings. Note: admin.py hunks combined into chunk 1.
+- 2026-10-25 [scm-security] START: commit/push Ghost 6 :6 build, Dependabot config; watch examples/CI.
+- 2026-10-25 [release-blogger] DONE: posted release-backups-health-cleanup-account-keys-admin-defaults (published).
+- 2026-10-25 [scm-security] DONE: pushed ffed93c (Ghost 6 as :6/:6-<sha>; Ghost 5 still :latest/:<sha>) and bb61e2e (Dependabot); examples run 40186725056 green (ghost :latest+:bb61e2e from GHOST_MAJOR=5; :6+:6-bb61e2e from GHOST_MAJOR=6), deploy 40186735008/40186751102 green; gitleaks clean. Dependabot already opened branch PRs. No findings.
