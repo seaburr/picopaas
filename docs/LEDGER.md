@@ -5,6 +5,17 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-25 [scm-security] DONE: pushed 9134b09 (Account page width/side-by-side), 6596a23 (agent ledger-placement rule); CI 40187718397, image 40187718427, deploy 40187775587 green; gitleaks clean. ghost files untouched. No findings.
+- 2026-10-25 [backend] DONE: users.timezone (migration a7c2e9f4d6b1), PATCH /auth/me (MeOut; UserOut/MeOut carry timezone), tests/test_user_timezone.py, API.md + USER_GUIDE updated. Uncommitted.
+- 2026-10-25 [frontend-dev] DONE (NOT browser-checked): user time zone. utils/tz.ts (userZone ref synced from auth store, effectiveZone/fmt helpers); format.ts/appUi.ts/BackupsCard/HealthBackups/HealthLogs/HealthView use it and parseTs; Account page Time zone select (PATCH /auth/me via api/auth.ts setTimezone); User.timezone in types.ts.
+- 2026-10-25 [frontend-dev] START: user time zone setting + central date formatting.
+- 2026-10-25 [backend] START: user timezone (users.timezone, PATCH /auth/me).
+- 2026-10-25 [infra-ops] START: Ghost 6 cutover for app 98 (devlog) only: backup, rehearsal, switch.
+- 2026-10-25 [scm-security] DONE: pushed ffed93c (Ghost 6 as :6/:6-<sha>; Ghost 5 still :latest/:<sha>) and bb61e2e (Dependabot); examples run 40186725056 green (ghost :latest+:bb61e2e from GHOST_MAJOR=5; :6+:6-bb61e2e from GHOST_MAJOR=6), deploy 40186735008/40186751102 green; gitleaks clean. Dependabot already opened branch PRs. No findings.
+- 2026-10-25 [release-blogger] DONE: posted release-backups-health-cleanup-account-keys-admin-defaults (published).
+- 2026-10-25 [scm-security] START: commit/push Ghost 6 :6 build, Dependabot config; watch examples/CI.
+- 2026-10-25 [scm-security] DONE: pushed c8fcb53 (admin keys/settings), 1544c8e (frontend), 2c1dd70 (docs), d8f798a (agent rule); CI 40186014431, image 40186014400, deploy 40186085846 green; gitleaks clean. No findings. Note: admin.py hunks combined into chunk 1.
+- 2026-10-25 [scm-security] START: commit/push admin API keys, admin settings defaults/caps, account UI, docs.
 - 2026-10-25 [infra-ops] DONE: Ghost 6 prep (no live changes). Dockerfile ARG GHOST_MAJOR (default 6); examples.yml builds ghost twice: 5 -> :latest/:<sha> (live blogs 98 and 164 track :latest, unchanged), 6 -> :6/:6-<sha>. Local build + boot vs MySQL 8 OK (WITH_S3 0/1). Runbook in examples/ghost/README.md. NEXT: cutover per blog after Chas OKs (backup, rehearse, switch). Files: examples/ghost/{Dockerfile,README.md}, .github/workflows/examples.yml.
 - 2026-10-25 [infra-ops] START: Ghost 5 -> 6 image prep (phase 1, no live changes): examples/ghost, examples.yml tagging, cutover runbook.
 - 2026-10-25 [backend-dev] DONE: admin settings. Node caps (NODE_CPU_CAP_M 1500 / NODE_MEM_CAP_MI 2560) on CPU/mem ceilings; GET /admin/settings,/users,/audit,/audit/export need a browser session (e2e harness now reads app_limit from the user's /auth/me); new 'Per-app defaults' group (default_cpu_limit_m, mem, ephemeral, image size, db, bucket, egress; default<=ceiling) read by resources.effective/quota/me. Left: replicas, db connections, volume default. Files: app/{platform_settings,resources,config,dependencies}.py, routers/{admin,admin_settings,auth}.py, SettingsPanel.vue, types.ts, docs, tests/test_admin_settings_defaults.py.
@@ -961,8 +972,3 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-24 [scm-security] DONE: UI round pushed (2a5678b..f446c42); CI, image, backup-image, deploy green; gitleaks clean. BACKUP_IMAGE needs re-pin via bootstrap (backup script gained MODE=stat). Alembic head d1e5a7c3b9f2 not visible in deploy log. No findings.
 - 2026-10-24 [release-blogger] DONE: published 1 end-of-day post (release-ui-round-dns-copy-volume-usage) https://blog.picopaas.xyz/release-ui-round-dns-copy-volume-usage/. Ledger line left for scm-security.
 - 2026-10-24 [manager] DONE: Chas UI round shipped (2a5678b..32d8cf9), blog posted. BLOCKED on Chas: bootstrap re-pin of BACKUP_IMAGE (classifier denied dispatch) so volume MODE=stat works; alembic head d1e5a7c3b9f2 unconfirmed in deploy log.
-- 2026-10-25 [scm-security] START: commit/push admin API keys, admin settings defaults/caps, account UI, docs.
-- 2026-10-25 [scm-security] DONE: pushed c8fcb53 (admin keys/settings), 1544c8e (frontend), 2c1dd70 (docs), d8f798a (agent rule); CI 40186014431, image 40186014400, deploy 40186085846 green; gitleaks clean. No findings. Note: admin.py hunks combined into chunk 1.
-- 2026-10-25 [scm-security] START: commit/push Ghost 6 :6 build, Dependabot config; watch examples/CI.
-- 2026-10-25 [release-blogger] DONE: posted release-backups-health-cleanup-account-keys-admin-defaults (published).
-- 2026-10-25 [scm-security] DONE: pushed ffed93c (Ghost 6 as :6/:6-<sha>; Ghost 5 still :latest/:<sha>) and bb61e2e (Dependabot); examples run 40186725056 green (ghost :latest+:bb61e2e from GHOST_MAJOR=5; :6+:6-bb61e2e from GHOST_MAJOR=6), deploy 40186735008/40186751102 green; gitleaks clean. Dependabot already opened branch PRs. No findings.
