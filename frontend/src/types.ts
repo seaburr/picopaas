@@ -474,6 +474,15 @@ export interface BackupsInfo {
   storage_full?: boolean
   cap_override?: boolean
 }
+export interface AdminBackupSets {
+  app_id: number
+  app_name: string
+  owner_email: string | null
+  deleted: boolean
+  purge_after: string | null
+  purged: boolean
+  backups: BackupSet[]
+}
 export interface BackupExport {
   export_id: number
   run_id: number
@@ -498,7 +507,11 @@ export interface PlatformSetting {
   value: number | boolean
   default: number | boolean
   overridden: boolean
-  ceiling_key?: string | null
+  ceiling_key?: string | null // on a Default setting: the Ceiling setting in the same row
+  default_key?: string | null // on a Ceiling setting: its Default partner
+  row?: string // one Settings row per tunable (Default and/or Ceiling column)
+  row_label?: string
+  column?: 'default' | 'ceiling'
   min: number | null
   max: number | null
   updated_at: string | null

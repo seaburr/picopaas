@@ -81,6 +81,17 @@ const changed = (s: PlatformSetting) => {
   const p = parsed(s)
   return 'error' in p || p.value !== s.value
 }
+interface Row { id: string; label: string; default?: PlatformSetting; ceiling?: PlatformSetting }
+function rowsOf(g: SettingsGroup): Row[] {
+  const rows: Row[] = []
+  const byId: Record<string, Row> = {}
+  for (const s of g.settings) {
+    const id = s.row || s.key
+    const r = (byId[id] ??= (rows[rows.length] = { id, label: s.row_label || s.label }))
+    r[s.column === 'ceiling' ? 'ceiling' : 'default'] = s
+  }
+  return rows
+}
 const dirtyIn = (g: SettingsGroup) => g.settings.filter(changed)
 const invalidIn = (g: SettingsGroup) => g.settings.some(errorOf)
 const rangeHelp = (s: PlatformSetting) => {
@@ -122,48 +133,60 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
     <div v-if="loadError" role="alert" class="alert-error">{{ loadError }}</div>
     <p v-else-if="!loaded" class="text-sm text-zinc-400" role="status">Loading settings…</p>
     <p v-else class="help">
-      Platform-wide settings. Ceilings cap how high an admin can raise one app's limits (Apps tab, Limits). Changes apply within a few seconds.
-      Clearing a value back to its default removes the override.
+      Platform-wide settings, one row per tunable. Default is what everyone gets; Ceiling is the most an admin can raise it to (Apps tab, Limits). A blank cell means the setting has no pair.
+      Changes apply within a few seconds. Reset returns a value to its built-in setting.
     </p>
 
     <section v-for="g in groups" :key="g.name" class="card" :aria-labelledby="`${uid}-${g.name}`">
       <div class="border-b border-pico-border px-3 py-2">
         <h2 :id="`${uid}-${g.name}`" class="section-title">{{ g.name }}</h2>
       </div>
+      <div class="hidden gap-4 border-b border-pico-border px-3 py-1.5 sm:grid sm:grid-cols-[minmax(0,1fr)_14rem_14rem]">
+        <span class="meta">Setting</span><span class="meta">Default</span><span class="meta">Ceiling</span>
+      </div>
       <ul class="divide-y divide-pico-border">
-        <li v-for="s in g.settings" :key="s.key" class="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_16rem] sm:gap-4">
+        <li v-for="r in rowsOf(g)" :key="r.id" class="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_14rem_14rem] sm:gap-4">
           <div class="min-w-0">
-            <label :for="`${uid}-${s.key}`" class="label !mb-0 flex flex-wrap items-center gap-2">
-              {{ s.label }}
-              <span v-if="s.overridden" class="badge-warn">overridden</span>
-            </label>
-            <p class="help">{{ s.description }}</p>
+            <p class="label !mb-0 flex flex-wrap items-center gap-2">
+              {{ r.label }}
+              <span v-if="r.default?.overridden || r.ceiling?.overridden" class="badge-warn">overridden</span>
+            </p>
+            <p class="help">{{ (r.default ?? r.ceiling)!.description }}</p>
+            <p v-if="r.default && r.ceiling" class="help">{{ r.ceiling.description }}</p>
             <p class="meta mt-0.5">
-              <template v-if="ceilingOf(s)">Ceiling {{ fmtVal(s, ceilingOf(s)!.value) }} (set under Limit ceilings) · </template>Default {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template>
-              <template v-if="s.overridden && s.updated_at"> · changed {{ stamp(s.updated_at) }}<template v-if="s.updated_by"> by {{ s.updated_by }}</template></template>
+              <template v-for="s in [r.default, r.ceiling]" :key="s?.key">
+                <template v-if="s && s.overridden && s.updated_at">{{ s.column === 'ceiling' ? 'Ceiling' : 'Default' }} changed {{ stamp(s.updated_at) }}<template v-if="s.updated_by"> by {{ s.updated_by }}</template>. </template>
+              </template>
             </p>
           </div>
-          <div class="min-w-0">
-            <label v-if="s.type === 'bool'" class="flex min-h-[36px] items-center gap-2 text-sm text-zinc-200">
-              <input :id="`${uid}-${s.key}`" v-model="drafts[s.key].on" type="checkbox" class="check" />
-              <span>{{ drafts[s.key].on ? 'On' : 'Off' }}</span>
-            </label>
-            <div v-else class="flex items-center gap-2">
-              <input
-                :id="`${uid}-${s.key}`" v-model="drafts[s.key].text" type="text" inputmode="decimal" class="input mono min-w-0 flex-1"
-                :aria-invalid="errorOf(s) ? 'true' : undefined" :aria-describedby="errorOf(s) ? `${uid}-${s.key}-err` : undefined"
-                @keydown.enter.prevent="canSave(g) && save(g)"
-              />
-              <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input !w-24 shrink-0" :aria-label="`Unit for ${s.label}`">
-                <option>MB</option><option>GB</option>
-              </select>
-              <span v-else-if="s.unit" class="meta w-24 shrink-0">{{ s.unit }}</span>
-            </div>
-            <p v-if="errorOf(s)" :id="`${uid}-${s.key}-err`" class="field-error">{{ errorOf(s) }}</p>
-            <button
-              v-if="s.overridden" type="button" class="btn-ghost btn-sm mt-1" :disabled="busy !== null"
-              :aria-label="`Reset ${s.label} to default`" @click="reset(g, s)"
-            >Reset to default ({{ fmtVal(s, s.default) }})</button>
+          <div v-for="col in ['default', 'ceiling'] as const" :key="col" class="min-w-0">
+            <template v-for="s in [r[col]]" :key="s?.key">
+              <template v-if="s">
+                <span class="meta sm:hidden">{{ col === 'ceiling' ? 'Ceiling' : 'Default' }}</span>
+                <label v-if="s.type === 'bool'" class="flex min-h-[36px] items-center gap-2 text-sm text-zinc-200">
+                  <input :id="`${uid}-${s.key}`" v-model="drafts[s.key].on" type="checkbox" class="check" :aria-label="`${r.label} ${col}`" />
+                  <span>{{ drafts[s.key].on ? 'On' : 'Off' }}</span>
+                </label>
+                <div v-else class="flex items-center gap-2">
+                  <input
+                    :id="`${uid}-${s.key}`" v-model="drafts[s.key].text" type="text" inputmode="decimal" class="input mono min-w-0 flex-1"
+                    :aria-label="`${r.label} ${col}`"
+                    :aria-invalid="errorOf(s) ? 'true' : undefined" :aria-describedby="errorOf(s) ? `${uid}-${s.key}-err` : undefined"
+                    @keydown.enter.prevent="canSave(g) && save(g)"
+                  />
+                  <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input !w-20 shrink-0" :aria-label="`Unit for ${r.label} ${col}`">
+                    <option>MB</option><option>GB</option>
+                  </select>
+                  <span v-else-if="s.unit" class="meta w-16 shrink-0 truncate" :title="s.unit">{{ s.unit }}</span>
+                </div>
+                <p v-if="errorOf(s)" :id="`${uid}-${s.key}-err`" class="field-error">{{ errorOf(s) }}</p>
+                <p class="meta mt-0.5">Built-in {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template></p>
+                <button
+                  v-if="s.overridden" type="button" class="btn-ghost btn-sm mt-1" :disabled="busy !== null"
+                  :aria-label="`Reset ${s.label} to built-in value`" @click="reset(g, s)"
+                >Reset ({{ fmtVal(s, s.default) }})</button>
+              </template>
+            </template>
           </div>
         </li>
       </ul>

@@ -5,7 +5,10 @@ import { ApiError } from '../api/client'
 import { stamp, stampTitle } from '../utils/format'
 import { parseTs } from '../composables/appUi'
 import { fmt } from '../utils/tz'
+import AdminAppBackups from './AdminAppBackups.vue'
 import type { BackupFailure } from '../types'
+
+const openApp = ref<number | null>(null)
 
 const data = ref<Awaited<ReturnType<typeof getBackupHealth>> | null>(null)
 const error = ref('')
@@ -68,10 +71,10 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
         <div v-if="st!.top_apps.length" class="mt-2 overflow-x-auto">
           <table class="tbl min-w-[44rem]">
             <thead>
-              <tr><th scope="col">Largest repositories</th><th scope="col">Owner</th><th scope="col" class="text-right">Total</th><th scope="col" class="text-right">Ceiling</th><th scope="col">State</th><th scope="col" class="text-right">DB</th><th scope="col" class="text-right">Volume</th><th scope="col" class="text-right">Bucket</th></tr>
+              <tr><th scope="col">Largest repositories</th><th scope="col">Owner</th><th scope="col" class="text-right">Total</th><th scope="col" class="text-right">Ceiling</th><th scope="col">State</th><th scope="col" class="text-right">DB</th><th scope="col" class="text-right">Volume</th><th scope="col" class="text-right">Bucket</th><th scope="col"><span class="sr-only">Backups</span></th></tr>
             </thead>
             <tbody class="text-zinc-300">
-              <tr v-for="a in st!.top_apps" :key="a.app_id">
+              <template v-for="a in st!.top_apps" :key="a.app_id"><tr>
                 <td class="break-words"><span v-if="a.deleted" class="text-zinc-400" title="Backups of deleted apps are kept 14 days so they can still be restored, then purged automatically.">{{ a.name }} <span class="text-zinc-500">deleted<template v-if="a.purge_after"> · purged after {{ purgeDate(a.purge_after) }}</template></span></span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
                 <td class="break-all" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
                 <td class="mono text-right">{{ size(a.repo_bytes) }}</td>
@@ -80,7 +83,9 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
                 <td class="mono text-right">{{ size(a.db_bytes) }}</td>
                 <td class="mono text-right">{{ size(a.volume_bytes) }}</td>
                 <td class="mono text-right">{{ size(a.bucket_bytes) }}</td>
+                <td class="text-right"><button type="button" class="btn-secondary btn-sm" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button></td>
               </tr>
+              <tr v-if="openApp === a.app_id"><td colspan="9"><AdminAppBackups :app-id="a.app_id" /></td></tr></template>
             </tbody>
           </table>
         </div>
