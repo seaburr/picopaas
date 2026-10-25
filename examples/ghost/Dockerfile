@@ -5,9 +5,8 @@
 # - WITH_S3=1 adds the S3 storage adapter so uploaded images persist in the PicoPaaS bucket. That pulls in
 #   aws-sdk v2, which (even pruned) pushes the image near/over the 256 MB cap, so it is OFF by default; the
 #   lean default image stores uploads on the ephemeral disk (lost on restart) but keeps all content in MySQL.
-# GHOST_MAJOR picks the base: 6 (default) or 5 (kept building for blogs not yet cut over; see README).
-ARG GHOST_MAJOR=6
-FROM ghost:${GHOST_MAJOR}-alpine
+# Ghost 6 only (the Ghost 5 build was retired after both blogs were cut over; see README).
+FROM ghost:6-alpine
 
 ARG WITH_S3=0
 
@@ -35,13 +34,32 @@ RUN set -eux; \
     cp -a content.orig/. content/; \
     # Only content/ must be writable by the runtime UID. chown of the WHOLE tree would duplicate all of
     # Ghost into a second image layer (~+100 MB); the code dirs stay root-owned and world-readable.
-    chown -R 10001:10001 /var/lib/ghost/content
+    chown -R 10001:10001 /var/lib/ghost/content; \
+    # Perf patches (each fails the build if Ghost moves the anchor). Pods cannot reach their own public URL
+    # (LB hairpin, docs/PENTEST.md #11), and Ghost probes the site's own favicon/logo URL on EVERY page
+    # render, so each render waited out the 5000 ms image-size timeout (overrides.json cannot be set via env).
+    # Dimensions are only decoration (structured data), so fail fast: 400 ms.
+    C=/var/lib/ghost/current/core; \
+    grep -q '"getImageSizeTimeoutInMS": 5000' $C/shared/config/overrides.json; \
+    sed -i 's/"getImageSizeTimeoutInMS": 5000/"getImageSizeTimeoutInMS": 400/' $C/shared/config/overrides.json; \
+    grep -q '"getImageSizeTimeoutInMS": 400' $C/shared/config/overrides.json; \
+    # Outbound webmentions (sent on publish) fetch every linked URL with a 15 s timeout x3 retries; links to
+    # other apps on this platform hang on the same hairpin. Receiving webmentions is unaffected.
+    grep -q "isEnabled: () => !settingsCache.get('is_private')," $C/server/services/mentions/service.js; \
+    sed -i "s/isEnabled: () => !settingsCache.get('is_private'),/isEnabled: () => false,/" $C/server/services/mentions/service.js; \
+    grep -q 'isEnabled: () => false,' $C/server/services/mentions/service.js
 
 COPY docker-entrypoint.sh /pico-entrypoint.sh
 RUN chmod +x /pico-entrypoint.sh
 
 # HOME must be writable by UID 10001 (Ghost/CLI may write dotfiles); /tmp is world-writable.
 ENV HOME=/tmp
+# Config defaults for every Ghost app (override per app only if you must; UPPER_SNAKE app env cannot set these):
+# no update check / RPC ping (outbound calls, useless on an immutable image), and 2 min browser caching of HTML
+# (Ghost default 0 = revalidate every view; theme assets are already cached 1 year).
+ENV privacy__useUpdateCheck=false \
+    privacy__useRpcPing=false \
+    caching__frontend__maxAge=120
 WORKDIR /var/lib/ghost
 USER 10001:10001
 EXPOSE 2368

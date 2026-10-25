@@ -1,6 +1,6 @@
 # Ghost on PicoPaaS
 
-A real, mainstream CMS (Ghost 6; the Ghost 5 build row can now be retired) running on PicoPaaS within the platform's constraints — proof that the
+A real, mainstream CMS (Ghost 6) running on PicoPaaS within the platform's constraints — proof that the
 platform can host a genuine app, not just toy test images. Live demo: deployed as app `ghost-blog`.
 
 ## What works
@@ -25,9 +25,9 @@ images and forces a non-root numeric UID (10001). So this image:
 
 ## Deploy it
 1. Build: push to `examples/ghost/**` → the `examples` workflow publishes
-   `...-ghost:6` and `:6-<sha>` (Ghost 6), plus `:latest` and `:<sha>` (still Ghost 5 until cutover; make the GHCR package **public** — PicoPaaS pulls anonymously).
+   `ghcr.io/seaburr/picopaas-example-ghost6:latest` and `:<sha>` (make the GHCR package **public**: PicoPaaS pulls anonymously).
 2. Create an app with a **database** and a **blob storage bucket**, port **2368**, image
-   `ghcr.io/seaburr/picopaas-example-ghost:6` (new blogs; existing blogs still run `:latest` = Ghost 5), and these env refs:
+   `ghcr.io/seaburr/picopaas-example-ghost6:latest` (pin a `:<sha>` for production blogs), and these env refs:
    `DB_HOST=${{ db.host }}`, `DB_PORT=${{ db.port }}`, `DB_NAME=${{ db.name }}`, `DB_USER=${{ db.user }}`,
    `DB_PASSWORD=${{ db.password }}`, `DB_CA_CERT=${{ db.ca_cert }}`, `S3_ENDPOINT=${{ storage.endpoint }}`,
    `S3_REGION=${{ storage.region }}`, `S3_BUCKET=${{ storage.bucket }}`, `S3_ACCESS_KEY=${{ storage.access_key }}`,
@@ -61,14 +61,9 @@ verification email can't be delivered and would lock the admin out. Trade-off: t
 ## Upgrading to Ghost 6 (runbook)
 
 ### Image tags
-| Tag | Ghost | Who uses it |
-|---|---|---|
-| `:latest`, `:<sha>` | 5 (`ghost:5-alpine`, `GHOST_MAJOR=5`) | blog.picopaas.xyz (app 98) and blog.chasberndt.com (app 164) until cut over |
-| `:6`, `:6-<sha>` | 6 (`ghost:6-alpine`, Dockerfile default) | new blogs and the rehearsal app |
-
-Pushing to `main` therefore never upgrades a live blog. Final step, only after both blogs run 6 and are verified:
-delete the `ghost_major: "5"` row in `.github/workflows/examples.yml` and set the Ghost 6 row's `tag_main`/`tag_sha_prefix`
-to `latest`/empty (or leave blogs pinned to `:6`, which is the safer long-term choice: re-point apps to `:6`, never to a moving `:latest`).
+`ghcr.io/seaburr/picopaas-example-ghost6:latest` and `:<sha>` (the Ghost 5 build and `GHOST_MAJOR` were removed 2026-10-25).
+The live blogs (apps 98 and 164) are pinned to the earlier `picopaas-example-ghost:6-bb61e2e` until the new package is public;
+then re-point them to a `ghost6:<sha>` tag (pin the sha, never a moving `:latest`; backup first).
 
 ### Facts (checked 2026-10-25)
 - Ghost 6.0 shipped 2025-08-04 (ghost.org/changelog/6). Ghost 5 is now the LTS line and its end of life is January 2026 (docs.ghost.org/faq/major-versions-lts): treat 5 as unsupported and insecure.
@@ -85,19 +80,19 @@ Needs an admin full-scope key; backups must be enabled for the platform. The res
 1. Fresh backup: `POST /apps/{id}/backups` (db + bucket); poll `GET /apps/{id}/backups` until the new set is `succeeded`.
    Do not continue unless it is. Also record the current image (`:latest`, note the digest from GHCR) and the app's env.
    Optionally download the package (`POST /apps/{id}/backups/sets/{set_id}/download`) and keep it off-platform.
-2. Rehearse on a throwaway app: create an app with a DB and a bucket, image `ghcr.io/seaburr/picopaas-example-ghost:6`,
+2. Rehearse on a throwaway app: create an app with a DB and a bucket, image `ghcr.io/seaburr/picopaas-example-ghost6:latest`,
    the env refs from "Deploy it" (port 2368), then `POST /admin/backups/{run_id}/restore` with `{target_app_id}` for the db run and the bucket run
    (the restore replaces contents), restart/redeploy so Ghost 6 migrates the restored DB. SITE_URL must be the throwaway's URL.
    Check: `/ghost/` admin login; posts and pages render; images load from the bucket and a new upload persists across a restart;
    Admin API works with the release-blogger token (mint JWT as in deploy/ghost/README.md; GET `/ghost/api/admin/site/` and `/posts/?limit=1`, and a draft create+delete);
    RSS; theme (check Admin > Design for gscan warnings; the custom code injection is stored in the DB and carries over).
    Delete the throwaway app when done.
-3. Switch the real app: change its image to `ghcr.io/seaburr/picopaas-example-ghost:6` (PATCH the app / redeploy). Ghost migrates the DB on first boot (watch the logs, allow a few minutes; 384 MiB RAM is tight, so watch for OOM).
+3. Switch the real app: change its image to `ghcr.io/seaburr/picopaas-example-ghost6:latest` (PATCH the app / redeploy). Ghost migrates the DB on first boot (watch the logs, allow a few minutes; 384 MiB RAM is tight, so watch for OOM).
    Verify: homepage, `/ghost/` login, a recent post, an image, RSS, `blog.*` TLS, Admin API with the blogger token; then re-run the branding PUT only if the code injection looks lost.
 4. Rollback: migrations are one-way, so Ghost 5 cannot read the upgraded DB. Set the image back to the recorded Ghost 5 ref, AND restore the pre-upgrade backup into the same app
    (`POST /admin/backups/{run_id}/restore` with `overwrite_source: true`; the app must be suspended first), then redeploy and verify.
    Keep the pre-upgrade backup set undeleted until the blog has run on 6 for at least a week.
-5. After both blogs are on 6, retire the Ghost 5 build (see "Image tags").
+5. Done: the Ghost 5 build was retired.
 
 ### Rehearsal finding 2026-10-25 (blocks the cutover)
 Restoring the devlog's Ghost 5.130 database and booting `:6-bb61e2e` fails on DO managed MySQL: migration
@@ -128,4 +123,20 @@ Also: restore into a rehearsal app only while it is suspended (admin suspend, re
   First render of an uncached page takes ~5 s on Ghost 6 (the `IMAGE_SIZE_URL` probe timeout), then it is cached and fast.
 - Cutover after a fresh backup (set 22, db run 76 + bucket run 77; manual backups are limited to 1 per hour per app): image set to `:6-bb61e2e`, auto_update turned off, booted, 0 restarts.
   Verified on https://blog.chasberndt.com/: generator `Ghost 6.72`, homepage head unchanged, posts, RSS identical, `/ghost/` 200, images 200, Let's Encrypt cert valid to 2027-01-23, http redirects to https. Backup sets 21, 22 kept.
-- Both blogs now run Ghost 6. The Ghost 5 `:latest` build row (`ghost_major: "5"`) in `.github/workflows/examples.yml` can be retired (not changed here).
+- Both blogs now run Ghost 6. The Ghost 5 build row was retired afterwards.
+
+### Performance (2026-10-25): why Ghost 6 pages took ~5 s, and the fix
+- Measured before (curl, 4 samples each): `/` on blog.chasberndt.com TTFB 5.17 to 5.31 s, blog.picopaas.xyz 5.16 to 5.27 s; theme assets ~0.1 s
+  (brotli, `cache-control: max-age=31536000`); HTML `cache-control: public, max-age=0`. Ghost logged `GET / 200 5068ms` plus `IMAGE_SIZE_URL Probe unresponsive`.
+- Root cause: with no publication logo set, Ghost probes the site's own `/favicon.ico` URL (structured data `publisher.logo`) on EVERY
+  render. Pods cannot reach their own public URL (LB hairpin, docs/PENTEST.md #11), so each render waits out
+  `times.getImageSizeTimeoutInMS` (5000 ms, set in `overrides.json`, which env vars cannot override). Timeouts are not cached.
+- Webmentions: `Error fetching https://picopaas.xyz/ to discover webmention endpoint` is the same hairpin, but it is the background job that sends
+  webmentions when a post is published or edited (15 s timeout, 3 retries). It does not block renders; there is no config switch, only the `is_private` setting.
+- Fix (in the image, verified locally against an unreachable site URL: 5.02 s before, 0.43 s after): the Dockerfile lowers the image-size
+  timeout to 400 ms and disables outbound webmentions (build fails if the anchors move; receiving is unaffected); ENV defaults
+  `privacy__useUpdateCheck=false`, `privacy__useRpcPing=false`, `caching__frontend__maxAge=120` (2 min browser cache for HTML; publish edits show after at most 2 min).
+- Better still: upload a **site icon or logo** in Ghost Admin (Settings > Design). It is stored in the bucket (public Spaces URL, reachable from the pod), the
+  probe succeeds once and is cached, and the 0.4 s disappears.
+- Not the cause: gzip/brotli (on, served by Ghost), asset caching (already 1 year).
+- UPPER_SNAKE env cannot set Ghost's lowercase `__` keys on a running app, so these defaults ship in the image rather than per-app env.

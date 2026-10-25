@@ -11,7 +11,7 @@ Verified against a local Ghost 5: 78 posts + 2 pages, 17 images, all created; a 
 cat > ghost-poc.yaml <<'EOF'
 apiVersion: picopaas/v1
 name: ghost-poc
-image: ghcr.io/seaburr/picopaas-example-ghost:latest
+image: ghcr.io/seaburr/picopaas-example-ghost6:latest
 port: 2368
 resources:
   db: true
@@ -47,7 +47,7 @@ Wait for `status: running`. The curl should print `{"setup":[{"status":false}]}`
 Open `https://<host>.picopaas.xyz/ghost/`, create the owner account (site title, your name, email, a strong password).
 Staff device verification is already turned off by the image (`security__staffDeviceVerification=false`), because PicoPaaS blocks
 outbound SMTP. If you are still asked for a verification code on sign-in, it means you are running a different image: use the
-`ghcr.io/seaburr/picopaas-example-ghost` image from the spec above. Expect the Ghost default "Coming soon" post and sample pages
+`ghcr.io/seaburr/picopaas-example-ghost6` image from the spec above. Expect the Ghost default "Coming soon" post and sample pages
 to exist; delete them in the admin (Posts) so counts match later.
 
 ## d. Create the custom integration and save the key
