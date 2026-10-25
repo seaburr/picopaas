@@ -53,9 +53,16 @@ const byKey = computed(() => Object.fromEntries(groups.value.flatMap((g) => g.se
 function ceilingOf(s: PlatformSetting): { value: number; label: string } | null {
   const c = s.ceiling_key ? byKey.value[s.ceiling_key] : undefined
   if (!c || typeof c.value !== 'number') return null
-  const d = drafts[c.key]
-  const n = d && /^\d+$/.test(d.text.trim()) ? Number(d.text.trim()) : c.value
-  return { value: n, label: c.label }
+  const n = draftNumber(c)
+  return { value: n ?? c.value, label: c.label }
+}
+
+// The draft as a number in the setting's own unit (bytes for byte-sized settings), or null if not a number.
+function draftNumber(s: PlatformSetting): number | null {
+  const d = drafts[s.key]
+  const t = d?.text.trim() ?? ''
+  if (!/^\d+(\.\d+)?$/.test(t)) return null
+  return isBytes(s) ? Math.round(Number(t) * (d.unit === 'GB' ? GB : MB)) : Number(t)
 }
 
 // Parsed draft value, or an error string.
@@ -63,9 +70,8 @@ function parsed(s: PlatformSetting): { value: number | boolean } | { error: stri
   const d = drafts[s.key]
   if (!d) return { value: s.value }
   if (s.type === 'bool') return { value: d.on }
-  const t = d.text.trim()
-  if (!/^\d+(\.\d+)?$/.test(t)) return { error: 'Enter a whole number.' }
-  const n = isBytes(s) ? Math.round(Number(t) * (d.unit === 'GB' ? GB : MB)) : Number(t)
+  const n = draftNumber(s)
+  if (n === null) return { error: 'Enter a whole number.' }
   if (!isBytes(s) && !Number.isInteger(n)) return { error: 'Enter a whole number.' }
   if (s.min !== null && n < s.min) return { error: `At least ${fmtVal(s, s.min)}.` }
   if (s.max !== null && n > s.max) return { error: `At most ${fmtVal(s, s.max)}.` }
