@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, backups, config, models, platform_settings
 from app.db import get_db
-from app.dependencies import get_active_user, require_platform_admin
+from app.dependencies import get_active_user, require_admin_session, require_platform_admin
 from app.providers.backup import BackupRunner, BackupRunnerError, KubeBackupRunner
 from app.routers.app_ops import _get_app_or_404
 
@@ -344,8 +344,8 @@ def admin_set_backup_lock(app_id: int, body: AdminBackupLockIn, db: Session = De
     reason = (body.reason or "").strip()
     if body.admin_disabled and not reason:
         raise HTTPException(status_code=422, detail="Give a reason; the app's owner will see it.")
-    if "max_bytes" in sent and body.max_bytes is not None and body.max_bytes > backups.total_cap_bytes(db):
-        raise HTTPException(status_code=422, detail="A per-app ceiling can't exceed the platform total.")
+    if "max_bytes" in sent and body.max_bytes is not None and body.max_bytes > backups.override_cap_bytes(db):
+        raise HTTPException(status_code=422, detail="A per-app ceiling can't exceed the per-app backup ceiling or the platform total.")
     cfg = backups.ensure_config(db, app)
     if body.admin_disabled is not None and body.admin_disabled != cfg.admin_disabled:
         cfg.admin_disabled = body.admin_disabled
@@ -571,3 +571,77 @@ def delete_backup_set(app_id: int, set_id: int, db: Session = Depends(get_db), u
     for e in exports:
         audit.record(db, user, "backup.export_deleted", "app", app.id, f"export={e.id} set={st.id} reason=backup_deleted")
     return SetDeleteOut(set_id=st.id, status=st.delete_status or "deleted", delete_run_ids=[r.id for r in runs])
+
+
+# --- admin: download any app's backups, including deleted apps' ------------------------------------
+# Browser session only (like platform logs): a leaked admin API key must not be able to pull tenant data. Reuses the owner export
+# path (backups.enqueue_set_export, the same per-app hourly limit, the same Job and 10-minute presigned link).
+
+class AdminBackupSetsOut(BaseModel):
+    app_id: int
+    app_name: str
+    owner_email: Optional[str] = None
+    deleted: bool
+    purge_after: Optional[datetime] = None  # deleted apps: their backups are purged then
+    purged: bool = False
+    backups: List[BackupSetOut]
+
+
+def _admin_app_or_404(db: Session, app_id: int) -> models.App:
+    app = db.get(models.App, app_id)
+    if app is None:
+        raise HTTPException(status_code=404, detail="We can't find that app.")
+    return app
+
+
+@admin_router.get("/apps/{app_id}/backup-sets", response_model=AdminBackupSetsOut, dependencies=[Depends(require_admin_session)])
+def admin_list_backup_sets(app_id: int, db: Session = Depends(get_db)):
+    """The app's backups (whole sets, newest first), also when the app is deleted and its owner can no longer see them."""
+    app = _admin_app_or_404(db, app_id)
+    cfg = db.get(models.AppBackupConfig, app.id)
+    owner = db.get(models.User, app.owner_id)
+    sets = backups.listed_sets(db, app.id, RUNS_SHOWN) if backups.enabled() else []
+    live = backups.live_exports_by_set(db, app.id, [st.id for st, _ in sets]) if sets else {}
+    deleted = app.deleted_at is not None
+    return AdminBackupSetsOut(
+        app_id=app.id, app_name=app.name, owner_email=owner.email if owner else None, deleted=deleted,
+        purge_after=cfg.deleted_retention_until if cfg and deleted else None, purged=bool(cfg and cfg.purged_at),
+        backups=[_set_out(st, parts, live.get(st.id)) for st, parts in sets])
+
+
+@admin_router.post("/apps/{app_id}/backup-sets/{set_id}/download", response_model=BackupExportOut, status_code=202,
+                   dependencies=[Depends(require_admin_session)])
+def admin_start_set_download(app_id: int, set_id: int, db: Session = Depends(get_db),
+                             admin: models.User = Depends(require_admin_session)):
+    """Queue the whole-backup .tar.gz package for any app (deleted ones too). Same limits as the owner path (3 per app per hour)."""
+    app = _admin_app_or_404(db, app_id)
+    _require_usable()
+    st = _get_set_or_404(db, app, set_id)
+    try:
+        run, new = backups.enqueue_set_export(db, app, st)
+    except backups.ExportRefused as exc:
+        db.rollback()
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(status_code=exc.status, detail=str(exc), headers=headers) from None
+    db.commit()
+    if new:
+        audit.record(db, admin, "backup.download", "app", app.id,
+                     f"set={st.id} kinds={','.join(p.kind for p in backups.set_parts(db, st))} export={run.id} admin"
+                     + (" deleted_app" if app.deleted_at is not None else ""))
+    return _export_out(db, app, run, None)
+
+
+@admin_router.get("/apps/{app_id}/backup-exports/{export_id}", response_model=BackupExportOut,
+                  dependencies=[Depends(require_admin_session)])
+def admin_get_download(app_id: int, export_id: int, db: Session = Depends(get_db),
+                       admin: models.User = Depends(require_admin_session), runner: BackupRunner = Depends(get_backup_runner)):
+    """Poll an export; when ready, `url` is a fresh 10-minute presigned link (audited as backup.download_link)."""
+    app = _admin_app_or_404(db, app_id)
+    run = db.get(models.BackupRun, export_id)
+    if run is None or run.app_id != app.id or run.trigger != "export":
+        raise HTTPException(status_code=404, detail="We can't find that download.")
+    out = _export_out(db, app, run, runner)
+    if out.url:
+        audit.record(db, admin, "backup.download_link", "app", app.id,
+                     f"export={run.id} run={run.source_run_id}{backups.set_tag(run)} kind={run.kind} expires_in={config.BACKUP_EXPORT_URL_SECONDS} admin")
+    return out

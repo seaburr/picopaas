@@ -131,6 +131,11 @@ def total_cap_bytes(session: Session) -> int:
     return int(platform_settings.get(session, "backup_max_bytes_total"))
 
 
+def override_cap_bytes(session: Session) -> int:
+    """Highest per-app backup ceiling an admin can set: the Settings ceiling, never above the platform total."""
+    return min(int(platform_settings.get(session, "backup_override_max_bytes_per_app")), total_cap_bytes(session))
+
+
 def total_repo_bytes(session: Session) -> int:
     return int(session.execute(select(func.coalesce(func.sum(
         models.AppBackupConfig.db_repo_bytes + models.AppBackupConfig.vol_repo_bytes
@@ -799,7 +804,9 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
         if app is None or (cfg is None and not restore and not export):
             _finish(session, run, None, ok=False, error="the app no longer exists", now=now)
             continue
-        if app.deleted_at is not None and run.trigger not in ("final", "purge", "prune"):
+        retained = export and cfg is not None and cfg.purged_at is None and cfg.deleted_retention_until is not None
+        if app.deleted_at is not None and run.trigger not in ("final", "purge", "prune") and not retained:
+            # (an export of a deleted app's retained repo is an admin download: only admins can queue one, see routers/backups.py)
             _finish(session, run, None, ok=False, error="the app was deleted", now=now)
             continue
         server_id = app.database.db_server_id if app.database is not None else None
