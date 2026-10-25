@@ -11,16 +11,18 @@ from app.config import (  # noqa: F401  (single source of truth for the caps)
 )
 
 def effective_app_limit(user: Any) -> int:
-    """Active-app ceiling for a user: platform admins get the hard max; others min(app_limit, hard max)."""
+    """Active-app limit: users get min(app_limit, user ceiling). Platform admins use their own pair: at least the admin
+    default, raised by their own app_limit, never above the admin ceiling."""
     from sqlalchemy.orm import object_session
     from app import platform_settings  # late lookup so tests can monkeypatch config.MAX_APPS_PER_USER
     try:
         db = object_session(user)
     except Exception:  # noqa: BLE001 - not an ORM object
         db = None
-    hard_max = platform_settings.get(db, "max_apps_per_user")
     if getattr(user, "is_platform_admin", False):
-        return hard_max
+        return min(max(user.app_limit, platform_settings.get(db, "admin_default_app_limit")),
+                   platform_settings.get(db, "max_apps_per_admin"))
+    hard_max = platform_settings.get(db, "max_apps_per_user")
     return min(user.app_limit, hard_max)
 
 

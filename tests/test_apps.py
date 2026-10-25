@@ -35,7 +35,9 @@ def test_app_limit_enforced_for_regular_user(make_client):
 
 def test_platform_admin_bounded_by_hard_max(client, monkeypatch):
     from app import config
-    monkeypatch.setattr(config, "MAX_APPS_PER_USER", 3)
+    monkeypatch.setattr(config, "MAX_APPS_PER_USER", 1)  # the user pair doesn't apply to admins
+    monkeypatch.setattr(config, "ADMIN_DEFAULT_APP_LIMIT", 3)
+    monkeypatch.setattr(config, "MAX_APPS_PER_ADMIN", 3)
     register_and_login(client, "admin@example.com")  # first user => platform_admin (app_limit stays 1)
 
     for i in range(3):
@@ -78,8 +80,8 @@ def test_me_exposes_max_and_effective_limit(make_client):
     admin = make_client()
     body = register_and_login(admin, "admin-seed@example.com").json()
     me = admin.get("/auth/me").json()
-    assert me["max_apps"] == config.MAX_APPS_PER_USER
-    assert me["app_limit_effective"] == config.MAX_APPS_PER_USER  # admin: hard max, not stale app_limit=1
+    assert me["max_apps"] == config.MAX_APPS_PER_ADMIN
+    assert me["app_limit_effective"] == config.ADMIN_DEFAULT_APP_LIMIT  # admin: admin default, not stale app_limit=1
     user = make_client()
     register_and_login(user, "plain@example.com")
     me = user.get("/auth/me").json()

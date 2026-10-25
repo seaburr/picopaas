@@ -82,3 +82,54 @@ def test_admin_api_key_cannot_read_admin_views(admin, make_client):
     assert admin.get("/admin/settings").status_code == 200
     assert admin.get("/admin/audit").status_code == 200
     assert admin.get(f"/admin/users/{uid}/api-keys").status_code == 200
+
+
+def test_admin_app_limit_pair(admin, user, db_session):
+    s = {x["key"]: x for g in admin.get("/admin/settings").json()["groups"] for x in g["settings"]}
+    assert s["admin_default_app_limit"]["value"] == 5 and s["max_apps_per_admin"]["value"] == 10
+    assert s["admin_default_app_limit"]["ceiling_key"] == "max_apps_per_admin"
+    assert s["max_apps_per_admin"]["default_key"] == "admin_default_app_limit"
+    assert s["admin_default_app_limit"]["row"] == s["max_apps_per_admin"]["row"] == "apps_admin"
+    assert (s["admin_default_app_limit"]["column"], s["max_apps_per_admin"]["column"]) == ("default", "ceiling")
+    assert _put(admin, admin_default_app_limit=11).status_code == 422
+    assert _put(admin, max_apps_per_admin=4).status_code == 422  # default 5 > ceiling 4
+    assert _put(admin, admin_default_app_limit=2, max_apps_per_admin=4).status_code == 200
+    me = admin.get("/auth/me").json()
+    assert me["app_limit_effective"] == 2 and me["max_apps"] == 4
+    # the user pair is untouched and still governs regular users
+    u = user.get("/auth/me").json()
+    assert u["app_limit_effective"] == 1 and u["max_apps"] == 5
+
+
+def test_admin_user_edit_uses_ceiling_for_admins(admin, make_client, db_session):
+    c2 = make_client()
+    register_and_login(c2, "second@example.com")
+    uid = db_session.query(models.User).filter_by(email="second@example.com").one().id
+    db_session.query(models.User).filter_by(id=uid).one().role = "platform_admin"
+    db_session.commit()
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 10}).status_code == 200
+    assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 11}).status_code == 422
+    assert admin.get("/admin/users").status_code == 200
+
+
+def test_settings_rows_one_per_tunable(admin):
+    groups = admin.get("/admin/settings").json()["groups"]
+    rows = {}
+    for g in groups:
+        for x in g["settings"]:
+            assert x["row"] and x["row_label"] and x["column"] in ("default", "ceiling")
+            cols = rows.setdefault((g["name"], x["row"]), [])
+            assert x["column"] not in cols
+            cols.append(x["column"])
+    bk = {x["key"]: x for g in groups if g["name"] == "Backups" for x in g["settings"]}
+    assert bk["backup_max_bytes_per_app"]["ceiling_key"] == "backup_override_max_bytes_per_app"
+    assert bk["backup_max_held_per_app"]["ceiling_key"] is None and bk["backup_max_held_per_app"]["column"] == "default"
+
+
+def test_backup_override_ceiling(admin):
+    gib = 1024**3
+    assert _put(admin, backup_override_max_bytes_per_app=1024 * gib).status_code == 422  # above the platform total
+    assert _put(admin, backup_max_bytes_per_app=3 * gib, backup_override_max_bytes_per_app=2 * gib).status_code == 422
+    assert _put(admin, backup_max_bytes_per_app=gib, backup_override_max_bytes_per_app=2 * gib).status_code == 200
+    from app import backups
+    from app.db import get_db  # noqa: F401

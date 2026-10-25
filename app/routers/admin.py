@@ -656,7 +656,7 @@ def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get
 def patch_user(user_id: int, payload: AdminUserPatch, db: Session = Depends(get_db),
                admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)  # 404 for missing or deleted users
-    if payload.app_limit > platform_settings.get(db, "max_apps_per_user"):
+    if payload.app_limit > platform_settings.get(db, "max_apps_per_admin" if user.is_platform_admin else "max_apps_per_user"):
         raise HTTPException(status_code=422, detail="That's above the platform's per-account app limit.")
     user.app_limit = payload.app_limit
     db.commit()
