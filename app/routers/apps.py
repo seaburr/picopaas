@@ -63,6 +63,13 @@ def _env_var_out(env_var: models.AppEnvVar) -> schemas.EnvVarOut:
     return schemas.EnvVarOut(key=env_var.key, value=value, is_secret=env_var.is_secret, undecryptable=bad)
 
 
+def _volume_usage(app: models.App) -> Optional[schemas.UsageOut]:
+    if not app.volume_size_gi or app.volume_used_bytes is None:
+        return None
+    limit = app.volume_size_gi * 1024**3
+    return schemas.UsageOut(size_bytes=app.volume_used_bytes, limit_bytes=limit, over_quota=app.volume_used_bytes >= limit)
+
+
 def _quota_out(app: models.App) -> schemas.AppQuotaOut:
     db_row, st_row = app.database, app.storage
     return schemas.AppQuotaOut(
@@ -70,6 +77,7 @@ def _quota_out(app: models.App) -> schemas.AppQuotaOut:
             size_bytes=db_row.size_bytes, limit_bytes=resources.db_quota_bytes(app), over_quota=db_row.over_quota),
         storage=None if st_row is None else schemas.UsageOut(
             size_bytes=st_row.size_bytes, limit_bytes=resources.storage_quota_bytes(app), over_quota=st_row.over_quota),
+        volume=_volume_usage(app),
     )
 
 
@@ -256,10 +264,11 @@ def update_app(
     workload_changed = False  # anything that changes the rendered Deployment/Secret
     if payload.name is not None:
         app.name = payload.name
-    if payload.image is not None:
+    # The edit form re-sends the whole payload: an unchanged image string is not a deploy (a moved tag is auto_update's job,
+    # or the owner changing the image), so renaming never touches the registry or rolls the pod.
+    if payload.image is not None and payload.image != app.image:
         run_as_uid, digest = _check_image_cap(registry, payload.image, app)
-        if payload.image != app.image or run_as_uid != app.run_as_uid or digest != app.image_digest:
-            workload_changed = True
+        workload_changed = True
         app.image = payload.image
         app.run_as_uid = run_as_uid
         app.image_digest = digest
@@ -285,7 +294,9 @@ def update_app(
     if payload.health_check_path is not None and payload.health_check_path != app.health_check_path:
         app.health_check_path = payload.health_check_path
         health_changed = True
-    if "health_check_timeout_seconds" in payload.model_fields_set and \
+    # The form sends null while the check is off (the timeout only matters to the probes): not a change then.
+    timeout_ignored = payload.health_check_timeout_seconds is None and not app.health_check_enabled
+    if "health_check_timeout_seconds" in payload.model_fields_set and not timeout_ignored and \
             payload.health_check_timeout_seconds != app.health_check_timeout_seconds:
         app.health_check_timeout_seconds = payload.health_check_timeout_seconds
         health_changed = True
