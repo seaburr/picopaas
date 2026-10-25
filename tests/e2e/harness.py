@@ -168,7 +168,7 @@ def user(admin):
     """The test customer. Its app_limit is raised (to the platform hard max, 5) for the run and restored afterwards."""
     u = Api(USER_TOKEN, "user")
     me = u.me
-    orig = next(x for x in admin.ok("GET", "/admin/users") if x["id"] == me["id"])["app_limit"]
+    orig = me["app_limit"]  # (admin user reads need a browser session, so use the user's own /auth/me)
     admin.ok("PATCH", f"/admin/users/{me['id']}", json={"app_limit": 5})  # the live hard max is 5; anything larger is rejected (422)
     yield u
     for app_id in u.created:

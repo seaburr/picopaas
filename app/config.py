@@ -156,6 +156,10 @@ DEFAULT_MEM_REQUEST_MI = 128
 DEFAULT_MEM_LIMIT_MI = int(os.environ.get("DEFAULT_MEM_LIMIT_MI", 384))
 # Per-app scratch disk (container filesystem, /tmp, logs); a pod over it is evicted. Chas, 2026-10-19.
 EPHEMERAL_REQUEST_MI = 64
+# What ONE worker node can schedule for a single app (s-2vcpu-4gb-amd is 2 vCPU / 4 GB; system pods, kubelet reservations
+# and the platform itself take the rest). Admin CPU/memory ceilings can't exceed this. Raise with the node size.
+NODE_CPU_CAP_M = int(os.environ.get("NODE_CPU_CAP_M", 1500))
+NODE_MEM_CAP_MI = int(os.environ.get("NODE_MEM_CAP_MI", 2560))
 EPHEMERAL_LIMIT_MI = int(os.environ.get("EPHEMERAL_LIMIT_MI", 250))
 
 # Hard ceilings (and floors) for the platform-admin per-app overrides (PATCH /admin/apps/{id}/resources). Chas's numbers,

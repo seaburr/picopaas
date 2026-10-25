@@ -182,3 +182,53 @@ def test_last_used_at_set_and_throttled(client):
         assert row.last_used_at > old
     finally:
         db.close()
+
+
+def test_admin_lists_and_revokes_user_keys(make_client):
+    from app import models
+    from app.db import get_db
+    from app.main import app
+
+    admin = make_client()
+    register_and_login(admin, "keyadmin@example.com")
+    user = make_client()
+    register_and_login(user, "keyuser@example.com")
+    other = make_client()
+    register_and_login(other, "keyother@example.com")
+    created = user.post("/api/keys", json={"name": "ci", "scope": "read"}).json()
+    raw, kid = created["key"], created["id"]
+    other_kid = other.post("/api/keys").json()["id"]
+    uid = next(u["id"] for u in admin.get("/admin/users").json() if u["email"] == "keyuser@example.com")
+    users = {u["email"]: u for u in admin.get("/admin/users").json()}
+    assert users["keyuser@example.com"]["api_key_count"] == 1
+
+    # last_used_at is visible to the admin after the key is used
+    bearer = make_client()
+    hdr = {"Authorization": f"Bearer {raw}"}
+    assert bearer.get("/auth/me", headers=hdr).status_code == 200
+    rows = admin.get(f"/admin/users/{uid}/api-keys").json()
+    assert len(rows) == 1 and set(rows[0]) == {"id", "prefix", "name", "scope", "created_at", "last_used_at", "revoked_at"}
+    assert rows[0]["scope"] == "read" and rows[0]["last_used_at"] is not None
+    assert raw not in str(rows)
+
+    # non-admin: 403; key of another user: 404
+    assert user.get(f"/admin/users/{uid}/api-keys").status_code == 403
+    assert user.delete(f"/admin/users/{uid}/api-keys/{kid}").status_code == 403
+    assert admin.delete(f"/admin/users/{uid}/api-keys/{other_kid}").status_code == 404
+    assert admin.get("/admin/users/99999/api-keys").status_code == 404
+
+    # an admin API key cannot revoke (session only)
+    araw = admin.post("/api/keys").json()["key"]
+    keyed = make_client()
+    assert keyed.delete(f"/admin/users/{uid}/api-keys/{kid}", headers={"Authorization": f"Bearer {araw}"}).status_code == 403
+
+    assert admin.delete(f"/admin/users/{uid}/api-keys/{kid}").status_code == 204
+    assert admin.delete(f"/admin/users/{uid}/api-keys/{kid}").status_code == 204
+    assert bearer.get("/auth/me", headers=hdr).status_code == 401
+    assert admin.get(f"/admin/users/{uid}/api-keys").json()[0]["revoked_at"] is not None
+    assert user.get("/api/keys").json()[0]["revoked_at"] is not None
+    db = next(app.dependency_overrides[get_db]())
+    try:
+        assert db.query(models.AuditLog).filter(models.AuditLog.action == "apikey.admin_revoke").count() == 1
+    finally:
+        db.close()

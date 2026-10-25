@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, models, platform_settings
 from app.db import get_db
-from app.dependencies import require_platform_admin
+from app.dependencies import require_admin_session, require_platform_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
 
@@ -18,7 +18,7 @@ class SettingsPatch(BaseModel):
     settings: Dict[str, Any]
 
 
-@router.get("/settings")
+@router.get("/settings", dependencies=[Depends(require_admin_session)])
 def get_settings(db: Session = Depends(get_db)):
     return {"groups": platform_settings.describe_all(db)}
 

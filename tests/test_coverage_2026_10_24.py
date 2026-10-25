@@ -107,7 +107,7 @@ def test_settings_describe_all_marks_overridden(db_session):
     assert flat["max_replicas"]["overridden"] and flat["max_replicas"]["updated_by"] == "a@example.com"
     assert flat["max_replicas"]["updated_at"] and flat["max_replicas"]["value"] == 2
     assert not flat["cpu_limit_max_m"]["overridden"] and flat["cpu_limit_max_m"]["updated_at"] is None
-    assert [g["name"] for g in ps.describe_all(db_session)] == [ps.G_CEIL, ps.G_DEF, ps.G_BAK]
+    assert [g["name"] for g in ps.describe_all(db_session)] == [ps.G_CEIL, ps.G_APPDEF, ps.G_DEF, ps.G_BAK]
     ps.invalidate()
 
 

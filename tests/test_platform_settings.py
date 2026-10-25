@@ -39,7 +39,7 @@ def test_non_admin_and_anonymous(admin, user, make_client):
 
 def test_get_shape_defaults_and_backup_keys(admin):
     r = admin.get("/admin/settings").json()
-    assert [g["name"] for g in r["groups"]] == ["Limit ceilings", "Defaults and quotas", "Backups"]
+    assert [g["name"] for g in r["groups"]] == ["Limit ceilings", "Per-app defaults", "Defaults and quotas", "Backups"]
     s = _by_key(admin)
     assert s["max_replicas"]["value"] == config.MAX_REPLICAS and s["max_replicas"]["overridden"] is False
     assert s["max_replicas"]["default"] == config.MAX_REPLICAS and s["max_replicas"]["min"] == 1
@@ -102,13 +102,13 @@ def test_replicas_ceiling_uses_effective_value(admin, user):
 def test_resource_ceiling_uses_effective_value(admin, user):
     aid = user.post("/apps", json=APP).json()["id"]
     url = f"/admin/apps/{aid}/resources"
-    assert admin.patch(url, json={"mem_limit_mi": 4096}).status_code == 422  # default ceiling 2048
-    assert _put(admin, mem_limit_max_mi=4096).status_code == 200
-    assert admin.patch(url, json={"mem_limit_mi": 4096}).status_code == 200
-    assert _put(admin, override_egress_max_mbit=10).status_code == 200
+    assert admin.patch(url, json={"mem_limit_mi": 2500}).status_code == 422  # default ceiling 2048
+    assert _put(admin, mem_limit_max_mi=2500).status_code == 200
+    assert admin.patch(url, json={"mem_limit_mi": 2500}).status_code == 200
+    assert _put(admin, override_egress_max_mbit=10, default_egress_mbit=10).status_code == 200
     r = admin.patch(url, json={"egress_mbit": 20})
     assert r.status_code == 422 and "egress_mbit" in r.json()["detail"]
-    assert user.get("/auth/me").json()["limits"]["override"]["mem_max_mi"] == 4096
+    assert user.get("/auth/me").json()["limits"]["override"]["mem_max_mi"] == 2500
 
 
 def test_app_limit_settings(admin, user):

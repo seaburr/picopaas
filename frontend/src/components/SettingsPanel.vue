@@ -48,6 +48,16 @@ async function load() {
 }
 onMounted(load)
 
+// A per-app default is bounded by its paired ceiling (the saved value, or the draft if that one is being changed).
+const byKey = computed(() => Object.fromEntries(groups.value.flatMap((g) => g.settings).map((s) => [s.key, s])))
+function ceilingOf(s: PlatformSetting): { value: number; label: string } | null {
+  const c = s.ceiling_key ? byKey.value[s.ceiling_key] : undefined
+  if (!c || typeof c.value !== 'number') return null
+  const d = drafts[c.key]
+  const n = d && /^\d+$/.test(d.text.trim()) ? Number(d.text.trim()) : c.value
+  return { value: n, label: c.label }
+}
+
 // Parsed draft value, or an error string.
 function parsed(s: PlatformSetting): { value: number | boolean } | { error: string } {
   const d = drafts[s.key]
@@ -59,6 +69,8 @@ function parsed(s: PlatformSetting): { value: number | boolean } | { error: stri
   if (!isBytes(s) && !Number.isInteger(n)) return { error: 'Enter a whole number.' }
   if (s.min !== null && n < s.min) return { error: `At least ${fmtVal(s, s.min)}.` }
   if (s.max !== null && n > s.max) return { error: `At most ${fmtVal(s, s.max)}.` }
+  const c = ceilingOf(s)
+  if (c && n > c.value) return { error: `At most ${fmtVal(s, c.value)}, its ceiling (${c.label}).` }
   return { value: n }
 }
 const errorOf = (s: PlatformSetting) => {
@@ -127,7 +139,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
             </label>
             <p class="help">{{ s.description }}</p>
             <p class="meta mt-0.5">
-              Default {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template>
+              <template v-if="ceilingOf(s)">Ceiling {{ fmtVal(s, ceilingOf(s)!.value) }} (set under Limit ceilings) · </template>Default {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template>
               <template v-if="s.overridden && s.updated_at"> · changed {{ stamp(s.updated_at) }}<template v-if="s.updated_by"> by {{ s.updated_by }}</template></template>
             </p>
           </div>

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import audit, backups, config, crypto, health, models, naming, platform_settings, quota, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
-from app.dependencies import get_db_server_checker, get_kube, require_platform_admin
+from app.dependencies import get_db_server_checker, get_kube, require_admin_session, require_platform_admin
 from app.providers.dbcheck import DbServerCheckError
 from app.schemas import ResourcesOut
 from app.routers.apps import get_mysql_admin_factory, get_object_store
@@ -37,6 +37,7 @@ class AdminUserOut(BaseModel):
     app_limit: int
     app_limit_effective: int
     app_count: int
+    api_key_count: int = 0  # active (non-revoked) API keys
     status: str
     created_at: datetime
     terms_accepted_at: Optional[datetime] = None
@@ -133,7 +134,12 @@ def _user_out(db: Session, user: models.User) -> dict:
         .filter(models.App.owner_id == user.id, models.App.deleted_at.is_(None))
         .count()
     )
-    return dict(id=user.id, email=user.email, role=user.role, app_limit=user.app_limit,
+    key_count = (
+        db.query(models.ApiKey)
+        .filter(models.ApiKey.user_id == user.id, models.ApiKey.revoked_at.is_(None))
+        .count()
+    )
+    return dict(id=user.id, email=user.email, role=user.role, app_limit=user.app_limit, api_key_count=key_count,
                 app_limit_effective=resources.effective_app_limit(user),
                 app_count=count, status=user.status, created_at=user.created_at,
                 terms_accepted_at=user.terms_accepted_at)
@@ -146,7 +152,7 @@ def _server_out(db: Session, s: models.DbServer) -> DbServerOut:
                        max_databases=s.max_databases, used=used, pct=pct, warn=pct >= WARN_PCT)
 
 
-@router.get("/users", response_model=List[AdminUserOut])
+@router.get("/users", response_model=List[AdminUserOut], dependencies=[Depends(require_admin_session)])
 def list_users(db: Session = Depends(get_db)):
     return [
         _user_out(db, u)
@@ -278,6 +284,35 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
     user.status = "deleted"
     db.commit()
     audit.record(db, admin, "user.delete", "user", user.id)
+    return None
+
+
+@router.get("/users/{user_id}/api-keys", response_model=List[schemas.ApiKeyOut])
+def list_user_api_keys(user_id: int, db: Session = Depends(get_db)):
+    user = _get_user_or_404(db, user_id)
+    return (
+        db.query(models.ApiKey)
+        .filter(models.ApiKey.user_id == user.id)
+        .order_by(models.ApiKey.created_at.desc())
+        .all()
+    )
+
+
+@router.delete("/users/{user_id}/api-keys/{key_id}", status_code=204)
+def revoke_user_api_key(user_id: int, key_id: int, request: Request, db: Session = Depends(get_db),
+                        admin: models.User = Depends(require_platform_admin)):
+    """Revoke one of a user's keys (idempotent). Browser session only, like owner key management. The user is
+    not emailed; their next API call with the key simply gets 401."""
+    if getattr(request.state, "auth_via", None) != "cookie":
+        raise HTTPException(status_code=403, detail="API keys can only be revoked from the web UI, not with an API key.")
+    user = _get_user_or_404(db, user_id)
+    key = db.query(models.ApiKey).filter(models.ApiKey.id == key_id, models.ApiKey.user_id == user.id).first()
+    if key is None:
+        raise HTTPException(status_code=404, detail="We can't find that API key for this user. It may already be gone.")
+    if key.revoked_at is None:
+        key.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        audit.record(db, admin, "apikey.admin_revoke", "api_key", key.id, f"user_id={user.id} prefix={key.prefix}")
     return None
 
 
@@ -592,7 +627,7 @@ def _audit_export_stream(bind, upper_id: int, limit: int, fmt: str):
     yield buf.getvalue()
 
 
-@router.get("/audit/export")
+@router.get("/audit/export", dependencies=[Depends(require_admin_session)])
 def export_audit(format: Literal["csv", "json"] = Query("csv"), db: Session = Depends(get_db),
                  admin: models.User = Depends(require_platform_admin)):
     """Download the audit log (newest first, at most 50,000 rows) as CSV or JSON, streamed."""
@@ -607,7 +642,7 @@ def export_audit(format: Literal["csv", "json"] = Query("csv"), db: Session = De
                              headers={"Content-Disposition": f'attachment; filename="picopaas-audit-{stamp}.{format}"'})
 
 
-@router.get("/audit", response_model=List[AuditOut])
+@router.get("/audit", response_model=List[AuditOut], dependencies=[Depends(require_admin_session)])
 def list_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get_db)):
     return (
         db.query(models.AuditLog)

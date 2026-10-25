@@ -39,6 +39,19 @@ def _g(app: Any, name: str) -> Any:
     return getattr(app, name, None) if app is not None else None
 
 
+def _db(app: Any):
+    from sqlalchemy.orm import object_session
+    try:
+        return object_session(app) if app is not None else None
+    except Exception:  # noqa: BLE001 - not an ORM object
+        return None
+
+
+def _ps(db: Any, key: str) -> Any:
+    from app import platform_settings
+    return platform_settings.get(db, key)
+
+
 def default_db_connections(app: Any) -> int:
     from app import config
     if (_g(app, "db_engine") or "mysql") == "pg":
@@ -46,69 +59,67 @@ def default_db_connections(app: Any) -> int:
     return config.MAX_DB_USER_CONNECTIONS
 
 
-def db_quota_bytes(app: Any) -> int:
-    from app import config
+def db_quota_bytes(app: Any, db: Any = None) -> int:
     mb = _g(app, "db_quota_mb")
-    return mb * _MIB if mb else config.DB_QUOTA_BYTES
+    return mb * _MIB if mb else _ps(db or _db(app), "default_db_quota_mb") * _MIB
 
 
-def storage_quota_bytes(app: Any) -> int:
-    from app import config
+def storage_quota_bytes(app: Any, db: Any = None) -> int:
     mb = _g(app, "storage_quota_mb")
-    return mb * _MIB if mb else config.STORAGE_QUOTA_BYTES
+    return mb * _MIB if mb else _ps(db or _db(app), "default_storage_quota_mb") * _MIB
 
 
-def image_size_bytes(app: Any) -> int:
-    from app import config
+def image_size_bytes(app: Any, db: Any = None) -> int:
     mb = _g(app, "image_size_mb")
-    return mb * _MIB if mb else config.MAX_IMAGE_SIZE_BYTES
+    return mb * _MIB if mb else _ps(db or _db(app), "default_image_size_mb") * _MIB
 
 
-def ephemeral_limit_mi(app: Any) -> int:
-    from app import config
-    return _g(app, "ephemeral_limit_mi") or config.EPHEMERAL_LIMIT_MI
+def ephemeral_limit_mi(app: Any, db: Any = None) -> int:
+    return _g(app, "ephemeral_limit_mi") or _ps(db or _db(app), "default_ephemeral_mi")
 
 
-def config_egress() -> int:
-    from app import config
-    return config.EGRESS_BANDWIDTH_MBIT
+def config_egress(db: Any = None) -> int:
+    return _ps(db, "default_egress_mbit")
 
 
-def effective(app: Any) -> dict[str, int]:
-    """Effective values for an App row (or None for all defaults). A request is clamped to the limit."""
+def effective(app: Any, db: Any = None) -> dict[str, int]:
+    """Effective values for an App row (or None for all defaults). A request is clamped to the limit.
+    Defaults come from Admin > Settings (config values when not overridden); `db` is found from the App row if omitted."""
     g = lambda name: _g(app, name)  # noqa: E731
-    cpu_limit = g("cpu_limit_m") or DEFAULT_CPU_LIMIT_M
-    mem_limit = g("mem_limit_mi") or DEFAULT_MEM_LIMIT_MI
+    db = db or _db(app)
+    cpu_limit = g("cpu_limit_m") or _ps(db, "default_cpu_limit_m")
+    mem_limit = g("mem_limit_mi") or _ps(db, "default_mem_limit_mi")
     return {
         "cpu_request_m": min(g("cpu_request_m") or DEFAULT_CPU_REQUEST_M, cpu_limit),
         "cpu_limit_m": cpu_limit,
         "mem_request_mi": min(g("mem_request_mi") or DEFAULT_MEM_REQUEST_MI, mem_limit),
         "mem_limit_mi": mem_limit,
-        "ephemeral_limit_mi": ephemeral_limit_mi(app),
+        "ephemeral_limit_mi": ephemeral_limit_mi(app, db),
         "db_max_connections": g("db_max_connections") or default_db_connections(app),
-        "db_quota_mb": db_quota_bytes(app) // _MIB,
-        "storage_quota_mb": storage_quota_bytes(app) // _MIB,
-        "image_size_mb": image_size_bytes(app) // _MIB,
-        "egress_mbit": _g(app, "egress_mbit") or config_egress(),
+        "db_quota_mb": db_quota_bytes(app, db) // _MIB,
+        "storage_quota_mb": storage_quota_bytes(app, db) // _MIB,
+        "image_size_mb": image_size_bytes(app, db) // _MIB,
+        "egress_mbit": _g(app, "egress_mbit") or config_egress(db),
     }
 
 
-def exceeds_caps(eff: dict[str, int]) -> bool:
-    from app import config
-    return (eff["cpu_limit_m"] > DEFAULT_CPU_LIMIT_M or eff["mem_limit_mi"] > DEFAULT_MEM_LIMIT_MI
-            or eff["ephemeral_limit_mi"] > config.EPHEMERAL_LIMIT_MI)
+def exceeds_caps(eff: dict[str, int], db: Any = None) -> bool:
+    """True if the app has more than the platform defaults (an admin raised something)."""
+    return (eff["cpu_limit_m"] > _ps(db, "default_cpu_limit_m") or eff["mem_limit_mi"] > _ps(db, "default_mem_limit_mi")
+            or eff["ephemeral_limit_mi"] > _ps(db, "default_ephemeral_mi"))
 
 
 def overridden(app: Any) -> bool:
     return any(getattr(app, f, None) is not None for f in FIELDS)
 
 
-def defaults(app: Any = None) -> dict[str, int]:
+def defaults(app: Any = None, db: Any = None) -> dict[str, int]:
     """Platform defaults per overridable field (engine-aware for db_max_connections)."""
-    return effective(type("D", (), {"db_engine": _g(app, "db_engine") or "mysql"}))
+    return effective(type("D", (), {"db_engine": _g(app, "db_engine") or "mysql"}), db or _db(app))
 
 
 def describe(app: Any) -> dict[str, Any]:
-    eff = effective(app)
-    return {**eff, "overridden": overridden(app), "exceeds_platform_caps": exceeds_caps(eff),
-            "defaults": defaults(app)}
+    db = _db(app)
+    eff = effective(app, db)
+    return {**eff, "overridden": overridden(app), "exceeds_platform_caps": exceeds_caps(eff, db),
+            "defaults": defaults(app, db)}
