@@ -20,7 +20,7 @@ const drafts = reactive<Record<string, Draft>>({})
 const MB = 1024 * 1024
 const GB = 1024 * MB
 const isBytes = (s: PlatformSetting) => s.unit === 'bytes'
-const fmtBytes = (n: number) => (n >= GB && n % (GB / 100) === 0 ? `${+(n / GB).toFixed(2)} GB` : n >= MB ? `${+(n / MB).toFixed(1)} MB` : `${n} bytes`)
+const fmtBytes = (n: number) => (n >= GB ? `${+(n / GB).toFixed(2)} GB` : n >= MB ? `${+(n / MB).toFixed(1)} MB` : `${n} bytes`)
 const fmtVal = (s: PlatformSetting, v: number | boolean) =>
   typeof v === 'boolean' ? (v ? 'on' : 'off') : isBytes(s) ? fmtBytes(v) : `${v}${s.unit ? ' ' + (v === 1 ? s.unit.replace(/s$/, '') : s.unit) : ''}`
 
@@ -185,7 +185,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
                   <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input !w-20 shrink-0" :aria-label="`Unit for ${r.label} ${col}`">
                     <option>MB</option><option>GB</option>
                   </select>
-                  <span v-else-if="s.unit" class="meta w-16 shrink-0 truncate" :title="s.unit">{{ s.unit }}</span>
+                  <span v-else-if="s.unit" class="meta min-w-[3.5rem] shrink-0 break-words">{{ s.unit }}</span>
                 </div>
                 <p v-if="errorOf(s)" :id="`${uid}-${s.key}-err`" class="field-error">{{ errorOf(s) }}</p>
                 <p class="meta mt-0.5">Built-in {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template></p>
