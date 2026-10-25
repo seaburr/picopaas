@@ -3,9 +3,8 @@
 PicoPaaS hosts real apps, not just toy images. This page walks through Ghost (a popular CMS) end to end, then
 lists the lessons that apply to any image you bring.
 
-> **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost:6`. Ghost 6 migration 6.61 creates a table without a
-> primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). The old Ghost 5 image
-> (`:latest`) does not. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
+> **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost6:latest`. Ghost 6 migration 6.61 creates a table without a
+> primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). Ghost 5 is retired. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
 
 ## Deploying Ghost
 
@@ -66,7 +65,7 @@ the platform refs onto the names Ghost's entrypoint expects.
 ```yaml
 apiVersion: picopaas/v1
 name: ghost-blog
-image: ghcr.io/seaburr/picopaas-example-ghost:latest
+image: ghcr.io/seaburr/picopaas-example-ghost6:latest
 port: 2368
 resources:
   db: true

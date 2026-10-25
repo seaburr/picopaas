@@ -15,7 +15,11 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-None right now.
+- [ ] **Make the new GHCR package `picopaas-example-ghost6` public** (GitHub > your profile > Packages > picopaas-example-ghost6 >
+  Package settings > Change visibility > Public). It is created private by the first `examples` workflow run after the push, and PicoPaaS pulls anonymously.
+  Then tell Claude to re-point apps 98 and 164 to `ghcr.io/seaburr/picopaas-example-ghost6:<sha>` (this carries the Ghost page-speed fix: pages were taking ~5 s
+  because Ghost waits on an image probe to its own URL; see examples/ghost/README.md "Performance"). Until then the blogs stay on `picopaas-example-ghost:6-bb61e2e`.
+  Optional but best: upload a site icon/logo in each blog's Ghost Admin (Settings > Design).
 
 ## Resolved
 
