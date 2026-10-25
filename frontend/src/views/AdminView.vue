@@ -8,6 +8,7 @@ import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
+import UserKeysDialog from '../components/UserKeysDialog.vue'
 import BackupAdminDialog from '../components/BackupAdminDialog.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
@@ -20,7 +21,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Archive, Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Archive, Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -36,6 +37,12 @@ const SERVER_STATUS_HELP: Record<string, string> = {
 const uid = useId()
 
 const users = ref<AdminUser[]>([])
+const keysUser = ref<AdminUser | null>(null)
+async function refreshUsers() {
+  try {
+    users.value = (await listUsers()) ?? []
+  } catch { /* count stays stale */ }
+}
 const servers = ref<DbServer[]>([])
 const allApps = ref<AdminApp[]>([])
 const audit = ref<AuditEntry[]>([])
@@ -321,7 +328,7 @@ const overrideSummary = (a: AdminApp) => {
 
 const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 // One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
-const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_7rem_6.5rem] md:items-center md:gap-3'
+const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_3.5rem_7rem_9rem] md:items-center md:gap-3'
 const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_9.5rem] lg:items-center lg:gap-3'
 const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem_2rem] md:items-center md:gap-3'
 const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
@@ -407,7 +414,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
           <div class="card overflow-hidden">
             <div :class="[usersGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>User</span><span>Status</span><span class="text-right">Apps</span><span>App limit</span><span class="text-right">Actions</span>
+              <span>User</span><span>Status</span><span class="text-right">Apps</span><span class="text-right">Keys</span><span>App limit</span><span class="text-right">Actions</span>
             </div>
             <ul class="divide-y divide-pico-border">
               <li v-for="u in otherUsers" :key="u.id" :class="[rowBase, usersGrid]">
@@ -420,6 +427,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 </div>
                 <div><StatusBadge :status="u.status" /></div>
                 <div class="mono whitespace-nowrap md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}<span class="meta"> / {{ u.app_limit_effective }}</span></div>
+                <div class="mono whitespace-nowrap md:text-right"><span class="meta md:hidden">API keys </span>{{ u.api_key_count ?? 0 }}</div>
                 <div v-if="u.role === 'platform_admin'" class="mono whitespace-nowrap text-sm">
                   <span class="meta md:hidden">Limit </span>{{ u.app_limit_effective }}
                 </div>
@@ -430,6 +438,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
                 </form>
                 <div class="flex gap-0.5 md:justify-end">
+                  <IconButton :icon="KeyRound" :label="`API keys of ${u.email}`" sm @click="keysUser = u" />
                   <IconButton
                     v-if="u.role === 'platform_admin'"
                     :icon="ShieldOff"
@@ -442,7 +451,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   <template v-if="u.role !== 'platform_admin'">
                     <IconButton v-if="u.status === 'suspended'" :icon="Play" :label="`Unsuspend ${u.email}`" sm @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')" />
                     <IconButton v-if="u.status === 'active'" :icon="Ban" :label="`Suspend ${u.email}`" sm @click="askUser('suspend', u)" />
-                    <IconButton :icon="KeyRound" :label="`Reset password for ${u.email}`" sm @click="askUser('reset', u)" />
+                    <IconButton :icon="RotateCcw" :label="`Reset password for ${u.email}`" sm @click="askUser('reset', u)" />
                     <IconButton :icon="Trash2" :label="`Delete ${u.email}`" sm danger @click="askUser('delete', u)" />
                   </template>
                 </div>
@@ -662,6 +671,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
     </dialog>
 
+    <UserKeysDialog :user="keysUser" @close="keysUser = null" @changed="refreshUsers" />
     <BackupAdminDialog :app="bkApp" @close="bkApp = null" />
     <ResourcesDialog :app="resApp" :error="resError" @save="saveResources" @cancel="resApp = null" />
     <ConfirmDialog

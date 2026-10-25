@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listUsers } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
+import { CircleUserRound } from 'lucide-vue-next'
 import BrandMark from './BrandMark.vue'
 
 const auth = useAuthStore()
@@ -58,7 +59,6 @@ function skip(e: Event) {
         <nav aria-label="Main" class="hidden items-center gap-0.5 sm:flex">
           <template v-if="auth.user">
             <RouterLink to="/apps" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Apps</RouterLink>
-            <RouterLink to="/keys" class="nav-link" active-class="nav-active" exact-active-class="nav-active">API keys</RouterLink>
           </template>
           <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
           <div v-if="isAdmin" class="ml-2 flex items-center gap-0.5 border-l border-pico-border pl-2" role="group" aria-label="Administration">
@@ -71,8 +71,8 @@ function skip(e: Event) {
       </div>
 
       <div class="hidden items-center gap-2 sm:flex">
-        <RouterLink v-if="auth.user" to="/account" class="nav-link max-w-[16rem]" active-class="nav-active" :title="`${auth.user.email} - account settings`">
-          <span class="xl:hidden">Account</span><span class="hidden truncate xl:inline">{{ auth.user.email }}</span>
+        <RouterLink v-if="auth.user" to="/account" class="nav-link" active-class="nav-active" :aria-label="`Account settings (${auth.user.email})`" :title="`Account settings (${auth.user.email})`">
+          <CircleUserRound :size="20" aria-hidden="true" />
         </RouterLink>
         <a v-if="!auth.user" href="/privacy" class="nav-link hidden lg:inline-flex">Privacy</a>
         <button v-if="auth.user" type="button" class="btn-secondary btn-sm" @click="onLogout">Log out</button>
@@ -104,7 +104,6 @@ function skip(e: Event) {
       <div class="flex flex-col gap-0.5">
         <template v-if="auth.user">
           <RouterLink to="/apps" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Apps</RouterLink>
-          <RouterLink to="/keys" class="nav-link" active-class="nav-active" exact-active-class="nav-active">API keys</RouterLink>
         </template>
         <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
         <a v-if="!auth.user" href="/privacy" class="nav-link">Privacy</a>

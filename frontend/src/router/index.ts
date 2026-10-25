@@ -36,7 +36,8 @@ const router = createRouter({
     },
     { path: '/apps/:id(\\d+)/settings', redirect: (to) => `/apps/${to.params.id}/edit` },
     { path: '/templates', component: () => import('../views/TemplatesView.vue'), meta: { requiresAuth: true, title: 'Templates' } },
-    { path: '/keys', component: () => import('../views/ApiKeysView.vue'), meta: { requiresAuth: true, title: 'API keys' } },
+    { path: '/keys', redirect: '/account#api-keys' },
+    { path: '/api-keys', redirect: '/account#api-keys' },
     {
       path: '/admin',
       component: () => import('../views/AdminView.vue'),

@@ -1,4 +1,4 @@
-import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, PlatformPods, PlatformLogs } from '../types'
+import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, PlatformPods, PlatformLogs } from '../types'
 import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -76,3 +76,7 @@ export const downloadPlatformLogs = (q: LogQuery) =>
 export const getAppBackups = (id: number) => apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`)
 export const putAppBackups = (id: number, body: { admin_disabled?: boolean; reason?: string; max_bytes?: number | null }) =>
   apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`, { method: 'PUT', body: JSON.stringify(body) })
+
+export const listUserApiKeys = (userId: number) => apiFetch<AdminApiKey[]>(`/admin/users/${userId}/api-keys`)
+export const revokeUserApiKey = (userId: number, keyId: number) =>
+  apiFetch<void>(`/admin/users/${userId}/api-keys/${keyId}`, { method: 'DELETE' })

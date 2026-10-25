@@ -246,6 +246,7 @@ export interface AdminUser {
   app_limit: number
   app_limit_effective: number
   app_count: number
+  api_key_count?: number // active (unrevoked) keys
   status: UserStatus
   created_at: string
 }
@@ -496,6 +497,7 @@ export interface PlatformSetting {
   value: number | boolean
   default: number | boolean
   overridden: boolean
+  ceiling_key?: string | null
   min: number | null
   max: number | null
   updated_at: string | null
@@ -525,3 +527,14 @@ export interface BackupHealth {
 export interface PlatformPod { namespace: string; name: string; phase?: string; ready?: boolean; restarts?: number; containers: string[] }
 export interface PlatformPods { namespaces: string[]; pods: PlatformPod[] }
 export interface PlatformLogs { namespace: string; pod: string; container: string; previous: boolean; lines: string[]; truncated: boolean }
+
+// GET /admin/users/{id}/api-keys (never includes the secret or hash).
+export interface AdminApiKey {
+  id: number
+  prefix: string
+  name: string | null
+  scope: ApiKeyScope
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}

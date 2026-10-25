@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
+import ApiKeysCard from '../components/ApiKeysCard.vue'
 import PasswordField from '../components/PasswordField.vue'
 import { changePassword } from '../api/auth'
 import { ApiError } from '../api/client'
@@ -39,7 +40,7 @@ async function onSubmit() {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-2xl space-y-3 px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="mx-auto max-w-3xl space-y-3 px-4 py-4 sm:px-6">
       <h1 class="page-title">Account</h1>
 
       <section class="card card-pad" aria-label="Profile">
@@ -49,7 +50,7 @@ async function onSubmit() {
           <dt class="text-zinc-400">Role</dt>
           <dd class="text-white">{{ auth.user?.role === 'platform_admin' ? 'Platform admin' : 'User' }}</dd>
           <dt class="text-zinc-400">App limit</dt>
-          <dd class="mono text-white">{{ auth.user?.app_limit }}</dd>
+          <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
           <dt class="text-zinc-400">Joined</dt>
           <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
         </dl>
@@ -68,6 +69,8 @@ async function onSubmit() {
           <button type="submit" class="btn-primary" :disabled="loading || mismatch">{{ loading ? 'Saving…' : 'Change password' }}</button>
         </form>
       </section>
+
+      <ApiKeysCard />
     </main>
   </div>
 </template>

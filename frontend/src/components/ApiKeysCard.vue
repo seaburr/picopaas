@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
-import NavBar from '../components/NavBar.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import { ApiError } from '../api/client'
 import { useApiKeysStore } from '../stores/apiKeys'
 import { useToastStore } from '../stores/toast'
 import type { ApiKey } from '../types'
 import { Ban, Copy } from 'lucide-vue-next'
-import IconButton from '../components/IconButton.vue'
+import IconButton from './IconButton.vue'
 import { copyText, stamp, stampTitle } from '../utils/format'
 import type { ApiKeyScope } from '../types'
 
@@ -114,17 +113,14 @@ async function confirmRevoke() {
 }
 
 // Header and rows share one fixed template (md+); stacked below md.
-const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_5rem_8.5rem_12rem_2rem] md:gap-3'
+const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_5rem_8.5rem_9rem_2rem] md:gap-3'
 const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-      <h1 class="page-title">API keys</h1>
-      <p class="mt-1 max-w-2xl text-sm text-zinc-300">
+  <section id="api-keys" class="card card-pad scroll-mt-4" aria-labelledby="keys-title">
+    <h2 id="keys-title" class="section-title">API keys</h2>
+    <p class="mt-1 text-sm text-zinc-300">
         API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for
         you (<RouterLink to="/guide/api" class="link">API reference</RouterLink>). Set
         <code class="mono">PICOPAAS_TOKEN</code> to a key and run
@@ -173,7 +169,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
         <button type="button" class="link mt-3 text-xs" @click="dismissCreated">I've saved it, dismiss</button>
       </section>
 
-      <div v-if="error" class="alert-error mt-5" role="alert">{{ error }}</div>
+      <div v-if="error" class="alert-error mt-3" role="alert">{{ error }}</div>
 
       <div v-if="loading" class="mt-4 text-sm text-zinc-400">Loading…</div>
 
@@ -183,7 +179,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
       </div>
 
       <template v-else>
-        <h2 class="section-title mt-5">Active keys <span class="meta font-normal">({{ active.length }})</span></h2>
+        <h2 class="label mt-4">Active keys <span class="meta font-normal">({{ active.length }})</span></h2>
         <p v-if="active.length === 0" class="mt-2 text-sm text-zinc-400">No active keys.</p>
         <div v-else class="card mt-2 overflow-hidden">
           <div :class="[keyGrid, 'table-th row-pad hidden border-b border-pico-border md:grid']">
@@ -219,7 +215,6 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
           </div>
         </template>
       </template>
-    </main>
 
     <ConfirmDialog
       :open="pendingRevoke !== null"
@@ -230,5 +225,5 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
       @confirm="confirmRevoke"
       @cancel="pendingRevoke = null"
     />
-  </div>
+  </section>
 </template>
