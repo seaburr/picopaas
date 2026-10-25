@@ -4,7 +4,7 @@ PicoPaaS hosts real apps, not just toy images. This page walks through Ghost (a 
 lists the lessons that apply to any image you bring.
 
 > **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost6:latest`. Ghost 6 migration 6.61 creates a table without a
-> primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). Ghost 5 is retired. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
+> primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms, outbound webmentions and update check off, 2-minute frontend cache); set a Publication icon in Ghost Admin > Settings > Design so pages don't wait on a self-fetch. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
 
 ## Deploying Ghost
 
@@ -12,12 +12,12 @@ The files are in `examples/ghost/` in the repo (`Dockerfile`, `docker-entrypoint
 
 ### Why a custom image
 
-The official `ghost:5-alpine` image starts as root and `su-exec`s down to `node`. PicoPaaS rejects root and forces
+The official `ghost:6-alpine` image starts as root and `su-exec`s down to `node`. PicoPaaS rejects root and forces
 a non-root numeric UID (10001). So we build a thin image on top that runs as 10001 directly.
 
 ### The image
 
-`FROM ghost:5-alpine`, plus:
+`FROM ghost:6-alpine`, plus:
 
 - An `/etc/passwd` entry for UID 10001. Node's `os.userInfo()` throws for a UID with no entry.
 - `content/` seeded from `content.orig` at build. The stock root entrypoint normally does this and we bypass it.
@@ -26,7 +26,7 @@ a non-root numeric UID (10001). So we build a thin image on top that runs as 100
 - `HOME=/tmp`, which any UID can write.
 
 ```dockerfile
-FROM ghost:5-alpine
+FROM ghost:6-alpine
 ARG WITH_S3=0
 USER root
 RUN echo "pico:x:10001:10001::/var/lib/ghost:/sbin/nologin" >> /etc/passwd && \

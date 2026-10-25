@@ -164,7 +164,7 @@ secrets:                  # values supplied separately (UI or `--secret K=V`), n
 ### Users and roles
 - The first registered user becomes `platform_admin`. Everyone after that is `user`.
 - `user.app_limit` defaults to 1. The platform admin can raise it per user in the admin UI, up to the hard max.
-- **Hard per-account app cap** (`MAX_APPS_PER_USER`, default 5, app/config.py) applies to EVERY account including platform admins. Effective limit = `min(app_limit, max)` for users, `max` for admins (`resources.effective_app_limit`). Enforced at create only (existing apps are never deleted); `PATCH /admin/users/{id}` rejects `app_limit` above it (422). `/auth/me` returns `max_apps` and `app_limit_effective`.
+- **Hard per-account app cap** (`MAX_APPS_PER_USER`, default 5, app/config.py) applies to users. Platform admins have their own pair: `ADMIN_DEFAULT_APP_LIMIT` (5, the floor) and `MAX_APPS_PER_ADMIN` (10, the cap). Effective limit = `min(app_limit, max)` for users, `min(max(app_limit, admin default), admin max)` for admins (`resources.effective_app_limit`); both pairs are editable in Admin > Settings. Enforced at create only (existing apps are never deleted); `PATCH /admin/users/{id}` rejects `app_limit` above the target's cap (422). `/auth/me` returns `max_apps` and `app_limit_effective`.
 
 ### DNS and TLS
 - Hostname format: `<adjective>-<animal>-<7 chars of [a-z0-9]>.picopaas.xyz`, with a uniqueness check in the DB.

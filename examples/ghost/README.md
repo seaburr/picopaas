@@ -62,8 +62,8 @@ verification email can't be delivered and would lock the admin out. Trade-off: t
 
 ### Image tags
 `ghcr.io/seaburr/picopaas-example-ghost6:latest` and `:<sha>` (the Ghost 5 build and `GHOST_MAJOR` were removed 2026-10-25).
-The live blogs (apps 98 and 164) are pinned to the earlier `picopaas-example-ghost:6-bb61e2e` until the new package is public;
-then re-point them to a `ghost6:<sha>` tag (pin the sha, never a moving `:latest`; backup first).
+The live blogs (apps 98 and 164) run `ghost6:14ac3a1` (pinned, `auto_update` off; cut over 2026-10-25 after fresh backups).
+Pin a sha, never a moving `:latest`; back up first. Revert image: `ghcr.io/seaburr/picopaas-example-ghost:6-bb61e2e`.
 
 ### Facts (checked 2026-10-25)
 - Ghost 6.0 shipped 2025-08-04 (ghost.org/changelog/6). Ghost 5 is now the LTS line and its end of life is January 2026 (docs.ghost.org/faq/major-versions-lts): treat 5 as unsupported and insecure.
@@ -132,7 +132,7 @@ Also: restore into a rehearsal app only while it is suspended (admin suspend, re
   render. Pods cannot reach their own public URL (LB hairpin, docs/PENTEST.md #11), so each render waits out
   `times.getImageSizeTimeoutInMS` (5000 ms, set in `overrides.json`, which env vars cannot override). Timeouts are not cached.
 - Webmentions: `Error fetching https://picopaas.xyz/ to discover webmention endpoint` is the same hairpin, but it is the background job that sends
-  webmentions when a post is published or edited (15 s timeout, 3 retries). It does not block renders; there is no config switch, only the `is_private` setting.
+  webmentions when a post is published or edited (15 s timeout, 3 retries). It does not block renders; the image now turns it off (see the fix below).
 - Fix (in the image, verified locally against an unreachable site URL: 5.02 s before, 0.43 s after): the Dockerfile lowers the image-size
   timeout to 400 ms and disables outbound webmentions (build fails if the anchors move; receiving is unaffected); ENV defaults
   `privacy__useUpdateCheck=false`, `privacy__useRpcPing=false`, `caching__frontend__maxAge=120` (2 min browser cache for HTML; publish edits show after at most 2 min).

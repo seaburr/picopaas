@@ -37,7 +37,7 @@ administrator restores the account.
 | Outbound bandwidth | **20 Mbit/s** (about 2.5 MB/s) per app, enforced on the pod. It applies to everything your app sends, including HTTP responses to visitors, so a download-heavy app is throttled. Inbound traffic is not capped. A platform administrator can raise it per app (up to 160 Mbit/s). |
 | Scratch disk | **250 MB** of local disk per app (container filesystem, `/tmp`, logs). Over it, the pod is evicted and restarted. Store files in the blob storage bucket. |
 | Port | Your app must listen on the `port` in your spec, on all interfaces. The platform also sets env `PORT=<port>` unless you define `PORT` yourself in `env`. |
-| Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`), which applies to administrators too (`app_limit` is the per-user setting, default 1; the hard max is the ceiling for it). Over the limit gives `403` ("You've reached your limit of N apps..."). |
+| Apps per user | **1** by default. An administrator can raise it, but never above the platform-wide hard max of **5** apps per account (`MAX_APPS_PER_USER`). Platform administrators have their own limits (at least 5, up to 10). `app_limit` is the per-user setting, default 1; the hard max is the ceiling for it. Over the limit gives `403` ("You've reached your limit of N apps..."). |
 | Database | Optional database, your choice of MySQL or PostgreSQL (see section 5a), 50 MB. |
 | Blob storage | Optional blob storage bucket (S3-compatible), 100 MB. |
 | Spec size | A YAML spec is at most 64 KB. |

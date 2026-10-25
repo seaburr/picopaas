@@ -113,7 +113,7 @@ module.
 | `MAX_IMAGE_SIZE_BYTES` | Largest image accepted. |
 | `DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`, `EPHEMERAL_LIMIT_MI` | Default per-pod CPU, memory and scratch disk. |
 | `EGRESS_BANDWIDTH_MBIT` | Default per-pod outbound cap. |
-| `MAX_APPS_PER_USER`, `MAX_REPLICAS` | Hard ceilings for apps per account and replicas per app. |
+| `MAX_APPS_PER_USER`, `MAX_APPS_PER_ADMIN`, `ADMIN_DEFAULT_APP_LIMIT`, `MAX_REPLICAS` | Hard ceilings for apps per user account and per platform admin (the admin floor is `ADMIN_DEFAULT_APP_LIMIT`, default 5; cap 10), and replicas per app. |
 | `AUDIT_RETENTION_DAYS` | Audit log retention in days (default 90). The leader deletes older rows daily and records one `audit.purge` entry (actor `system`) when it removed any. `0` or negative keeps everything. |
 | `DB_QUOTA_POLL_SECONDS`, `STORAGE_QUOTA_POLL_SECONDS`, `IMAGE_WATCH_MINUTES`, `METRICS_SAMPLE_SECONDS`, `METRICS_RETENTION_POINTS` | Job cadences and history depth. |
 | `MAX_NODES` | Display only: the node ceiling shown on the Health page. Set it to your autoscaler maximum. |
