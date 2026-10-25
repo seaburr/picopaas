@@ -5,8 +5,9 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-25 [scm-security] DONE: pushed 77840f5 (api timezone), 539ba0a (frontend tz), a5174d9 (docs); gitleaks clean; ghost files untouched. No findings. CI/deploy results follow.
 - 2026-10-25 [scm-security] DONE: pushed 9134b09 (Account page width/side-by-side), 6596a23 (agent ledger-placement rule); CI 40187718397, image 40187718427, deploy 40187775587 green; gitleaks clean. ghost files untouched. No findings.
-- 2026-10-25 [backend] DONE: users.timezone (migration a7c2e9f4d6b1), PATCH /auth/me (MeOut; UserOut/MeOut carry timezone), tests/test_user_timezone.py, API.md + USER_GUIDE updated. Uncommitted.
+- 2026-10-25 [backend] DONE: users.timezone (migration a7c2e9f4d6b1), PATCH /auth/me (MeOut; UserOut/MeOut carry timezone), tests/test_user_timezone.py, API.md + USER_GUIDE updated.
 - 2026-10-25 [frontend-dev] DONE (NOT browser-checked): user time zone. utils/tz.ts (userZone ref synced from auth store, effectiveZone/fmt helpers); format.ts/appUi.ts/BackupsCard/HealthBackups/HealthLogs/HealthView use it and parseTs; Account page Time zone select (PATCH /auth/me via api/auth.ts setTimezone); User.timezone in types.ts.
 - 2026-10-25 [frontend-dev] START: user time zone setting + central date formatting.
 - 2026-10-25 [backend] START: user timezone (users.timezone, PATCH /auth/me).
