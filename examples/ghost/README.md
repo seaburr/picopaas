@@ -109,3 +109,12 @@ Options: patch the migration in the image so the table gets a primary key (keeps
 Also: restore into a rehearsal app only while it is suspended (admin suspend, restore, unsuspend), otherwise Ghost boots against the empty DB mid-restore.
 
 **Decision (Chas, 2026-10-25): do not patch Ghost.** Upstream will not change the migration, so `sql_require_primary_key` is turned off on the managed MySQL cluster instead (docs/requests/0009). The Dockerfile stays unpatched. Rerun the rehearsal after that setting is applied: the same dump should then migrate on `:6-bb61e2e` (locally it migrates with the setting off).
+
+### Result 2026-10-25 (after request 0009): Ghost 6 cutover DONE for app 98
+- Rehearsal (throwaway app, restore of backup set 19 = db run 60 + bucket run 61, image `:6-bb61e2e`): migrations ran and Ghost booted
+  in 28s with 0 restarts. `/`, `/ghost/`, `/rss/` (5 items), a recent post, Admin API (site, posts) with the blogger token and an image
+  upload (lands in the bucket, still served after a restart) all OK. Memory ~140 MiB sampled during first boot (limit 384 MiB), CPU peak ~370m
+  (app 98's 500m override helps; the default 200m is untested). Log noise `IMAGE_SIZE_URL` "Probe unresponsive" and ActivityPub "fetch failed" is harmless.
+- App 98 (blog.picopaas.xyz) cut over after a fresh pre-cutover backup (set 20, db run 70 + bucket run 71): migrated, booted in 26s, same checks green.
+- Blogs pin the sha tag (`:6-bb61e2e`), not `:latest` or `:6`; bump the tag deliberately (backup first). App 164 is still on Ghost 5 `:latest`.
+- Rollback if needed: Ghost 5 image + restore backup set 20 (or 19) into the suspended app.

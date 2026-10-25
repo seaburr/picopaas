@@ -175,8 +175,9 @@ automatically at start from the `BOOTSTRAP_*` variables.
   server's `max_connections`). The Health page flags a server at 80% of `max_databases` and shows live connections and
   data size.
 - **Egress:** tenant NetworkPolicies allow the network of the database server(s) on the server port (see Security).
-- **Managed-provider quirks:** some providers force `sql_require_primary_key=ON` on MySQL, so apps whose migrations
-  create keyless tables fail there. Choose PostgreSQL for those apps.
+- **Managed-provider quirks:** DigitalOcean managed MySQL defaults to `sql_require_primary_key=ON`, which breaks
+  migrations that create keyless tables (Ghost 6). Terraform turns it off for our cluster (`infra/database.tf`, request 0009);
+  other providers may still enforce it, so choose PostgreSQL there for such apps.
 - **In-cluster MySQL:** supported (`MYSQL_EGRESS_MODE=in-cluster`, `MYSQL_ADMIN_USE_PROCEDURES=1`); the manifests are in
   `deploy/mysql/`, including a nightly dump job. Prefer a managed server if your provider has one.
 
