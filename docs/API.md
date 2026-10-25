@@ -103,7 +103,7 @@ created_at, must_change_password, timezone` (IANA name or `null` = use the brows
 reset and informational only (the server does not block other calls); the UI should send the user to change it.
 
 `/auth/me` adds:
-- `max_apps`: the platform ceiling on `app_limit`. `app_limit_effective`: the number of apps this user may have
+- `max_apps`: the ceiling on `app_limit` for this account (`max_apps_per_admin` for platform admins, else `max_apps_per_user`). `app_limit_effective`: the number of apps this user may have
   (administrators are exempt from the check on create).
 - `features: {databases, storage, volumes, db_engines}`: `volumes` is true when persistent volumes are enabled
   (`VOLUMES_ENABLED`); hide the volume option when false. (The `databases`, `storage` and `db_engines` flags:) `databases` is true when a new database could be placed now (an `active`
@@ -265,6 +265,8 @@ Retention (system audit rows): after each tick an app holding more than `backup_
 
 `GET /admin/backups` (admin): `{enabled, configured, cap_per_app_bytes, cap_total_bytes, total_repo_bytes, warning, counts{ok, pending, stale, failing, disabled}, apps[], retained[]}`; `retained` lists deleted apps whose repositories are still within their 14 days. `GET /admin/health` also carries a compact `backups` block.
 
+`GET /admin/apps/{app_id}/backup-sets`, `POST /admin/apps/{app_id}/backup-sets/{set_id}/download` and `GET /admin/apps/{app_id}/backup-exports/{export_id}` (admin, **browser session only**: 403 with any API key): download any app's whole backup, including a deleted app's while it is retained (the owner can no longer see it). The list returns `{app_id, app_name, owner_email, deleted, purge_after, purged, backups[]}` (backups in the same shape as `GET /apps/{id}/backups`); the POST returns 202 and the poll returns the same `BackupExportOut` as the owner path, with a 10-minute presigned `url` once `ready`. Same limits as the owner path (3 new downloads per app per hour, one active; 409/410/422/429/503 as there). 404 unknown app/set/export. Audit `backup.download` (detail ends `admin`, plus `deleted_app`) and `backup.download_link` per link handed out (detail ends `admin`; never the URL).
+
 `POST /admin/backups/{run_id}/restore` (admin, full-scope key): body `{target_app_id: int, overwrite_source?: bool}`. Restores a succeeded `db` or `bucket` run into the target app's database or bucket, replacing its contents; 202 with the queued run (`trigger: "restore"`, `source_run_id`), which belongs to the target app and shows in `GET /apps/{target}/backups`. 403 for non-admins and read-scope keys; 404 unknown run or target; 409 target is the source app (unless `overwrite_source` is true and that app is suspended) or the target has a backup/restore active; 410 the repository was purged; 422 backups off, the run did not succeed, kind not restorable (`volume`), or the target lacks a database/bucket (or its bucket is over quota); 503 not configured. Audit `backup.restore`, then `backup.restore_succeeded` or `backup.restore_failed`.
 
 ## Background jobs
@@ -284,7 +286,7 @@ Admins can also read and operate on any app through the `/apps/{app_id}/...` rou
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
 | GET | `/admin/users` | none | List of `AdminUser` (not deleted), by id. |
-| PATCH | `/admin/users/{user_id}` | `{"app_limit": int >= 0}` | `AdminUser`. 422 above the platform maximum (`max_apps` in `/auth/me`). |
+| PATCH | `/admin/users/{user_id}` | `{"app_limit": int >= 0}` | `AdminUser`. 422 above the target's ceiling (`max_apps_per_admin` if the target is a platform admin, else `max_apps_per_user`). An admin's effective limit is at least `admin_default_app_limit`. |
 | POST | `/admin/users/{user_id}/approve` | none | `AdminUser`. 409 unless the user is `pending`. |
 | POST | `/admin/users/{user_id}/suspend` | none | `AdminUser`. Suspends their apps too. 400 for the main administrator. |
 | POST | `/admin/users/{user_id}/unsuspend` | none | `AdminUser`. 409 unless suspended; apps suspended with the account come back. |
@@ -391,8 +393,8 @@ replicas within about 5 seconds. Every change is audit-logged (`settings.update`
 
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
-| GET | `/admin/settings` | | `{groups: [{name, settings: [{key, label, description, type ("int"/"bool"), unit, value, default, overridden, min, max, ceiling_key, updated_at, updated_by}]}]}` |
-| PUT | `/admin/settings` | `{settings: {key: value-or-null, ...}}` | Partial update; `null` resets that key to its default. Same shape as GET. 422 (string `detail`) for unknown keys, wrong type, out of `min`/`max`, or a broken rule (`default_*` <= its ceiling, e.g. `default_cpu_limit_m` <= `cpu_limit_max_m`; `cpu_limit_max_m` <= 1500 m and `mem_limit_max_mi` <= 2560 MiB, the node size caps, env `NODE_CPU_CAP_M`/`NODE_MEM_CAP_MI`; `volume_max_gi` <= `override_volume_max_gi`, `default_app_limit` <= `max_apps_per_user`, `backup_max_bytes_per_app` <= `backup_max_bytes_total`). Nothing is saved on error. |
+| GET | `/admin/settings` | | `{groups: [{name, settings: [{key, label, description, type ("int"/"bool"), unit, value, default, overridden, min, max, ceiling_key, default_key, row, row_label, column ("default"/"ceiling"), updated_at, updated_by}]}]}`. One Settings row per tunable: settings sharing a `row` are a Default/Ceiling pair (`ceiling_key` on the default, `default_key` on the ceiling); single-value settings have one column (rate limits and toggles under Default, pure bounds such as platform totals under Ceiling). Groups: Per-app limits, Accounts and volumes, Backups. |
+| PUT | `/admin/settings` | `{settings: {key: value-or-null, ...}}` | Partial update; `null` resets that key to its default. Same shape as GET. 422 (string `detail`) for unknown keys, wrong type, out of `min`/`max`, or a broken rule (`default_*` <= its ceiling, e.g. `default_cpu_limit_m` <= `cpu_limit_max_m`; `cpu_limit_max_m` <= 1500 m and `mem_limit_max_mi` <= 2560 MiB, the node size caps, env `NODE_CPU_CAP_M`/`NODE_MEM_CAP_MI`; `volume_max_gi` <= `override_volume_max_gi`, `default_app_limit` <= `max_apps_per_user`, `admin_default_app_limit` <= `max_apps_per_admin`, `backup_max_bytes_per_app` <= `backup_override_max_bytes_per_app` and `backup_max_bytes_total`). Nothing is saved on error. |
 
 Lowering a ceiling doesn't change values already set on apps; it limits future changes.
 
