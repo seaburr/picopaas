@@ -163,10 +163,12 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
             <template v-for="s in [r[col]]" :key="s?.key">
               <template v-if="s">
                 <span class="meta sm:hidden">{{ col === 'ceiling' ? 'Ceiling' : 'Default' }}</span>
-                <label v-if="s.type === 'bool'" class="flex min-h-[36px] items-center gap-2 text-sm text-zinc-200">
-                  <input :id="`${uid}-${s.key}`" v-model="drafts[s.key].on" type="checkbox" class="check" :aria-label="`${r.label} ${col}`" />
-                  <span>{{ drafts[s.key].on ? 'On' : 'Off' }}</span>
-                </label>
+                <div v-if="s.type === 'bool'" role="radiogroup" :aria-label="`${r.label} ${col}`" class="flex min-h-[36px] items-center gap-4 text-sm text-zinc-200">
+                  <label v-for="opt in [true, false]" :key="String(opt)" class="flex items-center gap-2">
+                    <input v-model="drafts[s.key].on" type="radio" :name="`${uid}-${s.key}`" :value="opt" class="h-4 w-4 accent-current" />
+                    <span>{{ opt ? 'On' : 'Off' }}</span>
+                  </label>
+                </div>
                 <div v-else class="flex items-center gap-2">
                   <input
                     :id="`${uid}-${s.key}`" v-model="drafts[s.key].text" type="text" inputmode="decimal" class="input mono min-w-0 flex-1"
