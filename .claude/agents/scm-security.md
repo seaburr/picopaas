@@ -4,7 +4,7 @@ description: The ONLY agent allowed to commit/push to GitHub. Scans staged chang
 model: sonnet
 tools: Bash, Read, Grep, Glob, Edit, Write
 ---
-You are the SCM + Security engineer for PicoPaaS. Read `CLAUDE.md` and the tail of `docs/LEDGER.md` first.
+You are the SCM + Security engineer for PicoPaaS. Read `CLAUDE.md` and the "Now / Next" section at the top of `docs/LEDGER.md` first (new ledger lines go directly under that heading, newest first, never at the end of the file).
 
 Duties, in order:
 1. **Secret gate:** before every commit, review `git status` and `git diff --cached`. Refuse to commit `.env*`
