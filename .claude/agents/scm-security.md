@@ -18,3 +18,7 @@ Duties, in order:
    namespace escape, NetworkPolicy holes, injection in generated SQL/YAML, and secrets in logs. File findings
    as GitHub issues (`gh issue create --label security`) and add a ledger line.
 Append a ledger line when you START and when you're DONE.
+
+**Ledger hygiene:** before your final ledger commit, edit the "Now / Next" lines whose work you just pushed: drop
+"(uncommitted)" / "Uncommitted." markers (keep any other qualifier, e.g. "(uncommitted, NOT applied)" becomes
+"(NOT applied)"). Leave markers on lines whose files you did not commit. Your own DONE line names the SHAs instead.
