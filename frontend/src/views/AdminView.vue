@@ -291,6 +291,10 @@ async function addServer() {
 // ---- app resources ----
 const resApp = ref<AdminApp | null>(null)
 const resError = ref('')
+function openLimits(a: AdminApp) {
+  resError.value = ''
+  resApp.value = a
+}
 const bkApp = ref<AdminApp | null>(null)
 async function saveResources(body: ResourcesPatch, replicas: number | null) {
   if (!resApp.value) return
@@ -307,6 +311,7 @@ async function saveResources(body: ResourcesPatch, replicas: number | null) {
 }
 // Open app: custom domain, then platform host, then the generated hostname.
 const appHost = (a: AdminApp) => a.custom_domain || a.platform_host || a.hostname
+const appUrl = (a: AdminApp) => `https://${appHost(a)}`
 const resSummary = (a: AdminApp) =>
   `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi`
 // Compact list of the non-cpu/mem limits that differ from this app's platform defaults.
@@ -487,8 +492,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <span v-else class="text-zinc-400">-</span>
               </div>
               <div class="flex gap-0.5 lg:justify-end">
-                <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="`https://${appHost(a)}`" />
-                <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="resError = ''; resApp = a" />
+                <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="appUrl(a)" />
+                <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="openLimits(a)" />
                 <IconButton :icon="Archive" :label="`Backups for ${a.name}`" sm @click="bkApp = a" />
                 <IconButton v-if="a.status === 'suspended'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
                 <IconButton v-else :icon="Ban" :label="`Suspend ${a.name}`" sm @click="askApp('suspend', a)" />
