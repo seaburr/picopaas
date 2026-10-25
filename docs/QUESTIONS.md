@@ -18,6 +18,9 @@ background on each item if you want it.
 None right now.
 
 ## Resolved
+
+- 2026-10-25: Ghost 6 vs sql_require_primary_key (answered: conform to Ghost). Chas: upstream won't fix; the managed MySQL setting is turned off cluster-wide instead of patching Ghost. See docs/requests/0009.
+
 - 2026-10-25: **Admin CPU/memory ceilings and admin read endpoints (answered: fix it).** Chas: cap the ceilings at what a
   node can hold, require a browser session for the other admin read endpoints (settings, users, audit) as platform logs
   already do, and move the default resources every app gets into Admin settings, with a default and a ceiling for each.
