@@ -50,26 +50,19 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <section>
 <h2>What it is</h2>
 <div class="grid">
-<div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets in the dashboard, a YAML spec, the CLI, or the API with API keys.</p></div>
-<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database and credentials (50 MB), reached over TLS with a CA you can verify. An S3-compatible bucket (100 MB) is optional too. Wire both into env vars.</p></div>
+<div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets from the dashboard, CLI or API.</p></div>
+<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database (50 MB), and can add an S3-compatible bucket (100 MB). Credentials arrive as env vars.</p></div>
 <div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate. Bring your own domain if you prefer.</p></div>
-<div class="card"><h3>Nightly backups</h3><p>Your database (PostgreSQL or MySQL), bucket and volume are backed up automatically each night, encrypted and stored outside the cluster. Back up now with one click, download a whole backup as one package, or delete it.</p></div>
+<div class="card"><h3>Nightly backups</h3><p>Your database, bucket and volume are backed up each night, encrypted and stored outside the cluster. Back up now or download a backup any time. Restores go through an admin for now.</p></div>
 </div>
-<h3 style="margin:28px 0 8px;font-size:16px">Backups, in short</h3>
-<ul class="inc">
-<li><strong>On or off, per app.</strong> Turn scheduled backups on or off in the app&rsquo;s settings; you can still back up by hand once an hour.</li>
-<li><strong>Bounded by design.</strong> The newest 14 backups are kept, failed ones are cleaned up first, and each app has its own backup storage cap (2 GB), so nothing runs away. It doesn&rsquo;t count against your database or bucket quota.</li>
-<li><strong>Safety net on delete.</strong> When you delete an app with backups on, a final backup is kept for 14 days.</li>
-<li><strong>Honest limits.</strong> Volume backups are file-level copies, not atomic snapshots, and restores are not self-service yet: ask an admin.</li>
-</ul>
+<p class="pre">Backups are bounded and capped per app, and don&rsquo;t count against your quotas. <a href="https://platform.picopaas.xyz/guide/user">Details in the guide</a>.</p>
 <h3 style="margin:28px 0 8px;font-size:16px">Also included</h3>
 <ul class="inc">
-<li><strong>Templates and recipes.</strong> One-click starters for Ghost, WordPress, Directus, Grafana (on MySQL or PostgreSQL), n8n, Shlink, a Gatus status page and an nginx static site. Step-by-step recipes cover them.</li>
-<li><strong>Persistent volume (opt-in).</strong> A small block-storage volume (1 GB) for apps that need files to survive restarts.</li>
-<li><strong>Safe deploys.</strong> Images are pinned by digest, the last few versions are kept for one-click rollback, and a new image that fails to start is reverted to the last working one. Floating tags like <code>:latest</code> are re-checked and redeployed when they change.</li>
-<li><strong>Your tools.</strong> API keys (read-only or full), a CLI, your own domain with automatic TLS, and an audit log of account and app changes.</li>
-<li><strong>Visibility.</strong> Live status, downloadable logs, restarts, and recent CPU and memory history as sparklines.</li>
-<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform: separate network policy, per-app database users and bucket keys, and enforced resource and blob storage quotas.</li>
+<li><strong>Templates and recipes.</strong> One-click starters for Ghost, WordPress, Directus, Grafana, n8n, Shlink, Gatus and an nginx static site.</li>
+<li><strong>Safe deploys.</strong> Roll back with one click; a new image that fails to start is reverted automatically.</li>
+<li><strong>Your tools.</strong> A CLI, API keys, your own domain with automatic TLS, and an audit log.</li>
+<li><strong>Visibility.</strong> Live status, logs, restarts, and recent CPU and memory history.</li>
+<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform.</li>
 </ul>
 </section>
 <section>
@@ -99,7 +92,7 @@ https://&lt;generated-name&gt;.picopaas.xyz</pre>
 <tr><td>Database (PostgreSQL or MySQL)</td><td>50 MB</td></tr>
 <tr><td>Blob storage (S3-compatible bucket)</td><td>100 MB</td></tr>
 <tr><td>Persistent volume (opt-in)</td><td>1 GB</td></tr>
-<tr><td>Backup storage per app</td><td>2 GB (separate from your quotas)</td></tr>
+<tr><td>Backup storage per app</td><td>2 GB</td></tr>
 </table>
 <div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
 </section>
