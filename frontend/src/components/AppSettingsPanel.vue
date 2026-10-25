@@ -90,6 +90,7 @@ async function clearSub() {
 
 // Custom domain
 const cdom = computed(() => app.value?.custom_domain ?? null)
+const isApex = computed(() => (cdom.value?.host ?? '').split('.').filter(Boolean).length <= 2)
 const newDomain = ref('')
 const domainBusy = ref(false)
 const verifyBusy = ref(false)
@@ -115,7 +116,7 @@ async function verifyDomain(auto = false) {
     if (app.value.custom_domain?.status === 'active') {
       if (!auto) toast.success('Verified. Issuing the certificate and serving your domain.')
       else toast.success(`${app.value.custom_domain.host} is verified. Your certificate is on its way.`)
-    } else if (!auto) toast.error(app.value.custom_domain?.error || 'Not verified yet. Check the DNS records and try again.')
+    } else if (!auto) toast.error('Not verified yet. Check the DNS records and try again.')
   } catch (e) {
     if (!auto) toast.error(`Verify failed: ${e instanceof ApiError ? e.message : 'unknown error'}`)
   } finally {
@@ -236,18 +237,21 @@ const suspended = computed(() => app.value.status === 'suspended')
                     <tbody class="divide-y divide-pico-border align-top">
                       <tr>
                         <td class="py-2 pr-3 mono text-zinc-200">CNAME</td>
-                        <td class="py-2 pr-3 mono break-all text-zinc-200">{{ cdom.host }}</td>
-                        <td class="py-2"><div class="flex items-start gap-1"><span class="mono break-all text-zinc-200">{{ cdom.cname_target }}</span><CopyButton :text="cdom.cname_target" sm label="Copy CNAME value" /></div></td>
+                        <td class="py-2 pr-3"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.host }}</span><CopyButton :text="cdom.host" sm label="Copy CNAME host name" /></div></td>
+                        <td class="py-2"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.cname_target }}</span><CopyButton :text="cdom.cname_target" sm label="Copy CNAME value" /></div></td>
                       </tr>
                       <tr>
                         <td class="py-2 pr-3 mono text-zinc-200">TXT</td>
-                        <td class="py-2 pr-3 mono break-all text-zinc-200">{{ cdom.challenge_host }}</td>
-                        <td class="py-2"><div class="flex items-start gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_token }}</span><CopyButton :text="cdom.challenge_token" sm label="Copy TXT value" /></div></td>
+                        <td class="py-2 pr-3"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_host }}</span><CopyButton :text="cdom.challenge_host" sm label="Copy TXT host name" /></div></td>
+                        <td class="py-2"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_token }}</span><CopyButton :text="cdom.challenge_token" sm label="Copy TXT value" /></div></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <p v-if="cdom.error" role="alert" class="mt-2 break-words text-amber-300">{{ cdom.error }}</p>
+                <p v-if="isApex" class="mt-2 text-xs text-zinc-400">
+                  This is a root (apex) domain. Many DNS providers don't allow a CNAME at the root; use an ALIAS or ANAME record, or CNAME flattening, if your provider offers it.
+                </p>
+                <p v-if="cdom.error" role="alert" class="mt-2 break-words text-amber-300">We can't see the TXT record yet. DNS can take a few minutes.</p>
                 <p class="mt-2 text-xs text-zinc-400">
                   We re-check every 20 seconds for a few minutes. DNS changes usually land within minutes but can take up to 48 hours,
                   so if it doesn't verify yet, come back and click Verify DNS.

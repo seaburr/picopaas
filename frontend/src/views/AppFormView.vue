@@ -289,7 +289,7 @@ async function onSubmit() {
         ...(volumePayload() ? { volume: volumePayload() } : {}),
         env: envOut,
       })
-      toast.success(`Saved. Redeploying ${app.name}…`)
+      toast.success(app.status === 'pending' || app.status === 'deploying' ? `Saved. Redeploying ${app.name}…` : 'Saved.')
       await router.push(`/apps/${app.id}`)
     } else {
       const app = await store.create({

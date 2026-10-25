@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Download, RefreshCw } from 'lucide-vue-next'
+import IconButton from './IconButton.vue'
 import { downloadPlatformLogs, getPlatformLogs, getPlatformPods, type LogQuery } from '../api/admin'
 import { ApiError } from '../api/client'
 import { useToastStore } from '../stores/toast'
@@ -116,8 +117,8 @@ async function download() {
         <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="previous" type="checkbox" class="check" /> <span>Previous container (before the last restart)</span></label>
         <span class="flex-1" />
         <span v-if="fetched" class="text-xs text-zinc-400">Fetched {{ fetched.toLocaleTimeString() }}</span>
-        <button type="button" class="btn-secondary btn-sm" :disabled="!ready || loading" @click="fetchLogs"><RefreshCw :size="14" aria-hidden="true" /> {{ loading ? 'Loading…' : 'Refresh' }}</button>
-        <button type="button" class="btn-secondary btn-sm" :disabled="!ready || dl" @click="download"><Download :size="14" aria-hidden="true" /> {{ dl ? 'Preparing…' : 'Download' }}</button>
+        <IconButton :icon="RefreshCw" :label="loading ? 'Loading logs…' : 'Refresh logs'" :disabled="!ready" :busy="loading" @click="fetchLogs" />
+        <IconButton :icon="Download" :label="dl ? 'Preparing download…' : 'Download logs'" :disabled="!ready" :busy="dl" @click="download" />
       </div>
       <p class="mt-1 text-xs text-zinc-400">Download includes up to the last 10,000 lines. Downloads are recorded in the audit log.</p>
       <div v-if="error" role="alert" class="alert-error mt-2">{{ error }}</div>

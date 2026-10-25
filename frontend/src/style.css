@@ -192,6 +192,9 @@
     @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-zinc-400 transition-colors hover:bg-pico-card hover:text-white;
     @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400 aria-disabled:cursor-not-allowed aria-disabled:opacity-40;
   }
+  .btn-icon-busy svg {
+    @apply animate-spin;
+  }
   .btn-icon-sm {
     @apply h-7 w-7;
   }

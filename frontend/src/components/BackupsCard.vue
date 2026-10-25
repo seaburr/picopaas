@@ -44,6 +44,7 @@ const visible = computed(() => available.value && (props.hasData || (info.value?
 const sets = computed(() => info.value?.backups ?? [])
 const live = (x: BackupRunExport | null | undefined) => !!x && (x.status === 'queued' || x.status === 'running')
 const inFlight = computed(() => sets.value.some((b) => b.status === 'running' || b.status === 'deleting'))
+const backupRunning = computed(() => sets.value.some((b) => b.status === 'running'))
 const exportInFlight = computed(() => sets.value.some((b) => live(b.export)))
 
 async function load(quiet = false) {
@@ -236,7 +237,7 @@ onBeforeUnmount(() => {
         <div class="flex shrink-0 flex-wrap items-center gap-2">
           <RouterLink :to="`/apps/${appId}/edit#backups`" class="btn-secondary btn-sm">Backup settings</RouterLink>
           <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :aria-describedby="noRun ? 'bk-run-reason' : undefined" @click="runNow">
-            {{ runBusy ? 'Starting…' : inFlight ? 'Backup running…' : 'Back up now' }}
+            {{ runBusy ? 'Starting…' : backupRunning ? 'Backup running…' : inFlight ? 'Deleting…' : 'Back up now' }}
           </button>
         </div>
       </div>
@@ -250,9 +251,9 @@ onBeforeUnmount(() => {
       <p v-if="!info.backups" class="meta mt-3">The backup list needs a newer platform version. Reload in a minute.</p>
       <template v-else>
         <p class="mt-3 min-w-0 break-words text-sm">
-          <span class="font-medium">Last backup:</span>
+          <span class="font-medium">Last backup:</span>{{ ' ' }}
           <template v-if="lastSet">
-            <span :title="fullTime(lastSet.created_at)"> {{ when(lastSet.created_at) }}</span> ·
+            <span :title="fullTime(lastSet.created_at)">{{ when(lastSet.created_at) }}</span> ·
             <span :class="statusClass(lastSet.status)">{{ lastSet.status }}</span>
           </template>
           <template v-else> none yet</template>
@@ -289,25 +290,20 @@ onBeforeUnmount(() => {
                   <span v-else-if="exState(b) === 'ready' && b.export?.available_until" class="meta text-right" :title="fullTime(b.export.available_until)">ready until {{ clock(b.export.available_until) }}</span>
                   <span v-else-if="exState(b) === 'failed'" class="min-w-0 break-words text-right text-xs text-danger-light">{{ failMsg(b) }}</span>
                 </template>
-                <span v-if="b.status === 'deleting'" class="badge-neutral">deleting</span>
-                <button
+                <IconButton
                   v-if="exState(b) === 'busy' || preparing.has(b.id)"
-                  type="button"
-                  class="btn-icon"
-                  disabled
-                  aria-label="Preparing download…"
-                  title="Preparing download…"
-                >
-                  <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
-                </button>
+                  :icon="Download"
+                  label="Preparing download…"
+                  busy
+                />
                 <IconButton
                   v-else
                   :icon="Download"
                   label="Download backup"
-                  :disabled="b.status === 'running' || b.status === 'deleting' || b.status === 'failed' || (b.export ? fetching.has(b.export.id) : false) || delBusy"
+                  :disabled="b.status === 'running' || b.status === 'deleting' || b.status === 'failed' || (b.export ? fetching.has(b.export.id) : false)"
                   @click="onDownload(b)"
                 />
-                <IconButton :icon="Trash2" label="Delete backup" danger :disabled="suspended || delBusy || b.status === 'running' || b.status === 'deleting'" @click="delTarget = b" />
+                <IconButton :icon="Trash2" label="Delete backup" danger :disabled="suspended || b.status === 'running' || b.status === 'deleting'" @click="delTarget = b" />
               </span>
             </div>
           </li>

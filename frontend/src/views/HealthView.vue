@@ -155,7 +155,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
         <h1 class="page-title">Cluster health</h1>
         <div class="flex items-center gap-3 text-xs text-zinc-400" aria-live="polite">
           <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
-          <IconButton :icon="RefreshCw" :label="loading ? 'Refreshing…' : 'Refresh'" :disabled="loading" @click="load" />
+          <IconButton :icon="RefreshCw" :label="loading ? 'Refreshing…' : 'Refresh'" :busy="loading" @click="load" />
         </div>
       </div>
 

@@ -13,9 +13,10 @@ const props = defineProps<{
   disabled?: boolean
   expanded?: boolean
   pressed?: boolean
+  busy?: boolean // spinning icon, disabled
 }>()
 defineEmits<{ click: [e: MouseEvent] }>()
-const cls = () => ['btn-icon', props.sm ? 'btn-icon-sm' : '', props.danger ? 'btn-icon-danger' : '']
+const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'btn-icon-sm' : '', props.danger ? 'btn-icon-danger' : '']
 </script>
 
 <template>
@@ -39,7 +40,8 @@ const cls = () => ['btn-icon', props.sm ? 'btn-icon-sm' : '', props.danger ? 'bt
     :class="cls()"
     :title="label"
     :aria-label="label"
-    :disabled="disabled"
+    :disabled="disabled || busy"
+    :aria-busy="busy || undefined"
     :aria-pressed="pressed"
     :aria-haspopup="expanded === undefined ? undefined : 'menu'"
     :aria-expanded="expanded"

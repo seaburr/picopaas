@@ -85,6 +85,7 @@ export interface UsageStat {
 export interface AppQuota {
   db: UsageStat | null
   storage: UsageStat | null
+  volume?: UsageStat | null
 }
 
 export interface AppEvent {

@@ -62,7 +62,7 @@ async function apply() {
     const map: Record<string, string> = {}
     for (const s of secrets.value) if (s.key.trim()) map[s.key.trim()] = s.value
     const app = await applySpec(spec.value, map)
-    toast.success(`${app.name} ${app.created ? 'created. Deploying, usually about a minute' : 'updated. Redeploying'}.`)
+    toast.success(`${app.name} ${app.created ? 'created. Deploying, usually about a minute' : (app.status === 'pending' || app.status === 'deploying' ? 'updated. Redeploying' : 'updated')}.`)
     await router.push(`/apps/${app.id}`)
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Couldn't apply the spec."

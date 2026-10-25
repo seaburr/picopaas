@@ -425,7 +425,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 </div>
                 <form v-else class="flex h-7 items-center gap-1 whitespace-nowrap" @submit.prevent="saveLimit(u)">
                   <span class="meta md:hidden">Limit</span>
-                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono !min-h-[28px] w-14 !px-2 !py-0.5" />
+                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono w-14" />
                   <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
                   <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
                 </form>
@@ -468,12 +468,12 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               <div>
                 <template v-if="a.resources">
                   <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>
-                  <div class="mono flex gap-2">
-                    <span v-if="a.resources.overridden" class="text-accent-light">overridden</span>
-                    <span v-else class="text-zinc-400">default</span>
-                    <span v-if="a.resources.exceeds_platform_caps" class="text-amber-300">exceeds caps</span>
+                  <div class="my-0.5 flex flex-wrap gap-1">
+                    <span v-if="a.resources.overridden" class="badge-info !px-1.5 !py-0 !text-[11px]" title="Overridden: an admin set custom limits for this app.">overridden</span>
+                    <span v-else class="mono text-zinc-400">default</span>
+                    <span v-if="a.resources.exceeds_platform_caps" class="badge-warn !px-1.5 !py-0 !text-[11px]" title="Exceeds caps: above the default per-app caps.">exceeds caps</span>
                   </div>
-                  <div v-if="overrideSummary(a)" class="mono truncate text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
+                  <div v-if="overrideSummary(a)" class="mono break-words text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
                 </template>
                 <span v-else class="text-zinc-400">-</span>
               </div>
@@ -510,7 +510,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                   :value="s.status"
                   :aria-label="`Status of ${s.name}`"
                   :title="SERVER_STATUS_HELP[s.status] ?? ''"
-                  class="input !min-h-[28px] w-full !py-0.5 !pl-2"
+                  class="input w-full"
                   @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
                 >
                   <option value="active">Active</option>
@@ -540,8 +540,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <template v-else>
         <div class="mb-2 flex items-center justify-end gap-2 text-xs text-zinc-300">
           <span>Download full audit log</span>
-          <button type="button" class="btn-secondary btn-sm" @click="exportAudit('csv')"><Download :size="14" aria-hidden="true" /> CSV</button>
-          <button type="button" class="btn-secondary btn-sm" @click="exportAudit('json')"><Download :size="14" aria-hidden="true" /> JSON</button>
+          <span class="inline-flex items-center gap-0.5">CSV<IconButton :icon="Download" label="Download audit log as CSV" @click="exportAudit('csv')" /></span>
+          <span class="inline-flex items-center gap-0.5">JSON<IconButton :icon="Download" label="Download audit log as JSON" @click="exportAudit('json')" /></span>
         </div>
         <div class="card max-h-[34rem] overflow-auto">
           <div :class="[auditGrid, 'table-th row-pad sticky top-0 hidden border-b border-pico-border bg-pico-panel']">

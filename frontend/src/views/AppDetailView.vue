@@ -7,7 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import { Download, FileText, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
@@ -140,7 +140,7 @@ async function downloadEvents() {
   }
 }
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
+const ANSI_RE = /(?:\x1b)?\[[0-9;?]*[ -/]*m|\x1b\[[0-9;?]*[ -/]*[@-~]/g
 
 async function downloadLogs() {
   const a = app.value
@@ -175,8 +175,8 @@ const logText = computed(() => {
   const l = logs.value
   if (!l) return ''
   if (!podSel.value && (l.sections?.length ?? 0) > 1)
-    return l.sections!.map((x) => `=== pod ${x.pod} (restarts ${x.restarts}) ===\n${x.lines.join('\n')}${x.note && !x.lines.length ? '(' + x.note + ')' : ''}`).join('\n\n')
-  return l.lines.join('\n')
+    return l.sections!.map((x) => `=== pod ${x.pod} (restarts ${x.restarts}) ===\n${x.lines.join('\n')}${x.note && !x.lines.length ? '(' + x.note + ')' : ''}`).join('\n\n').replace(ANSI_RE, '')
+  return l.lines.join('\n').replace(ANSI_RE, '')
 })
 const logBox = ref<HTMLElement | null>(null)
 let logTimer: ReturnType<typeof setInterval> | null = null
@@ -379,11 +379,13 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </div>
           </section>
 
-          <section v-if="app.quota?.db || app.quota?.storage" class="card card-pad" aria-labelledby="h-usage">
+          <section v-if="app.quota?.db || app.quota?.storage || app.quota?.volume || app.volume" class="card card-pad" aria-labelledby="h-usage">
             <h2 id="h-usage" class="section-title mb-2">Usage</h2>
             <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <UsageBar v-if="app.quota?.db" label="Database" :usage="app.quota.db" />
               <UsageBar v-if="app.quota?.storage" label="Blob storage" :usage="app.quota.storage" />
+              <UsageBar v-if="app.quota?.volume" label="Volume" :usage="app.quota.volume" />
+              <div v-else-if="app.volume" class="flex items-baseline justify-between gap-2 text-sm"><span class="meta">Volume</span><span class="mono text-zinc-400">Measuring…</span></div>
             </div>
             <p v-if="app.quota?.db?.over_quota" role="alert" class="alert-warn mt-3">
               Database is over its {{ dbLimitMb }} MB cap and is read-only. Delete rows or drop tables to free space; writes come back within a minute.
@@ -404,23 +406,23 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 <label class="flex items-center gap-1.5 text-xs text-zinc-300">
                   <input v-model="autoRefresh" type="checkbox" class="check" /> Auto-refresh
                 </label>
-                <IconButton :icon="RefreshCw" :label="logsBusy ? 'Loading logs…' : 'Refresh logs'" :disabled="logsBusy" @click="loadLogs" />
-                <IconButton :icon="Download" label="Download logs" :disabled="dlBusy" @click="downloadLogs" />
+                <IconButton :icon="RefreshCw" :label="logsBusy ? 'Loading logs…' : 'Refresh logs'" :busy="logsBusy" @click="loadLogs" />
+                <IconButton :icon="Download" label="Download logs" :busy="dlBusy" @click="downloadLogs" />
               </div>
             </div>
             <p v-if="logsError" class="text-sm text-zinc-400">{{ logsError }}</p>
             <template v-else-if="logs">
               <div v-if="(logs.pods?.length ?? 0) > 1" class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-300">
                 <label for="log-pod">Pod</label>
-                <select id="log-pod" v-model="podSel" class="input mono w-auto min-w-0 max-w-full py-0.5" @change="loadLogs">
+                <select id="log-pod" v-model="podSel" class="input mono w-auto min-w-0 max-w-full" @change="loadLogs">
                   <option value="">All pods ({{ logs.pods!.length }})</option>
                   <option v-for="p in logs.pods" :key="p" :value="p">{{ podLabel(p) }}</option>
                 </select>
-                <IconButton :icon="FileText" :label="eventsPod ? 'Download pod events' : 'Download pod events (select a pod first)'" sm :disabled="!eventsPod || evBusy" @click="downloadEvents" />
+                <IconButton :icon="Download" :label="eventsPod ? 'Download pod events' : 'Download pod events (select a pod first)'" :disabled="!eventsPod" :busy="evBusy" @click="downloadEvents" />
               </div>
               <div v-else-if="logs.pod" class="mb-1 flex items-center gap-2">
                 <p class="meta mono truncate" :title="logs.pod">Pod {{ podLabel(logs.pod) }}</p>
-                <IconButton :icon="FileText" label="Download pod events" sm :disabled="evBusy" @click="downloadEvents" />
+                <IconButton :icon="Download" label="Download pod events" :busy="evBusy" @click="downloadEvents" />
               </div>
               <pre
                 v-if="logs.lines.length"
