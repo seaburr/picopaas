@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-25 [scm-security] DONE: wave-2 pushed to main 23b4d12 ea295b3 3c2c648 0c86af2 78586f2; CI 40217935453, image 40217935469, examples 40217935501, deploy 40218008208 all green.
 - 2026-10-25 [scm-security] DONE: pushed wave-2 working tree in 5 chunks (admin Health>Backups deleted apps, settings GB fix, landing 2x2, coverage tests, docs incl. ledger); gitleaks clean per commit; pytest 1727 passed, typecheck+build OK. SHAs and CI results in the follow-up line.
 - 2026-10-25 [release-blogger] DONE: one roundup post published: release-roundup-2026-10-25-ghost-speed-settings-timezones (Ghost 6 perf, settings rows, admin backup download, time zones, polish).
 - 2026-10-25 [manager] DONE: feedback round wave 2 (coverage 1727 passed, UX fixes, pentest clean, docs audit). Wednesday: Dependabot #17 #20-#24 (green, merge one at a time), #15 tailwind 4 tabled (needs visual review); UX P3s (Largest repositories wrapping, Mbit/s nbsp); pentest LOWs (override ceiling doesn't clamp existing overrides; some admin reads still take read-scope admin keys).
