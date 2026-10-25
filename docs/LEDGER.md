@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-25 [infra-ops] DONE: Ghost 6 cutover of app 164 (blog.chasberndt.com) to :6-bb61e2e (pinned, auto_update off, 500m override unchanged); rehearsal app 169 (backup set 21, runs 72/73) green and deleted; pre-cutover backup set 22 (runs 76/77). Both blogs on 6: examples.yml Ghost 5 row can be retired. examples/ghost/README.md results added.
+- 2026-10-25 [infra-ops] START: Ghost 6 cutover of app 164 (blog.chasberndt.com): backup, rehearsal, switch.
 - 2026-10-25 [infra-ops] DONE: Ghost 6 cutover of app 98 to :6-bb61e2e (pinned) succeeded after rehearsal (throwaway app 168, deleted) was green; fresh pre-cutover backup set 20 (runs 70/71), set 19 kept. Docs: USER_GUIDE/ADMIN_GUIDE PK wording, examples/ghost/README results. App 164 untouched (Ghost 5).
 - 2026-10-25 [infra-ops] START: Ghost 6 rehearsal (post request 0009) then app 98 cutover to :6-bb61e2e; docs PK wording.
 - 2026-10-25 [scm-security] DONE: pushed c99ce12 (infra: sql_require_primary_key off, request 0009; terraform.yml is dispatch-only, nothing applied) and 036810b (docs Ghost 6/PK notes; examples/ghost diff was README-only); gitleaks clean. No findings. Note: the apply is still to be dispatched.

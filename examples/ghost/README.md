@@ -1,6 +1,6 @@
 # Ghost on PicoPaaS
 
-A real, mainstream CMS (Ghost 6; Ghost 5 is still built until the live blogs are cut over) running on PicoPaaS within the platform's constraints — proof that the
+A real, mainstream CMS (Ghost 6; the Ghost 5 build row can now be retired) running on PicoPaaS within the platform's constraints — proof that the
 platform can host a genuine app, not just toy test images. Live demo: deployed as app `ghost-blog`.
 
 ## What works
@@ -118,3 +118,14 @@ Also: restore into a rehearsal app only while it is suspended (admin suspend, re
 - App 98 (blog.picopaas.xyz) cut over after a fresh pre-cutover backup (set 20, db run 70 + bucket run 71): migrated, booted in 26s, same checks green.
 - Blogs pin the sha tag (`:6-bb61e2e`), not `:latest` or `:6`; bump the tag deliberately (backup first). App 164 is still on Ghost 5 `:latest`.
 - Rollback if needed: Ghost 5 image + restore backup set 20 (or 19) into the suspended app.
+
+### Result 2026-10-25: Ghost 6 cutover DONE for app 164 (blog.chasberndt.com)
+- Before: image `:latest` (Ghost 5.130, digest sha256:46d26179...), auto_update on, 500m CPU override already set (plus db_max_connections 15), 79 posts, ~3.2 MB bucket.
+- Rehearsal (throwaway app, restore of backup set 21 = db run 72 + bucket run 73 while suspended, image `:6-bb61e2e`, same overrides): migrated and booted, 0 restarts.
+  Homepage `<head>` identical to the live site apart from the generator and sodo-search version (theme and code injection carried over), RSS items identical,
+  `/ghost/` and the admin site API OK, about 50 of 79 posts 200 (three timed out at 30 s under crawl load, then 200 in ~5 s). Restored bucket size matched the live bucket byte for byte (3,238,372).
+  Post images are absolute `pp-164-*` bucket URLs, so they were served from the live bucket (HTTP 200). Memory ~170 MiB, CPU peak ~250m. Admin API / upload checks skipped: no Admin API key for this blog in the env file.
+  First render of an uncached page takes ~5 s on Ghost 6 (the `IMAGE_SIZE_URL` probe timeout), then it is cached and fast.
+- Cutover after a fresh backup (set 22, db run 76 + bucket run 77; manual backups are limited to 1 per hour per app): image set to `:6-bb61e2e`, auto_update turned off, booted, 0 restarts.
+  Verified on https://blog.chasberndt.com/: generator `Ghost 6.72`, homepage head unchanged, posts, RSS identical, `/ghost/` 200, images 200, Let's Encrypt cert valid to 2027-01-23, http redirects to https. Backup sets 21, 22 kept.
+- Both blogs now run Ghost 6. The Ghost 5 `:latest` build row (`ghost_major: "5"`) in `.github/workflows/examples.yml` can be retired (not changed here).
