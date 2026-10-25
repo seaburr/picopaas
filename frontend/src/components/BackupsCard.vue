@@ -6,6 +6,7 @@ import IconButton from './IconButton.vue'
 import { backUpNow, deleteBackupSet, downloadBackupSet, getBackupExport, getBackups } from '../api/backups'
 import { ApiError } from '../api/client'
 import { fullTime, relTime, parseTs, useNow } from '../composables/appUi'
+import { fmt } from '../utils/tz'
 import { useToastStore } from '../stores/toast'
 import type { BackupRunExport, BackupSet, BackupsInfo } from '../types'
 
@@ -187,10 +188,10 @@ async function confirmDelete() {
   }
 }
 
-const clock = (iso: string) => parseTs(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const clock = (iso: string) => fmt(parseTs(iso), { hour: '2-digit', minute: '2-digit' })
 const nextAt = computed(() => (info.value?.next_backup_at ? clock(info.value.next_backup_at) : ''))
 const when = (iso: string | null) => (iso && !isNaN(parseTs(iso).getTime()) ? relTime(iso, now.value) : '–')
-const stamp = (iso: string) => parseTs(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+const stamp = (iso: string) => fmt(parseTs(iso), { dateStyle: 'medium', timeStyle: 'short' })
 const triggerLabel = (t: string) => (t === 'manual' ? 'manual' : t === 'final' ? 'before delete' : 'automatic')
 const triggerTitle = (t: string) =>
   t === 'manual' ? 'Started by you' : t === 'final' ? 'Taken when the app was deleted' : 'Started by the schedule; it can be downloaded too'

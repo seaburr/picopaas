@@ -1,11 +1,14 @@
+import { parseTs } from '../composables/appUi'
+import { effectiveZone, fmt, fmtDateTime, zoneAbbr } from './tz'
+
 // Human dates: "Oct 20, 12:10 AM · 2h ago" with the full value in a title attribute.
 export function fullDate(iso: string): string {
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? iso : d.toLocaleString()
+  const d = parseTs(iso)
+  return isNaN(d.getTime()) ? iso : `${fmtDateTime(d)} ${zoneAbbr(d)}`
 }
 
 export function ago(iso: string, now = Date.now()): string {
-  const t = new Date(iso).getTime()
+  const t = parseTs(iso).getTime()
   if (isNaN(t)) return ''
   const s = Math.max(0, Math.round((now - t) / 1000))
   if (s < 60) return 'just now'
@@ -16,9 +19,9 @@ export function ago(iso: string, now = Date.now()): string {
 }
 
 export function humanDate(iso: string): string {
-  const d = new Date(iso)
+  const d = parseTs(iso)
   if (isNaN(d.getTime())) return iso
-  const base = d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const base = fmt(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const rel = ago(iso)
   return rel ? `${base} · ${rel}` : base
 }
@@ -34,10 +37,13 @@ export async function copyText(text: string): Promise<boolean> {
 
 // Fixed-width local timestamp for table cells (pair with .mono): "2026-10-20 01:07".
 export function stamp(iso: string): string {
-  const d = new Date(iso)
+  const d = parseTs(iso)
   if (isNaN(d.getTime())) return iso
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  const g = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: effectiveZone(), hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(d).map((x) => [x.type, x.value]),
+  )
+  return `${g.year}-${g.month}-${g.day} ${g.hour}:${g.minute}`
 }
 
 // Tooltip for a timestamp cell: full local time plus how long ago.

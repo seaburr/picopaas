@@ -24,3 +24,7 @@ export const changePassword = (current_password: string, new_password: string) =
     method: 'POST',
     body: JSON.stringify({ current_password, new_password }),
   })
+
+// PATCH /auth/me: 422 "Unknown timezone" on bad input. null = browser default.
+export const setTimezone = (timezone: string | null) =>
+  apiFetch<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ timezone }) })

@@ -20,6 +20,8 @@ import HealthLogs from '../components/HealthLogs.vue'
 import { approveUser, getHealth } from '../api/admin'
 import { ApiError } from '../api/client'
 import type { ClusterHealth, HealthApp } from '../types'
+import { parseTs } from '../composables/appUi'
+import { fmtTime } from '../utils/tz'
 
 const data = ref<ClusterHealth | null>(null)
 const error = ref('')
@@ -65,7 +67,7 @@ async function approve(id: number) {
     approving.value = null
   }
 }
-const waiting = (iso: string) => age(Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000))
+const waiting = (iso: string) => age(Math.max(0, (Date.now() - parseTs(iso).getTime()) / 1000))
 const statuses = ['running', 'deploying', 'pending', 'error', 'suspended'] as const
 const num = (v: number | null, unit: string) => (v === null ? 'n/a' : `${v}${unit}`)
 const NA = 'metrics unavailable'
@@ -154,7 +156,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="page-title">Cluster health</h1>
         <div class="flex items-center gap-3 text-xs text-zinc-400" aria-live="polite">
-          <span v-if="updated">Updated {{ updated.toLocaleTimeString() }} (auto 15s)</span>
+          <span v-if="updated">Updated {{ fmtTime(updated) }} (auto 15s)</span>
           <IconButton :icon="RefreshCw" :label="loading ? 'Refreshing…' : 'Refresh'" :busy="loading" @click="load" />
         </div>
       </div>

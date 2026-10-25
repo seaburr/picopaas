@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getBackupHealth } from '../api/admin'
 import { ApiError } from '../api/client'
 import { stamp, stampTitle } from '../utils/format'
+import { parseTs } from '../composables/appUi'
+import { fmt } from '../utils/tz'
 import type { BackupFailure } from '../types'
 
 const data = ref<Awaited<ReturnType<typeof getBackupHealth>> | null>(null)
@@ -35,7 +37,7 @@ const cleanedText = computed(() => {
   const c = Object.entries(sweep.value?.cleaned ?? {})
   return c.length ? c.map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ') : 'nothing to clean'
 })
-const purgeDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+const purgeDate = (iso: string) => fmt(parseTs(iso), { month: 'short', day: 'numeric' })
 const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
 </script>
 

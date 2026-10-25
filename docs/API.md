@@ -14,6 +14,7 @@ everywhere a user is accepted except where marked "session only".
 | GET | `/healthz` | public |
 | POST | `/auth/register`, `/auth/login`, `/auth/logout` | public |
 | GET | `/auth/me` | user |
+| PATCH | `/auth/me` | user |
 | POST | `/auth/change-password` | user |
 | POST, GET, DELETE | `/api/keys`, `/api/keys`, `/api/keys/{key_id}` | active (create and revoke: session only) |
 | GET | `/templates` | active |
@@ -94,10 +95,11 @@ The web UI and the API share the same host. When scripting, request JSON and do 
 | POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 "Email or password is wrong..." (same for unknown emails and deleted users; failures are audited as `login.failed`). |
 | POST | `/auth/logout` | public | none | 204; clears cookie. |
 | GET | `/auth/me` | user | none | `User` plus `max_apps`, `app_limit_effective`, `features` and `limits` |
+| PATCH | `/auth/me` | user (session or API key, same as change-password) | `{timezone: string \| null}` (an IANA name such as `America/New_York`, or `UTC`; `null` = browser's timezone) | 200 `MeOut`. 422 "Unknown timezone" for a name not in the tz database. Audited as `user.update_profile`. |
 | POST | `/auth/change-password` | user (any status) | `{current_password, new_password}` (new: 8 to 256, must differ) | 204. 400 if `current_password` is wrong; 422 for a bad new password. Clears `must_change_password`. Audited as `user.change_password`. |
 
 `User`: `id, email, role ("user"|"platform_admin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"),
-created_at, must_change_password`. New users get `app_limit` 1. `must_change_password` is set by an admin password
+created_at, must_change_password, timezone` (IANA name or `null` = use the browser's timezone). New users get `app_limit` 1. `must_change_password` is set by an admin password
 reset and informational only (the server does not block other calls); the UI should send the user to change it.
 
 `/auth/me` adds:

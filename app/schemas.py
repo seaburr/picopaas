@@ -100,6 +100,17 @@ class ApiKeyOut(BaseModel):
     revoked_at: Optional[datetime] = None
 
 
+_TZ_CACHE: Optional[frozenset] = None
+
+
+def _tz_names() -> frozenset:
+    global _TZ_CACHE
+    if _TZ_CACHE is None:
+        from zoneinfo import available_timezones
+        _TZ_CACHE = frozenset(available_timezones()) | {"UTC"}
+    return _TZ_CACHE
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -110,6 +121,21 @@ class UserOut(BaseModel):
     status: str
     created_at: datetime
     must_change_password: bool = False
+    timezone: Optional[str] = None
+
+
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    timezone: Optional[str] = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_tz(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in _tz_names():
+            raise ValueError("Unknown timezone")
+        return v
 
 
 class Features(BaseModel):

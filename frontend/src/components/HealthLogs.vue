@@ -4,6 +4,7 @@ import { Download, RefreshCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { downloadPlatformLogs, getPlatformLogs, getPlatformPods, type LogQuery } from '../api/admin'
 import { ApiError } from '../api/client'
+import { fmtTime } from '../utils/tz'
 import { useToastStore } from '../stores/toast'
 import type { PlatformPod } from '../types'
 
@@ -116,7 +117,7 @@ async function download() {
       <div class="mt-2 flex flex-wrap items-center gap-3">
         <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="previous" type="checkbox" class="check" /> <span>Previous container (before the last restart)</span></label>
         <span class="flex-1" />
-        <span v-if="fetched" class="text-xs text-zinc-400">Fetched {{ fetched.toLocaleTimeString() }}</span>
+        <span v-if="fetched" class="text-xs text-zinc-400">Fetched {{ fmtTime(fetched) }}</span>
         <IconButton :icon="RefreshCw" :label="loading ? 'Loading logs…' : 'Refresh logs'" :disabled="!ready" :busy="loading" @click="fetchLogs" />
         <IconButton :icon="Download" :label="dl ? 'Preparing download…' : 'Download logs'" :disabled="!ready" :busy="dl" @click="download" />
       </div>

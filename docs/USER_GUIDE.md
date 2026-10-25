@@ -24,6 +24,8 @@ change it right away on the **Account** page.
 A suspended account gets `403` ("Your account is suspended..."), and its apps are scaled to zero until the
 administrator restores the account.
 
+**Timezone.** On the **Account** page you can pick your timezone so times show in local time; leave it unset to use your browser's. Server-written text (audit CSV, notices) stays in UTC.
+
 ## 2. Platform rules
 
 | Rule | Value |
@@ -226,7 +228,7 @@ create a new app and move your data. If a spec omits `db_engine`, the platform p
 | Over the 50 MB quota | Write privileges are revoked and sessions closed; reads, `DELETE`, `TRUNCATE`, `DROP` keep working. Writes return within about a minute of dropping under the cap. | Stage 1 at 50 MB: the role goes read-only and sessions are closed (your app can still `DELETE`, `TRUNCATE`, `DROP`). Stage 2 at 2x the cap (100 MB): `CONNECT` is revoked until the size is back under the cap. |
 | TLS | Required, CA-verified (`${{ db.ca_cert }}`) | Required, CA-verified (`sslmode=verify-full`) |
 | Extensions | Not applicable | Trusted extensions only (for example `pgcrypto`, `citext`, `pg_trgm`); extensions that need superuser or file access are blocked |
-| Primary keys | The managed server enforces `sql_require_primary_key=ON`: every table needs a primary key, or `CREATE TABLE` fails | No such requirement |
+| Primary keys | Not required: the platform's managed MySQL runs with `sql_require_primary_key=OFF` (request 0009), so migrations that create keyless tables work (Ghost 6 needs this) | No such requirement |
 | Other limits | none | Statement and idle-in-transaction timeouts of 60 s |
 | Recipes | Ghost, Grafana, Shlink, Directus | n8n |
 
@@ -581,7 +583,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
 | `User ... has exceeded the 'max_user_connections' resource` | MySQL: your pool is bigger than the per-app connection cap (10). Lower the pool's max size. |
 | PostgreSQL: `too many connections for role "app_<id>"` | Your pool is bigger than the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
-| MySQL: `Table must have a primary key` (`sql_require_primary_key`) | The managed MySQL server requires a primary key on every table. Add one to the migration, or use PostgreSQL if the app can't. |
+| MySQL: `Table must have a primary key` (`sql_require_primary_key`) | Should not happen on PicoPaaS: the managed MySQL no longer requires primary keys (request 0009). If you see it, tell an admin; a different MySQL server may still enforce it. |
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |
 

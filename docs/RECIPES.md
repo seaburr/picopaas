@@ -3,6 +3,10 @@
 PicoPaaS hosts real apps, not just toy images. This page walks through Ghost (a popular CMS) end to end, then
 lists the lessons that apply to any image you bring.
 
+> **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost:6`. Ghost 6 migration 6.61 creates a table without a
+> primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). The old Ghost 5 image
+> (`:latest`) does not. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
+
 ## Deploying Ghost
 
 The files are in `examples/ghost/` in the repo (`Dockerfile`, `docker-entrypoint.sh`).
@@ -710,9 +714,10 @@ for the spec and env vars, and `examples/wordpress/MIGRATION.md` to move an exis
 
 Not every popular app runs on PicoPaaS, and we'd rather tell you up front than have you hit the wall yourself.
 Two things define the shape of what fits: **images must run as a non-root numeric UID**, and the managed
-database keeps its **integrity defaults** (notably, every table needs a primary key). We don't relax either of
-those platform-wide to shoehorn in a single app — the isolation and the data guarantees are the product. Here's
-where that landed for two apps we tried.
+database is shared, so its settings are platform-wide. DigitalOcean's MySQL used to enforce
+`sql_require_primary_key=ON`; Ghost 6 (migration 6.61 creates a table without a primary key) and Wiki.js both
+collide with that, so the platform setting is being turned off (request 0009). We conform to the apps rather than
+patch them. Here's where that landed for two apps we tried.
 
 ### FreshRSS — not supported
 
@@ -727,19 +732,12 @@ was the blocker. FreshRSS would fit fine behind a **custom non-root image** (the
 recipe: do the root-time setup at build, run as the UID), which we haven't built. Out of the box, it doesn't
 run here.
 
-### Wiki.js — not supported (today)
+### Wiki.js — untested since the primary-key change
 
-[Wiki.js](https://js.wiki/) came much closer. It runs **non-root** out of the box and even does TLS to MySQL
-cleanly with a CA-verified connection (`DB_SSL_CA`), so none of the usual blockers applied. The wall was in the
-database, and it's a subtle one:
-
-DigitalOcean's managed MySQL enforces `sql_require_primary_key=ON` cluster-wide — every table you create must
-have a primary key. Wiki.js's **first schema migration creates a table without one**, and the server rejects
-that `CREATE TABLE` outright, so Wiki.js can never finish its initial setup. There's no app-level env var in
-Wiki.js to add the missing key or to work around the requirement.
-
-The only fixes would be platform-side: turn off `sql_require_primary_key` for the whole managed database, or
-carve out a separate database with it relaxed. We deliberately **keep the integrity default** rather than loosen
-it platform-wide for one app — a required primary key is a guarantee every other tenant benefits from. So
-Wiki.js is a "not today": clean on every axis except one upstream migration that collides with a default we're
-choosing to keep.
+[Wiki.js](https://js.wiki/) came much closer than most. It runs **non-root** out of the box and even does TLS to
+MySQL cleanly with a CA-verified connection (`DB_SSL_CA`). The only wall was in the database: its **first schema
+migration creates a table without a primary key**, and DigitalOcean's managed MySQL used to reject that
+(`sql_require_primary_key=ON`). That setting is being turned off cluster-wide (request 0009), so the blocker should be
+gone. We have **not re-tested Wiki.js since the change**, so treat it as "should work, unverified" until someone runs it.
+Note the flip side: once the setting is off, tenants can create tables without primary keys, so apps no longer
+get that guarantee from the server.

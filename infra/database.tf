@@ -19,6 +19,15 @@ resource "digitalocean_database_cluster" "mysql" {
   }
 }
 
+# Request 0009: turn off sql_require_primary_key (DO default ON) so Ghost 6 (migration 6.61 creates a PK-less table)
+# and similar apps can run. Cluster-wide. Removing this resource does NOT reset the remote setting.
+resource "digitalocean_database_mysql_config" "mysql" {
+  count = var.use_managed_mysql ? 1 : 0
+
+  cluster_id              = digitalocean_database_cluster.mysql[0].id
+  sql_require_primary_key = false
+}
+
 # Trust the k8s cluster's VPC so app pods can reach managed MySQL on 3306. DO database firewalls
 # accept k8s cluster UUIDs directly as a rule type, which also covers node IP churn.
 resource "digitalocean_database_firewall" "mysql" {

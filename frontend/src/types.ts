@@ -10,6 +10,7 @@ export interface User {
   app_limit_effective?: number // GET /auth/me: the limit actually enforced
   status: UserStatus
   created_at: string
+  timezone?: string | null // IANA name; null/absent = browser zone
   must_change_password?: boolean // true after an admin password reset
   // GET /auth/me only (optional until the backend ships them; treat undefined as "unknown, allow").
   features?: Features

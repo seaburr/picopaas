@@ -69,8 +69,17 @@ jobs:
           node=$(sed -n '/variable "node_size"/,/^}/s/.*default *= *"\(.*\)"/\1/p' variables.tf)
           curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/regions?per_page=200" \
             | jq -e --arg r "$region" --arg n "$node" '.regions[] | select(.slug == $r) | .sizes | index($n)' >/dev/null \
-            || { echo "::error::node size $node has no capacity in $region right now"; exit 1; }
-          echo "node size $node available in $region"
+            && echo "node size $node available in $region" \
+            || {
+              # Only a create needs capacity now. With the cluster already up, warn: plans and non-node changes still
+              # run, but the autoscaler's second node (or a node replacement) may not come up until capacity returns.
+              if curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "https://api.digitalocean.com/v2/kubernetes/clusters?per_page=200" \
+                   | jq -e --arg c "picopaas-$region" '.kubernetes_clusters[] | select(.name == $c)' >/dev/null; then
+                echo "::warning::node size $node has no capacity in $region right now (existing cluster unaffected; new nodes may fail)"
+              else
+                echo "::error::node size $node has no capacity in $region right now"; exit 1
+              fi
+            }
           curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/account \
             | jq -c '.account | {status, droplet_limit, volume_limit, email_verified}' | sed 's/^/account: /'
           echo "droplets in account: $(curl -fsS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" 'https://api.digitalocean.com/v2/droplets?per_page=1' | jq '.meta.total')"
