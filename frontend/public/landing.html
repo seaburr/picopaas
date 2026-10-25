@@ -26,7 +26,7 @@ nav.r{display:flex;align-items:center;gap:6px}nav.r a.l{color:#d4d4d8;text-decor
 footer{border-top:1px solid var(--border);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px;text-align:center}footer a{white-space:nowrap}
 .hero{padding:72px 0 32px;text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 0,rgba(58,107,208,.16),transparent 70%)}.eyebrow{display:inline-block;margin:0 0 16px;padding:3px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);color:var(--accent-light);font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.hero h1{font-size:clamp(30px,6vw,52px);margin:0 0 16px;letter-spacing:-.02em}.hero p{max-width:620px;margin:0 auto 28px;color:var(--muted);font-size:18px}.hero p.eyebrow{font-size:13px;margin:0 0 16px;color:var(--accent-light)}
 .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}.hero p.sub{margin:10px auto 0;font-size:14px;color:var(--muted)}
-h2{font-size:22px;margin:56px 0 20px;padding-bottom:10px;border-bottom:1px solid var(--border);letter-spacing:-.01em}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:20px}.card h3{margin:0 0 8px;font-size:16px}.card{transition:border-color .15s}.card:hover{border-color:#3d3d52}.card p{margin:0;color:var(--muted);font-size:15px}
+h2{font-size:22px;margin:56px 0 20px;padding-bottom:10px;border-bottom:1px solid var(--border);letter-spacing:-.01em}.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:20px}.card h3{margin:0 0 8px;font-size:16px}.card{transition:border-color .15s}.card:hover{border-color:#3d3d52}.card p{margin:0;color:var(--muted);font-size:15px}
 .n{display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;margin-bottom:10px}
 pre{margin:20px 0 0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;color:#d4d4d8;font:14px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}pre .c{color:var(--muted)}
 .pre{margin-top:16px;color:var(--muted);font-size:15px}
@@ -49,7 +49,7 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 </section>
 <section>
 <h2>What it is</h2>
-<div class="grid">
+<div class="grid grid-4">
 <div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets from the dashboard, CLI or API.</p></div>
 <div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database (50 MB), and can add an S3-compatible bucket (100 MB). Credentials arrive as env vars.</p></div>
 <div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate. Bring your own domain if you prefer.</p></div>
