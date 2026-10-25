@@ -32,6 +32,11 @@ const GB = 1024 * MB
 const size = (n: number) => (n >= GB ? `${(n / GB).toFixed(2)} GB` : n >= MB ? `${(n / MB).toFixed(1)} MB` : n > 0 ? `${Math.max(1, Math.round(n / 1024))} KB` : '0')
 const st = computed(() => data.value?.storage)
 const pct = computed(() => Math.min(100, st.value?.used_pct ?? 0))
+// Deleted apps with retained backups that fell outside the top-N table above.
+const extraDeleted = computed(() => {
+  const shown = new Set(st.value?.top_apps.map((a) => a.app_id))
+  return (st.value?.deleted_apps ?? []).filter((a) => !shown.has(a.app_id))
+})
 const hot = computed(() => (st.value?.used_pct ?? 0) >= 80)
 const dur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h` : `${Math.max(1, Math.floor(s / 60))}m`)
 defineExpose({ load })
@@ -89,6 +94,19 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div v-if="extraDeleted.length" class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3">
+        <h3 class="mb-1 text-xs font-semibold text-zinc-300">Deleted apps with retained backups</h3>
+        <ul class="divide-y divide-pico-border text-xs text-zinc-300">
+          <li v-for="a in extraDeleted" :key="a.app_id" class="py-1.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="min-w-0 break-words">{{ a.name }} <span class="text-zinc-500">{{ a.owner_email ?? '' }}<template v-if="a.purge_after"> · purged after {{ purgeDate(a.purge_after) }}</template> · {{ size(a.repo_bytes) }}</span></span>
+              <button type="button" class="btn-secondary btn-sm" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button>
+            </div>
+            <div v-if="openApp === a.app_id" class="mt-2"><AdminAppBackups :app-id="a.app_id" /></div>
+          </li>
+        </ul>
       </div>
 
       <div>

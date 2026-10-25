@@ -155,6 +155,7 @@ def test_deleted_apps_hidden_from_failures_and_purged_rows(make_client, kube, db
     assert set(top) == {"live", "gone"}
     assert top["live"]["purge_after"] is None
     assert top["gone"]["purge_after"] == until.isoformat()
+    assert [a["app_id"] for a in j["storage"]["deleted_apps"]] == [ids["gone"]]
 
 
 def test_orphaned_deleted_repos_get_a_retention_date(db_session):

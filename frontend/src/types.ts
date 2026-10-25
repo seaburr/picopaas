@@ -527,7 +527,7 @@ export interface BackupTopApp {
 }
 export interface BackupStorage {
   used_bytes: number; cap_bytes: number; used_pct: number | null; apps_with_backups: number
-  top_apps: BackupTopApp[]; over_cap?: boolean; warning: string | null; note: string
+  top_apps: BackupTopApp[]; deleted_apps?: BackupTopApp[]; over_cap?: boolean; warning: string | null; note: string
 }
 export interface BackupFailure {
   run_id: number; app_id: number; app_name: string | null; app_deleted: boolean; owner_email: string | null

@@ -50,6 +50,7 @@ def storage(db: Session) -> dict[str, Any]:
     apps.sort(key=lambda a: (-a["repo_bytes"], a["app_id"]))
     return {"used_bytes": used, "cap_bytes": cap, "used_pct": round(100.0 * used / cap, 1) if cap > 0 else None,
             "apps_with_backups": sum(1 for a in apps if a["repo_bytes"] > 0), "top_apps": apps[:TOP_APPS],
+            "deleted_apps": [a for a in apps if a["deleted"]],  # every deleted app with retained backups, not just the top N
             "over_cap": cap > 0 and used >= cap,
             "warning": ("Backup storage is AT the platform cap: new scheduled backups are being skipped until space is freed."
                         if cap > 0 and used >= cap else
