@@ -62,7 +62,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.run == 'true'
 
       - name: Work out image tag
@@ -77,15 +77,15 @@ jobs:
           fi
           echo "IMAGE=ghcr.io/seaburr/picopaas:$(echo "$full" | cut -c1-7)" >> "$GITHUB_ENV"
 
-      - uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2.5.1
+      - uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
         if: steps.gate.outputs.run == 'true'
         with:
           token: ${{ secrets.DIGITALOCEAN_TOKEN }}
 
-      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
         if: steps.gate.outputs.run == 'true'
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         if: steps.gate.outputs.run == 'true'
 
       - name: Save kubeconfig and wait for nodes

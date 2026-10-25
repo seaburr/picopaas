@@ -26,10 +26,10 @@ jobs:
       SELECTOR: ${{ inputs.selector }}
       TAIL: ${{ inputs.tail }}
     steps:
-      - uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2.5.1
+      - uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
         with:
           token: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
       - name: Kubeconfig
         run: doctl kubernetes cluster kubeconfig save picopaas-nyc3 >/dev/null
       - name: Validate inputs
