@@ -1,0 +1,34 @@
+# Weekly dependency PRs, grouped per ecosystem so each week is a handful of PRs, not dozens.
+# Every PR runs CI; merge only through the normal review (scm-security pushes, Claude never auto-merges).
+# Not covered: restic/s5cmd versions + sha256 pins in images/backup/Dockerfile (bump by hand).
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      python: { patterns: ["*"], update-types: [minor, patch] }
+
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      frontend: { patterns: ["*"], update-types: [minor, patch] }
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions: { patterns: ["*"] }
+
+  - package-ecosystem: docker
+    directories:
+      - "/"
+      - "/images/backup"
+      - "/examples/ghost"
+      - "/examples/status"
+      - "/examples/wordpress"
+      - "/testapps/*"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      base-images: { patterns: ["*"], update-types: [minor, patch] }
