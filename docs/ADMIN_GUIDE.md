@@ -193,7 +193,7 @@ Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav b
 
 - **Users:** approve `pending` signups; suspend or unsuspend (suspending scales all the user's apps to zero); reset a
   password (shown once, the user must change it); delete; set the per-user app limit. The hard max is
-  `MAX_APPS_PER_USER` active apps per account, administrators included. The per-user `app_limit` defaults to 1 and
+  `MAX_APPS_PER_USER` active apps per account (platform admins have their own pair, `ADMIN_DEFAULT_APP_LIMIT` 5 and `MAX_APPS_PER_ADMIN` 10). The per-user `app_limit` defaults to 1 and
   can be raised up to that max, never above. The platform administrator cannot be suspended or deleted.
 - **Apps:** suspend, unsuspend, delete, open the app, change limits (sliders icon, below) and set replicas.
 - **Platform host:** give an app a fixed short address `<label>.<your-domain>` besides its generated one. It is served
@@ -269,7 +269,7 @@ Defaults come from `app/config.py`; an admin can override most per app.
 | Database size | Quota poll (60 s). See the engine table above. |
 | Bucket size | Quota poll (5 min). The key is swapped for a read-only one. |
 | Outbound bandwidth | Per-pod cap through the `kubernetes.io/egress-bandwidth` annotation and Cilium. It covers everything the pod sends, HTTP responses included. |
-| Apps per account | `MAX_APPS_PER_USER` hard max, with a lower per-user `app_limit`. |
+| Apps per account | `MAX_APPS_PER_USER` hard max (admins: `MAX_APPS_PER_ADMIN`), with a lower per-user `app_limit`. |
 
 **Per-app overrides** (Apps tab, sliders icon, or `PATCH /admin/apps/{id}/resources`). Ceilings are constants in
 `app/config.py` (`OVERRIDE_*`):
@@ -298,18 +298,20 @@ Service and no per-pod addressing, so clustered or gossip apps that need named p
 ## Settings
 
 **Admin > Settings** (API: `GET/PUT /admin/settings`) holds the global limits an admin can change without a redeploy,
-in four groups:
+as **one row per tunable** with a **Default** and a **Ceiling** column (API: `row`, `column`, `ceiling_key`):
 
-- **Limit ceilings**: the highest value an admin can set for one app (CPU, memory, database connections, scratch disk,
-  database size, blob storage, image size, egress, volume size, replicas).
-- **Per-app defaults**: what every app gets unless overridden: CPU, memory, scratch disk, image size, database size,
-  blob storage, egress (`default_*` keys). Each default is bounded by the matching ceiling above (default <= ceiling);
-  an app with no override follows the default, so a change reaches existing apps at their next deploy or restart.
-  Apps that have their own override keep it. Replicas, database connections and volume size have no default setting yet.
-- **Defaults and quotas**: user volume ceiling (never above the admin volume ceiling), volumes platform-wide,
-  apps per account, the app limit given to new accounts.
-- **Backups**: platform and per-app backup storage, backups kept per app, on-demand backups and downloads per hour,
-  and whether new apps start with scheduled backups on.
+- **Per-app limits**: CPU, memory, scratch disk, image size, database size, blob storage, egress: Default is what every app
+  gets unless overridden, Ceiling the most an admin can set on one app (Apps > Limits); default <= ceiling. An app with no
+  override follows the default (existing apps pick up a change at their next deploy or restart). Database connections and
+  replicas have only a ceiling.
+- **Accounts and volumes**: apps per user (default for new accounts / ceiling) and apps per platform admin
+  (`admin_default_app_limit`, default 5 / `max_apps_per_admin`, default 10). Admins use their own pair: every admin gets at
+  least the admin default, an admin's own limit (Users) can raise that up to the admin ceiling; regular users use the user pair.
+  Also the user and admin volume ceilings and volumes platform-wide.
+- **Backups**: backup storage per app (Default: what each app gets; Ceiling `backup_override_max_bytes_per_app`, default
+  10 GiB: the most an admin can set on one app, also bounded by the platform total), platform total (Ceiling only), backups
+  kept per app, on-demand backups and downloads per hour, and whether new apps start with scheduled backups on. Backups kept,
+  rate limits and the toggle have no per-app override, so they have a Default only.
 
 The CPU and memory ceilings can't exceed what one node can schedule (`NODE_CPU_CAP_M`, default 1500m, and
 `NODE_MEM_CAP_MI`, default 2560 MiB, for the 2 vCPU / 4 GB node; raise them with the node size). Per-app overrides
@@ -317,7 +319,7 @@ The CPU and memory ceilings can't exceed what one node can schedule (`NODE_CPU_C
 `/admin/users`, `/admin/audit`, `/admin/audit/export`) need a browser session; an admin API key, any scope, gets 403.
 
 The environment variables in the Configuration section (for example `MAX_REPLICAS`, `OVERRIDE_*`, `MAX_APPS_PER_USER`,
-`VOLUME_MAX_GI`, `BACKUP_MAX_BYTES_*`) now only set the **default** for each setting. A value saved here overrides the
+`VOLUME_MAX_GI`, `BACKUP_MAX_BYTES_*`, `BACKUP_OVERRIDE_MAX_BYTES_PER_APP`) now only set the **default** for each setting. A value saved here overrides the
 default; resetting a setting returns it to the env value. Changes take effect within about 5 seconds on every replica and
 are audit-logged (`settings.update`). Lowering a ceiling doesn't touch values already set on apps, it only limits future
 changes. The floors (minimums) are fixed in code.
@@ -387,6 +389,8 @@ run with a clear error rather than being half-copied. Bucket repo bytes count to
 app gets a final bucket backup too. Note that `restic forget --keep-daily` keeps the newest snapshot of each day, so a second
 backup on the same day (for example a manual one) replaces the earlier one when it is pruned.
 
+**Downloading any app's backups (admin only, web UI).** Health > Backups > "Largest repositories": the Backups button on a row opens that app's backups (deleted apps included, until their purge date) with a Download button per backup. It prepares the same single .tar.gz package the owner gets and opens a 10-minute link once ready; it shares the app's limit of 3 downloads per hour. Browser session only: an API key, even a full-scope admin one, gets 403 (API: `/admin/apps/{id}/backup-sets`, see docs/API.md). Audited as `backup.download` and `backup.download_link` with the admin as actor and `admin` in the detail.
+
 **Restore helper (admin only).** `POST /admin/backups/{run_id}/restore` with `{"target_app_id": N}` (CLI:
 `picopaas admin backup restore <run_id> --to <app>`) restores a succeeded database or bucket run into the target app. It
 **replaces** what is there: for a database the Job runs as the target app's own DB role, drops every table and view, then loads the
@@ -443,7 +447,7 @@ Backup audit actions (creating, deleting and downloading backups are all logged;
 | `backup.delete` | the owner or an admin | `DELETE /apps/{id}/backups/{run_id}` or `.../sets/{set_id}` accepted | `run=<id> kind=<kind> snapshot=<8 chars>`; for a set `set=<id> runs=<ids> kinds=<kinds>` |
 | `backup.deleted` / `backup.delete_failed` | system | the MODE=forget Job ends (one per part) | `run=<id> kind=<kind> snapshot=<8 chars> delete_run=<id> [set=<id>]` (+ `: <error>` on failure) |
 | `backup.download` | the owner | a new export is requested | `run=<id> kind=<kind> export=<id>`; for a package `set=<id> kinds=<kinds> export=<id>` |
-| `backup.download_link` | the owner | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> [set=<id>] kind=<kind> expires_in=600` |
+| `backup.download_link` | the owner, or an admin (detail ends `admin`) | each time `GET .../backups/exports/{id}` returns a presigned link | `export=<id> run=<id> [set=<id>] kind=<kind> expires_in=600` |
 | `backup.export_succeeded` / `backup.export_failed` | system | the export job ends | |
 | `backup.export_deleted` | system, or the user who deleted the backup | the 1-hour sweep removed an export file (system), or its backup was deleted (user); one row per export | `export=<id> run=<id> [set=<id>] reason=expired\|backup_deleted` |
 | `backup.restore`, `backup.restore_succeeded` / `_failed` | admin / system | admin restore | |

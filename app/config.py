@@ -133,6 +133,10 @@ PG_BOOTSTRAP_CA = os.environ.get("BOOTSTRAP_PG_CA", "")
 # Hard ceiling on active apps per account, INCLUDING platform admins (Chas, 2026-10-20). A user's app_limit can be
 # lower, never higher (see resources.effective_app_limit).
 MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))
+# Platform admins have their own pair: every admin gets at least ADMIN_DEFAULT_APP_LIMIT active apps; an admin's own
+# app_limit can raise that, never above MAX_APPS_PER_ADMIN (the admin ceiling; double the user ceiling by default).
+ADMIN_DEFAULT_APP_LIMIT = int(os.environ.get("ADMIN_DEFAULT_APP_LIMIT", "5"))
+MAX_APPS_PER_ADMIN = int(os.environ.get("MAX_APPS_PER_ADMIN", "10"))
 
 # Ceiling for the admin-set per-app replica count (PUT /admin/apps/{id}/replicas).
 MAX_REPLICAS = int(os.environ.get("MAX_REPLICAS", "3"))
@@ -270,6 +274,8 @@ BACKUP_KEEP_MONTHLY = int(os.environ.get("BACKUP_KEEP_MONTHLY", 1))
 # Backup bytes are metered separately from the 50 MB DB / 100 MB storage caps: per app (all repos) and platform total.
 BACKUP_MAX_BYTES_PER_APP = int(os.environ.get("BACKUP_MAX_BYTES_PER_APP", 2 * 1024**3))
 BACKUP_MAX_BYTES_TOTAL = int(os.environ.get("BACKUP_MAX_BYTES_TOTAL", 100 * 1024**3))
+# Highest per-app backup ceiling an admin can set on one app (PATCH /admin/apps/{id}/backups); also bounded by the total.
+BACKUP_OVERRIDE_MAX_BYTES_PER_APP = int(os.environ.get("BACKUP_OVERRIDE_MAX_BYTES_PER_APP", 10 * 1024**3))
 BACKUP_SCHEDULE_HOUR = int(os.environ.get("BACKUP_SCHEDULE_HOUR", 3))  # UTC; each app is staggered by minutes from it
 BACKUP_MAX_CONCURRENT = int(os.environ.get("BACKUP_MAX_CONCURRENT", 2))  # Jobs running at once (shared 2 vCPU node)
 BACKUP_TICK_SECONDS = int(os.environ.get("BACKUP_TICK_SECONDS", 60))

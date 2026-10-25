@@ -178,7 +178,7 @@ def _me_out(current_user: models.User, db: Session) -> schemas.MeOut:
     db_engines = _available_db_engines(db)
     return schemas.MeOut(
         **out,
-        max_apps=platform_settings.get(db, "max_apps_per_user"),
+        max_apps=platform_settings.get(db, "max_apps_per_admin" if current_user.is_platform_admin else "max_apps_per_user"),
         app_limit_effective=resources.effective_app_limit(current_user),
         features=schemas.Features(
             databases=bool(db_engines),

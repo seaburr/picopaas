@@ -29,6 +29,10 @@ class Setting:
     min: Optional[int] = None
     max: Optional[int] = None
     max_reason: str = ""  # shown instead of "must be at most N" when the max is a hard platform limit (node size)
+    # Settings page layout, filled in by ROWS below: one row per tunable, with a Default and/or Ceiling column.
+    row: str = ""
+    row_label: str = ""
+    column: str = "default"  # "default" | "ceiling"
 
 
 G_CEIL, G_DEF, G_BAK = "Limit ceilings", "Defaults and quotas", "Backups"
@@ -86,15 +90,23 @@ REGISTRY: List[Setting] = [
             G_DEF, "int", "GiB", _c("VOLUME_MAX_GI"), 1, 1000),
     Setting("volumes_max_total", "Volumes platform-wide", "Most apps with a persistent volume at once (the cluster attach limit is lower).",
             G_DEF, "int", "volumes", _c("VOLUMES_MAX_TOTAL"), 0, 100),
-    Setting("max_apps_per_user", "Apps per account (hard max)", "Most active apps one account can have, admins included. "
+    Setting("max_apps_per_user", "Apps per user, ceiling", "Most active apps one regular account can have. "
             "A user's own limit can be lower, never higher.", G_DEF, "int", "apps", _c("MAX_APPS_PER_USER"), 1, 100),
-    Setting("default_app_limit", "Default app limit for new accounts", "App limit given to a newly registered account. Not above the hard max.",
+    Setting("default_app_limit", "Apps per user, default", "App limit given to a newly registered account. Not above the user ceiling.",
             G_DEF, "int", "apps", _c("DEFAULT_APP_LIMIT"), 0, 100),
+    Setting("max_apps_per_admin", "Apps per platform admin, ceiling", "Most active apps one platform admin can have. "
+            "An admin's own limit can be raised up to this, never above.", G_DEF, "int", "apps", _c("MAX_APPS_PER_ADMIN"), 1, 100),
+    Setting("admin_default_app_limit", "Apps per platform admin, default", "Active apps every platform admin gets at least "
+            "(raise one admin's own limit under Users). Not above the admin ceiling.", G_DEF, "int", "apps",
+            _c("ADMIN_DEFAULT_APP_LIMIT"), 0, 100),
     # --- Backups (registered here; enforcement reads them in app/backups.py) ---
     Setting("backup_max_bytes_total", "Backup storage, platform total", "Ceiling for all backups together.", G_BAK, "int", "bytes",
             _c("BACKUP_MAX_BYTES_TOTAL"), _MIB, 10 * 1024**4),
-    Setting("backup_max_bytes_per_app", "Backup storage, per app", "Default ceiling for one app's backups (not above the platform total).",
-            G_BAK, "int", "bytes", _c("BACKUP_MAX_BYTES_PER_APP"), _MIB, 10 * 1024**4),
+    Setting("backup_max_bytes_per_app", "Backup storage, per app", "What one app's backups can use unless an admin sets its own ceiling "
+            "(not above the platform total).", G_BAK, "int", "bytes", _c("BACKUP_MAX_BYTES_PER_APP"), _MIB, 10 * 1024**4),
+    Setting("backup_override_max_bytes_per_app", "Backup storage, per-app override ceiling", "Highest backup storage an admin can give one app "
+            "(Apps > Backups). Also bounded by the platform total.", G_BAK, "int", "bytes",
+            _c("BACKUP_OVERRIDE_MAX_BYTES_PER_APP"), _MIB, 10 * 1024**4),
     Setting("backup_max_held_per_app", "Backups kept per app", "Most backup packages kept for one app.", G_BAK, "int", "backups",
             lambda: 14, 1, 365),
     Setting("backup_manual_per_hour", "On-demand backups per app per hour", "How many manual backups one app can start per hour.",
@@ -116,6 +128,51 @@ DEFAULT_CEILINGS = {
 for _d, _c_ in DEFAULT_CEILINGS.items():  # a default may be set up to its ceiling
     BY_KEY[_d] = Setting(**{**BY_KEY[_d].__dict__, "max": BY_KEY[_c_].max})
 REGISTRY[:] = [BY_KEY.get(s_.key, s_) for s_ in REGISTRY]
+
+# Settings page layout: key -> (group, row id, row label, column). One row per tunable; a pair shares a row id.
+# Single-value settings sit in the Default column (what everyone gets) or the Ceiling column (a pure upper bound).
+G_LIM, G_ACC = "Per-app limits", "Accounts and volumes"
+_PAIRS = [  # (group, row id, row label, default key, ceiling key)
+    (G_LIM, "cpu", "CPU", "default_cpu_limit_m", "cpu_limit_max_m"),
+    (G_LIM, "mem", "Memory", "default_mem_limit_mi", "mem_limit_max_mi"),
+    (G_LIM, "ephemeral", "Scratch disk", "default_ephemeral_mi", "override_ephemeral_max_mi"),
+    (G_LIM, "image", "Image size", "default_image_size_mb", "override_image_size_max_mb"),
+    (G_LIM, "db", "Database size", "default_db_quota_mb", "override_db_quota_max_mb"),
+    (G_LIM, "storage", "Blob storage", "default_storage_quota_mb", "override_storage_quota_max_mb"),
+    (G_LIM, "egress", "Egress bandwidth", "default_egress_mbit", "override_egress_max_mbit"),
+    (G_ACC, "apps_user", "Apps per user", "default_app_limit", "max_apps_per_user"),
+    (G_ACC, "apps_admin", "Apps per platform admin", "admin_default_app_limit", "max_apps_per_admin"),
+    (G_ACC, "volume_size", "Volume size (users)", None, "volume_max_gi"),
+    (G_BAK, "backup_app", "Backup storage per app", "backup_max_bytes_per_app", "backup_override_max_bytes_per_app"),
+]
+_SINGLES = [  # (group, row id, row label, key, column)
+    (G_LIM, "db_conn", "Database connections", "override_db_connections_max", "ceiling"),
+    (G_LIM, "replicas", "Replicas", "max_replicas", "ceiling"),
+    (G_ACC, "volume_admin", "Volume size (admins)", "override_volume_max_gi", "ceiling"),
+    (G_ACC, "volumes_total", "Volumes platform-wide", "volumes_max_total", "ceiling"),
+    (G_BAK, "backup_total", "Backup storage, platform total", "backup_max_bytes_total", "ceiling"),
+    (G_BAK, "backup_held", "Backups kept per app", "backup_max_held_per_app", "default"),
+    (G_BAK, "backup_manual", "On-demand backups per app per hour", "backup_manual_per_hour", "default"),
+    (G_BAK, "backup_export", "Backup downloads per app per hour", "backup_export_max_per_hour", "default"),
+    (G_BAK, "backup_default_on", "Scheduled backups on for new apps", "backups_enabled_default", "default"),
+]
+_LAYOUT = {}
+for _g, _r, _l, _dk, _ck in _PAIRS:
+    if _dk:
+        _LAYOUT[_dk] = (_g, _r, _l, "default")
+    _LAYOUT[_ck] = (_g, _r, _l, "ceiling")
+for _g, _r, _l, _k, _col in _SINGLES:
+    _LAYOUT[_k] = (_g, _r, _l, _col)
+for _k, (_g, _r, _l, _col) in _LAYOUT.items():
+    BY_KEY[_k] = Setting(**{**BY_KEY[_k].__dict__, "group": _g, "row": _r, "row_label": _l, "column": _col})
+REGISTRY[:] = [BY_KEY[s_.key] for s_ in REGISTRY]
+# Pair partner: key -> (default key, ceiling key), both directions.
+PAIRS = {}
+for _g, _r, _l, _dk, _ck in _PAIRS:
+    if _dk:
+        PAIRS[_dk] = PAIRS[_ck] = (_dk, _ck)
+# Default -> ceiling bound for every pair (per-app defaults keep the older DEFAULT_CEILINGS map for the max clamp).
+CEILING_OF = {dk: ck for (dk, ck) in PAIRS.values()}
 
 # Per-app override field (PATCH /admin/apps/{id}/resources) -> the setting holding its ceiling.
 RESOURCE_CEILINGS = {
@@ -196,7 +253,7 @@ def validate_value(s: Setting, value: Any) -> Optional[str]:
     return None
 
 
-def _invariants(vals: Dict[str, Any]) -> List[str]:
+def _invariants(vals: Dict[str, Any], changed: Any = None) -> List[str]:
     errs = []
     for d, c in DEFAULT_CEILINGS.items():
         if vals[d] > vals[c]:
@@ -205,8 +262,15 @@ def _invariants(vals: Dict[str, Any]) -> List[str]:
         errs.append("volume_max_gi: can't exceed override_volume_max_gi (the admin volume ceiling)")
     if vals["default_app_limit"] > vals["max_apps_per_user"]:
         errs.append("default_app_limit: can't exceed max_apps_per_user")
+    if vals["admin_default_app_limit"] > vals["max_apps_per_admin"]:
+        errs.append("admin_default_app_limit: can't exceed max_apps_per_admin")
     if vals["backup_max_bytes_per_app"] > vals["backup_max_bytes_total"]:
         errs.append("backup_max_bytes_per_app: can't exceed backup_max_bytes_total")
+    # The override ceiling is clamped to the platform total wherever it's used, so only a change to it is checked against the total.
+    if changed and "backup_override_max_bytes_per_app" in changed and vals["backup_override_max_bytes_per_app"] > vals["backup_max_bytes_total"]:
+        errs.append("backup_override_max_bytes_per_app: can't exceed backup_max_bytes_total")
+    if vals["backup_max_bytes_per_app"] > vals["backup_override_max_bytes_per_app"]:
+        errs.append("backup_max_bytes_per_app: can't exceed backup_override_max_bytes_per_app (its ceiling)")
     return errs
 
 
@@ -225,7 +289,7 @@ def update(db: Session, changes: Dict[str, Any], actor_email: Optional[str]) -> 
     proposed = {s.key: get(db, s.key) for s in REGISTRY}
     for k, v in changes.items():
         proposed[k] = BY_KEY[k].default() if v is None else v
-    errs = _invariants(proposed)
+    errs = _invariants(proposed, {k for k, v in changes.items() if v is not None})
     if errs:
         return errs
     rows = {r.key: r for r in db.query(models.PlatformSetting).all()}
@@ -253,7 +317,8 @@ def describe_all(db: Session) -> List[dict]:
         groups.setdefault(s.group, []).append({
             "key": s.key, "label": s.label, "description": s.description, "type": s.type, "unit": s.unit,
             "value": get(db, s.key), "default": s.default(), "overridden": overridden,
-            "min": s.min, "max": s.max, "ceiling_key": DEFAULT_CEILINGS.get(s.key),
+            "min": s.min, "max": s.max, "ceiling_key": CEILING_OF.get(s.key), "default_key": PAIRS[s.key][0] if s.key in PAIRS else None,
+            "row": s.row, "row_label": s.row_label, "column": s.column,
             "updated_at": row.updated_at.isoformat() if row is not None and row.updated_at else None,
             "updated_by": row.updated_by if row is not None else None,
         })

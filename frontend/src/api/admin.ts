@@ -1,4 +1,4 @@
-import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, PlatformPods, PlatformLogs } from '../types'
+import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, AdminBackupSets, BackupExport, PlatformPods, PlatformLogs } from '../types'
 import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -60,6 +60,11 @@ export const putSettings = (settings: Record<string, number | boolean | null>) =
 
 // ---- Health extras ----
 export const getBackupHealth = (days = 7) => apiFetch<BackupHealth>(`/admin/health/backups?days=${days}`)
+export const adminBackupSets = (appId: number) => apiFetch<AdminBackupSets>(`/admin/apps/${appId}/backup-sets`)
+export const adminDownloadBackupSet = (appId: number, setId: number) =>
+  apiFetch<BackupExport>(`/admin/apps/${appId}/backup-sets/${setId}/download`, { method: 'POST' })
+export const adminGetBackupExport = (appId: number, exportId: number) =>
+  apiFetch<BackupExport>(`/admin/apps/${appId}/backup-exports/${exportId}`)
 export const getPlatformPods = () => apiFetch<PlatformPods>('/admin/health/logs/pods')
 export interface LogQuery { namespace: string; pod: string; container: string; tail: number; since_seconds?: number | null; previous: boolean }
 const logQs = (q: LogQuery) => {

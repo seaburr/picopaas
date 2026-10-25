@@ -39,7 +39,7 @@ def test_non_admin_and_anonymous(admin, user, make_client):
 
 def test_get_shape_defaults_and_backup_keys(admin):
     r = admin.get("/admin/settings").json()
-    assert [g["name"] for g in r["groups"]] == ["Limit ceilings", "Per-app defaults", "Defaults and quotas", "Backups"]
+    assert [g["name"] for g in r["groups"]] == ["Per-app limits", "Accounts and volumes", "Backups"]
     s = _by_key(admin)
     assert s["max_replicas"]["value"] == config.MAX_REPLICAS and s["max_replicas"]["overridden"] is False
     assert s["max_replicas"]["default"] == config.MAX_REPLICAS and s["max_replicas"]["min"] == 1
@@ -113,9 +113,11 @@ def test_resource_ceiling_uses_effective_value(admin, user):
 
 def test_app_limit_settings(admin, user):
     me = admin.get("/auth/me").json()
-    assert me["max_apps"] == config.MAX_APPS_PER_USER
+    assert me["max_apps"] == config.MAX_APPS_PER_ADMIN  # admins use the admin ceiling
+    assert user.get("/auth/me").json()["max_apps"] == config.MAX_APPS_PER_USER
     assert _put(admin, max_apps_per_user=2).status_code == 200
-    assert admin.get("/auth/me").json()["max_apps"] == 2
+    assert user.get("/auth/me").json()["max_apps"] == 2
+    assert admin.get("/auth/me").json()["max_apps"] == config.MAX_APPS_PER_ADMIN
     uid = user.get("/auth/me").json()["id"]
     assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 3}).status_code == 422
     assert admin.patch(f"/admin/users/{uid}", json={"app_limit": 2}).status_code == 200
