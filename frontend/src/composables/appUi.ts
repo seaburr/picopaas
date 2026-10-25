@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 import type { App } from '../types'
+import { fmtDateTime } from '../utils/tz'
 
 // Display name for a database engine ('mysql' | 'pg'). One source of truth for every DB label in the UI.
 export const DB_ENGINE_LABEL: Record<string, string> = { mysql: 'MySQL', pg: 'PostgreSQL' }
@@ -53,7 +54,7 @@ export function eventNote(ev: { at: string; message: string }, now = Date.now())
 
 export function fullTime(iso: string): string {
   const d = parseTs(iso)
-  return isNaN(d.getTime()) ? iso : d.toLocaleString()
+  return isNaN(d.getTime()) ? iso : fmtDateTime(d)
 }
 
 export function retryText(iso: string, now = Date.now()): string {

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watchEffect } from 'vue'
+import { userZone } from '../utils/tz'
 import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { User } from '../types'
@@ -7,6 +8,7 @@ import type { User } from '../types'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const loaded = ref(false)
+  watchEffect(() => (userZone.value = user.value?.timezone ?? null))
 
   async function load() {
     try {

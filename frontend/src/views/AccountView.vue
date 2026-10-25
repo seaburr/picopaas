@@ -3,11 +3,38 @@ import { computed, reactive, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import ApiKeysCard from '../components/ApiKeysCard.vue'
 import PasswordField from '../components/PasswordField.vue'
-import { changePassword } from '../api/auth'
+import { changePassword, setTimezone } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { fullDate } from '../utils/format'
+import { browserZone, effectiveZone, listZones } from '../utils/tz'
+
+const zones = listZones()
+const zoneFilter = ref('')
+const zoneErr = ref('')
+const zoneBusy = ref(false)
+const shownZones = computed(() => {
+  const q = zoneFilter.value.trim().toLowerCase()
+  const cur = auth.user?.timezone
+  const list = q ? zones.filter((z) => z.toLowerCase().includes(q)) : zones
+  return cur && !list.includes(cur) ? [cur, ...list] : list
+})
+async function onZone(e: Event) {
+  const v = (e.target as HTMLSelectElement).value
+  zoneErr.value = ''
+  zoneBusy.value = true
+  try {
+    const u = await setTimezone(v === '' ? null : v)
+    if (auth.user) auth.user.timezone = u?.timezone ?? (v === '' ? null : v)
+    toast.success('Time zone saved.')
+  } catch (err) {
+    zoneErr.value = err instanceof ApiError ? err.message : "Couldn't save the time zone."
+    ;(e.target as HTMLSelectElement).value = auth.user?.timezone ?? ''
+  } finally {
+    zoneBusy.value = false
+  }
+}
 
 const auth = useAuthStore()
 const toast = useToastStore()
@@ -54,6 +81,16 @@ async function onSubmit() {
             <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
             <dt class="text-zinc-400">Joined</dt>
             <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
+            <dt class="text-zinc-400"><label for="tz">Time zone</label></dt>
+            <dd class="space-y-1">
+              <input v-model="zoneFilter" type="search" class="input" placeholder="Filter zones…" aria-label="Filter time zones" />
+              <select id="tz" class="input" :value="auth.user?.timezone ?? ''" :disabled="zoneBusy" @change="onZone">
+                <option value="">Browser default ({{ browserZone() }})</option>
+                <option v-for="z in shownZones" :key="z" :value="z">{{ z }}</option>
+              </select>
+              <p class="text-xs text-zinc-500">Times shown in {{ effectiveZone() }}</p>
+              <p v-if="zoneErr" class="field-error" role="alert">{{ zoneErr }}</p>
+            </dd>
           </dl>
         </section>
   
