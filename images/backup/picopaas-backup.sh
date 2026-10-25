@@ -5,6 +5,7 @@
 #   MODE=backup   KIND=volume  restic backup $VOLUME_DIR (the app's PVC mounted read-only; this one Job runs in the app's own
 #                              namespace). No retention here: `restic prune` is memory-hungry, so MODE=prune runs afterwards in the
 #                              platform namespace
+#   MODE=stat     KIND=volume  no repository: prints {"used_bytes":N} (df of $VOLUME_DIR); app/volume_stat.py. A volume backup reports used_bytes too
 #   MODE=prune    KIND=volume  forget by the KEEP_* policy (grouped by host+path) and prune; prints {"pruned":true,"repo_bytes":N}
 #   MODE=restore  KIND=db      restic restore SNAPSHOT, drop the target DB's tables, load the dump (as the target's role)
 #   MODE=restore  KIND=bucket  restic restore SNAPSHOT, empty the target bucket, upload the files
@@ -41,6 +42,20 @@ fi
 
 MODE="${MODE:-backup}"
 KIND="${KIND:-db}"
+
+# Used bytes of the mounted volume, df-style (the filesystem's used blocks, so it matches what the PVC quota consumes).
+volume_used_bytes() {
+  local kb
+  kb="$(df -Pk "${VOLUME_DIR:-/volume}" 2>/dev/null | awk 'NR==2{print $3}')"
+  case "$kb" in ""|*[!0-9]*) return 1 ;; esac
+  echo $((kb * 1024))
+}
+
+if [ "$MODE" = "stat" ]; then  # needs no repository, no password and no credentials: just the mount
+  USED="$(volume_used_bytes)" || fail "could not read the volume usage"
+  echo "PICOPAAS_RESULT {\"used_bytes\":$USED}"
+  exit 0
+fi
 [ "$MODE" = "package" ] || [ -n "${RESTIC_REPOSITORY:-}" ] || fail "the repository is not configured"
 [ -n "${RESTIC_PASSWORD:-}" ] || fail "the repository password is missing"
 LIMIT="${LIMIT_UPLOAD_KIB:-0}"
@@ -428,7 +443,8 @@ ADDED="$(echo "$SUMMARY" | jq -r '.data_added // 0')"
 [ -n "$SNAP" ] || fail "backup finished without a snapshot"
 
 if [ "$KIND" = "volume" ]; then  # no prune in the tenant namespace: the platform queues MODE=prune for this repo next
-  echo "PICOPAAS_RESULT {\"snapshot_id\":\"$SNAP\",\"bytes_added\":${ADDED:-0}}"
+  USED="$(volume_used_bytes)" || USED=""
+  echo "PICOPAAS_RESULT {\"snapshot_id\":\"$SNAP\",\"bytes_added\":${ADDED:-0}${USED:+,\"used_bytes\":$USED}}"
   exit 0
 fi
 

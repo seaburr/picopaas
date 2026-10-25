@@ -125,7 +125,7 @@ def test_app_out_quota_from_stored_rows(make_client, db_session):
 def test_app_out_quota_null_without_resources(client):
     register_and_login(client, "o@example.com")
     r = client.post("/apps", json={"name": "demo", "image": "example/demo:1", "port": 8080})
-    assert r.json()["quota"] == {"db": None, "storage": None}
+    assert r.json()["quota"] == {"db": None, "storage": None, "volume": None}
 
 
 def test_usage_endpoints(make_client, db_session):

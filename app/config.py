@@ -292,6 +292,9 @@ BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 10
 BACKUP_KEY_SCOPED = os.environ.get("BACKUP_KEY_SCOPED", "0") == "1"
 # Upload limit for the tenant-namespace Job (so a volume backup does not saturate the node's egress), KiB/s.
 BACKUP_VOLUME_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_VOLUME_UPLOAD_LIMIT_KIB", 2048))
+VOLUME_STAT_INTERVAL_SECONDS = int(os.environ.get("VOLUME_STAT_INTERVAL_SECONDS", 900))  # measure each volume at most this often
+VOLUME_STAT_DEADLINE_SECONDS = int(os.environ.get("VOLUME_STAT_DEADLINE_SECONDS", 120))  # a stat Job that takes longer is stopped
+VOLUME_STAT_MAX_PER_TICK = 2  # stat Jobs started per backup tick (they are cheap, but the namespaces are many)
 BACKUP_VOLUME_MOUNT = "/volume"  # where the Job mounts the app's PVC (stable, so retention groups by host+path)
 # The volume part of a download is gzipped to scratch first; a volume backup bigger than this is not offered in the package.
 BACKUP_VOLUME_EXPORT_MAX_BYTES = int(os.environ.get("BACKUP_VOLUME_EXPORT_MAX_BYTES", 1024**3))

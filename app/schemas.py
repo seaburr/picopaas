@@ -265,6 +265,7 @@ class AppQuotaOut(BaseModel):
     """Last polled usage (stored rows, no live calls). null = the app has no such resource yet."""
     db: Optional[UsageOut] = None
     storage: Optional[UsageOut] = None
+    volume: Optional[UsageOut] = None  # measured (df of the mount, at most ~15 min old); null = no volume or not measured yet
 
 
 class AppEventOut(BaseModel):

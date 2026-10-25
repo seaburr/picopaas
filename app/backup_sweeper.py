@@ -41,7 +41,7 @@ CLEAN_KEYS = ("runs_failed", "runs_finished", "queued_failed", "deletes_reverted
 
 
 def _active_jobs(session: Session) -> set[str]:
-    return {r.job_name for r in backups._running(session) if r.job_name}
+    return backups.active_jobs(session)
 
 
 # --- 1. runs -----------------------------------------------------------------------------------

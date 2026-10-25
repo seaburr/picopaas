@@ -151,6 +151,11 @@ class App(Base):
     volume_mount_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # PVC phase last seen by the reconciler ('Pending' | 'Bound' | ...); NULL until the PVC has been applied.
     volume_phase: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    # Measured usage (df of the mount, from a volume backup or a "stat" Job: app/volume_stat.py). NULL = never measured.
+    volume_used_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    volume_used_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    volume_stat_job: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)  # name of the stat Job in flight
+    volume_stat_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # when the last stat Job was started
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 

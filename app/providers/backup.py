@@ -35,6 +35,7 @@ class BackupJobSpec:
     scratch_mib: int = 0  # >0: mount an emptyDir of this size at /work (bucket backups and restores copy objects there)
     namespace: Optional[str] = None  # None = the platform backup namespace; a volume backup runs in the app's own namespace
     volume: Optional[dict[str, Any]] = None  # volume backup only, see volume_job_spec() in app/backups.py
+    deadline_seconds: Optional[int] = None  # None = config.BACKUP_JOB_DEADLINE_SECONDS (a volume "stat" Job is much shorter)
 
 
 @dataclass
@@ -165,7 +166,7 @@ def job_manifests(spec: BackupJobSpec) -> tuple[dict[str, Any], dict[str, Any]]:
         "metadata": {"name": spec.name, "namespace": ns, "labels": dict(labels)},
         "spec": {
             "backoffLimit": 0,  # a failed run is recorded and retried at the next slot, never silently re-run
-            "activeDeadlineSeconds": config.BACKUP_JOB_DEADLINE_SECONDS,
+            "activeDeadlineSeconds": spec.deadline_seconds or config.BACKUP_JOB_DEADLINE_SECONDS,
             "ttlSecondsAfterFinished": 3600,  # safety net; the scheduler deletes finished Jobs itself
             "template": {"metadata": {"labels": dict(labels)}, "spec": pod_spec},
         },
