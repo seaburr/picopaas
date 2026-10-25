@@ -505,7 +505,7 @@ export interface SettingsGroup { name: string; settings: PlatformSetting[] }
 
 // ---- Admin health extras (GET /admin/health/backups, /admin/health/logs/pods) ----
 export interface BackupTopApp {
-  app_id: number; name: string; owner_email: string | null; deleted: boolean
+  app_id: number; name: string; owner_email: string | null; deleted: boolean; purge_after?: string | null
   repo_bytes: number; db_bytes: number; volume_bytes: number; bucket_bytes: number
   cap_bytes?: number; full?: boolean; admin_disabled?: boolean
 }

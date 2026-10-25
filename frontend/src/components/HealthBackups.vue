@@ -35,6 +35,7 @@ const cleanedText = computed(() => {
   const c = Object.entries(sweep.value?.cleaned ?? {})
   return c.length ? c.map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`).join(', ') : 'nothing to clean'
 })
+const purgeDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
 </script>
 
@@ -69,7 +70,7 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
             </thead>
             <tbody class="text-zinc-300">
               <tr v-for="a in st!.top_apps" :key="a.app_id">
-                <td class="break-words"><span v-if="a.deleted" class="text-zinc-400" title="App deleted; backups kept until pruned">{{ a.name }} (deleted)</span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
+                <td class="break-words"><span v-if="a.deleted" class="text-zinc-400" title="Backups of deleted apps are kept 14 days so they can still be restored, then purged automatically.">{{ a.name }} <span class="text-zinc-500">deleted<template v-if="a.purge_after"> · purged after {{ purgeDate(a.purge_after) }}</template></span></span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
                 <td class="break-all" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
                 <td class="mono text-right">{{ size(a.repo_bytes) }}</td>
                 <td class="mono text-right">{{ a.cap_bytes != null ? size(a.cap_bytes) : '-' }}</td>

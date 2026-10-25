@@ -39,7 +39,10 @@ def storage(db: Session) -> dict[str, Any]:
     apps = []
     for cfg, app, email in rows:
         total = backups.repo_bytes(cfg)
+        if app.deleted_at is not None and (cfg.purged_at is not None or total <= 0):
+            continue  # nothing left to show for a deleted app
         apps.append({"app_id": app.id, "name": app.name, "owner_email": email, "deleted": app.deleted_at is not None,
+                     "purge_after": _iso(cfg.deleted_retention_until) if app.deleted_at is not None else None,
                      "repo_bytes": total, "db_bytes": cfg.db_repo_bytes or 0, "volume_bytes": cfg.vol_repo_bytes or 0,
                      "bucket_bytes": cfg.bucket_repo_bytes or 0, "cap_bytes": backups.app_cap_bytes(db, cfg),
                      "full": total >= backups.app_cap_bytes(db, cfg), "admin_disabled": cfg.admin_disabled})
@@ -67,7 +70,7 @@ def failures_and_stuck(db: Session, days: int = 7, now: Optional[datetime] = Non
     Run = models.BackupRun
     base = (select(Run, models.App, models.User.email)
             .join(models.App, models.App.id == Run.app_id).join(models.User, models.User.id == models.App.owner_id))
-    failed = db.execute(base.where(Run.status == "failed", Run.kind.in_(BACKUP_KINDS),
+    failed = db.execute(base.where(Run.status == "failed", Run.kind.in_(BACKUP_KINDS), models.App.deleted_at.is_(None),
                                    Run.created_at >= since).order_by(Run.id.desc()).limit(MAX_FAILURES)).all()
     # "latest": no newer backup-type run of the same app+kind has succeeded, i.e. the app is still failing.
     out = []
