@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: pushed 4543d40 (ProjectSwitcher single FolderPlus icon); gitleaks clean, typecheck green. CI 40940280601, image 40940280586, deploy 40940316513 success; /healthz 200. Pushed without security review (UI icon only).
 - 2026-10-29 [backend] DONE: log format with UTC ms timestamp, level, logger, thread, file:line function() for platform (app/logging_setup.py, applied at app.main import so uvicorn's loggers are reformatted too) and Kaisen (same module); LOG_LEVEL env; apscheduler/httpx/httpcore(/httpx2) pinned to WARNING. Note: app INFO logs now appear (they were dropped before). OPERATIONS.md section. Tests: picopaas test_logging_setup 5, Kaisen suite 61.
 - 2026-10-29 [frontend] DONE: ProjectSwitcher: dropped the decorative folder icon beside the select; New project button is now FolderPlus (Chas: project icon sat next to a redundant folder icon). Typecheck+build green.
 - 2026-10-29 [scm-security] DONE: resolved the BLOCKED backend-tests line: pushed 7013823 (summary(now=) injected clock fix); gitleaks clean, 23 targeted tests passed. CI 40938987163 green, image 40938987234, deploy 40939094096 success. Pushed without security review (test/clock param only).
