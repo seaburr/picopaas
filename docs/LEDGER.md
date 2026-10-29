@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: pushed a12a5ee (invite-token log redaction), 44e5a74 (pentest docs); gitleaks clean; CI 40953714209, image 40953714126, deploy 40953864239 success; /healthz 200. Kaisen 882225de8a931deebef51fbd3ea1022f366d1dba (bundle-token log fix + tests, 130 passed), release 40953711189 success. Pushed without security-reviewer sign-off.
+- 2026-10-29 [release-blogger] DONE: published Kaisen bootstrapping post, slug release-kaisen-agent-factory-builds-on-picopaas (published). Ledger edit only, uncommitted.
 - 2026-10-29 [security] DONE: netpol/kaisen/log pentest, no HIGH/MED; fixed invite token in access logs (app/logging_setup.py + test); findings in PENTEST.md 'Review 2026-10-29'; app 183 deleted.
 - 2026-10-29 [security] START: pentest after netpol allow-egress-ingress (a595098), kaisen bundle URL, log format; throwaway app 183 on E2E user.
 - 2026-10-29 [manager] DONE: same LOW as the pentest's invite-token fix, in Kaisen: access log wrote /bundles/<token> capability URLs; kaisen/logging_setup.py now scrubs /bundles/ path tokens and secret-looking query values (test added). Kaisen 130 tests.
