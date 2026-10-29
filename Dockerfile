@@ -2,7 +2,7 @@
 # API that serves them. Mirrors the seaburr/tribal pattern.
 
 # --- Stage 1: build the frontend ---
-FROM node:22-slim AS frontend-build
+FROM node:26-slim AS frontend-build
 WORKDIR /frontend
 COPY frontend/package*.json ./
 RUN npm ci
