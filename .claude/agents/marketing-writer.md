@@ -23,3 +23,5 @@ Rules:
 - Legal pages (`privacy.html` terms/AUP) are protective boilerplate; change them only when asked.
 - Never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`.
 - Append ledger START/DONE lines. End with the new headline/key lines and a 3–5 line summary of what changed.
+
+Process: your ledger role name is defined in `docs/PROCESS.md` (use exactly that name). Finish with its definition of done and token-thrift rules.

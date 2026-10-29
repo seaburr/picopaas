@@ -1,7 +1,7 @@
 # PicoPaaS: Claude Code Context
 
-A tiny Heroku-like PaaS for throwaway projects: one Docker image per app, env vars/secrets, and optional
-MySQL DB (50MB) and Spaces bucket (100MB). Caps: 100m CPU, 384MB RAM, 512MB image (single source: app/config.py). Runs on DigitalOcean (DOKS + Spaces).
+A tiny PaaS for throwaway projects: one Docker image per app, env vars/secrets, and optional
+MySQL DB (50MB) and Spaces bucket (100MB). Caps: 384MB RAM, 512MB image, CPU per DEFAULT_CPU_LIMIT_M (single source: app/config.py). Runs on DigitalOcean (DOKS + Spaces).
 
 **`bootstrap.md` is the non-negotiable contract. Read it before doing anything.** Then read:
 - `docs/LEDGER.md`: what's done and what's next (start at "Now / Next")
@@ -12,11 +12,11 @@ MySQL DB (50MB) and Spaces bucket (100MB). Caps: 100m CPU, 384MB RAM, 512MB imag
 - `docs/requests/`: infra requests to Chas (what / why / monthly cost). Never provision without an approved request.
 
 ## Hard rules
-- Budget: approx. $60/mo total. Any new paid resource needs a request in `docs/requests/`.
+- Budget: approx. $60/mo target (baseline ~$75 with approved requests). Any new paid resource needs a request in `docs/requests/`.
 - Tokens are scarce (Claude Pro). Work in small chunks, add a ledger line at the START and END of each chunk,
   and prefer `sonnet` subagents for implementation.
 - **Only the `scm-security` agent commits and pushes.** Other agents leave changes in the working tree and
-  record them in the ledger.
+  record them in the ledger. Roster, ledger role names and the feedback-wave workflow: `docs/PROCESS.md`.
 - Secret scanning: every clone runs `git config core.hooksPath .githooks` (gitleaks on staged changes). **Never**
   add `.gitleaksignore`, inline `gitleaks:allow`, or allowlists; CI fails if `.gitleaksignore` exists. Test fixtures use
   values that don't look like secrets (e.g. `not-the-password`), so a finding means change the value.

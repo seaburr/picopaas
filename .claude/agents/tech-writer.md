@@ -24,3 +24,5 @@ Style rules (from Chas's feedback):
 
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Edit only docs
 (and README) unless asked. Append ledger START/DONE lines. End with a summary of what was missing or wrong.
+
+Process: your ledger role name is defined in `docs/PROCESS.md` (use exactly that name). Finish with its definition of done and token-thrift rules.

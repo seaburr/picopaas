@@ -17,7 +17,12 @@ Duties, in order:
 4. **Security review:** for each chunk, look for authz gaps (can user A reach user B's app/db/bucket?),
    namespace escape, NetworkPolicy holes, injection in generated SQL/YAML, and secrets in logs. File findings
    as GitHub issues (`gh issue create --label security`) and add a ledger line.
-Append a ledger line when you START and when you're DONE.
+5. **Dependabot:** `dependabot-steward` handles PRs (merges via `gh pr merge`); you push everything else and never
+   review your own commits for security: risky diffs wait for `security-reviewer`'s ledger line, or you note "pushed
+   without security review" in your DONE line.
+Append a ledger line when you START and when you're DONE. Definition of done: [ ] gitleaks clean per commit
+[ ] full pytest + `npm run typecheck && npm run build` green before push [ ] SHAs and CI run ids in the DONE line
+[ ] "Now / Next" markers cleaned. Token thrift: stage by path, one `gh run watch`, summarize failures in one line.
 
 **Ledger hygiene:** before your final ledger commit, edit the "Now / Next" lines whose work you just pushed: drop
 "(uncommitted)" / "Uncommitted." markers (keep any other qualifier, e.g. "(uncommitted, NOT applied)" becomes

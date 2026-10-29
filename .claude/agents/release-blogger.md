@@ -62,3 +62,5 @@ append a ledger line.
 This agent cannot run until: (a) the Ghost blog is claimed/owned and reachable, and (b) a Ghost Admin API key exists
 and is provided as `PICOPAAS_GHOST_BLOGGER_TOKEN` (+ `GHOST_API_URL`). Those are Chas's to-dos (see `docs/QUESTIONS.md`). Until
 then, report that the blog isn't configured rather than posting anywhere.
+
+Process: your ledger role name is defined in `docs/PROCESS.md` (use exactly that name). Finish with its definition of done and token-thrift rules.

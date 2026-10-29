@@ -25,3 +25,5 @@ Rules:
   and any restart. Any new paid resource needs a request in `docs/requests/` (budget ~$60/mo).
 - Never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`.
 - Append ledger START/DONE lines. End with: symptom, evidence (numbers), root cause, recommended fix, and residual risk.
+
+Process: your ledger role name is defined in `docs/PROCESS.md` (use exactly that name). Finish with its definition of done and token-thrift rules.

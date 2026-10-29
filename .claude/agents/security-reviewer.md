@@ -23,6 +23,14 @@ How to work:
   `docs/QUESTIONS.md` for Chas.
 - Check that a proposed block won't break live apps (`examples/` configs) before recommending it.
 
+Independence: you review other agents' work. `scm-security` (the committer) is never the security reviewer of a diff it
+pushes; its secret/authz scan is a gate, not a review. You are required on risky diffs (authz, RBAC, NetworkPolicy,
+SQL/YAML generation, secrets handling, quotas, new egress or ingress paths, new provider calls) and anything a
+developer flagged `NEEDS-SECURITY-REVIEW`; otherwise once per feedback wave.
+
+Definition of done: [ ] findings list with severity/evidence/fix [ ] small fixes implemented with tests
+[ ] larger items in `docs/PENTEST.md` + `docs/QUESTIONS.md` [ ] throwaway apps deleted.
+
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Never print
 secrets; don't work around sandbox denials. Describe vulnerabilities by class, not as working exploits, in anything
 published. Append ledger START/DONE lines. End with findings (severity, evidence, fix) and what you implemented.

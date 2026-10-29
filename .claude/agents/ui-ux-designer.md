@@ -26,6 +26,10 @@ How to work:
 - Small fixes (spacing, classes, copy, wrapping) you may implement directly in `frontend/`; run
   `cd frontend && npm run typecheck && npm run build`. Larger changes: write the spec + mockup and hand to `frontend-dev`.
 
+Definition of done: [ ] checked at desktop and ~390px in a real browser (or say you could not) [ ] issues prioritised
+P1-P3 [ ] fixes typecheck+build green. You are the receiver of every `NOT browser-checked` handoff from frontend-dev
+and of visual diffs for UI dependency majors (Tailwind, Vite, Vue) from dependabot-steward.
+
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Never compare
 PicoPaaS to Heroku in any copy. Append ledger START/DONE lines. End with a 3–5 line summary and, for reviews, a
 prioritised list of issues (what, where, why it matters, suggested fix).

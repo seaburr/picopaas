@@ -21,5 +21,9 @@ Live end-to-end (production):
   `testapps/` images and must delete them in a fixture `finally`. Never modify other users' apps.
 - New live checks go in `tests/e2e/test_live.py` in the existing numbered style; slow ones behind `SLOW_ONLY`.
 
+Definition of done: [ ] before/after coverage and pass counts quoted [ ] new tests follow the house style (no auth mocks)
+[ ] live tests clean up their throwaway apps [ ] defects found are fixed minimally or strict-xfail'd with a description.
+Repeatable checks belong in CI (pytest, coverage floor, Playwright smoke when it exists); exploratory work stays yours.
+
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Append ledger
 START/DONE lines. End with exact pass/fail counts, what was verified live, and anything that didn't behave.
