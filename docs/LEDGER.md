@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: pushed ee11ebb (docs: test apps out of user guide); gitleaks clean, frontend build green; CI 40945576170, image 40945575765, deploy 40945687993 success; /healthz 200. Docs only, no security review.
 - 2026-10-29 [scm-security] DONE: Kaisen preview loop pushed to seaburr/kaisen (head 16f1a700f792815fb0b0fff1f8d0c9e2e001766e, 2 commits), 101 tests, gitleaks clean, release run 40945128756 success; picopaas docs-only commit (ledger+QUESTIONS), no security review.
 - 2026-10-29 [tech-writer] DONE: removed USER_GUIDE section 15 Test apps (Chas: pentest/pressure-test images, not customer docs); Projects renumbered to 15; API/CLI examples no longer point at picopaas-testapp-hello (placeholder image + Templates); abacusaas moved into testapps/README.md, which is marked internal.
 - 2026-10-29 [manager] DONE: Kaisen preview loop built (runtime image + boot.py, bundles, PicoPaaS client, deploy_preview tool, auto-deploy on finish, feedback runs, Settings PicoPaaS section). Fixed client base path (API is at root, not /api; checked live with /auth/me). boot.py verified end to end locally with a python bundle. Kaisen suite 101 green.
