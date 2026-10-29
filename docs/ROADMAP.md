@@ -112,6 +112,15 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
   apps' database and role *names* via shared PostgreSQL catalogs (no data, no hashes). Test on a throwaway database how
   much DO lets us revoke; the only full seal is a dedicated instance per app (~$15/mo each).
 
+- **Sign in with Google (planned, not built).** Optional alongside email and password; accounts still need admin approval. Design:
+  docs/design/google-signin.md (effort M); waiting on a Google Cloud OAuth client from Chas (see docs/QUESTIONS.md).
+- Candidate recipes (research 2026-10-28, details in docs/RECIPES.md "Candidate recipes"): build and test in this order:
+  Miniflux (PG, public 14 MB image, no volume), Memos (PG), Vaultwarden (volume + backup restore showcase), Linkding
+  (SQLite on volume), Forgejo/Gitea rootless (no SSH; needs CPU override). Reserve: Uptime Kuma (slim 185 MB). Not viable:
+  Listmonk (SMTP blocked), Plausible (ClickHouse).
+- Wiki.js 2.x re-test (previous blocker `sql_require_primary_key` is gone and PG is its recommended DB): throwaway app on
+  PG, `requarks/wiki:2.5` (173 MB), measure RAM (expect admin override to ~512 MiB). Skip 3.0 betas (816 MB).
+
 ## Persistent volumes (block storage): backend built, disabled (Chas, 2026-10-22)
 **Status 2026-10-23:** the backend is implemented behind `VOLUMES_ENABLED` (default off): `resources.volume` in the API and
 spec, PVC + `Recreate` + `fsGroup`, single replica enforced, ResourceQuota, grow-only admin override (1 to 10 GiB),

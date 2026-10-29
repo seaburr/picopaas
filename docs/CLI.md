@@ -80,6 +80,15 @@ a 2xx or 3xx response is healthy. `path` must start with `/` and be at most 255 
 and `._~!$&()*+,;=:@/%-`. Changing it redeploys the app. The platform sets the `PORT` env var to your app's port
 unless you set `PORT` yourself. The full format is in [USER_GUIDE.md](USER_GUIDE.md), section 4.
 
+## projects and --project
+
+`projects` lists your projects (`SLUG NAME ROLE APPS MEMBERS`, apps as used/limit). Every command accepts `--project SLUG`
+(slug, name or id; `personal` is your personal project) or the env var `PICOPAAS_PROJECT`:
+
+- `apply` deploys into that project (the spec's own `project:` key does the same and wins; a conflict is an error). Without either, the app goes into your personal project.
+- `apps` lists only that project's apps; other commands look the app name up inside it.
+- Without `--project`, app names are looked up across all your projects; if two projects have the same name you get an error asking for `--project`.
+
 ## apps and status
 
 `apps` prints a `NAME  URL  STATUS` table, or `No apps yet. Create one with: picopaas apply -f app.yaml`.

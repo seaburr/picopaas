@@ -175,6 +175,8 @@ secrets:
 
 Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
 
+`project` (optional string): the slug of a project you belong to, see section 16. Default: your personal project.
+
 ### Secrets on create and update
 
 - Create: every name in `secrets` needs a value (`secrets` in the API body, `--secret NAME=value` in the CLI). Otherwise you get
@@ -490,6 +492,8 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 
 ### Recovering from over-cap
 
+Find out which resource is over with the **Usage** section on the app page, `picopaas status <app>` or `GET /apps/{id}` (`quota`).
+
 - **Database:** free space with `TRUNCATE TABLE t` or `DROP TABLE t` (or `DELETE`, but InnoDB on MySQL keeps the freed
   pages, so the reported size may not shrink until you `TRUNCATE`, `DROP` or run `OPTIMIZE TABLE`; on PostgreSQL use
   `VACUUM FULL` or `TRUNCATE`). On PostgreSQL a session your app keeps open may stay read-only; reconnect it. Within about a minute the platform
@@ -500,6 +504,25 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
   `{"prefix": "..."}` or `{"all": true}`. Each call deletes up to 5000 objects. Repeat it if the response says `truncated`. As soon
   as the bucket is back under 100 MB the read-write key is restored and the app restarts to pick it up.
   `GET /apps/{id}/storage/usage` shows the live size, object count and the biggest prefixes.
+- **Scratch disk:** nothing to clean up by hand. The pod is evicted and restarted, which empties the scratch space. If it
+  keeps happening, your app writes too much to the container filesystem or `/tmp`: write to the database, blob storage or a
+  persistent volume instead, or delete temp files as you go.
+- **Persistent volume:** the platform does not block writes to a full volume. It is an ordinary disk, so once it fills,
+  your app's own writes fail with the usual "no space left on device" error. Delete files from inside your app (the platform
+  has no file browser). To make it bigger, raise `resources.volume.size_gi` (volumes only grow). Owners can go up to the
+  platform's per-app volume limit, which is 1 GiB by default, so on a default instance you must ask an administrator, who
+  can grow it to a higher ceiling (10 GiB by default). Growth is untested live, so plan the size up front. Usage shows
+  under `quota.volume` once the platform has measured the disk (about every 15 minutes, only where volume backups are on).
+- **Backup storage:** backups are metered separately from the caps above (default 2 GiB per app; the last 1 daily, 1
+  weekly and 1 monthly restore point per repository are kept). When it is full, new backups are refused and the **Back up now**
+  button is disabled; a scheduled backup is skipped and shows as a failed backup with the reason. The platform clears this
+  on its own: every minute or so it deletes the app's failed and partial backups first, then the oldest successful ones,
+  but never the newest successful one. You can do it yourself by clicking the trash icon on old backups (or
+  `DELETE /apps/{id}/backups/sets/{id}`). **Free up space** does not apply here; it only deletes blob storage objects.
+  Space is freed when the delete finishes, which takes a minute or two (the backup shows "deleting"); a failed backup
+  holds nothing and disappears at once. Backups share unchanged data, so deleting one frees only what no other backup uses. If one backup is simply larger than the ceiling, ask an administrator to raise
+  your app's backup ceiling (see the [Admin Guide](ADMIN_GUIDE.md)). If backups are locked by an administrator, existing
+  backups can still be downloaded and deleted.
 
 ## 11. Networking and egress
 
@@ -545,7 +568,12 @@ The UI and CLI show friendly names. The API uses the raw value in the second col
 | Suspended | `suspended` | Stopped (scaled to zero) by an administrator, or because your account was suspended. You can't edit, rotate or delete it. |
 | Deleted | `deleted` | Torn down. Deleted apps normally disappear from your list. |
 
-Deleting an app removes its namespace, database and blob storage bucket.
+Deleting an app removes its namespace, database and blob storage bucket. The UI asks you to type the app's name before it deletes.
+
+**App page details.** Each app's URLs (the generated one and any custom domain) are listed, with the primary one marked. The
+page shows how long the app has been up (`uptime_seconds` in the API). A restart or image-update notice can be dismissed with
+its X button; it stays hidden until a new restart or a different update error occurs (`POST /apps/{id}/alerts/{kind}/dismiss`,
+see API.md). Database and storage sizes are shown in MB.
 
 ### Viewing logs
 
@@ -651,3 +679,21 @@ port: 8080
 ```
 
 The default limit is one app per account, so delete a test app before you deploy the next one.
+
+## 16. Projects (teams)
+
+A project owns apps; its members manage them together. Everyone has a **personal project** (your apps until you choose
+otherwise). Create a shared project from the project switcher, then invite people.
+
+- **Roles.** A *member* can deploy, edit, restart, back up and delete the project's apps. An *owner* can also invite, remove people,
+  change roles, rename and delete the project, and move apps. A project always keeps at least one owner.
+- **Invites.** Owners create an invite link (optionally for one email address). No email is sent: copy the link and send it yourself.
+  A link works once and expires after 7 days. The person must log in with an approved account (use the account whose email you entered, if you did)
+  and open the link. Owners can revoke open invites.
+- **Leaving.** Any member can leave (owners need another owner first). Removing someone ends their access immediately, including their API keys.
+- **Limits.** Each project has its own app limit (default `PROJECT_DEFAULT_APP_LIMIT`; an administrator can change it). Your personal project uses your account limit.
+- **Deleting a project** is refused while it still has apps: delete them or move them (owner of both projects) first.
+- **CLI and YAML.** `picopaas apply --project my-team-ab12 -f app.yaml`, `PICOPAAS_PROJECT=my-team-ab12`, or `project: my-team-ab12` in the spec. `picopaas projects` shows the slugs.
+- Databases and buckets stay with their app. Suspending a member's account does not stop the team's apps. Project owners (not the app's creator) are the contacts administrators see for a team app.
+- API keys act as you, but cannot invite, remove or change roles. Do that in the browser.
+

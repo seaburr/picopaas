@@ -731,7 +731,7 @@ was the blocker. FreshRSS would fit fine behind a **custom non-root image** (the
 recipe: do the root-time setup at build, run as the UID), which we haven't built. Out of the box, it doesn't
 run here.
 
-### Wiki.js — untested since the primary-key change
+### Wiki.js: untested since the primary-key change (see the 2026-10-28 re-assessment below)
 
 [Wiki.js](https://js.wiki/) came much closer than most. It runs **non-root** out of the box and even does TLS to
 MySQL cleanly with a CA-verified connection (`DB_SSL_CA`). The only wall was in the database: its **first schema
@@ -740,3 +740,135 @@ migration creates a table without a primary key**, and DigitalOcean's managed My
 gone. We have **not re-tested Wiki.js since the change**, so treat it as "should work, unverified" until someone runs it.
 Note the flip side: once the setting is off, tenants can create tables without primary keys, so apps no longer
 get that guarantee from the server.
+
+## Candidate recipes (2026-10-28)
+
+Research only: nothing here is built or tested. Compressed image sizes were read from the Docker Hub API on 2026-10-28
+(the platform cap is 512 MB); RAM figures are third-party or upstream estimates and **must be measured** on a throwaway
+app before a recipe is promoted. Fit rules used: non-root UID 10001 (or a wrapper like the Ghost recipe), single
+container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (override available), 50 MB DB,
+1 GiB volume, daily backups. Existing recipes are Ghost, WordPress, n8n, Directus, Grafana, Shlink and Gatus.
+
+| Pick | Engine / volume | Image (compressed) | Expected RAM | Effort |
+|---|---|---|---|---|
+| Miniflux (RSS reader) | PG, no volume | 14 MB | 30-60 MB | S |
+| Vaultwarden (password manager) | SQLite on volume (or PG) | 63 MB (alpine) | 20-50 MB | S-M |
+| Memos (notes / microblog) | PG, no volume | 26 MB | 30-80 MB | S |
+| Linkding (bookmarks) | SQLite on volume | 51 MB (alpine) | 80-150 MB | M |
+| Forgejo or Gitea (git forge) | SQLite on volume or PG | about 70 MB (Gitea rootless 68 MB verified) | 100-200 MB | M-L |
+
+### 1. Miniflux (best first pick)
+- **Why viable:** Go binary, Apache-2.0, PostgreSQL only, which is exactly the engine we offer. Official Dockerfile is
+  `USER 65534`, `EXPOSE 8080`, `LISTEN_ADDR=0.0.0.0:8080`, so the **public image runs unmodified** (no wrapper). Image is 14 MB.
+  Useful for throwaway projects: a personal feed reader with an API.
+- **Needs:** `resources.db: true`, `db_engine: pg`. Env: `DATABASE_URL` (a DSN, so build it from the `${{ db.* }}` refs with
+  `sslmode=verify-full&sslrootcert=...`; the CA must be a file, so likely a small entrypoint writing `db.ca_cert` to `/tmp`,
+  or `sslmode=require` as a fallback), `RUN_MIGRATIONS=1`, `CREATE_ADMIN=1`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` (secret),
+  `BASE_URL=${{ app.url }}`, `POLLING_FREQUENCY`. No volume, no bucket.
+- **Risks:** 50 MB DB fills slowly but real: article bodies are stored, so set `CLEANUP_ARCHIVE_UNREAD_DAYS` and a low
+  `BATCH_SIZE`/entry retention. At 100m CPU, feed refresh bursts are slow but harmless. Egress: check feeds are reachable
+  through our egress policy. Verify its PG usage works with the platform's two-stage size quota (read-only default).
+- **Effort:** small. Spec plus README, maybe a 10-line entrypoint for the CA file.
+
+### 2. Vaultwarden
+- **Why viable:** Rust, AGPL-3.0, tiny and fast, huge demand. Needs only a data folder, so it is the showcase for
+  **volumes + backups**: SQLite DB, attachments and RSA keys live in `/data`. 63 MB alpine image.
+- **Needs:** `resources.volume` mounted at `/data`, single replica (already enforced). Env: `DOMAIN=${{ app.url }}`,
+  `ROCKET_PORT=8080` (the image defaults to 80, so this override is required), `ADMIN_TOKEN` (secret, or leave unset to disable
+  the admin page), `SIGNUPS_ALLOWED=false` after the first account, `ROCKET_ADDRESS=0.0.0.0`. Optional PG instead of
+  SQLite (`DATABASE_URL`) which avoids relying on the volume, but the 50 MB DB is plenty for a vault.
+- **Risks:** the stock image's user is root; upstream documents running with `--user`, and `/data` then needs `fsGroup`
+  (already set). Needs HTTPS (we provide). Email (invites, 2FA by mail) is impossible with SMTP blocked, so use TOTP only.
+  WebSocket notifications need the ingress to pass upgrades. A password manager is a security-sensitive offering: a
+  disclaimer that it is for throwaway or test use, and the restore drill must be proven first.
+- **Effort:** small to medium (verify non-root + volume write + backup/restore).
+
+### 3. Memos
+- **Why viable:** Go, MIT, 26 MB image, supports PostgreSQL (`MEMOS_DRIVER=postgres`, `MEMOS_DSN`) so no volume is needed;
+  SQLite on `/var/opt/memos` also works. Good for notes and a lightweight blog-like timeline.
+- **Needs:** `db_engine: pg` and `MEMOS_DSN` (DSN built from refs), `MEMOS_PORT=8080`, `MEMOS_MODE=prod`. Optional bucket
+  for attachments (S3 storage is a built-in setting), else DB or local attachments on a volume.
+- **Risks:** the upstream Dockerfile starts as root and drops with `su-exec`; the entrypoint must be bypassed (run the binary
+  directly as 10001) and the `nonroot` passwd entry is irrelevant but `HOME=/tmp` is wise. Attachments stored in the DB
+  would burn the 50 MB quota, so default to S3 or a volume. Fast-moving versions (0.31 stable, 26.x rc), so pin.
+- **Effort:** small. Wrapper image only if the entrypoint insists on root.
+
+### 4. Linkding
+- **Why viable:** Python/Django, MIT, bookmark manager with browser extension and API. The `-alpine` tag is 51 MB (the
+  `-plus` variants with headless-browser archiving are 400-600 MB, avoid). SQLite on a volume at `/etc/linkding/data`, or PG.
+- **Needs:** volume, `LD_SUPERUSER_NAME`, `LD_SUPERUSER_PASSWORD` (secret), `LD_SERVER_PORT=8080` if supported by the
+  nginx/uwsgi config (verify), `LD_CSRF_TRUSTED_ORIGINS=${{ app.url }}`. Optional PG via `LD_DB_ENGINE=postgres`, `LD_DB_*`.
+- **Risks:** runs nginx + uWSGI in one container; check non-root and that nginx can bind a high port and write its temp
+  dirs (they need `/tmp`). Memory with uWSGI workers can pass 150 MB; cut `LD_REQUEST_*` workers. Favicon and snapshot
+  fetches need egress.
+- **Effort:** medium (the multi-process container is the unknown).
+
+### 5. Forgejo (or Gitea)
+- **Why viable:** Go, GPL-3.0 (Forgejo) or MIT (Gitea), the most "real" thing a throwaway project can host: git over HTTPS,
+  issues, a registry. The **rootless** image exists (Gitea rootless is 68 MB; confirm Forgejo's rootless tag), runs as UID 1000
+  by default, and idles at roughly 100-200 MB. Config is env-driven (`GITEA__section__KEY`, `FORGEJO__...`), so a small
+  entrypoint is needed because our env keys are UPPER_SNAKE (the Ghost recipe's translation pattern; `GITEA__DATABASE__HOST`
+  already fits `^[A-Z_][A-Z0-9_]*$`, so it may work with no shim).
+- **Needs:** volume (repos, LFS) at `/var/lib/gitea`, `db_engine: pg` for metadata (SSL via `GITEA__database__SSL_MODE`,
+  CA file again), `GITEA__server__ROOT_URL`, `DOMAIN`, `HTTP_PORT=3000`, `DISABLE_SSH=true` (we expose HTTP only; **SSH git
+  is not available**), `INSTALL_LOCK=true`, admin via `gitea admin user create` at start.
+- **Risks:** biggest of the five. 1 GiB volume caps repository size. Git operations are CPU-heavy at 100m (needs a CPU
+  override). No SSH, no email. Abuse surface: a public forge can host arbitrary content, so keep signups off and treat as
+  admin-approved. 50 MB DB is ample for metadata. Actions runners are out of scope.
+- **Effort:** medium to large.
+
+### Not picked, and why
+- **Uptime Kuma:** the slim image is 185 MB and fits (SQLite on a volume, about 150-250 MB RAM), but Gatus already covers
+  status pages, so it is a duplicate. Kept as a reserve pick.
+- **Listmonk:** Go and PG, but it exists to send email and SMTP is blocked. Only viable with an HTTP email API sender, so not a
+  fit for the offer today.
+- **Plausible / Umami:** Plausible needs ClickHouse (a second service). Umami is PG-only Node and plausible later, but its image
+  was not verified here.
+- **Nextcloud, Mattermost, Discourse, Metabase:** RAM or multi-service needs exceed 384 MB.
+
+### Wiki.js 2.x re-assessment (verdict: supportable, now with a 512 MB memory override; worth a test)
+
+**Why it was rejected:** its first schema migration creates a table without a primary key, and managed MySQL had
+`sql_require_primary_key=ON` (see "Apps we evaluated" above and request 0009). Nothing else blocked it: it runs non-root and does
+TLS with `DB_SSL_CA`.
+
+**What changed:** PostgreSQL is the officially recommended Wiki.js database and we now offer it (so the MySQL primary-key
+rule is moot), and the setting is off anyway. Volumes exist but Wiki.js does not need one: pages, history, users and
+search index live in the database, and uploaded assets can be stored in the DB (counts against 50 MB) or sent to a storage target.
+
+**Facts checked 2026-10-28:**
+- `requarks/wiki:2` (2.5.317) is **173 MB compressed**, comfortably under 512 MB. Uncompressed layers are larger (not measured);
+  confirm how the platform's cap is evaluated before deploy.
+- `requarks/wiki:3.0.0-beta.*` is **816 MB**, over the cap and still beta (new betas published daily). **Use 2.x only.**
+- Wiki.js publishes no official RAM minimum. Node app with webpack-built client; expect roughly 200-350 MB RSS (**unmeasured**;
+  same ballpark as n8n's 338 MB). It likely **will not be stable at the 384 MB default**, so plan for the same admin memory
+  override to ~512 MiB and `NODE_OPTIONS=--max-old-space-size=320` below the container limit.
+
+**Verdict:** supportable, with caveats. Footprint (RAM) is the real limit, not the DB. Expect first-start migrations to
+be CPU-heavy at 100m (give 300m+ for first boot, then drop). Sizing risk: the 50 MB DB holds many pages of text but
+not many images; send assets to the bucket (S3 storage target needs the Spaces credentials configured in-app, not via env).
+
+**Recipe sketch (`examples/wikijs/wikijs.yaml`, no custom image if the image really runs as UID 1000 without root work; else a wrapper):**
+```yaml
+apiVersion: picopaas/v1
+name: wiki
+image: ghcr.io/requarks/wiki:2.5   # pin 2.5.317; docker.io/requarks/wiki:2 is the same image
+port: 3000
+resources:
+  db: true
+  db_engine: pg
+env:
+  DB_TYPE: postgres
+  DB_HOST: "${{ db.host }}"
+  DB_PORT: "${{ db.port }}"
+  DB_NAME: "${{ db.name }}"
+  DB_USER: "${{ db.user }}"
+  DB_PASS: "${{ db.password }}"
+  DB_SSL: "true"
+  DB_SSL_CA: "${{ db.ca_cert }}"     # Wiki.js takes the PEM content; confirm inline vs path
+  NODE_OPTIONS: "--max-old-space-size=320"
+```
+Open checks: the image must run with a read-only-ish root FS (it writes `/wiki/data` for the git/sideload cache, so mount a
+scratch path or set `DATA_PATH`); the setup wizard writes config to the DB, so the first visitor creates the admin (race on a
+public URL: deploy and complete setup immediately); Git storage and search engine "DB - Basic" only (no Elasticsearch).
+Rated: effort small if it passes the check, plus the admin memory override.

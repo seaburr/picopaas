@@ -114,6 +114,7 @@ module.
 | `DEFAULT_CPU_LIMIT_M`, `DEFAULT_MEM_LIMIT_MI`, `EPHEMERAL_LIMIT_MI` | Default per-pod CPU, memory and scratch disk. |
 | `EGRESS_BANDWIDTH_MBIT` | Default per-pod outbound cap. |
 | `MAX_APPS_PER_USER`, `MAX_APPS_PER_ADMIN`, `ADMIN_DEFAULT_APP_LIMIT`, `MAX_REPLICAS` | Hard ceilings for apps per user account and per platform admin (the admin floor is `ADMIN_DEFAULT_APP_LIMIT`, default 5; cap 10), and replicas per app. |
+| `PROJECT_DEFAULT_APP_LIMIT`, `MAX_PROJECTS_PER_USER`, `MAX_PROJECT_MEMBERS`, `MAX_PENDING_INVITES_PER_PROJECT`, `INVITE_ACCEPT_MAX` | Team projects: default active-app limit of a shared project (3; never above `MAX_APPS_PER_USER`), shared projects one user may own (5), members per project (10), open invites per project (20), invite-accept attempts per user and IP per hour (20). Invites live 7 days. |
 | `AUDIT_RETENTION_DAYS` | Audit log retention in days (default 90). The leader deletes older rows daily and records one `audit.purge` entry (actor `system`) when it removed any. `0` or negative keeps everything. |
 | `DB_QUOTA_POLL_SECONDS`, `STORAGE_QUOTA_POLL_SECONDS`, `IMAGE_WATCH_MINUTES`, `METRICS_SAMPLE_SECONDS`, `METRICS_RETENTION_POINTS` | Job cadences and history depth. |
 | `MAX_NODES` | Display only: the node ceiling shown on the Health page. Set it to your autoscaler maximum. |
@@ -220,6 +221,15 @@ Open **Admin** (tabs: Users, Apps, Servers, Audit) and **Health** from the nav b
 
 Every admin action is also an HTTP route under `/admin`; see [API.md](API.md).
 
+## Projects
+
+Apps belong to a project (personal per user, or shared). Project owners are the contacts shown for an app in Health and Backups reports, not
+the app's creator. Raise or lower a shared project's app limit with `PATCH /admin/projects/{id}` (`{"app_limit": n}`, null resets;
+capped at `max_apps_per_user`); `GET /admin/projects` lists shared projects. Personal projects follow the user's own `app_limit`.
+Suspending or deleting a user touches only their personal-project apps. Deleting a user who is the only owner of a project with apps is refused (409):
+promote another member or move the apps first. Audit actions: `project.create`, `project.invite`, `project.invite_revoke`, `project.join`,
+`project.remove` (also leave), `project.role_change`, `project.update`, `project.delete`, `app.move`; `detail` holds `project=<id>`.
+
 ## Admins and recovery
 
 The first account to register becomes an administrator. Keep at least two: one person locked out of their account
@@ -295,6 +305,23 @@ replica gets the full per-pod limits and all replicas share the app's one databa
 extra NetworkPolicy lets an app's own pods talk to each other. Replicas must be stateless: an app has one ClusterIP
 Service and no per-pod addressing, so clustered or gossip apps that need named peers are not supported.
 
+## Metrics
+
+`GET /metrics` serves Prometheus text: HTTP request count/latency per route template, plus gauges for users, apps, database
+servers (`type="mysql"|"psql"`), volumes, buckets, databases, cluster nodes and the autoscale maximum. Set `METRICS_TOKEN` and scrape
+with `Authorization: Bearer <token>` (store the token in a Secret; without it only a platform-admin browser session can read the endpoint,
+everyone else gets 404). Counters are per API replica: scrape each pod or sum across them. Ingress-wise it is reachable on the
+platform host like any API path; restrict it at the edge if you don't want it public-routable.
+
+## Platform database backup
+
+The platform's own database is backed up too (not just tenant databases): `app/platform_backup.py`, run by the same leader tick, backup
+Job image and bucket as app backups, in its own restic repository `<BACKUP_PREFIX>platform/db`. It needs `BACKUPS_ENABLED=1`, the backup bucket
+configured and a MySQL `DATABASE_URL` (`PLATFORM_BACKUP_ENABLED=1` is the default). Daily (`PLATFORM_BACKUP_INTERVAL_HOURS`), a failed run retries after an hour, retention
+`PLATFORM_BACKUP_KEEP_DAILY/WEEKLY/MONTHLY` (7/4/3). The repository password is random and stored Fernet-encrypted in `platform_settings`
+(`platform_backup_repo_password`): keep `FERNET_KEY` safe elsewhere, or the repo can't be opened. Admin > Health > Backups shows the runs, last success,
+repository size and a stale warning; "Back up now" is `POST /admin/health/backups/platform-db/run`. Restore: docs/OPERATIONS.md.
+
 ## Settings
 
 **Admin > Settings** (API: `GET/PUT /admin/settings`) holds the global limits an admin can change without a redeploy,
@@ -306,7 +333,7 @@ as **one row per tunable** with a **Default** and a **Ceiling** column (API: `ro
   replicas have only a ceiling.
 - **Accounts and volumes**: apps per user (default for new accounts / ceiling) and apps per platform admin
   (`admin_default_app_limit`, default 5 / `max_apps_per_admin`, default 10). Admins use their own pair: every admin gets at
-  least the admin default, an admin's own limit (Users) can raise that up to the admin ceiling; regular users use the user pair.
+  least the admin default, an admin's own limit (Users) can raise that up to the admin ceiling; regular users use the user pair. Raising the user ceiling above the admin pair lifts the admin pair to match (admins never get fewer apps than users); lowering it does not.
   Also the user and admin volume ceilings and volumes platform-wide.
 - **Backups**: backup storage per app (Default: what each app gets; Ceiling `backup_override_max_bytes_per_app`, default
   10 GiB: the most an admin can set on one app, also bounded by the platform total), platform total (Ceiling only), backups
@@ -357,6 +384,7 @@ How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) qu
 (at most `BACKUP_MAX_CONCURRENT`, one dump per DB server at a time). The Job gets an ephemeral Secret (the app's own DB
 user, repo URL and password, the bucket key), runs `mariadb-dump` or `pg_dump` into `restic backup --stdin`, then
 `restic forget --prune` with the retention below, and the platform deletes the Job and Secret once it records the result.
+A package download's `MANIFEST.json` records `image: {url, tag, digest}` of the app as it was when the backup was taken (null for backups made before this was recorded).
 Each app has its own restic repository per kind (`<BACKUP_PREFIX>apps/<app id>/db` and `.../bucket`) and a random password stored encrypted in the
 platform database (rotated with `FERNET_KEY`; if you lose the key and the database the backups are unreadable).
 

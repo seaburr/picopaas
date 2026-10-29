@@ -15,7 +15,11 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-None right now.
+- **Approve a bootstrap run to republish the backup image and re-pin BACKUP_IMAGE (2026-10-28).** images/backup/picopaas-backup.sh now writes the app image (url/tag/digest) into the package MANIFEST.json; the new image needs a bootstrap run to publish, then BACKUP_IMAGE re-pinned. Until then manifests simply lack `image`. Reply "approved" and I run it.
+- **Sign in with Google (design: docs/design/google-signin.md; effort M, not massive).** When you want it built: create a Google Cloud
+  project, an OAuth consent screen (External; openid/email/profile; publish to Production), and a Web OAuth client with redirect
+  `https://platform.picopaas.xyz/api/auth/google/callback`. Give me the secret names you used and add client id/secret as repo + k8s secrets.
+  Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
 

@@ -1,0 +1,11 @@
+# Sign in with Google (OIDC) design, 2026-10-28
+
+Effort: M (~1.5-2 days). Code is ~200 lines; slow part is the Google Cloud client setup (Chas).
+**Backend**: `app/providers/oidc.py` interface (`authorize_url(state, nonce)`, `exchange(code)->Claims{sub,email,email_verified}`), Google impl (httpx + id_token verify: signature, iss, aud, exp, nonce) and `FakeOidc` in providers/fake.py; `app/routers/oauth.py`: `GET /auth/google/start` (state+nonce+PKCE in a 10-min signed HttpOnly SameSite=Lax cookie, redirect), `GET /auth/google/callback` (constant-time state check, require email_verified, lookup by google_sub then lowercase email, session cookie, fixed redirect to `/`).
+**Model**: nullable unique `users.google_sub`; nullable `password_hash` (login handles None -> 401; change_password becomes "set password"); migration.
+**Linking (takeover risk)**: platform never verifies email, so an attacker could pre-register victim@x.com with a password. Rule: never silently link to an existing password account; require a password-authenticated "Link Google" from /account, or rotate/clear the password when linking. New Google users go through create_user(password=None): first user admin, later users `pending` (approval-gated), ToS recorded, ratelimit.check_register. Suspended/deleted checks same as login.
+**Config**: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (k8s Secret/GitHub secret), GOOGLE_REDIRECT_URI (exact match), optional GOOGLE_ALLOWED_HD; off when unset; `features.google_login` flag exposed.
+**Frontend**: "Continue with Google" on Login/Register (plain link, flag-gated), `?error=` display, Account link/unlink + set password.
+**Tests**: new-user pending, first-user admin, link flow, unverified email rejected, bad state/nonce, expired state, suspended blocked, password-less 401, duplicate sub, pre-registration takeover.
+**Pentest**: unverified-email linking, pre-registration takeover, open redirect, state replay, PKCE, sub as identity, generic errors.
+**Chas to-do**: Google Cloud project, OAuth consent screen (External, openid/email/profile, publish to Production), Web client with redirect `https://platform.picopaas.xyz/api/auth/google/callback`, hand over client id/secret as secrets.

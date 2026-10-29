@@ -20,6 +20,16 @@ everywhere a user is accepted except where marked "session only".
 | GET | `/templates` | active |
 | POST, GET | `/apps`, `/apps` | active |
 | POST | `/apps/spec` | active |
+| POST | `/apps/{app_id}/move` | project owner of both projects |
+| POST, GET | `/projects`, `/projects` | active |
+| GET, PATCH, DELETE | `/projects/{project_id}` | member (PATCH, DELETE: project owner) |
+| GET | `/projects/{project_id}/members` | member |
+| PATCH, DELETE | `/projects/{project_id}/members/{user_id}` | project owner, session only (DELETE of yourself = leave) |
+| POST | `/projects/{project_id}/leave` | member, session only |
+| POST, GET | `/projects/{project_id}/invites`, `/projects/{project_id}/invites` | project owner (POST: session only) |
+| DELETE | `/projects/{project_id}/invites/{invite_id}` | project owner, session only |
+| POST | `/invites/{token}/accept` | active, session only, rate limited |
+| GET, PATCH | `/admin/projects`, `/admin/projects/{project_id}` | admin (PATCH sets the project's app limit) |
 | GET, PATCH, DELETE | `/apps/{app_id}` | owner |
 | POST | `/apps/{app_id}/rotate-credentials` | owner |
 | PUT, DELETE | `/apps/{app_id}/domain` | owner |
@@ -86,6 +96,7 @@ The web UI and the API share the same host. When scripting, request JSON and do 
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/healthz` | public | `{"status": "ok"}` |
+| GET | `/metrics` | `Authorization: Bearer $METRICS_TOKEN` (env, for a Prometheus scraper) or a platform-admin browser session; anyone else gets 404 | Prometheus text format: `picopaas_http_requests_total{method,path,status}` and `picopaas_http_request_duration_seconds` (histogram) and `picopaas_http_requests_in_flight` (`path` is the route template, e.g. `/apps/{app_id}`; unknown URLs are `unmatched`); gauges `picopaas_users`, `picopaas_apps`, `picopaas_database_servers{type="mysql"\|"psql"}`, `picopaas_volumes`, `picopaas_blob_storage_buckets`, `picopaas_databases`, `picopaas_cluster_nodes` (from the cached Health snapshot; 0 while warming), `picopaas_cluster_nodes_max` (`MAX_NODES`, 0 when unset). Per process (each replica reports its own HTTP counters). |
 
 ## Auth (`/auth`)
 
@@ -152,7 +163,9 @@ detached, delete the app instead); an app with replicas above 1 can't get a volu
 (409, also on `PUT /admin/apps/{id}/replicas`); when the platform already holds `VOLUMES_MAX_TOTAL` volumes, adding one is 409.
 A volume app rolls with the `Recreate` strategy, so each deploy has a short gap. Changing the size or mount path re-deploys. `platform_subdomain` / `platform_host` are an admin-assigned fixed label and its full host (for example `blog.picopaas.xyz`), or null; the generated `hostname` keeps working. `db_engine` is only meaningful when `want_db` is true.
 `custom_domain` is null when none is attached, else `{host, status (pending|active|error), verified_at, error, challenge_host, challenge_token, cname_target}` — the last three are the DNS records the user must create. `status_detail` is a sentence for people; `status_reason` is a machine code for `error` (for example `image_pull`, `crash_loop`, `oom`, `not_ready`, `disk`, `timeout`, `root_image`, `config`, `quota`, `env_invalid`, `unreadable_secrets`, `db_capacity`, `db_failed`, `storage_failed`, `unknown`); it is null unless `status` is `error`.
-`quota` is `{db, storage, volume}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, blob storage every 5 min), no live calls. `volume` is the measured used bytes of the persistent volume (`df` of the mount, taken by a tiny `MODE=stat` Job about every 15 min and by every volume backup; limit = volume size); null when there is no volume or it has not been measured yet. `last_event` is `{at, kind, message}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old, else null. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
+`quota` is `{db, storage, volume}`, each `{size_bytes, limit_bytes, over_quota}` or null when the app has no such resource; it comes from the last quota poll (DB every 60s, blob storage every 5 min), no live calls. `volume` is the measured used bytes of the persistent volume (`df` of the mount, taken by a tiny `MODE=stat` Job about every 15 min and by every volume backup; limit = volume size); null when there is no volume or it has not been measured yet. `last_event` is `{id, at, kind, message, dismissed_at}` for the newest restart event (`disk`, `evicted`, `oom`, `crashed`) if it is under 24 hours old and not dismissed, else null. `uptime_seconds` (only `GET /apps/{id}`, else null) is the longest uptime of the app's current Running pods (seconds since the container started), null when no pod runs. `image_update_error` is null once the owner dismissed it, until a different error is recorded.
+
+Alert dismissal (owner only; 404 for anyone else): `POST /apps/{id}/alerts/{kind}/dismiss` with `kind` = `event` (hides the current `last_event`) or `image_update` (hides `image_update_error`); returns the app. A dismissal lasts until a NEW occurrence (a new restart event, or a different update error). Per-event variants: `POST` / `DELETE /apps/{id}/events/{event_id}/dismiss` dismiss / restore one event and return it; `GET /apps/{id}/events` items carry `id` and `dismissed_at`. `GET /apps/{id}/logs` also returns `uptime_seconds` and per-pod `pod_info[].started_at` / `uptime_seconds`. `retry_at` is when an app in `error` will next be retried (or null). `resources` is
 `{cpu_request_m, cpu_limit_m, mem_request_mi, mem_limit_mi, ephemeral_limit_mi, db_max_connections, db_quota_mb,
 storage_quota_mb, image_size_mb, egress_mbit, overridden, exceeds_platform_caps, defaults}`: the effective per-app values (platform
 defaults unless an administrator overrode them) and `defaults`, the platform default of each field for this app's DB engine.
@@ -240,6 +253,43 @@ values given for undeclared secrets, missing secret values, trying to remove a d
 app, trying to change the `resources.db_engine` of an existing app, removing `resources.volume` from an app that has one, an invalid volume request (see `POST /apps`; 409 when out of volume capacity), or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
+## Projects (`/projects`, `/invites`, active)
+
+Every account has a **personal project** (created at signup; cannot be shared, renamed or deleted). Shared projects let
+several people manage the same apps. "Owner" in the app routes below means any member of the app's project. Non-members get 404 for
+everything about a project, so ids cannot be probed; a member lacking the owner role gets 403 on owner-only actions.
+API keys act as the user, membership is checked on every request (remove someone and their keys lose access at once), and
+keys cannot manage members (session only: invites, role changes, removal, leave, accept).
+
+`Project`: `id, name, slug, is_personal, role` (the caller's: `owner` | `member`)`, member_count, app_count, app_limit` (admin
+override or null)`, app_limit_effective, created_at`. `Member`: `user_id, email, role, added_at`. `Invite`: `id, email, role,
+created_at, expires_at`; the create response adds `token` (shown once) and `path` (`/invite/<token>`).
+
+| Method | Path | Body | Response / notes |
+|---|---|---|---|
+| POST | `/projects` | `{"name"}` (1 to 80) | 201 `Project`, caller is owner. 403 past `MAX_PROJECTS_PER_USER` owned shared projects. Audit `project.create`. |
+| GET | `/projects` | none | The caller's projects, personal first. |
+| GET, PATCH | `/projects/{id}` | PATCH `{"name"}` (owner) | `Project`. 409 for a personal project. |
+| DELETE | `/projects/{id}` | none | 204, owner. 409 while the project has apps or if personal. Audit `project.delete`. |
+| GET | `/projects/{id}/members` | none | List of `Member`. |
+| PATCH | `/projects/{id}/members/{user_id}` | `{"role": "owner"\|"member"}` | `Member`. 409 if it would leave no owner. Audit `project.role_change`. |
+| DELETE | `/projects/{id}/members/{user_id}` | none | 204. Owners remove anyone; a member may remove only themselves. 409 for the last owner. Audit `project.remove`. |
+| POST | `/projects/{id}/leave` | none | 204, same as removing yourself. |
+| POST | `/projects/{id}/invites` | `{"email"?, "role"? = "member"}` | 201 invite with `token`. Without `email` it is a link any logged-in, approved account can use. 409 if that email is already a member; 403 past `MAX_PENDING_INVITES_PER_PROJECT`. No email is sent: share the link. Audit `project.invite`. |
+| GET | `/projects/{id}/invites` | none | Open (unexpired, unused, unrevoked) invites, no tokens. |
+| DELETE | `/projects/{id}/invites/{invite_id}` | none | 204. Audit `project.invite_revoke`. |
+| POST | `/invites/{token}/accept` | none | `Project`. Token is single use and expires after 7 days (410 when used, expired or revoked; 404 unknown). Pending and suspended accounts get 403. An email-bound invite needs that account (403 otherwise); 409 if already a member; 403 if the project has `MAX_PROJECT_MEMBERS`. 429 after `INVITE_ACCEPT_MAX` attempts per user or IP per hour. The token is stored only as a SHA-256 hash. Audit `project.join`. |
+
+Project audit entries carry `project=<id>` in `detail`.
+
+Apps: `POST /apps` and `POST /apps/spec` take an optional project (`project_id` / the spec's `project:` slug; default is your personal
+project, 404 if you are not a member). Each project has its own active-app limit: a personal project uses your account limit
+(`app_limit_effective`), a shared one uses `PROJECT_DEFAULT_APP_LIMIT` or the admin override, never above `MAX_APPS_PER_USER`. `GET /apps` lists
+every app you can manage; `?project_id=` narrows it (404 for non-members). `App` now includes `project_id`. `POST /apps/{id}/move` with
+`{"project_id"}` needs the owner role in both projects, respects the target's app limit, 409 on a name clash (audit `app.move`).
+`POST /apps/spec` also accepts `project` in the body (the CLI's `--project`); if the spec has `project:` too they must agree (422).
+Without either, the spec targets your personal project.
+
 ## Backups (`/apps/{app_id}/backups`, owner or admin)
 
 Off unless the administrator enabled `BACKUPS_ENABLED` (see ADMIN_GUIDE). Covers the app's database (`db`), blob storage bucket (`bucket`) and
@@ -296,6 +346,11 @@ Admins can also read and operate on any app through the `/apps/{app_id}/...` rou
 | DELETE | `/admin/users/{user_id}` | none | 204. Revokes their API keys and deletes their apps. 400 for any administrator (demote first); 409 for the last active administrator. |
 
 All user routes return 404 for an unknown or deleted user. Each action is audited.
+Suspending or deleting a user only affects their personal-project apps; apps in shared projects keep running. Deleting a user
+is refused (409) while they are the only owner of a shared project that still has apps. If they are the only owner of an empty project, the project is deleted.
+
+`AdminProject`: `id, name, slug, is_personal, app_count, member_count, owner_emails, app_limit, app_limit_effective`.
+`GET /admin/projects` lists shared projects; `PATCH /admin/projects/{id}` `{"app_limit": int >= 0 | null}` sets the limit (422 above `max_apps_per_user`, null = default; 409 for personal projects, which follow the user's limit). Audit `project.update`.
 
 ### Apps
 
@@ -373,6 +428,7 @@ with_storage, by_db_engine{mysql, postgres}}`. The cluster snapshot is cached ab
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/admin/health/backups?days=7` | `{enabled, configured, days, storage{used_bytes, cap_bytes, used_pct, apps_with_backups, over_cap, top_apps[{app_id, name, owner_email, deleted, purge_after (ISO, deleted apps only, else null), repo_bytes, db_bytes, volume_bytes, bucket_bytes, cap_bytes, full, admin_disabled}], warning, note}, failures[{run_id, app_id, app_name, app_deleted, owner_email, kind (db/bucket/volume), trigger, status, error, at, still_failing}], stuck[{... same fields, age_seconds}], sweeper{last_run_at, cleaned{counts by type}, errors[], orphan_repos[app ids]}}`. `sweeper` is the last orphan-sweep result (`last_run_at` null until the first sweep). `days` 1 to 30. Failures skip deleted apps; purged or empty deleted apps are left out of `top_apps`. Sizes are the repository sizes recorded by each app's last backup (deduplicated; excludes download exports and bucket overhead). `still_failing` is false once a newer backup of that app and kind succeeded. |
+| POST | `/admin/health/backups/platform-db/run` | Queue a backup of the platform's own database now (browser session; 202 `{run_id, status}`; 409 when not active or one is running). The same response of `GET /admin/health/backups` has `platform_db{enabled, active, interval_hours, keep{daily, weekly, monthly}, last_success_at, repo_bytes, stale, runs[{id, trigger, status, error, created_at, finished_at, bytes_added, repo_bytes, snapshot_id}]}` (newest 10). |
 | GET | `/admin/health/logs/pods` | `{namespaces[], pods[{namespace, name, phase, ready, restarts, containers[]}]}`: pods in platform namespaces, discovered from the cluster (every namespace except `app-*`, `kube-*` and `default`). |
 | GET | `/admin/health/logs?namespace=&pod=&container=&tail=200&since_seconds=&previous=false` | `{namespace, pod, container, previous, lines[], truncated}`. `tail` 1 to 2000, `since_seconds` 1 to 604800, output capped at 512 KiB (newest kept). |
 | GET | `/admin/health/logs/download?...` | Same query, `tail` up to 10000 (default 10000), capped at 5 MiB; `text/plain` attachment. Audited as `platform_logs.download` (namespace/pod, container, line count; never the content). |
@@ -395,6 +451,8 @@ replicas within about 5 seconds. Every change is audit-logged (`settings.update`
 |---|---|---|---|
 | GET | `/admin/settings` | | `{groups: [{name, settings: [{key, label, description, type ("int"/"bool"), unit, value, default, overridden, min, max, ceiling_key, default_key, row, row_label, column ("default"/"ceiling"), updated_at, updated_by}]}]}`. One Settings row per tunable: settings sharing a `row` are a Default/Ceiling pair (`ceiling_key` on the default, `default_key` on the ceiling); single-value settings have one column (rate limits and toggles under Default, pure bounds such as platform totals under Ceiling). Groups: Per-app limits, Accounts and volumes, Backups. |
 | PUT | `/admin/settings` | `{settings: {key: value-or-null, ...}}` | Partial update; `null` resets that key to its default. Same shape as GET. 422 (string `detail`) for unknown keys, wrong type, out of `min`/`max`, or a broken rule (`default_*` <= its ceiling, e.g. `default_cpu_limit_m` <= `cpu_limit_max_m`; `cpu_limit_max_m` <= 1500 m and `mem_limit_max_mi` <= 2560 MiB, the node size caps, env `NODE_CPU_CAP_M`/`NODE_MEM_CAP_MI`; `volume_max_gi` <= `override_volume_max_gi`, `default_app_limit` <= `max_apps_per_user`, `admin_default_app_limit` <= `max_apps_per_admin`, `backup_max_bytes_per_app` <= `backup_override_max_bytes_per_app` and `backup_max_bytes_total`). Nothing is saved on error. |
+
+Raising `max_apps_per_user` also raises `max_apps_per_admin` and `admin_default_app_limit` to at least the new value (admins never get fewer apps than users); lowering it leaves them alone.
 
 Lowering a ceiling doesn't change values already set on apps; it limits future changes.
 
