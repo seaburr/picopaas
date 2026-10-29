@@ -108,7 +108,7 @@ def test_summary_stale_when_old_success(pdb, db_session):
     db_session.add(models.PlatformBackupRun(trigger="scheduled", status="succeeded", created_at=T0 - timedelta(days=30),
                                             finished_at=T0 - timedelta(days=30), repo_bytes=1))
     db_session.commit()
-    s = platform_backup.summary(db_session)
+    s = platform_backup.summary(db_session, now=T0)
     assert s["stale"] is True and s["last_success_at"]
 
 

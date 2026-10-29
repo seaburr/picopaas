@@ -92,7 +92,7 @@ def test_platform_backup_cycle_and_retention_env(pdb, db_session):
     assert spec.name in backups.active_jobs(db_session)  # the secret sweep must not delete it
     runner.finish(spec.name, {"snapshot_id": "aa11", "bytes_added": 10, "repo_bytes": 99})
     backups.tick(db_session, runner, t0 + timedelta(minutes=1))
-    s = platform_backup.summary(db_session)
+    s = platform_backup.summary(db_session, now=t0 + timedelta(minutes=2))
     assert s["runs"][0]["status"] == "succeeded" and s["repo_bytes"] == 99 and s["last_success_at"] and not s["stale"]
     backups.tick(db_session, runner, t0 + timedelta(hours=2))
     assert len(runner.started) == 1  # not due yet

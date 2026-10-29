@@ -188,13 +188,13 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt is not None else None
 
 
-def summary(session: Session, limit: int = 10) -> dict[str, Any]:
-    """Admin Health > Backups block."""
+def summary(session: Session, limit: int = 10, now: datetime | None = None) -> dict[str, Any]:
+    """Admin Health > Backups block. `now` (naive UTC) is for tests; default is the wall clock."""
     runs = session.execute(select(models.PlatformBackupRun).order_by(models.PlatformBackupRun.id.desc()).limit(limit)).scalars().all()
     ok = next((r for r in runs if r.status == "succeeded"), None) or session.execute(
         select(models.PlatformBackupRun).where(models.PlatformBackupRun.status == "succeeded")
         .order_by(models.PlatformBackupRun.id.desc()).limit(1)).scalar()
-    stale = ok is None or datetime.now(timezone.utc).replace(tzinfo=None) - backups._naive(ok.finished_at or ok.created_at) > timedelta(
+    stale = ok is None or backups._now(now) - backups._naive(ok.finished_at or ok.created_at) > timedelta(
         hours=config.PLATFORM_BACKUP_INTERVAL_HOURS * 1.5 + 1)
     return {
         "enabled": config.PLATFORM_BACKUP_ENABLED, "active": active(), "interval_hours": config.PLATFORM_BACKUP_INTERVAL_HOURS,

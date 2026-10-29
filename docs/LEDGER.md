@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [backend] DONE: CI red was not flaky: platform_backup.summary() judged staleness by wall clock while the test's backup finished at a fixed 2026-10-28 time, so it went red once that was >37h old. summary() takes now= (default wall clock, via backups._now); tests pass it. Full suite 1794 passed/63 skipped.
 - 2026-10-29 [scm-security] DONE: pushed d282d81 (frontend: projects discoverable for personal-only users); gitleaks clean, typecheck+build green. Image 40936030438 and deploy 40936168789 success; platform /healthz 200. BLOCKED (backend): CI 40936030577 failed backend-tests, tests/test_backend_2026_10_28.py:96 (assert 'succeeded' == ...), frontend-only diff so likely flaky/time-dependent. Pushed without security review.
 - 2026-10-29 [frontend-dev] START: Projects discoverability (Chas: personal-only user can't see or create projects). Switcher always shown, Project picker on new-app form always shown, apps list says which project.
 - 2026-10-29 [scm-security] DONE: Kaisen Settings > Output commit 0ebbfe3 pushed to seaburr/kaisen (55 tests, gitleaks clean); release run 40933955773 (result in report). Picopaas ledger docs-only commit follows; pushed without security review.
