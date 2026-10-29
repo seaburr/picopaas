@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: pushed 2e9705d (backend+tests), d31c25d (frontend), 694f3ae (docs). gitleaks clean per commit; pytest 1793 passed/63 skipped; typecheck+build green. CI 40862306907, image 40862306956, deploy 40862386880 all success; platform /healthz 200. Pushed without security review of lock change (see lock review line).
 - 2026-10-29 [scm-security] DONE (lock review): lock_project = single-row SELECT FOR UPDATE, always taken before other writes; app-limit/accept/last-owner each lock one project, so no cycle among them. CONCERN (LOW): admin delete_user locks several projects in membership order (not sorted by id); two concurrent deletes of users sharing 2+ projects could take them in opposite order -> MySQL deadlock (InnoDB aborts one, 500, retryable). Fix: iterate sorted(shared, key=project_id). Owner: backend.
 - 2026-10-29 [manager] DONE: ~/source/kaisen created (outside this repo): 12 generic agents, process/WAVE.md, templates (BRIEF, CLAUDE, QUESTIONS, LEDGER, request, githook, secrets policy), README (planned parts marked), LESSONS.md; git init only, no commit/remote. Nothing in picopaas touched except this line.
 - 2026-10-29 [manager] START: extract reusable factory kit to ~/source/kaisen.
