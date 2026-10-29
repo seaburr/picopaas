@@ -1,0 +1,112 @@
+# Static 503 pages served by Traefik's `errors` middleware, independent of the API pod.
+# Pages live in deploy/error-pages/*.html; the ConfigMap `error-pages` is created from them by deploy.yml
+# (kubectl create configmap --from-file ... | kubectl apply). docs/OPERATIONS.md "Custom 503 page".
+# platform.html: attached to the platform/apex Ingresses (deploy/platform/ingress.yaml annotation).
+# app.html: for tenant app hosts (phase 2, not wired yet; see OPERATIONS.md).
+# busybox httpd, non-root, read-only rootfs, no ServiceAccount token, ~2m CPU / 4Mi RAM per replica.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: error-pages
+  namespace: picopaas-system
+  labels:
+    app: error-pages
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: error-pages
+  template:
+    metadata:
+      labels:
+        app: error-pages
+    spec:
+      priorityClassName: picopaas-platform
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: error-pages
+      containers:
+        - name: httpd
+          image: busybox:1.37.0
+          command: ["httpd", "-f", "-v", "-p", "8080", "-h", "/www"]
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          readinessProbe:
+            httpGet:
+              path: /platform.html
+              port: http
+            periodSeconds: 10
+          volumeMounts:
+            - name: pages
+              mountPath: /www
+              readOnly: true
+      volumes:
+        - name: pages
+          configMap:
+            name: error-pages
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: error-pages
+  namespace: picopaas-system
+spec:
+  selector:
+    app: error-pages
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Referenced from an Ingress as: traefik.ingress.kubernetes.io/router.middlewares: picopaas-system-error-pages-platform@kubernetescrd
+# `errors` replaces a 502/503/504 produced anywhere downstream (including Traefik's own "no available server"
+# when the API has no ready pods) with the static page, keeping the status code.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: error-pages-platform
+  namespace: picopaas-system
+spec:
+  errors:
+    status: ["502-504"]
+    query: /platform.html
+    service:
+      name: error-pages
+      port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: error-pages-app
+  namespace: picopaas-system
+spec:
+  errors:
+    status: ["502-504"]
+    query: /app.html
+    service:
+      name: error-pages
+      port: 80

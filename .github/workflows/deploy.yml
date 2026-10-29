@@ -95,5 +95,11 @@ jobs:
           sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" \
               -e "s#picopaas.io/env-checksum: .*#picopaas.io/env-checksum: \"$envsum\"#" \
               deploy/platform/deployment.yaml | kubectl apply -f -
+          # Static 503 pages + Traefik errors Middlewares. MUST precede ingress.yaml: an Ingress that references a
+          # missing Middleware loses its router (404), not just the error page.
+          kubectl -n picopaas-system create configmap error-pages \
+            --from-file=platform.html=deploy/error-pages/platform.html --from-file=app.html=deploy/error-pages/app.html \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f deploy/error-pages/error-pages.yaml
           kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
           kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s

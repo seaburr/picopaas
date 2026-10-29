@@ -7,6 +7,9 @@ kind: Ingress
 metadata:
   name: picopaas
   namespace: picopaas-system
+  annotations:
+    # Static 503 page from deploy/error-pages when the API has no ready pods (works with the API down).
+    traefik.ingress.kubernetes.io/router.middlewares: picopaas-system-error-pages-platform@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
