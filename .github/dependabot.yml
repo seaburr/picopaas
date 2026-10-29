@@ -14,6 +14,10 @@ updates:
     schedule: { interval: weekly, day: monday }
     groups:
       frontend: { patterns: ["*"], update-types: [minor, patch] }
+    ignore:
+      # vue-tsc 3 does not work with TypeScript 7 (ERR_PACKAGE_PATH_NOT_EXPORTED './lib/tsc'); revisit when vue-tsc supports it
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
