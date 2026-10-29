@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import ConfirmDialog from './ConfirmDialog.vue'
 import CopyButton from './CopyButton.vue'
 import DeleteAppDialog from './DeleteAppDialog.vue'
+import { moveApp } from '../api/projects'
+import { useProjectsStore } from '../stores/projects'
 import { clearCustomDomain, rotateCredentials, setCustomDomain, verifyCustomDomain } from '../api/apps'
 import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -19,6 +21,32 @@ const router = useRouter()
 const store = useAppsStore()
 const auth = useAuthStore()
 const toast = useToastStore()
+const projects = useProjectsStore()
+
+// Move to another project: needs the owner role in both.
+const fromProject = computed(() => projects.projects.find((p) => p.id === app.value.project_id) ?? null)
+const moveTargets = computed(() => projects.projects.filter((p) => p.role === 'owner' && p.id !== app.value.project_id))
+const canMove = computed(() => fromProject.value?.role === 'owner' && moveTargets.value.length > 0)
+const moveTo = ref<number | null>(null)
+const moving = ref(false)
+const moveError = ref('')
+async function onMove() {
+  if (moveTo.value === null) return
+  moving.value = true
+  moveError.value = ''
+  try {
+    const a = await moveApp(app.value.id, moveTo.value)
+    const target = projects.projects.find((p) => p.id === moveTo.value)
+    moveTo.value = null
+    setApp(a)
+    projects.load()
+    toast.success(`Moved to ${target?.is_personal ? 'Personal' : (target?.name ?? 'the project')}.`)
+  } catch (e) {
+    moveError.value = e instanceof ApiError ? e.message : "Couldn't move the app."
+  } finally {
+    moving.value = false
+  }
+}
 
 // Local view of the app; actions replace it and notify the parent.
 const app = ref<App>(props.app)
@@ -225,7 +253,7 @@ const suspended = computed(() => app.value.status === 'suspended')
               <div v-if="cdom.status !== 'active'" class="rounded-md border border-pico-border bg-pico-card p-3 text-sm">
                 <p class="mb-2 text-zinc-300">Create these two DNS records at your domain provider, then verify:</p>
                 <div class="overflow-x-auto">
-                  <table class="w-full min-w-[32rem] text-left text-xs">
+                  <table class="w-full min-w-lg text-left text-xs">
                     <caption class="sr-only">DNS records to create</caption>
                     <thead class="meta">
                       <tr>
@@ -251,7 +279,7 @@ const suspended = computed(() => app.value.status === 'suspended')
                 <p v-if="isApex" class="mt-2 text-xs text-zinc-400">
                   This is a root (apex) domain. Many DNS providers don't allow a CNAME at the root; use an ALIAS or ANAME record, or CNAME flattening, if your provider offers it.
                 </p>
-                <p v-if="cdom.error" role="alert" class="mt-2 break-words text-amber-300">We can't see the TXT record yet. DNS can take a few minutes.</p>
+                <p v-if="cdom.error" role="alert" class="mt-2 wrap-break-word text-amber-300">We can't see the TXT record yet. DNS can take a few minutes.</p>
                 <p class="mt-2 text-xs text-zinc-400">
                   We re-check every 20 seconds for a few minutes. DNS changes usually land within minutes but can take up to 48 hours,
                   so if it doesn't verify yet, come back and click Verify DNS.
@@ -280,7 +308,21 @@ const suspended = computed(() => app.value.status === 'suspended')
               </div>
             </form>
             <p v-if="app.platform_host" class="help mt-2 break-all">Currently <span class="mono">{{ app.platform_host }}</span></p>
-            <p v-if="subError" id="sub-err" role="alert" class="field-error mt-2 break-words">{{ subError }}</p>
+            <p v-if="subError" id="sub-err" role="alert" class="field-error mt-2 wrap-break-word">{{ subError }}</p>
+          </section>
+
+          <section v-if="canMove" class="card card-pad" aria-labelledby="h-move">
+            <h2 id="h-move" class="section-title mb-1">Project</h2>
+            <p class="help mt-0! mb-2">Currently in {{ fromProject?.is_personal ? 'Personal' : fromProject?.name }}. Moving keeps the URL, data and credentials.</p>
+            <form class="flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="onMove">
+              <label for="move-to" class="sr-only">Move to project</label>
+              <select id="move-to" v-model="moveTo" class="input sm:max-w-xs">
+                <option :value="null" disabled>Move to…</option>
+                <option v-for="p in moveTargets" :key="p.id" :value="p.id">{{ p.is_personal ? 'Personal' : p.name }}</option>
+              </select>
+              <button type="submit" class="btn-secondary" :disabled="moveTo === null || moving || suspended" :aria-busy="moving">{{ moving ? 'Moving…' : 'Move app' }}</button>
+            </form>
+            <p v-if="moveError" role="alert" class="field-error mt-2 wrap-break-word">{{ moveError }}</p>
           </section>
 
           <!-- Extra settings sections go in this slot; the Danger zone must stay the last element. -->

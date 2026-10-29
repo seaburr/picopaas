@@ -2,7 +2,7 @@ import type { App, AppEvent, MetricsHistory, ImageVersion, AppCreatePayload, App
 import { apiFetch, downloadFile } from './client'
 
 // Matches app/routers/apps.py exactly (prefix "/apps").
-export const listApps = () => apiFetch<App[]>('/apps')
+export const listApps = (projectId?: number | null) => apiFetch<App[]>(projectId ? `/apps?project_id=${projectId}` : '/apps')
 
 export const getApp = (id: number) => apiFetch<App>(`/apps/${id}`)
 
@@ -88,3 +88,6 @@ export const clearCustomDomain = (id: number) =>
 
 export const downloadPodEvents = (id: number, pod: string) =>
   downloadFile(`/apps/${id}/pods/${encodeURIComponent(pod)}/events`, `${pod}-events.txt`)
+
+// Dismiss an alert on the app health page. Shape is provisional until the backend endpoint lands (see ledger).
+export const dismissAlert = (id: number, kind: string) => apiFetch<App>(`/apps/${id}/alerts/${encodeURIComponent(kind)}/dismiss`, { method: 'POST' })

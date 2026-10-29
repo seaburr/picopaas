@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppNotFound from '../components/AppNotFound.vue'
+import IconButton from '../components/IconButton.vue'
+import { HeartPulse } from 'lucide-vue-next'
 import BackupSettings from '../components/BackupSettings.vue'
 import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
@@ -14,6 +17,7 @@ import { SAMPLE_APP, primaryHost } from '../composables/appUi'
 import { envKeyError } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
+import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import type { App, EnvVar } from '../types'
 
@@ -23,6 +27,12 @@ const route = useRoute()
 const store = useAppsStore()
 const auth = useAuthStore()
 const toast = useToastStore()
+const projects = useProjectsStore()
+const projectId = ref<number | null>(null) // new apps only; null = backend default (personal)
+onMounted(async () => {
+  if (!projects.loaded) await projects.load()
+  projectId.value = projects.current?.id ?? null
+})
 
 const isEdit = computed(() => props.id !== undefined)
 const appId = computed(() => (props.id !== undefined ? Number(props.id) : null))
@@ -115,6 +125,7 @@ const imageError = computed(() => {
   if (fieldErrors.value.image) return fieldErrors.value.image
   return error.value.toLowerCase().startsWith('image') ? error.value : ''
 })
+const gone = computed(() => isEdit.value && !loading.value && !loadedApp.value)
 const formError = computed(() => (error.value && !error.value.toLowerCase().startsWith('image') ? error.value : ''))
 
 const templateNote = ref<{ name: string; notes: string } | null>(null)
@@ -294,6 +305,7 @@ async function onSubmit() {
     } else {
       const app = await store.create({
         name: form.name.trim(),
+        ...(projectId.value !== null ? { project_id: projectId.value } : {}),
         image: form.image.trim(),
         port,
         want_db: form.want_db,
@@ -333,17 +345,17 @@ async function onSubmit() {
     <NavBar />
 
     <main id="main" tabindex="-1" :class="['mx-auto px-4 py-4', isEdit ? 'max-w-6xl sm:px-6' : 'max-w-2xl sm:px-6']">
-      <nav v-if="isEdit" class="meta mb-2" aria-label="Breadcrumb">
+      <nav v-if="isEdit && !gone" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
         <RouterLink v-if="loadedApp" :to="`/apps/${loadedApp.id}`" class="link">{{ loadedApp.name }}</RouterLink>
         <span aria-hidden="true"> / </span>Settings
       </nav>
-      <nav v-else class="meta mb-2" aria-label="Breadcrumb">
+      <nav v-else-if="!isEdit" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
-      <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+      <div v-if="!gone" class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : 'New app' }}</h1>
@@ -355,7 +367,7 @@ async function onSubmit() {
             <RouterLink to="/templates" class="link">Browse templates</RouterLink>
           </p>
         </div>
-        <RouterLink v-if="isEdit && loadedApp" :to="`/apps/${loadedApp.id}`" class="btn-secondary">App health</RouterLink>
+        <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" :to="`/apps/${loadedApp.id}`" />
       </div>
 
       <p v-if="templateNote" class="alert-info mb-3">
@@ -365,7 +377,7 @@ async function onSubmit() {
       <div v-if="templateSecrets.length" class="alert-info mb-3 text-sm">
         <strong class="font-medium">Set these secrets in Environment variables before creating:</strong>
         <ul class="mt-1 list-disc space-y-0.5 pl-5">
-          <li v-for="sec in templateSecrets" :key="sec.key" class="min-w-0 break-words">
+          <li v-for="sec in templateSecrets" :key="sec.key" class="min-w-0 wrap-break-word">
             <span class="mono">{{ sec.key }}</span>: {{ sec.hint }}
           </li>
         </ul>
@@ -389,10 +401,7 @@ async function onSubmit() {
 
       <div v-else-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
 
-      <div v-else-if="isEdit && !loadedApp" role="alert" class="alert-error">
-        {{ error || "Couldn't load this app." }}
-        <RouterLink to="/apps" class="link ml-1">Back to apps</RouterLink>
-      </div>
+      <AppNotFound v-else-if="isEdit && !loadedApp" />
 
       <template v-else>
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
@@ -415,6 +424,16 @@ async function onSubmit() {
             />
             <p v-if="fieldErrors.name" class="field-error" role="alert">{{ fieldErrors.name }}</p>
             <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
+          </div>
+
+          <div v-if="!isEdit && projects.hasShared">
+            <label for="f-project" class="label">Project</label>
+            <select id="f-project" v-model="projectId" class="input">
+              <option v-for="p in projects.projects" :key="p.id" :value="p.id">
+                {{ p.is_personal ? 'Personal' : p.name }} ({{ p.app_count }} of {{ p.app_limit_effective }} apps)
+              </option>
+            </select>
+            <p class="help">Everyone in the project can manage this app.</p>
           </div>
 
           <div>
@@ -460,7 +479,7 @@ async function onSubmit() {
               inputmode="numeric"
               aria-describedby="f-port-help"
               :aria-invalid="!!fieldErrors.port || undefined"
-              class="input mono !w-32"
+              class="input mono w-32!"
               @input="onField('port')"
               @blur="fieldErrors = { ...fieldErrors, port: portError() }"
             />
@@ -475,7 +494,7 @@ async function onSubmit() {
                 <input v-model="form.want_db" type="checkbox" :disabled="isEdit || dbOff" class="check mt-0.5" />
                 <span>
                   Database <span class="text-zinc-400">({{ dbLabel }})</span>
-                  <span v-if="dbOff && !isEdit" class="help block !mt-0">Databases aren't available right now.</span>
+                  <span v-if="dbOff && !isEdit" class="help block mt-0!">Databases aren't available right now.</span>
                 </span>
               </label>
               <fieldset v-if="form.want_db" class="ml-6 flex gap-4" role="radiogroup" aria-label="Database engine">
@@ -490,14 +509,14 @@ async function onSubmit() {
                   />
                   <span :class="{ 'text-zinc-500': !eng.available && !isEdit }">{{ eng.label }}</span>
                 </label>
-                <span v-if="isEdit" class="help !mt-0 self-center">Engine can't be changed after creation.</span>
+                <span v-if="isEdit" class="help mt-0! self-center">Engine can't be changed after creation.</span>
               </fieldset>
               <label class="flex items-start gap-2 text-sm text-zinc-200">
                 <input v-model="form.want_storage" type="checkbox" :disabled="isEdit || storageOff" class="check mt-0.5" />
                 <span>
                   Blob storage <span class="text-zinc-400">({{ bucketLabel }})</span>
-                  <span class="help block !mt-0">S3-compatible bucket for files your app reads and writes over the network.</span>
-                  <span v-if="storageOff && !isEdit" class="help block !mt-0">Blob storage isn't available right now.</span>
+                  <span class="help block mt-0!">S3-compatible bucket for files your app reads and writes over the network.</span>
+                  <span v-if="storageOff && !isEdit" class="help block mt-0!">Blob storage isn't available right now.</span>
                 </span>
               </label>
             </div>
@@ -506,7 +525,7 @@ async function onSubmit() {
 
           <fieldset v-if="volumesOn || volAttached">
             <legend class="label">Persistent volume</legend>
-            <p class="help !mt-0 mb-1">A disk mounted into your container that survives restarts.</p>
+            <p class="help mt-0! mb-1">A disk mounted into your container that survives restarts.</p>
             <label class="flex items-start gap-2 text-sm text-zinc-200">
               <input v-model="vol.enabled" type="checkbox" :disabled="volAttached" class="check mt-0.5" />
               <span>Add a persistent volume <span v-if="volAttached" class="text-zinc-400">(attached; can't be removed except by deleting the app)</span></span>
@@ -518,13 +537,13 @@ async function onSubmit() {
               </div>
               <div>
                 <label for="vol-size" class="label">Size (GiB)</label>
-                <input id="vol-size" v-model="vol.size" type="number" min="1" :max="volMax" inputmode="numeric" class="input mono !w-32" :aria-invalid="!!volSizeError || undefined" />
+                <input id="vol-size" v-model="vol.size" type="number" min="1" :max="volMax" inputmode="numeric" class="input mono w-32!" :aria-invalid="!!volSizeError || undefined" />
                 <p v-if="volSizeError" class="field-error" role="alert">{{ volSizeError }}</p>
                 <p v-else class="help">1 to {{ volMax }} GiB.{{ volAttached ? ' Ask an administrator to grow it.' : '' }}</p>
               </div>
               <div>
                 <label for="vol-mount" class="label">Mount path</label>
-                <input id="vol-mount" v-model="vol.mount" type="text" maxlength="255" spellcheck="false" class="input mono !w-64" :aria-invalid="!!volMountError || undefined" />
+                <input id="vol-mount" v-model="vol.mount" type="text" maxlength="255" spellcheck="false" class="input mono w-64!" :aria-invalid="!!volMountError || undefined" />
                 <p v-if="volMountError" class="field-error" role="alert">{{ volMountError }}</p>
                 <p v-else-if="volAttached && vol.mount !== originalMount" class="help">Changing the mount path redeploys the app.</p>
               </div>
@@ -560,7 +579,7 @@ async function onSubmit() {
                   :disabled="!form.health_check_enabled"
                   aria-describedby="hc-path-help"
                   :aria-invalid="!!pathError || undefined"
-                  class="input mono !w-64"
+                  class="input mono w-64!"
                 />
                 <p v-if="pathError" class="field-error" role="alert">{{ pathError }}</p>
                 <p id="hc-path-help" class="help">Must start with /. Default /healthz.</p>
@@ -578,7 +597,7 @@ async function onSubmit() {
                   :disabled="!form.health_check_enabled"
                   aria-describedby="hc-timeout-help"
                   :aria-invalid="!!timeoutError || undefined"
-                  class="input mono !w-32"
+                  class="input mono w-32!"
                 />
                 <p v-if="timeoutError" class="field-error" role="alert">{{ timeoutError }}</p>
                 <p id="hc-timeout-help" class="help">How long a single probe may take before it counts as failed (max 90s). Blank = default (3s readiness, 5s liveness).</p>
@@ -592,7 +611,7 @@ async function onSubmit() {
         </div>
 
         <p class="meta sm:hidden">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
-        <div class="sticky bottom-0 -mx-3 -mb-3 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-3 py-2 backdrop-blur sm:-mx-4 sm:-mb-4 sm:px-4">
+        <div class="sticky bottom-0 -mx-3 -mb-3 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-3 py-2 backdrop-blur-sm sm:-mx-4 sm:-mb-4 sm:px-4">
           <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
           <div class="flex w-full gap-2 sm:w-auto">
             <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>

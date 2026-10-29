@@ -94,6 +94,12 @@ async function onSubmit() {
           </dl>
         </section>
   
+        <section class="card card-pad" aria-labelledby="proj-title">
+          <h2 id="proj-title" class="section-title">Projects</h2>
+          <p class="help">Share apps with other people in a project. Your personal project stays private to you.</p>
+          <RouterLink to="/projects/new" class="btn-secondary mt-2 inline-flex">New project</RouterLink>
+        </section>
+
         <section class="card card-pad" aria-labelledby="pw-title">
           <h2 id="pw-title" class="section-title">Change password</h2>
           <form class="mt-3 max-w-sm space-y-3" @submit.prevent="onSubmit">

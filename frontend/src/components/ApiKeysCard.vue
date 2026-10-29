@@ -147,7 +147,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
       <section v-if="justCreatedKey" class="alert-info mt-3 p-3" aria-label="New API key">
         <p class="text-sm font-medium text-white">Copy your new key now. For security we can't show it again.</p>
         <div class="mt-2 flex items-stretch gap-2">
-          <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded bg-pico-card px-3 py-1.5 text-accent-light">{{ justCreatedKey }}</code>
+          <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-sm bg-pico-card px-3 py-1.5 text-accent-light">{{ justCreatedKey }}</code>
           <IconButton :icon="Copy" :label="copied ? 'Copied' : 'Copy key'" @click="copy(justCreatedKey, true)" />
         </div>
         <div class="mt-3" role="tablist" aria-label="Usage snippets">
@@ -189,7 +189,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
             <li v-for="key in active" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
               <span class="truncate font-medium text-white" :title="key.name || undefined"><span v-if="key.name">{{ key.name }}</span><span v-else class="text-zinc-400">(unnamed)</span></span>
               <code class="mono truncate text-zinc-200" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
-              <span><span class="meta md:hidden">Access </span><span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="key.scope === 'read' ? 'bg-pico-card text-zinc-300' : 'bg-accent-light/15 text-accent-light'">{{ scopeLabel(key.scope) }}</span></span>
+              <span><span class="meta md:hidden">Access </span><span class="rounded-sm px-1.5 py-0.5 text-xs font-medium" :class="key.scope === 'read' ? 'bg-pico-card text-zinc-300' : 'bg-accent-light/15 text-accent-light'">{{ scopeLabel(key.scope) }}</span></span>
               <span class="mono text-zinc-300" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
               <span class="mono text-zinc-300" :title="key.last_used_at ? stampTitle(key.last_used_at) : undefined"><span class="meta md:hidden">Last used </span>{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</span>
               <span class="flex justify-end"><IconButton :icon="Ban" label="Revoke key" danger @click="pendingRevoke = key" /></span>

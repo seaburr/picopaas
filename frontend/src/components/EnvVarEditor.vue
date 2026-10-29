@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Eye, EyeOff, Pencil, Trash2 } from 'lucide-vue-next'
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { computed, reactive, watch } from 'vue'
 import { envKeyError, REF_TIPS, refLabel, SUGGESTED_KEYS } from '../composables/envKeys'
@@ -106,7 +106,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
 
 <template>
   <div class="space-y-3">
-    <p class="help !mt-0">
+    <p class="help mt-0!">
       Plain values are visible to you. Mark a value <strong class="font-medium text-zinc-200">secret</strong> to encrypt it; it can't be shown again.
       {{ explainer }}
     </p>
@@ -179,7 +179,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       <p v-if="valueMsg(i)" class="field-error" role="alert">{{ valueMsg(i) }}</p>
     </div>
 
-    <button type="button" class="btn-secondary btn-sm" @click="addRow()">+ Add env var</button>
+    <IconButton :icon="Plus" label="Add env var" @click="addRow()" />
 
     <div v-if="groups.length" class="rounded-md border border-pico-border bg-pico-card p-3">
       <p class="mb-2 text-xs text-zinc-300">
@@ -193,7 +193,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             :key="ref"
             type="button"
             :title="REF_TIPS[ref] ?? SUGGESTED_KEYS[ref]"
-            class="rounded border border-pico-border bg-pico-panel px-1.5 py-0.5 mono text-accent-light hover:border-accent"
+            class="rounded-sm border border-pico-border bg-pico-panel px-1.5 py-0.5 mono text-accent-light hover:border-accent"
             @mousedown.prevent
             @click="insertRef(ref)"
           >

@@ -78,6 +78,8 @@ export const downloadPlatformLogs = (q: LogQuery) =>
   downloadFile(`/admin/health/logs/download?${logQs(q)}`, `${q.namespace}_${q.pod}_${q.container}.log`)
 
 // Per-app backup lock / storage ceiling. Send only what changes; max_bytes null clears the override.
+export const runPlatformDbBackup = () =>
+  apiFetch<{ run_id: number; status: string }>('/admin/health/backups/platform-db/run', { method: 'POST' })
 export const getAppBackups = (id: number) => apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`)
 export const putAppBackups = (id: number, body: { admin_disabled?: boolean; reason?: string; max_bytes?: number | null }) =>
   apiFetch<BackupsInfo>(`/admin/apps/${id}/backups`, { method: 'PUT', body: JSON.stringify(body) })
@@ -85,3 +87,8 @@ export const putAppBackups = (id: number, body: { admin_disabled?: boolean; reas
 export const listUserApiKeys = (userId: number) => apiFetch<AdminApiKey[]>(`/admin/users/${userId}/api-keys`)
 export const revokeUserApiKey = (userId: number, keyId: number) =>
   apiFetch<void>(`/admin/users/${userId}/api-keys/${keyId}`, { method: 'DELETE' })
+
+export const listAdminProjects = () => apiFetch<import('../types').AdminProject[]>('/admin/projects')
+
+export const setProjectAppLimit = (id: number, app_limit: number | null) =>
+  apiFetch<import('../types').AdminProject>(`/admin/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ app_limit }) })

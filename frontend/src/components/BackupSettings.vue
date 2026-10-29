@@ -57,7 +57,7 @@ const onSchedule = (e: Event) => save(info.value!.enabled, (e.target as HTMLSele
 <template>
   <section v-if="visible && info" id="backups" class="card card-pad scroll-mt-4 min-w-0" aria-labelledby="h-backup-settings">
     <h2 id="h-backup-settings" class="section-title mb-1">Backups</h2>
-    <p class="help !mt-0">Saved as soon as you change it. Backups are encrypted and stored outside the cluster.</p>
+    <p class="help mt-0!">Saved as soon as you change it. Backups are encrypted and stored outside the cluster.</p>
     <p v-if="suspended" class="help">This app is suspended, so backup settings can't be changed.</p>
     <div class="mt-3 space-y-3">
       <p v-if="locked" role="status" class="alert-warn">{{ info.admin_disabled_message || 'Backups are turned off by the administrator.' }}</p>
@@ -67,7 +67,7 @@ const onSchedule = (e: Event) => save(info.value!.enabled, (e.target as HTMLSele
       </label>
       <div>
         <label for="bk-schedule" class="label">Schedule</label>
-        <select id="bk-schedule" class="input !w-40" :value="schedule" :disabled="busy || suspended || locked || !info.enabled" @change="onSchedule">
+        <select id="bk-schedule" class="input w-40!" :value="schedule" :disabled="busy || suspended || locked || !info.enabled" @change="onSchedule">
           <option value="daily">Daily</option>
           <option value="weekly">Weekly</option>
         </select>
@@ -78,7 +78,7 @@ const onSchedule = (e: Event) => save(info.value!.enabled, (e.target as HTMLSele
           <span>Backup storage<template v-if="info.cap_override"> (ceiling set by an administrator)</template></span>
           <span class="mono">{{ size(used) }} of {{ size(info.cap_bytes) }}</span>
         </div>
-        <div class="relative mt-1 h-2 overflow-hidden rounded bg-pico-card" role="img" :aria-label="`Backup storage ${size(used)} of ${size(info.cap_bytes)}`">
+        <div class="relative mt-1 h-2 overflow-hidden rounded-sm bg-pico-card" role="img" :aria-label="`Backup storage ${size(used)} of ${size(info.cap_bytes)}`">
           <div :class="['absolute inset-y-0 left-0', info.storage_full ? 'bg-danger' : pct >= 80 ? 'bg-amber-500' : 'bg-accent']" :style="{ width: pct + '%' }" />
         </div>
         <p v-if="info.storage_full" class="mt-1 text-xs text-amber-300">Backup storage is full. New backups are refused until older ones are deleted or roll off.</p>

@@ -3,8 +3,10 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listUsers } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
-import { CircleUserRound } from 'lucide-vue-next'
+import { CircleUserRound, LogOut } from 'lucide-vue-next'
+import IconButton from './IconButton.vue'
 import BrandMark from './BrandMark.vue'
+import ProjectSwitcher from './ProjectSwitcher.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -71,11 +73,12 @@ function skip(e: Event) {
       </div>
 
       <div class="hidden items-center gap-2 sm:flex">
+        <ProjectSwitcher />
         <RouterLink v-if="auth.user" to="/account" class="nav-link" active-class="nav-active" :aria-label="`Account settings (${auth.user.email})`" :title="`Account settings (${auth.user.email})`">
           <CircleUserRound :size="20" aria-hidden="true" />
         </RouterLink>
         <a v-if="!auth.user" href="/privacy" class="nav-link hidden lg:inline-flex">Privacy</a>
-        <button v-if="auth.user" type="button" class="btn-secondary btn-sm" @click="onLogout">Log out</button>
+        <IconButton v-if="auth.user" :icon="LogOut" label="Log out" @click="onLogout" />
         <template v-else>
           <RouterLink to="/login" class="btn-secondary btn-sm">Log in</RouterLink>
           <RouterLink to="/register" class="btn-primary btn-sm">Request access</RouterLink>
@@ -100,7 +103,8 @@ function skip(e: Event) {
 
     <!-- Mobile sheet -->
     <nav v-show="menuOpen" id="mobile-menu" aria-label="Main (mobile)" class="absolute inset-x-0 top-full z-40 border-b border-pico-border bg-pico-panel px-4 pb-4 pt-2 shadow-xl sm:hidden">
-      <RouterLink v-if="auth.user" to="/account" class="nav-link" active-class="nav-active"><span class="truncate">{{ auth.user.email }}</span><span class="ml-2 shrink-0 text-xs text-zinc-400">Account</span></RouterLink>
+      <RouterLink v-if="auth.user" to="/account" class="nav-link" active-class="nav-active"><span class="truncate">{{ auth.user.email }}</span><span class="ml-2 shrink-0 text-xs text-zinc-300">Account</span></RouterLink>
+      <div class="my-2 px-2.5 empty:hidden"><ProjectSwitcher /></div>
       <div class="flex flex-col gap-0.5">
         <template v-if="auth.user">
           <RouterLink to="/apps" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Apps</RouterLink>

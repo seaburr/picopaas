@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { checkImage as checkImageApi, createApp, deleteApp, getApp, listApps, restartApp, rollbackApp, updateApp } from '../api/apps'
+import { useProjectsStore } from './projects'
 import type { App, AppCreatePayload, AppUpdatePayload } from '../types'
 
 export const useAppsStore = defineStore('apps', () => {
@@ -8,7 +9,7 @@ export const useAppsStore = defineStore('apps', () => {
   const loaded = ref(false)
 
   async function load() {
-    apps.value = (await listApps()) ?? []
+    apps.value = (await listApps(useProjectsStore().current?.id)) ?? []
     loaded.value = true
   }
 

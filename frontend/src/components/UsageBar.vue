@@ -19,7 +19,7 @@ const warn = computed(() => props.usage.over_quota || pct.value >= 80)
       </span>
     </div>
     <div
-      class="mt-1 h-1.5 overflow-hidden rounded bg-pico-card"
+      class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-card"
       role="progressbar"
       :aria-label="`${label} usage`"
       aria-valuemin="0"

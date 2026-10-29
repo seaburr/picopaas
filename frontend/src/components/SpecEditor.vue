@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Trash2 } from 'lucide-vue-next'
+import { Plus, Trash2 } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -76,7 +76,7 @@ async function apply() {
   <form class="card card-pad space-y-3" @submit.prevent="apply">
     <div>
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <label for="spec-text" class="label !mb-0">
+        <label for="spec-text" class="label mb-0!">
           YAML spec
           <RouterLink to="/guide/user#4-yaml-spec-reference" target="_blank" class="link ml-2 text-xs font-normal">Spec reference</RouterLink>
         </label>
@@ -97,14 +97,14 @@ async function apply() {
 
     <div v-if="secrets.length">
       <p class="label">Secret values</p>
-      <p class="help !mt-0 mb-2">Names come from <code class="mono">secrets:</code> in the spec. Values are encrypted and can't be shown again.</p>
+      <p class="help mt-0! mb-2">Names come from <code class="mono">secrets:</code> in the spec. Values are encrypted and can't be shown again.</p>
       <div v-for="(s, i) in secrets" :key="i" class="mb-2 flex flex-col gap-2 sm:flex-row">
         <input v-model="s.key" placeholder="KEY" autocomplete="off" aria-label="Secret name" class="input mono sm:w-56" />
         <input v-model="s.value" type="password" placeholder="value" autocomplete="new-password" aria-label="Secret value" class="input mono sm:flex-1" />
         <IconButton :icon="Trash2" label="Remove secret" danger class="self-start sm:self-center" @click="secrets.splice(i, 1)" />
       </div>
     </div>
-    <button type="button" class="btn-secondary btn-sm" @click="secrets.push({ key: '', value: '' })">+ Add secret</button>
+    <IconButton :icon="Plus" label="Add secret" @click="secrets.push({ key: '', value: '' })" />
 
     <pre v-if="error" role="alert" class="alert-error whitespace-pre-wrap font-sans">{{ error }}</pre>
 

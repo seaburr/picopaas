@@ -4,6 +4,7 @@ import { userZone } from '../utils/tz'
 import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { User } from '../types'
+import { useProjectsStore } from './projects'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -48,6 +49,7 @@ export const useAuthStore = defineStore('auth', () => {
       await apiLogout()
     } finally {
       user.value = null
+      useProjectsStore().reset()
     }
   }
 

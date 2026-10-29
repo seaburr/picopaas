@@ -2,20 +2,21 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import BackupsCard from '../components/BackupsCard.vue'
+import AppNotFound from '../components/AppNotFound.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import { Download, PackageSearch, RefreshCw, RotateCw } from 'lucide-vue-next'
+import { Download, PackageSearch, RefreshCw, RotateCw, Settings, X, Undo2 } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import { deleteStorageObjects, getAppEvents, downloadPodEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
+import { dismissAlert, deleteStorageObjects, getAppEvents, downloadPodEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
-import { dbEngineLabel, eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
+import { uptimeText, dbEngineLabel, eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
@@ -31,11 +32,13 @@ const now = useNow()
 
 const app = ref<App | null>(null)
 const loadError = ref('')
+const fetchedAt = ref(Date.now())
 const notFound = ref(false)
 
 async function loadApp(quiet = false) {
   try {
     app.value = await store.fetchOne(Number(props.id))
+    fetchedAt.value = Date.now()
     if (app.value) {
       store.upsert(app.value)
       document.title = `${app.value.name} · PicoPaaS`
@@ -300,6 +303,22 @@ const res = computed(() => {
   }
 })
 const hasAddons = computed(() => !!app.value && (app.value.want_db || app.value.want_storage))
+const uptime = computed(() => {
+  const a = app.value
+  if (!a || a.status !== 'running') return 0
+  if (typeof a.uptime_seconds === 'number') return Math.max(0, Math.floor(a.uptime_seconds + (now.value - fetchedAt.value) / 1000))
+  // Backend field not present: fall back to the newest restart event or creation time.
+  const since = a.last_event ? parseTs(a.last_event.at) : parseTs(a.created_at)
+  return isNaN(since.getTime()) ? 0 : Math.max(0, Math.floor((now.value - since.getTime()) / 1000))
+})
+async function dismiss(kind: string) {
+  if (!app.value) return
+  try {
+    app.value = await dismissAlert(app.value.id, kind)
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : "Couldn't dismiss the alert.")
+  }
+}
 const suspended = computed(() => app.value?.status === 'suspended')
 
 // Which env vars reference add-on credentials (non-secret values only; secrets are never readable).
@@ -314,20 +333,16 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
     <NavBar />
 
     <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-      <div v-if="notFound" class="card card-pad text-center">
-        <p class="section-title">App not found</p>
-        <p class="help">It may have been deleted.</p>
-        <RouterLink to="/apps" class="btn-secondary mt-4">Back to apps</RouterLink>
-      </div>
+      <AppNotFound v-if="notFound" />
 
       <div v-else-if="loadError && !app" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
         <span>{{ loadError }}</span>
-        <button type="button" class="btn-secondary btn-sm" @click="loadApp()">Retry</button>
+        <IconButton :icon="RotateCw" label="Retry" @click="loadApp()" />
       </div>
 
       <div v-else-if="!app" class="space-y-3" aria-busy="true" aria-label="Loading app">
-        <div class="h-6 w-48 animate-pulse rounded bg-pico-panel" />
-        <div class="h-32 animate-pulse rounded bg-pico-panel" />
+        <div class="h-6 w-48 animate-pulse rounded-sm bg-pico-panel" />
+        <div class="h-32 animate-pulse rounded-sm bg-pico-panel" />
       </div>
 
       <template v-else>
@@ -345,17 +360,14 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <HostLink :hostname="primaryHost(app)" class="text-base font-medium" />
               <span v-if="servedHosts(app).length > 1" class="badge-info shrink-0">primary</span>
             </div>
-            <div v-if="servedHosts(app).length > 1" class="mt-1">
-              <p class="help">Also served at</p>
-              <ul class="min-w-0 text-sm text-zinc-400">
-                <li v-for="h in servedHosts(app).slice(1)" :key="h" class="min-w-0"><HostLink :hostname="h" /></li>
-              </ul>
-            </div>
+            <ul v-if="servedHosts(app).length > 1" class="mt-1 min-w-0 text-sm text-zinc-400">
+              <li v-for="h in servedHosts(app).slice(1)" :key="h" class="min-w-0"><HostLink :hostname="h" /></li>
+            </ul>
           </div>
           <div class="flex items-center gap-2">
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
             <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
-            <RouterLink :to="`/apps/${app.id}/edit`" class="btn-primary">Settings</RouterLink>
+            <IconButton :icon="Settings" label="Settings" :to="`/apps/${app.id}/edit`" />
           </div>
         </header>
 
@@ -364,10 +376,17 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <h2 id="h-status" class="section-title mb-2">Status</h2>
             <p v-if="app.status === 'running'" class="text-sm text-zinc-200">
               Running and serving traffic.
+              <span v-if="uptime" class="text-zinc-400" :title="'Since ' + fullTime(new Date(now - uptime * 1000).toISOString())">Uptime {{ uptimeText(uptime) }}.</span>
             </p>
             <AppStatusNote :app="app" :restarting="restarting" @restart="restart" />
-            <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2">{{ app.image_update_error }}</p>
-            <p v-if="app.last_event" class="alert-info mt-2">{{ eventNote(app.last_event, now) }}</p>
+            <p v-if="app.image_update_error" role="alert" class="alert-warn mt-2 flex items-start justify-between gap-2">
+              <span>{{ app.image_update_error }}</span>
+              <IconButton :icon="X" sm label="Dismiss alert" @click="dismiss('image_update')" />
+            </p>
+            <p v-if="app.last_event" class="alert-info mt-2 flex items-start justify-between gap-2">
+              <span>{{ eventNote(app.last_event, now) }}</span>
+              <IconButton :icon="X" sm label="Dismiss alert" @click="dismiss('event')" />
+            </p>
           </section>
 
           <section v-if="metrics && !suspended" class="card card-pad" aria-labelledby="h-metrics">
@@ -451,18 +470,18 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <section v-if="versions.length" class="card card-pad" aria-labelledby="h-versions">
             <h2 id="h-versions" class="section-title mb-1">Recent versions</h2>
             <ul class="divide-y divide-pico-border text-sm">
-              <li v-for="v in versions" :key="v.digest" class="flex min-h-[2rem] items-center gap-3 py-1">
+              <li v-for="v in versions" :key="v.digest" class="flex min-h-8 items-center gap-3 py-1">
                 <span class="mono">{{ shortDigest(v.digest) }}</span>
                 <span class="meta" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</span>
                 <span v-if="v.current" class="badge-ok ml-auto">current</span>
-                <button v-else type="button" class="btn-secondary btn-sm ml-auto" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
+                <IconButton v-else :icon="Undo2" sm class="ml-auto" label="Roll back to this version" :disabled="suspended || rollingBack" @click="rollbackTarget = v" />
               </li>
             </ul>
           </section>
 
           <section class="card card-pad" aria-labelledby="h-conf">
             <h2 id="h-conf" class="section-title mb-3">Configuration</h2>
-            <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 [&>div]:min-w-0 [&_dd]:break-words">
+            <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 [&>div]:min-w-0 [&_dd]:wrap-break-word">
               <div class="min-w-0">
                 <dt class="meta">Image</dt>
                 <dd class="mono truncate text-zinc-200" :title="app.image">{{ app.image }}</dd>
@@ -476,7 +495,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <div>
                 <dt class="meta">Resources</dt>
                 <dd class="mono text-zinc-200">
-                  {{ res.cpu }}m CPU · {{ res.mem }}Mi RAM
+                  {{ res.cpu }}m CPU · {{ res.mem }} MB RAM
                   <span v-if="res.custom" class="badge-info ml-1">custom</span>
                 </dd>
               </div>

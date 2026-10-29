@@ -10,6 +10,7 @@ import SettingsPanel from '../components/SettingsPanel.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import BackupAdminDialog from '../components/BackupAdminDialog.vue'
+import AdminProjects from '../components/AdminProjects.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
@@ -21,7 +22,7 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Archive, Ban, Check, Download, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
+import { Archive, Ban, Check, Copy, Download, Plus, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -51,7 +52,7 @@ const error = ref('')
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // Tabs live in ?tab= so they are linkable.
-const TABS = ['users', 'apps', 'servers', 'settings', 'audit'] as const
+const TABS = ['users', 'apps', 'projects', 'servers', 'settings', 'audit'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'users'))
 const q = ref('')
@@ -313,12 +314,12 @@ async function saveResources(body: ResourcesPatch, replicas: number | null) {
 const appHost = (a: AdminApp) => a.custom_domain || a.platform_host || a.hostname
 const appUrl = (a: AdminApp) => `https://${appHost(a)}`
 const resSummary = (a: AdminApp) =>
-  `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi}Mi`
+  `${a.resources.cpu_request_m}-${a.resources.cpu_limit_m}m · ${a.resources.mem_request_mi}-${a.resources.mem_limit_mi} MB`
 // Compact list of the non-cpu/mem limits that differ from this app's platform defaults.
 const overrideSummary = (a: AdminApp) => {
   const r = a.resources
   const d = r.defaults
-  const gb = (n: number) => (n >= 1024 ? `${+(n / 1024).toFixed(1)}G` : `${n}M`)
+  const gb = (n: number) => `${n} MB`
   const out: string[] = []
   if (a.replicas > 1) out.push(`x${a.replicas}`)
   if (a.volume) out.push(`vol ${a.volume.size_gi}G`)
@@ -375,7 +376,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
       <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-1 border-b border-pico-border" @keydown="onTabKey">
         <button
-          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
           :key="t.id"
           type="button"
@@ -394,7 +395,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
 
       <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-3">
-        <div v-if="tab !== 'servers' && tab !== 'settings'">
+        <div v-if="tab !== 'servers' && tab !== 'settings' && tab !== 'projects'">
           <label :for="`${uid}-q`" class="sr-only">Search</label>
           <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
         </div>
@@ -483,11 +484,11 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <template v-if="a.resources">
                   <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>
                   <div class="my-0.5 flex flex-wrap gap-1">
-                    <span v-if="a.resources.overridden" class="badge-info !px-1.5 !py-0 !text-[11px]" title="Overridden: an admin set custom limits for this app.">overridden</span>
+                    <span v-if="a.resources.overridden" class="badge-info px-1.5! py-0! text-[11px]!" title="Overridden: an admin set custom limits for this app.">overridden</span>
                     <span v-else class="mono text-zinc-400">default</span>
-                    <span v-if="a.resources.exceeds_platform_caps" class="badge-warn !px-1.5 !py-0 !text-[11px]" title="Exceeds caps: above the default per-app caps.">exceeds caps</span>
+                    <span v-if="a.resources.exceeds_platform_caps" class="badge-warn px-1.5! py-0! text-[11px]!" title="Exceeds caps: above the default per-app caps.">exceeds caps</span>
                   </div>
-                  <div v-if="overrideSummary(a)" class="mono break-words text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
+                  <div v-if="overrideSummary(a)" class="mono wrap-break-word text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
                 </template>
                 <span v-else class="text-zinc-400">-</span>
               </div>
@@ -508,7 +509,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <template v-else-if="tab === 'servers'">
           <div class="flex items-center justify-between gap-2">
             <p class="text-sm text-zinc-300">Database servers (MySQL or PostgreSQL) that app databases are placed on.</p>
-            <button type="button" class="btn-primary btn-sm shrink-0" @click="openAdd">Add server</button>
+            <IconButton :icon="Plus" label="Add database server" class="shrink-0" @click="openAdd" />
           </div>
           <div class="card overflow-hidden">
             <div :class="[serversGrid, 'table-th row-pad hidden border-b border-pico-border']">
@@ -548,6 +549,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </template>
 
         <!-- SETTINGS -->
+        <AdminProjects v-else-if="tab === 'projects'" />
         <SettingsPanel v-else-if="tab === 'settings'" />
 
         <!-- AUDIT -->
@@ -557,7 +559,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
           <span class="inline-flex items-center gap-0.5">CSV<IconButton :icon="Download" label="Download audit log as CSV" @click="exportAudit('csv')" /></span>
           <span class="inline-flex items-center gap-0.5">JSON<IconButton :icon="Download" label="Download audit log as JSON" @click="exportAudit('json')" /></span>
         </div>
-        <div class="card max-h-[34rem] overflow-auto">
+        <div class="card max-h-136 overflow-auto">
           <div :class="[auditGrid, 'table-th row-pad sticky top-0 hidden border-b border-pico-border bg-pico-panel']">
             <span>When</span><span>Actor</span><span>Action</span><span>Target</span><span>Detail</span>
           </div>
@@ -567,7 +569,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
               <span class="mono truncate" :title="a.actor_email ?? undefined">{{ a.actor_email ?? '-' }}</span>
               <span class="mono truncate" :title="a.action">{{ a.action }}</span>
               <span class="mono truncate" :title="`${a.target_type ?? ''} ${a.target_id ?? ''}`">{{ a.target_type }} {{ a.target_id }}</span>
-              <span class="break-words text-xs leading-4 text-zinc-300">{{ a.detail }}</span>
+              <span class="wrap-break-word text-xs leading-4 text-zinc-300">{{ a.detail }}</span>
             </li>
             <li v-if="loaded && filteredAudit.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">No entries.</li>
           </ul>
@@ -669,8 +671,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
           Give this to <strong class="break-all text-white">{{ tempPw.email }}</strong>. It is shown once and can't be retrieved later. They should change it on the Account page.
         </p>
         <div class="mt-3 flex items-stretch gap-2">
-          <code class="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded bg-pico-card px-3 py-2 text-sm text-accent-light">{{ tempPw.password }}</code>
-          <button type="button" class="btn-primary shrink-0" data-autofocus @click="copyTemp">Copy</button>
+          <code class="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded-sm bg-pico-card px-3 py-2 text-sm text-accent-light">{{ tempPw.password }}</code>
+          <IconButton :icon="Copy" label="Copy password" class="shrink-0" data-autofocus @click="copyTemp" />
         </div>
         <div class="mt-5 flex justify-end"><button type="button" class="btn-secondary" @click="tempPw = null">Done</button></div>
       </div>

@@ -6,17 +6,19 @@ import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import NavBar from '../components/NavBar.vue'
 import IconButton from '../components/IconButton.vue'
-import { Pencil, RotateCw, HeartPulse, Trash2 } from 'lucide-vue-next'
+import { Pencil, Plus, RotateCw, HeartPulse, Trash2 } from 'lucide-vue-next'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { dbEngineLabel, eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
+import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import type { App } from '../types'
 
 const store = useAppsStore()
 const auth = useAuthStore()
+const projects = useProjectsStore()
 const now = useNow()
 const toast = useToastStore()
 const router = useRouter()
@@ -24,7 +26,7 @@ const loading = ref(true)
 const error = ref('')
 const restarting = ref<number | null>(null)
 
-const limit = computed(() => auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
+const limit = computed(() => projects.current?.app_limit_effective ?? auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
 const atLimit = computed(() => limit.value > 0 && store.apps.length >= limit.value)
 
 // Poll while anything is queued or deploying.
@@ -56,6 +58,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
+    if (!projects.loaded) await projects.load()
     await store.load()
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Couldn't load your apps."
@@ -64,6 +67,7 @@ async function load() {
   }
 }
 onMounted(load)
+watch(() => projects.currentId, (n, o) => { if (o !== n && projects.loaded) load() })
 
 const pendingDelete = ref<App | null>(null)
 const deleting = ref(false)
@@ -127,24 +131,25 @@ function meta(app: App) {
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-baseline gap-3">
           <h1 class="page-title">Apps</h1>
-          <span v-if="!loading && limit" class="meta">{{ store.apps.length }}</span>
+          <span v-if="projects.hasShared && projects.current" class="meta">{{ projects.current.is_personal ? 'Personal' : projects.current.name }}</span>
+          <span v-if="!loading && limit" class="meta">{{ store.apps.length }} of {{ limit }}</span>
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
-          <button v-if="atLimit" type="button" class="btn-primary" disabled>New app</button>
-          <RouterLink v-else to="/apps/new" class="btn-primary">New app</RouterLink>
+          <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" disabled />
+          <IconButton v-else :icon="Plus" label="New app" to="/apps/new" />
         </div>
       </div>
 
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
-        <button type="button" class="btn-secondary btn-sm" @click="load">Retry</button>
+        <IconButton :icon="RotateCw" label="Retry" @click="load" />
       </div>
 
       <ul v-if="loading" class="space-y-2" aria-busy="true" aria-label="Loading apps">
         <li v-for="n in 3" :key="n" class="card card-pad">
-          <div class="h-4 w-40 animate-pulse rounded bg-pico-card" />
-          <div class="mt-3 h-3 w-64 max-w-full animate-pulse rounded bg-pico-card" />
+          <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
+          <div class="mt-3 h-3 w-64 max-w-full animate-pulse rounded-sm bg-pico-card" />
         </li>
       </ul>
 
@@ -169,9 +174,6 @@ function meta(app: App) {
                 <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="badge-warn" :title="overCapTip(app)">over cap</span>
               </div>
               <div class="mt-0.5"><HostLink :hostname="primaryHost(app)" /></div>
-              <p v-if="primaryHost(app) !== app.hostname" class="mono truncate text-xs text-zinc-500" :title="app.hostname">
-                <span class="sr-only">Also served at </span>{{ app.hostname }}
-              </p>
               <p class="meta mono truncate" :title="meta(app).join(' · ')">
                 <template v-for="(b, i) in meta(app)" :key="i"><span v-if="i" aria-hidden="true"> · </span>{{ b }}</template>
               </p>

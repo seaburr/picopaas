@@ -28,6 +28,15 @@ export function useNow() {
   return nowMs
 }
 
+// "2d 3h 14m" style, for uptime counters.
+export function uptimeText(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60)
+  if (d) return `${d}d ${h}h ${m}m`
+  if (h) return `${h}h ${m}m`
+  return m ? `${m}m` : `${s}s`
+}
+
 function span(sec: number): string {
   const s = Math.abs(sec)
   if (s < 60) return `${Math.max(1, Math.round(s))} sec`

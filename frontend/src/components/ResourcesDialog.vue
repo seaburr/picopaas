@@ -33,23 +33,22 @@ const keys: Key[] = ['cpu_request_m', 'cpu_limit_m', 'mem_request_mi', 'mem_limi
 const fields: { key: Key; label: string; unit: string; min: number; max: number; ck: string }[] = [
   { key: 'cpu_request_m', label: 'CPU request', unit: 'm', min: 10, max: 1000, ck: 'cpu_limit_max_m' },
   { key: 'cpu_limit_m', label: 'CPU limit', unit: 'm', min: 10, max: 1000, ck: 'cpu_limit_max_m' },
-  { key: 'mem_request_mi', label: 'Memory request', unit: 'Mi', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
-  { key: 'mem_limit_mi', label: 'Memory limit', unit: 'Mi', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
+  { key: 'mem_request_mi', label: 'Memory request', unit: 'MB', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
+  { key: 'mem_limit_mi', label: 'Memory limit', unit: 'MB', min: 32, max: 2048, ck: 'mem_limit_max_mi' },
 ]
 
 // Extra limits (null = platform default). `unit` is MiB or MB; `max` is the backend ceiling.
 type XKey = 'ephemeral_limit_mi' | 'db_max_connections' | 'db_quota_mb' | 'storage_quota_mb' | 'image_size_mb' | 'egress_mbit'
 const xFields: { key: XKey; label: string; unit: string; min: number; max: number; ck: string; show: 'all' | 'db' | 'storage'; restart?: boolean }[] = [
-  { key: 'ephemeral_limit_mi', label: 'Scratch disk', unit: 'MiB', min: 64, max: 2048, ck: 'override_ephemeral_max_mi', show: 'all', restart: true },
+  { key: 'ephemeral_limit_mi', label: 'Scratch disk', unit: 'MB', min: 64, max: 2048, ck: 'override_ephemeral_max_mi', show: 'all', restart: true },
   { key: 'egress_mbit', label: 'Outbound bandwidth', unit: 'Mbit/s', min: 1, max: 160, ck: 'override_egress_max_mbit', show: 'all', restart: true },
   { key: 'image_size_mb', label: 'Max image size', unit: 'MB', min: 1, max: 2048, ck: 'override_image_size_max_mb', show: 'all' },
   { key: 'db_max_connections', label: 'DB connections', unit: '', min: 1, max: 25, ck: 'override_db_connections_max', show: 'db' },
   { key: 'db_quota_mb', label: 'DB quota', unit: 'MB', min: 1, max: 1024, ck: 'override_db_quota_max_mb', show: 'db' },
   { key: 'storage_quota_mb', label: 'Blob storage quota', unit: 'MB', min: 1, max: 51200, ck: 'override_storage_quota_max_mb', show: 'storage' },
 ]
-// Show sizes in GB once they are large; connections have no unit.
-const human = (n: number, unit: string) =>
-  !unit ? String(n) : n >= 1024 ? `${+(n / 1024).toFixed(2)} GB` : `${n} ${unit}`
+// CPU in m, RAM/DB/blob sizes in MB (never GB); connections have no unit.
+const human = (n: number, unit: string) => (!unit ? String(n) : unit === 'm' ? `${n}m` : `${n} ${unit}`)
 const visibleX = computed(() =>
   xFields.filter((f) => f.show === 'all' || (f.show === 'db' ? props.app?.want_db : props.app?.want_storage)),
 )
@@ -158,7 +157,7 @@ function reset() {
         </div>
       </div>
       <h3 class="label mt-5 border-t border-pico-border pt-4">Replicas</h3>
-      <div class="max-w-[12rem]">
+      <div class="max-w-48">
         <input
           :id="`${uid}-replicas`" v-model="replicasVal" type="text" inputmode="numeric" pattern="[0-9]*"
           aria-label="Replicas" :placeholder="String(app.replicas)" class="input" :aria-invalid="replicasBad ? 'true' : undefined"
@@ -182,13 +181,13 @@ function reset() {
           <p class="help">{{ f.min }} to {{ human(mx(f), f.unit) }}</p>
         </div>
       </div>
-      <div v-if="app.volume" class="mt-3 max-w-[12rem]">
+      <div v-if="app.volume" class="mt-3 max-w-48">
         <label :for="`${uid}-volume`" class="label">Persistent volume size (GiB)</label>
         <input
           :id="`${uid}-volume`" v-model="volumeVal" type="text" inputmode="numeric" pattern="[0-9]*"
           :placeholder="String(app.volume.size_gi)" class="input" :aria-invalid="volumeBad ? 'true' : undefined"
         />
-        <p class="help">Grow-only: {{ app.volume.size_gi }} to {{ volMaxAdmin }}. Can't be shrunk.</p>
+        <p class="help">Can only grow, up to {{ volMaxAdmin }} GiB (currently {{ app.volume.size_gi }}). Can't be shrunk.</p>
       </div>
       <p class="help mt-3">Outbound bandwidth applies to everything the app sends, including responses to visitors.</p>
       <p v-if="invalid" class="field-error" role="alert">Enter whole numbers within the shown ranges.</p>
@@ -196,11 +195,11 @@ function reset() {
         Changing CPU, memory, scratch disk or bandwidth restarts this app: its pods are replaced in a rolling restart.
       </p>
       <p v-if="exceeds" class="alert-warn mt-3 text-xs" role="status">
-        Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }}Mi memory). The cluster may not have room to run this app.
+        Above the platform cap ({{ CAPS.cpu }}m CPU / {{ CAPS.mem }} MB memory). The cluster may not have room to run this app.
       </p>
       <p v-if="error" class="alert-error mt-3 text-xs" role="alert">{{ error }}</p>
       <div class="mt-5 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" class="link -ml-1 rounded px-1 text-sm" @click="reset">Reset to defaults</button>
+        <button type="button" class="link -ml-1 rounded-sm px-1 text-sm" @click="reset">Reset to defaults</button>
         <div class="flex gap-2">
           <button type="button" class="btn-secondary" @click="emit('cancel')">Cancel</button>
           <button type="submit" :disabled="invalid" class="btn-primary">{{ restarts ? 'Save and restart' : 'Save' }}</button>

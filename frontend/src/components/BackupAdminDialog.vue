@@ -86,9 +86,9 @@ const clearCap = () => put({ max_bytes: null }, 'Storage ceiling reset to the pl
         </p>
 
         <form class="mt-4" @submit.prevent="locked ? unlock() : lock()">
-          <h3 class="label !mb-1">Backups are {{ locked ? 'disabled by an administrator' : 'allowed' }}</h3>
-          <p v-if="locked" class="help !mt-0">The owner sees: {{ info.admin_disabled_message }}</p>
-          <p v-else class="help !mt-0">Disabling stops scheduled and manual backups and keeps existing ones. The owner can't turn them back on.</p>
+          <h3 class="label mb-1!">Backups are {{ locked ? 'disabled by an administrator' : 'allowed' }}</h3>
+          <p v-if="locked" class="help mt-0!">The owner sees: {{ info.admin_disabled_message }}</p>
+          <p v-else class="help mt-0!">Disabling stops scheduled and manual backups and keeps existing ones. The owner can't turn them back on.</p>
           <template v-if="!locked">
             <label :for="`${uid}-reason`" class="label mt-2">Reason (shown to the owner)</label>
             <input :id="`${uid}-reason`" v-model="reason" type="text" maxlength="255" class="input" autocomplete="off" />
@@ -99,11 +99,11 @@ const clearCap = () => put({ max_bytes: null }, 'Storage ceiling reset to the pl
         </form>
 
         <form class="mt-5 border-t border-pico-border pt-4" @submit.prevent="saveCap">
-          <h3 class="label !mb-1">Storage ceiling</h3>
-          <p class="help !mt-0">Blank uses the platform default. Minimum 1 MB; can't exceed the platform total.</p>
+          <h3 class="label mb-1!">Storage ceiling</h3>
+          <p class="help mt-0!">Blank uses the platform default. Minimum 1 MB; can't exceed the platform total.</p>
           <div class="mt-2 flex items-center gap-2">
-            <input :id="`${uid}-cap`" v-model="capVal" type="text" inputmode="decimal" class="input !w-28" aria-label="Storage ceiling" :aria-invalid="capBad" placeholder="default" autocomplete="off" />
-            <select v-model="capUnit" class="input !w-20" aria-label="Unit"><option>MB</option><option>GB</option></select>
+            <input :id="`${uid}-cap`" v-model="capVal" type="text" inputmode="decimal" class="input w-28!" aria-label="Storage ceiling" :aria-invalid="capBad" placeholder="default" autocomplete="off" />
+            <select v-model="capUnit" class="input w-20!" aria-label="Unit"><option>MB</option><option>GB</option></select>
             <button type="submit" class="btn-secondary" :disabled="busy || !capChanged">Save</button>
             <button type="button" class="btn-secondary" :disabled="busy || !info.cap_override" @click="clearCap">Clear override</button>
           </div>

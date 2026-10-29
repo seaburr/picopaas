@@ -13,7 +13,7 @@ const route = useRoute()
     <main id="main" tabindex="-1" class="mx-auto max-w-md px-4 py-16 text-center">
       <p class="meta tracking-widest">404</p>
       <h1 class="page-title mt-2">Page not found</h1>
-      <p class="mt-3 break-words text-sm text-zinc-300">
+      <p class="mt-3 wrap-break-word text-sm text-zinc-300">
         There's nothing at <code class="text-white">{{ route.path }}</code>. The link may be old or mistyped.
       </p>
       <div class="mt-6 flex justify-center gap-3">

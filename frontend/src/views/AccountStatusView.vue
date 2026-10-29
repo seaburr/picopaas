@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { RefreshCw } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandMark from '../components/BrandMark.vue'
@@ -33,7 +35,7 @@ async function onLogout() {
         <span class="badge-error">Suspended</span>
         <h1 class="page-title mt-3">Your account is suspended</h1>
         <p class="mt-2 text-sm text-zinc-300">
-          An administrator suspended <strong class="break-words text-white">{{ auth.user?.email }}</strong> and your
+          An administrator suspended <strong class="wrap-break-word text-white">{{ auth.user?.email }}</strong> and your
           apps are stopped. Your data is kept. Ask the administrator to restore your account.
         </p>
       </div>
@@ -41,13 +43,11 @@ async function onLogout() {
         <span class="badge-warn">Waiting for approval</span>
         <h1 class="page-title mt-3">Thanks, you're on the list</h1>
         <p class="mt-2 text-sm text-zinc-300">
-          We've received your request for <strong class="break-words text-white">{{ auth.user?.email }}</strong>. If
+          We've received your request for <strong class="wrap-break-word text-white">{{ auth.user?.email }}</strong>. If
           your account is approved, a PicoPaaS platform admin will reach out, usually within a day. You don't need to do anything: this page checks
           every 20 seconds and takes you to your apps once you're approved.
         </p>
-        <button type="button" class="btn-secondary btn-sm mt-4" :disabled="checking" @click="check">
-          {{ checking ? 'Checking…' : 'Check now' }}
-        </button>
+        <IconButton class="mt-4" :icon="RefreshCw" :label="checking ? 'Checking…' : 'Check now'" :busy="checking" @click="check" />
       </div>
       <p class="mt-4 flex justify-center gap-4 text-sm">
         <RouterLink to="/guide" class="link">Docs</RouterLink>

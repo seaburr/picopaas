@@ -126,7 +126,7 @@ async function download() {
       <p v-if="truncated" class="mt-2 text-xs text-amber-400" role="status">Showing the newest lines only; the output was cut to fit. Use Download for more.</p>
       <pre
         ref="viewer" tabindex="0" aria-label="Log output"
-        class="mono mt-2 h-80 overflow-auto whitespace-pre rounded border border-pico-border bg-black/40 p-2 text-xs leading-4 text-zinc-200"
+        class="mono mt-2 h-80 overflow-auto whitespace-pre rounded-sm border border-pico-border bg-black/40 p-2 text-xs leading-4 text-zinc-200"
       >{{ lines.length ? lines.join('\n') : (ready ? (loading ? '' : (fetched ? 'No log lines.' : 'Press Refresh to load logs.')) : 'Pick a namespace, pod and container.') }}</pre>
     </div>
   </section>

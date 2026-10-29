@@ -18,18 +18,18 @@ const busy = ref<string | null>(null)
 interface Draft { text: string; on: boolean; unit: 'MB' | 'GB' }
 const drafts = reactive<Record<string, Draft>>({})
 const MB = 1024 * 1024
-const GB = 1024 * MB
 const isBytes = (s: PlatformSetting) => s.unit === 'bytes'
-const fmtBytes = (n: number) => (n >= GB ? `${+(n / GB).toFixed(2)} GB` : n >= MB ? `${+(n / MB).toFixed(1)} MB` : `${n} bytes`)
+// Platform-wide: RAM/scratch/DB/blob sizes read in MB, CPU in m (volumes stay GiB).
+const unitLabel = (s: PlatformSetting) => (isBytes(s) || s.unit === 'MiB' ? 'MB' : s.unit)
+const fmtBytes = (n: number) => (n >= MB ? `${+(n / MB).toFixed(1)} MB` : `${n} bytes`)
 const fmtVal = (s: PlatformSetting, v: number | boolean) =>
-  typeof v === 'boolean' ? (v ? 'on' : 'off') : isBytes(s) ? fmtBytes(v) : `${v}${s.unit ? ' ' + (v === 1 ? s.unit.replace(/s$/, '') : s.unit) : ''}`
+  typeof v === 'boolean' ? (v ? 'on' : 'off') : isBytes(s) ? fmtBytes(v) : `${v}${s.unit ? (s.unit === 'm' ? 'm' : ' ' + (v === 1 ? unitLabel(s).replace(/s$/, '') : unitLabel(s))) : ''}`
 
 function seed(s: PlatformSetting) {
   const v = s.value
   if (typeof v === 'boolean') drafts[s.key] = { text: '', on: v, unit: 'MB' }
   else if (isBytes(s)) {
-    const gb = v >= GB && v % GB === 0
-    drafts[s.key] = { text: String(gb ? v / GB : +(v / MB).toFixed(2)), on: false, unit: gb ? 'GB' : 'MB' }
+    drafts[s.key] = { text: String(+(v / MB).toFixed(2)), on: false, unit: 'MB' }
   } else drafts[s.key] = { text: String(v), on: false, unit: 'MB' }
 }
 function apply(g: SettingsGroup[]) {
@@ -62,7 +62,7 @@ function draftNumber(s: PlatformSetting): number | null {
   const d = drafts[s.key]
   const t = d?.text.trim() ?? ''
   if (!/^\d+(\.\d+)?$/.test(t)) return null
-  return isBytes(s) ? Math.round(Number(t) * (d.unit === 'GB' ? GB : MB)) : Number(t)
+  return isBytes(s) ? Math.round(Number(t) * MB) : Number(t)
 }
 
 // Parsed draft value, or an error string.
@@ -153,7 +153,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
       <ul class="divide-y divide-pico-border">
         <li v-for="r in rowsOf(g)" :key="r.id" class="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_14rem_14rem] sm:gap-4">
           <div class="min-w-0">
-            <p class="label !mb-0 flex flex-wrap items-center gap-2">
+            <p class="label mb-0! flex flex-wrap items-center gap-2">
               {{ r.label }}
               <span v-if="r.default?.overridden || r.ceiling?.overridden" class="badge-warn">overridden</span>
             </p>
@@ -182,10 +182,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
                     :aria-invalid="errorOf(s) ? 'true' : undefined" :aria-describedby="errorOf(s) ? `${uid}-${s.key}-err` : undefined"
                     @keydown.enter.prevent="canSave(g) && save(g)"
                   />
-                  <select v-if="isBytes(s)" v-model="drafts[s.key].unit" class="input !w-20 shrink-0" :aria-label="`Unit for ${r.label} ${col}`">
-                    <option>MB</option><option>GB</option>
-                  </select>
-                  <span v-else-if="s.unit" class="meta min-w-[3.5rem] shrink-0 break-words">{{ s.unit }}</span>
+                  <span v-if="s.unit" class="meta min-w-14 shrink-0 wrap-break-word">{{ unitLabel(s) }}</span>
                 </div>
                 <p v-if="errorOf(s)" :id="`${uid}-${s.key}-err`" class="field-error">{{ errorOf(s) }}</p>
                 <p class="meta mt-0.5">Built-in {{ fmtVal(s, s.default) }}<template v-if="rangeHelp(s)"> · {{ rangeHelp(s) }}</template></p>

@@ -279,7 +279,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
                   <span class="mono">used {{ num(r.used, r.unit) }} · req {{ r.req }}{{ r.unit }} · alloc {{ r.cap }}{{ r.unit }}</span>
                 </div>
                 <div
-                  class="relative mb-2 h-3 overflow-hidden rounded bg-pico-card"
+                  class="relative mb-2 h-3 overflow-hidden rounded-sm bg-pico-card"
                   role="img"
                   :aria-label="`${r.label}: used ${num(r.used, r.unit)}, requested ${r.req}${r.unit}, allocatable ${r.cap}${r.unit}`"
                 >
@@ -294,7 +294,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
               </template>
               <div
                 v-if="pressure(n).tight"
-                class="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-400"
+                class="mb-2 rounded-sm border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-400"
               >
                 Requested {{ pressure(n).c }}% CPU, {{ pressure(n).m }}% memory: next app may trigger a new node
               </div>
@@ -317,7 +317,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-apps" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Apps</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[60rem]">
+            <table class="tbl min-w-240">
               <colgroup><col /><col class="w-44" /><col class="w-28" /><col class="w-16" /><col class="w-20" /><col class="w-40" /><col class="w-48" /></colgroup>
               <thead>
                 <tr>
@@ -356,7 +356,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-platform" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Platform components</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[56rem]">
+            <table class="tbl min-w-4xl">
               <colgroup><col /><col class="w-40" /><col class="w-24" /><col class="w-20" /><col class="w-24" /><col class="w-24" /></colgroup>
               <thead>
                 <tr>
@@ -382,7 +382,7 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
         <section id="sec-db" class="scroll-mt-4">
           <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Database servers</h2>
           <div class="card overflow-x-auto">
-            <table class="tbl min-w-[68rem]">
+            <table class="tbl min-w-272">
               <colgroup><col class="w-32" /><col /><col class="w-44" /><col class="w-52" /><col class="w-64" /><col class="w-24" /></colgroup>
               <thead>
                 <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Capacity</th><th scope="col">Connections</th><th scope="col">Data</th><th scope="col">Status</th></tr>

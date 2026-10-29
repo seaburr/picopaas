@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Download, Trash2 } from 'lucide-vue-next'
+import { Download, Settings, Trash2 } from 'lucide-vue-next'
 import ConfirmDialog from './ConfirmDialog.vue'
 import IconButton from './IconButton.vue'
 import { backUpNow, deleteBackupSet, downloadBackupSet, getBackupExport, getBackups } from '../api/backups'
@@ -210,7 +210,7 @@ const delMessage = computed(() => {
 const locked = computed(() => !!info.value?.admin_disabled)
 const full = computed(() => !!info.value?.storage_full)
 const lockMsg = computed(() => info.value?.admin_disabled_message || 'Backups are turned off by the administrator.')
-const noRun = computed(() => (locked.value ? lockMsg.value : full.value ? 'Backup storage for this app is full. Delete older backups first.' : ''))
+const noRun = computed(() => (locked.value ? lockMsg.value : full.value ? 'Backup storage for this app is full. Old backups roll off automatically; try again shortly.' : ''))
 const MB = 1048576
 const sz = (n: number) => (n >= 1024 * MB ? `${(n / 1024 / MB).toFixed(2)} GB` : `${(n / MB).toFixed(1)} MB`)
 const failMsg = (b: BackupSet) => `Download failed: ${b.failed_export?.error || b.export?.error || 'unknown error'}. Click to retry.`
@@ -236,7 +236,7 @@ onBeforeUnmount(() => {
           {{ locked ? 'off (locked by the administrator)' : info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="!locked && info.enabled && info.schedule !== 'off' && nextAt"> · next {{ nextAt }}</template>
         </p>
         <div class="flex shrink-0 flex-wrap items-center gap-2">
-          <RouterLink :to="`/apps/${appId}/edit#backups`" class="btn-secondary btn-sm">Backup settings</RouterLink>
+          <IconButton :icon="Settings" label="Backup settings" :to="`/apps/${appId}/edit#backups`" />
           <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :aria-describedby="noRun ? 'bk-run-reason' : undefined" @click="runNow">
             {{ runBusy ? 'Starting…' : backupRunning ? 'Backup running…' : inFlight ? 'Deleting…' : 'Back up now' }}
           </button>
@@ -244,14 +244,14 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="locked" id="bk-run-reason" role="status" class="alert-warn mt-2">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
       <p v-else-if="full" id="bk-run-reason" role="status" class="alert-warn mt-2">
-        Backup storage for this app is full ({{ sz(info.repo_bytes ?? 0) }} of {{ sz(info.cap_bytes) }}). New backups are refused until you delete older ones.
+        Backup storage for this app is full ({{ sz(info.repo_bytes ?? 0) }} of {{ sz(info.cap_bytes) }}). The oldest backups roll off automatically, which frees space. You can also delete one yourself.
       </p>
       <p v-else class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way ({{ info.manual_per_hour ?? 1 }} per hour).</p>
       <p v-if="suspended" class="help mt-1">This app is suspended, so backups can't be started or deleted. You can still download existing backups.</p>
 
       <p v-if="!info.backups" class="meta mt-3">The backup list needs a newer platform version. Reload in a minute.</p>
       <template v-else>
-        <p class="mt-3 min-w-0 break-words text-sm">
+        <p class="mt-3 min-w-0 wrap-break-word text-sm">
           <span class="font-medium">Last backup:</span>{{ ' ' }}
           <template v-if="lastSet">
             <span :title="fullTime(lastSet.created_at)">{{ when(lastSet.created_at) }}</span> ·
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
           </template>
           <template v-else> none yet</template>
         </p>
-        <p v-if="info.volume_backups?.has_volume && !info.volume_backups.available" class="meta mt-1 break-words">
+        <p v-if="info.volume_backups?.has_volume && !info.volume_backups.available" class="meta mt-1 wrap-break-word">
           {{ info.volume_backups.note || 'Volume backups are not available yet; ask the admin.' }}
         </p>
 
@@ -271,14 +271,14 @@ onBeforeUnmount(() => {
               <span class="badge-neutral" :title="triggerTitle(b.trigger)">{{ triggerLabel(b.trigger) }}</span>
               <span :class="statusClass(b.status)" :title="b.status === 'partial' ? partsTitle(b) : undefined">{{ b.status }}</span>
             </div>
-            <p v-if="b.status === 'partial' || b.status === 'failed'" class="mt-1 break-words text-xs text-amber-300">
+            <p v-if="b.status === 'partial' || b.status === 'failed'" class="mt-1 wrap-break-word text-xs text-amber-300">
               <template v-for="p in failedParts(b)" :key="p.run_id">{{ kindLabel(p.kind) }} failed{{ p.error ? `: ${p.error}` : '' }}. </template>
             </p>
             <div class="mt-1 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <span class="meta flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 <template v-for="(p, i) in b.parts" :key="p.run_id">
                   <span v-if="i > 0" aria-hidden="true">·</span>
-                  <span :class="['break-words', partClass(p.status)]" :title="p.error || p.status">
+                  <span :class="['wrap-break-word', partClass(p.status)]" :title="p.error || p.status">
                     {{ kindLabel(p.kind) }}
                     <template v-if="p.status === 'succeeded'">✓<template v-if="p.bytes_added != null"> {{ fmtBytes(p.bytes_added) }}</template></template>
                     <template v-else>({{ p.status }})</template>
@@ -289,7 +289,7 @@ onBeforeUnmount(() => {
                 <template v-if="b.status === 'succeeded' || b.status === 'partial'">
                   <span v-if="exState(b) === 'busy'" class="meta text-right" role="status">preparing, you can leave this page</span>
                   <span v-else-if="exState(b) === 'ready' && b.export?.available_until" class="meta text-right" :title="fullTime(b.export.available_until)">ready until {{ clock(b.export.available_until) }}</span>
-                  <span v-else-if="exState(b) === 'failed'" class="min-w-0 break-words text-right text-xs text-danger-light">{{ failMsg(b) }}</span>
+                  <span v-else-if="exState(b) === 'failed'" class="min-w-0 wrap-break-word text-right text-xs text-danger-light">{{ failMsg(b) }}</span>
                 </template>
                 <IconButton
                   v-if="exState(b) === 'busy' || preparing.has(b.id)"

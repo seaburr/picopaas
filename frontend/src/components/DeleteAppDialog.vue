@@ -13,7 +13,6 @@ const what = computed(() => {
   const parts = [a.want_db ? `its ${dbEngineLabel(a.db_engine)} database` : '', a.want_storage ? 'its blob storage bucket' : ''].filter(Boolean)
   return parts.length ? `, ${parts.join(' and ')} (including all data)` : ''
 })
-const needsType = computed(() => !!props.app && (props.app.want_db || props.app.want_storage))
 </script>
 
 <template>
@@ -25,7 +24,7 @@ const needsType = computed(() => !!props.app && (props.app.want_db || props.app.
     busy-label="Deleting…"
     danger
     :busy="busy"
-    :require-text="needsType ? app?.name : undefined"
+    :require-text="app?.name"
     @confirm="$emit('confirm')"
     @cancel="$emit('cancel')"
   />

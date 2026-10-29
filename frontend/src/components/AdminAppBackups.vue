@@ -76,7 +76,7 @@ async function download(setId: number) {
       </p>
       <p v-if="data.purged" class="text-amber-300">This app's backups have been purged.</p>
       <p v-else-if="!data.backups.length" class="text-zinc-400">No backups.</p>
-      <table v-else class="tbl min-w-[32rem]">
+      <table v-else class="tbl min-w-lg">
         <thead><tr><th scope="col">Taken</th><th scope="col">Trigger</th><th scope="col">Status</th><th scope="col">Parts</th><th scope="col" class="text-right">Size</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
         <tbody class="text-zinc-300">
           <tr v-for="b in data.backups" :key="b.id">

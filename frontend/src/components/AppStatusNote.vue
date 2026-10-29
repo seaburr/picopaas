@@ -20,14 +20,14 @@ const busy = computed(() => props.app.status === 'deploying')
 
   <div v-else-if="app.status === 'pending' || app.status === 'deploying'" class="text-sm">
     <p class="text-zinc-300">
-      {{ busy ? 'Starting your app…' : 'Queued. Deploy starts shortly.' }}
-      <span v-if="!compact" class="text-zinc-400">Usually about a minute.</span>
+      {{ busy ? 'Starting your app.' : 'Queued. Deploy starts shortly.' }}
+      <span v-if="!compact" class="text-zinc-400">This usually takes about a minute.</span>
     </p>
-    <div v-if="busy" class="indet mt-2 h-1 w-full max-w-xs overflow-hidden rounded bg-pico-card" role="progressbar" aria-label="Deploying" />
+    <div v-if="busy" class="indet mt-2 h-1 w-full max-w-xs overflow-hidden rounded-sm bg-pico-card" role="progressbar" aria-label="Deploying" />
   </div>
 
   <div v-else-if="failure" class="text-sm">
-    <p class="break-words text-zinc-200">{{ failure.text }}</p>
+    <p class="wrap-break-word text-zinc-200">{{ failure.text }}</p>
     <p v-if="retry" class="meta mt-0.5">{{ retry }}</p>
     <p v-else class="meta mt-0.5">Won't retry until you change something.</p>
     <div class="mt-2 flex flex-wrap gap-2">
@@ -43,7 +43,7 @@ const busy = computed(() => props.app.status === 'deploying')
     </div>
   </div>
 
-  <p v-else-if="!compact && app.status_detail" class="break-words text-sm text-zinc-300">{{ app.status_detail }}</p>
+  <p v-else-if="!compact && app.status_detail" class="wrap-break-word text-sm text-zinc-300">{{ app.status_detail }}</p>
 </template>
 
 <style scoped>

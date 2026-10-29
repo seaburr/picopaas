@@ -90,6 +90,8 @@ export interface AppQuota {
 }
 
 export interface AppEvent {
+  id?: number
+  dismissed_at?: string | null
   at: string
   kind: 'disk' | 'evicted' | 'oom' | 'crashed' | 'rollback' | string
   message: string
@@ -114,6 +116,7 @@ export interface ImageVersion {
 
 export interface App {
   id: number
+  project_id?: number | null
   owner_id: number
   name: string
   hostname: string
@@ -138,6 +141,7 @@ export interface App {
   health_check_timeout_seconds?: number | null
   env: EnvVar[]
   retry_at?: string | null
+  uptime_seconds?: number | null // seconds since the app last became ready (backend, optional)
   last_event?: AppEvent | null // newest restart event, only if under 24h old
   resources?: AppResources
   quota?: AppQuota
@@ -198,6 +202,7 @@ export interface ResourcesPatchResult extends AdminApp {
 
 export interface AppCreatePayload {
   name: string
+  project_id?: number
   image: string
   port: number
   want_db: boolean
@@ -533,7 +538,17 @@ export interface BackupFailure {
   run_id: number; app_id: number; app_name: string | null; app_deleted: boolean; owner_email: string | null
   kind: string; trigger: string; status: string; error: string | null; at: string | null; still_failing?: boolean; age_seconds?: number
 }
+export interface PlatformBackupRun {
+  id: number; trigger: string; status: string; error: string | null; created_at: string; finished_at: string | null
+  bytes_added: number | null; repo_bytes: number | null; snapshot_id: string | null
+}
+export interface PlatformDbBackup {
+  enabled: boolean; active: boolean; interval_hours: number
+  keep: { daily: number; weekly: number; monthly: number }
+  last_success_at: string | null; repo_bytes: number | null; stale: boolean; runs: PlatformBackupRun[]
+}
 export interface BackupHealth {
+  platform_db?: PlatformDbBackup
   enabled: boolean; configured: boolean; days: number
   storage: BackupStorage; failures: BackupFailure[]; stuck: BackupFailure[]
   sweeper?: { last_run_at: string | null; cleaned: Record<string, number>; errors: string[]; orphan_repos: (string | number)[] }
@@ -551,4 +566,51 @@ export interface AdminApiKey {
   created_at: string
   last_used_at: string | null
   revoked_at: string | null
+}
+
+export type ProjectRole = 'owner' | 'member'
+
+export interface Project {
+  id: number
+  name: string
+  slug: string
+  is_personal: boolean
+  role: ProjectRole
+  member_count: number
+  app_count: number
+  app_limit: number | null
+  app_limit_effective: number
+  created_at: string
+}
+
+export interface ProjectMember {
+  user_id: number
+  email: string
+  role: ProjectRole
+  added_at: string
+}
+
+export interface ProjectInvite {
+  id: number
+  email: string | null
+  role: ProjectRole
+  created_at: string
+  expires_at: string
+}
+
+export interface ProjectInviteCreated extends ProjectInvite {
+  token: string
+  path: string
+}
+
+export interface AdminProject {
+  id: number
+  name: string
+  slug: string
+  is_personal: boolean
+  app_count: number
+  member_count: number
+  owner_emails: string[]
+  app_limit: number | null
+  app_limit_effective: number
 }

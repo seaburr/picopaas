@@ -38,7 +38,7 @@ onMounted(async () => {
       <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>
       <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <section v-for="t in templates" :key="t.id" class="card card-pad flex min-w-0 flex-col gap-2">
-          <h2 class="section-title break-words">{{ t.name }}</h2>
+          <h2 class="section-title wrap-break-word">{{ t.name }}</h2>
           <p class="text-sm text-zinc-300">{{ t.description }}</p>
           <div class="flex flex-wrap gap-1">
             <span v-if="t.wants_db" class="badge badge-info">{{ t.db_engine === 'pg' ? 'PostgreSQL database' : 'MySQL database' }}</span>

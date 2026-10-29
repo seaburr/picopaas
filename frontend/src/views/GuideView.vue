@@ -151,7 +151,7 @@ function onClick(e: MouseEvent) {
         </nav>
 
         <!-- Mobile: sticky Contents bar that follows the reader down a very long page -->
-        <div class="sticky top-0 z-30 -mx-4 border-b border-pico-border bg-pico-bg/95 px-4 py-2 backdrop-blur md:hidden">
+        <div class="sticky top-0 z-30 -mx-4 border-b border-pico-border bg-pico-bg/95 px-4 py-2 backdrop-blur-sm md:hidden">
           <button type="button" class="btn-secondary btn-sm w-full justify-between" :aria-expanded="navOpen" aria-controls="toc" @click="navOpen = !navOpen">
             <span class="shrink-0">Contents</span>
             <span class="min-w-0 truncate font-normal text-zinc-400">{{ activeText }}</span>
@@ -162,7 +162,7 @@ function onClick(e: MouseEvent) {
               v-for="t in rendered.toc"
               :key="t.id"
               :href="`#${t.id}`"
-              class="block rounded px-2 py-2"
+              class="block rounded-sm px-2 py-2"
               :class="[t.level === 3 ? 'pl-6 text-xs' : '', activeId === t.id ? 'bg-pico-card font-medium text-white' : 'text-zinc-300']"
               @click.prevent="go(t.id)"
             >{{ t.text }}</a>
@@ -174,7 +174,7 @@ function onClick(e: MouseEvent) {
             v-for="t in rendered.toc"
             :key="t.id"
             :href="`#${t.id}`"
-            class="block rounded border-l-2 px-2 py-1 leading-snug hover:text-white"
+            class="block rounded-sm border-l-2 px-2 py-1 leading-snug hover:text-white"
             :class="[t.level === 3 ? 'ml-3 text-xs' : '', activeId === t.id ? 'border-accent-light bg-pico-card/60 font-medium text-white' : 'border-transparent text-zinc-300']"
             :aria-current="activeId === t.id ? 'location' : undefined"
             @click.prevent="go(t.id)"
