@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: Kaisen Settings > Output commit 0ebbfe3 pushed to seaburr/kaisen (55 tests, gitleaks clean); release run 40933955773 (result in report). Picopaas ledger docs-only commit follows; pushed without security review.
+- 2026-10-29 [manager] DONE: Kaisen Settings > Output per Chas: customer chooses Download only or Download + push to GitHub; push mode needs repo URL (parsed from https://github.com/owner/repo[.git]) + fine-grained token, with in-page token instructions; optional push-on-finish (result in inbox) and open-PR. 55 tests green. Not browser-checked.
 - 2026-10-29 [scm-security] DONE: Kaisen first push (separate repo seaburr/kaisen): 45160bf kit, 4e29903 docs, cef2eb9 service (49 tests), df4b764 workflow; gitleaks clean (tree+history), release run 40933279177 success. Picopaas docs commit follows.
 - 2026-10-29 [backend] DONE: Kaisen builder v0 in ~/source/kaisen/service (setup claim via logged code, encrypted Settings, Anthropic tool loop with caps/metering/lease, inbox, tarball, GitHub push; kaisen/<slug> branch mirrors project tree). 49 tests green; Docker image not built locally; PG path untested. Remote seaburr/kaisen added.
 - 2026-10-29 [manager] START: Kaisen builder v0 per Chas (in-app setup form, tarball or GitHub push, builder first). Design ~/source/kaisen/docs/BUILDER_V0.md; backend-dev builds in ~/source/kaisen (outside this repo).
