@@ -97,8 +97,8 @@ Plain JSON endpoints:
 ```bash
 # Create
 curl -sS -X POST "$PP/apps" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{
-  "name": "hello",
-  "image": "ghcr.io/seaburr/picopaas-testapp-hello:latest",
+  "name": "my-app",
+  "image": "ghcr.io/me/app:1.2",
   "port": 8080,
   "want_db": false, "want_storage": false,
   "env": [{"key": "APP_VERSION", "value": "1.0.0", "is_secret": false}],
@@ -175,7 +175,7 @@ secrets:
 
 Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
 
-`project` (optional string): the slug of a project you belong to, see section 16. Default: your personal project.
+`project` (optional string): the slug of a project you belong to, see section 15. Default: your personal project.
 
 ### Secrets on create and update
 
@@ -619,68 +619,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, a Gatus status page and a static nginx site, each with a link to its example README. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
 
-## 15. Test apps
-
-Public images built from `testapps/` that you can deploy to try the platform.
-
-hello (smallest possible deploy):
-
-```yaml
-apiVersion: picopaas/v1
-name: hello
-image: ghcr.io/seaburr/picopaas-testapp-hello:latest
-port: 8080
-env:
-  APP_VERSION: "1.0.0"
-```
-
-webpage (static page, health check on):
-
-```yaml
-apiVersion: picopaas/v1
-name: webpage
-image: ghcr.io/seaburr/picopaas-testapp-webpage:latest
-port: 8080
-healthCheck: { enabled: true, path: /healthz }
-env:
-  APP_VERSION: "1.0.0"
-```
-
-probe (exercises the database and blob storage bucket; endpoints include `/db`, `/s3`, `/db/fill?mb=N`, `/s3/fill?mb=N` and `/disk/fill`):
-
-```yaml
-apiVersion: picopaas/v1
-name: probe
-image: ghcr.io/seaburr/picopaas-testapp-probe:latest
-port: 8080
-healthCheck: { enabled: true, path: /healthz }
-resources: { db: true, storage: true }
-env:
-  DB_HOST: ${{ db.host }}
-  DB_PORT: ${{ db.port }}
-  DB_NAME: ${{ db.name }}
-  DB_USER: ${{ db.user }}
-  DB_PASSWORD: ${{ db.password }}
-  DB_CA_CERT: ${{ db.ca_cert }}
-  S3_ENDPOINT: ${{ storage.endpoint }}
-  S3_REGION: ${{ storage.region }}
-  S3_BUCKET: ${{ storage.bucket }}
-  S3_ACCESS_KEY: ${{ storage.access_key }}
-  S3_SECRET_KEY: ${{ storage.secret_key }}
-```
-
-abacusaas (a real third-party app; listens on 8080 and serves `/abacus`, the root path is a 404):
-
-```yaml
-apiVersion: picopaas/v1
-name: abacusaas
-image: ghcr.io/seaburr/abacusaas:latest
-port: 8080
-```
-
-The default limit is one app per account, so delete a test app before you deploy the next one.
-
-## 16. Projects (teams)
+## 15. Projects (teams)
 
 A project owns apps; its members manage them together. Everyone has a **personal project** (your apps until you choose
 otherwise). Create a shared project from the project switcher, then invite people.

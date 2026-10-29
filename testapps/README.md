@@ -1,5 +1,7 @@
 # testapps
 
+Internal: for pentests and pressure tests of PicoPaaS. Not customer documentation (they are deliberately not in docs/USER_GUIDE.md).
+
 Tiny images for exercising a live PicoPaaS deployment end to end (deploy, env refs, DB/Spaces
 provisioning, quotas, network isolation). Each is non-root (`USER 10001:10001`), listens on `$PORT`
 (default `8080`), and serves `GET /healthz` -> `200 "ok"`. Built and pushed by
@@ -122,3 +124,14 @@ env:
 ```
 
 Live test: `tests/e2e/test_webpage.py` (browser part needs `pip install playwright && python -m playwright install chromium`).
+
+## abacusaas (third-party, not built here)
+
+Abacusaas (a real third-party app; listens on 8080 and serves `/abacus`, the root path is a 404):
+
+```yaml
+apiVersion: picopaas/v1
+name: abacusaas
+image: ghcr.io/seaburr/abacusaas:latest
+port: 8080
+```

@@ -71,8 +71,8 @@ secrets:
   - API_TOKEN
 ```
 
-`image` above is a placeholder. Use your own public image, or `ghcr.io/seaburr/picopaas-testapp-hello:latest` to try
-it. Otherwise `apply` fails with `error: Couldn't find that image, or it's private. Check the name and tag, and make
+`image` above is a placeholder. Use your own public image (or start from a template on the Templates page).
+Otherwise `apply` fails with `error: Couldn't find that image, or it's private. Check the name and tag, and make
 the image public in your registry.` Env values must be strings (quote numbers and booleans). `port` is 1024-65535.
 
 `healthCheck.enabled` (default false) turns on HTTP readiness and liveness probes against `path` on your app's port;
