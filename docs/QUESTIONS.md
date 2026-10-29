@@ -15,6 +15,12 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
+- **Kaisen builder v0: what I need from you (2026-10-29).** Design: ~/source/kaisen/docs/BUILDER_V0.md. Setup happens in the app,
+  so the only deploy-time secret is `SECRET_KEY`. When the build is ready: (1) ~~create a GitHub repo for Kaisen~~ done: seaburr/kaisen
+  (public, empty, remote added); first push follows once the build is green; (2) after the first release run, flip the
+  `ghcr.io/seaburr/kaisen` package to Public once; (3) get the Anthropic API key, which you paste into Kaisen's Settings page, not into PicoPaaS or GitHub; (4) optional:
+  a target repo plus a fine-grained token (Contents RW, Pull requests RW, that repo only), also entered in Settings. You can skip
+  (4) and download a tarball instead.
 - **Approve a bootstrap run to republish the backup image and re-pin BACKUP_IMAGE (2026-10-28).** images/backup/picopaas-backup.sh now writes the app image (url/tag/digest) into the package MANIFEST.json; the new image needs a bootstrap run to publish, then BACKUP_IMAGE re-pinned. Until then manifests simply lack `image`. Reply "approved" and I run it.
 - **Sign in with Google (design: docs/design/google-signin.md; effort M, not massive).** When you want it built: create a Google Cloud
   project, an OAuth consent screen (External; openid/email/profile; publish to Production), and a Web OAuth client with redirect
@@ -23,6 +29,9 @@ background on each item if you want it.
 
 ## Resolved
 
+- 2026-10-29: **Kaisen configuration (answered: in-app).** Chas: the customer configures Kaisen in a web form once it is
+  deployed (API key, target repo), then it goes to work; output is a GitHub repo OR a tarball download; build the builder first,
+  self-testing later. The SPEC v2 section 17 decisions are deferred to M1 (they concern the CI/ruleset path). See ~/source/kaisen/docs/BUILDER_V0.md.
 - 2026-10-25: GHCR package `picopaas-example-ghost6` public (it was already public; anonymous pull verified 200). Blogs 98 and 164 cut over to `ghost6:14ac3a1`.
 - 2026-10-25: Ghost 6 vs sql_require_primary_key (answered: conform to Ghost). Chas: upstream won't fix; the managed MySQL setting is turned off cluster-wide instead of patching Ghost. See docs/requests/0009.
 

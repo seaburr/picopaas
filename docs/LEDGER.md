@@ -5,8 +5,13 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [scm-security] DONE: Kaisen first push (separate repo seaburr/kaisen): 45160bf kit, 4e29903 docs, cef2eb9 service (49 tests), df4b764 workflow; gitleaks clean (tree+history), release run 40933279177 success. Picopaas docs commit follows.
+- 2026-10-29 [backend] DONE: Kaisen builder v0 in ~/source/kaisen/service (setup claim via logged code, encrypted Settings, Anthropic tool loop with caps/metering/lease, inbox, tarball, GitHub push; kaisen/<slug> branch mirrors project tree). 49 tests green; Docker image not built locally; PG path untested. Remote seaburr/kaisen added.
+- 2026-10-29 [manager] START: Kaisen builder v0 per Chas (in-app setup form, tarball or GitHub push, builder first). Design ~/source/kaisen/docs/BUILDER_V0.md; backend-dev builds in ~/source/kaisen (outside this repo).
 - 2026-10-29 [scm-security] DONE: pushed 1c0b7f1 (delete_user ascending lock order + test; closes lock-order LOW). gitleaks clean; 129 targeted tests passed. CI 40865785952, image 40865785701, deploy 40865880751 all success; platform /healthz 200. Pushed without security review (tiny sort change).
 - 2026-10-29 [backend] DONE: delete_user sorts shared memberships by project_id before lock_project (only multi-lock path; others lock one project); test asserts order. No doc impact.
+- 2026-10-29 [security-reviewer] DONE: skeptic review of Kaisen SPEC written to ~/source/kaisen/docs/SPEC_REVIEW.md (outside this repo). Verdicts M0 go-with-changes, M1/M2/M3 no-go as written. No picopaas files touched.
+- 2026-10-29 [security-reviewer] START: skeptic review of ~/source/kaisen/docs/SPEC.md against PicoPaaS code/docs.
 - 2026-10-29 [backend] START: admin delete_user lock projects in ascending id order (scm LOW).
 - 2026-10-29 [release-blogger] DONE: posted (published) release-roundup-2026-10-29-projects-metrics-self-backup covering round 3 (Projects, alert dismiss, uptime, /metrics, platform DB self-backup, manifest image, platform 503 page, UI polish, Tailwind 4, agent loop). Tenant 503 page and Google sign-in not claimed.
 - 2026-10-29 [scm-security] DONE: pushed 2e9705d (backend+tests), d31c25d (frontend), 694f3ae (docs). gitleaks clean per commit; pytest 1793 passed/63 skipped; typecheck+build green. CI 40862306907, image 40862306956, deploy 40862386880 all success; platform /healthz 200. Pushed without security review of lock change (see lock review line).
@@ -1052,3 +1057,6 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-28 [tech-writer] DONE: round docs audit. USER_GUIDE (typed delete, URLs, uptime, alert dismiss, MB), ADMIN_GUIDE (admin ceiling follows user ceiling), ROADMAP (Google sign-in planned), RECIPES heading, landing Teams bullet. Already correct: API/CLI/ADMIN_GUIDE/OPERATIONS for metrics, platform backup, MANIFEST image, projects, 503 (tenant pages phase 2); delete-frees-space wording; limits table matches config.
 - 2026-10-29 [qa] START: full-suite coverage run + raise touched modules to >=95%.
 - 2026-10-29 [qa] DONE: full suite 1793 passed, 1 skipped; coverage 94% (9228 stmts, 535 miss; prev 94% at 1727). First run read 93% only because app/routers/projects.py was mid-edit by another worker (75%); settled: projects.py 96%, routers/projects.py 99%, metrics/platform_backup/admin_diag/apps/spec all >=96%. No new tests needed; no untouched-module gaps in this round's code (admin.py 92%, scheduler/ratelimit 93% are pre-existing).
+- 2026-10-29 [tech-writer] DONE: wrote Kaisen v0 build spec at ~/source/kaisen/docs/SPEC.md (uncommitted, outside this repo).
+- 2026-10-29 [tech-writer] START: Kaisen SPEC v2 (resolve SPEC_REVIEW.md items; v1 kept as SPEC_v1.md; files outside this repo).
+- 2026-10-29 [tech-writer] DONE: Kaisen SPEC v2 at ~/source/kaisen/docs/SPEC.md (v1 kept as SPEC_v1.md); egress premise corrected, all 15 review changes resolved/deferred in a table. Uncommitted, outside this repo.
