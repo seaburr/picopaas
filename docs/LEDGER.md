@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [frontend] DONE: ProjectSwitcher: dropped the decorative folder icon beside the select; New project button is now FolderPlus (Chas: project icon sat next to a redundant folder icon). Typecheck+build green.
 - 2026-10-29 [scm-security] DONE: resolved the BLOCKED backend-tests line: pushed 7013823 (summary(now=) injected clock fix); gitleaks clean, 23 targeted tests passed. CI 40938987163 green, image 40938987234, deploy 40939094096 success. Pushed without security review (test/clock param only).
 - 2026-10-29 [backend] DONE: CI red was not flaky: platform_backup.summary() judged staleness by wall clock while the test's backup finished at a fixed 2026-10-28 time, so it went red once that was >37h old. summary() takes now= (default wall clock, via backups._now); tests pass it. Full suite 1794 passed/63 skipped.
 - 2026-10-29 [scm-security] DONE: pushed d282d81 (frontend: projects discoverable for personal-only users); gitleaks clean, typecheck+build green. Image 40936030438 and deploy 40936168789 success; platform /healthz 200. BLOCKED (backend): CI 40936030577 failed backend-tests, tests/test_backend_2026_10_28.py:96 (assert 'succeeded' == ...), frontend-only diff so likely flaky/time-dependent. Pushed without security review.

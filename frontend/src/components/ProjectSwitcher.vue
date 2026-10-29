@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { FolderKanban, Plus, Settings } from 'lucide-vue-next'
+import { FolderPlus, Settings } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
@@ -24,11 +24,10 @@ function onPick(e: Event) {
 
 <template>
   <div v-if="show" class="flex items-center gap-1" role="group" aria-label="Project">
-    <FolderKanban :size="16" class="shrink-0 text-zinc-400" aria-hidden="true" />
     <select class="input w-auto max-w-40 min-w-0" aria-label="Current project" :value="current?.id" @change="onPick">
       <option v-for="p in projects.projects" :key="p.id" :value="p.id">{{ p.is_personal ? 'Personal' : p.name }}</option>
     </select>
     <IconButton v-if="current && !current.is_personal" :icon="Settings" label="Project settings and members" :to="`/projects/${current.id}`" />
-    <IconButton :icon="Plus" label="New project" @click="router.push('/projects/new')" />
+    <IconButton :icon="FolderPlus" label="New project" @click="router.push('/projects/new')" />
   </div>
 </template>
