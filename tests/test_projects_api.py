@@ -535,3 +535,23 @@ def test_member_cap_enforced_on_accept(team, monkeypatch):
     inv = a.post(f"/projects/{p['id']}/invites", json={}).json()
     assert c.post(f"/invites/{inv['token']}/accept").status_code == 403
     assert _db().query(models.ProjectMember).filter_by(project_id=p["id"]).count() == 2
+
+
+def test_delete_user_locks_projects_in_ascending_id_order(team, monkeypatch):
+    from app import projects as projects_mod
+    admin, a, b, c, p = team
+    # b joins three more projects; create them so b's membership order is not id order
+    ids = [p["id"]]
+    for n in range(2):
+        ids.append(_join_new(c, b, f"P{n}"))
+    calls = []
+    real = projects_mod.lock_project
+    monkeypatch.setattr(projects_mod, "lock_project", lambda db, pid: (calls.append(pid), real(db, pid))[1])
+    assert admin.delete(f"/admin/users/{_uid('b@example.com')}").status_code == 204
+    assert len(calls) == 3 and calls == sorted(calls) and set(calls) == set(ids)
+
+
+def _join_new(owner, joiner, name):
+    pid = _mk(owner, name)["id"]
+    _join(owner, joiner, pid)
+    return pid

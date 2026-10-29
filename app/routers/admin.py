@@ -333,7 +333,7 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.Us
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
-    shared = _shared_memberships(db, user.id)
+    shared = sorted(_shared_memberships(db, user.id), key=lambda m: m.project_id)  # fixed lock order: no deadlocks
     for m in shared:
         projects.lock_project(db, m.project_id)
         if m.role == "owner" and projects.owner_count(db, m.project_id) <= 1 and projects.live_app_count(db, m.project_id):
