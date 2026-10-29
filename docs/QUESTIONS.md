@@ -7,6 +7,10 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Kaisen customers and the 1-app default (2026-10-29).** New PicoPaaS accounts get `DEFAULT_APP_LIMIT` = 1, and Kaisen itself
+  uses that slot, so it can't deploy a preview into the customer's personal space. For now Kaisen can deploy into a project
+  (3 apps by default). Options: (a) leave it and document "deploy previews into a project"; (b) raise the default for new
+  accounts to 2; (c) have Kaisen create its own project. I recommend (a) for now, then (c) once Kaisen has customers.
 - **Production hardening (deferred by Chas 2026-10-20, do before any real production use).** The API pod's `picopaas-env`
   secret holds an **account-wide** DO API token and a **full-access** Spaces key, so a code-execution bug in the API reaches
   the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a
