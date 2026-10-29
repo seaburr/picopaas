@@ -426,14 +426,14 @@ async function onSubmit() {
             <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
           </div>
 
-          <div v-if="!isEdit && projects.hasShared">
+          <div v-if="!isEdit && projects.projects.length > 0">
             <label for="f-project" class="label">Project</label>
             <select id="f-project" v-model="projectId" class="input">
               <option v-for="p in projects.projects" :key="p.id" :value="p.id">
                 {{ p.is_personal ? 'Personal' : p.name }} ({{ p.app_count }} of {{ p.app_limit_effective }} apps)
               </option>
             </select>
-            <p class="help">Everyone in the project can manage this app.</p>
+            <p class="help">Everyone in the project can manage this app. <RouterLink to="/projects/new" class="underline">New project</RouterLink></p>
           </div>
 
           <div>

@@ -6,14 +6,14 @@ import IconButton from './IconButton.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
 
-// Compact project picker. Hidden for personal-only users (they reach "New project" from Account), so their nav is unchanged.
+// Compact project picker, always shown for signed-in users so projects are discoverable (personal-only users get "Personal" + New project).
 const auth = useAuthStore()
 const projects = useProjectsStore()
 const router = useRouter()
 onMounted(() => {
   if (auth.user?.status === 'active' && !projects.loaded) projects.load()
 })
-const show = computed(() => !!auth.user && projects.hasShared)
+const show = computed(() => !!auth.user && projects.projects.length > 0)
 const current = computed(() => projects.current)
 
 function onPick(e: Event) {

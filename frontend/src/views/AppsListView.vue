@@ -130,8 +130,7 @@ function meta(app: App) {
     <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-baseline gap-3">
-          <h1 class="page-title">Apps</h1>
-          <span v-if="projects.hasShared && projects.current" class="meta">{{ projects.current.is_personal ? 'Personal' : projects.current.name }}</span>
+          <h1 class="page-title">{{ !projects.current ? 'Apps' : projects.current.is_personal ? 'Personal apps' : `Apps in ${projects.current.name}` }}</h1>
           <span v-if="!loading && limit" class="meta">{{ store.apps.length }} of {{ limit }}</span>
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
@@ -140,6 +139,10 @@ function meta(app: App) {
           <IconButton v-else :icon="Plus" label="New app" to="/apps/new" />
         </div>
       </div>
+
+      <p v-if="projects.loaded && !projects.hasShared" class="help mb-3">
+        Want to share apps with others? <RouterLink to="/projects/new" class="underline">Create a project.</RouterLink>
+      </p>
 
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
