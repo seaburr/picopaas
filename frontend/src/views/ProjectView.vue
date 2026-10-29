@@ -162,7 +162,7 @@ async function onInvite() {
   inviteError.value = ''
   try {
     const email = inviteEmail.value.trim()
-    created.value = await api.createInvite(project.value.id, { ...(email ? { email } : {}), role: inviteRole.value })
+    created.value = await api.createInvite(project.value.id, { ...(email ? { email } : {}), role: email ? inviteRole.value : 'member' })
     inviteEmail.value = ''
     invites.value = (await api.listInvites(project.value.id)) ?? []
   } catch (e) {
@@ -284,7 +284,7 @@ async function confirmDelete() {
                 <label for="inv-role" class="label">Role</label>
                 <select id="inv-role" v-model="inviteRole" class="input">
                   <option value="member">Member</option>
-                  <option value="owner">Owner</option>
+                  <option v-if="inviteEmail.trim()" value="owner">Owner (email required)</option>
                 </select>
               </div>
               <button type="submit" class="btn-secondary" :disabled="inviting" :aria-busy="inviting"><Plus :size="16" aria-hidden="true" /> {{ inviting ? 'Creating…' : 'Create invite' }}</button>
