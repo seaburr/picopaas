@@ -619,14 +619,15 @@ def test_purge_of_a_volume_repo_runs_in_the_platform_namespace(on, vols, scoped,
 def test_network_policies_unchanged_without_volume_backups():
     pols = k8s.network_policies(1, 8080, None)
     assert {p["metadata"]["name"] for p in pols} == {"default-deny", "allow-ingress-controller", "allow-egress-dns",
-                                                     "allow-egress-internet", "allow-egress-mysql"}
+                                                     "allow-egress-internet", "allow-egress-mysql", "allow-egress-ingress"}
     assert all(p["spec"]["podSelector"] == {} for p in pols)
 
 
 def test_backup_pod_is_excluded_from_the_apps_allow_rules_and_gets_only_the_bucket():
     pols = {p["metadata"]["name"]: p for p in k8s.network_policies(7, 8080, None, storage_ips=["10.1.1.1"], backup_ips=["10.2.2.2", "10.2.2.2"])}
     not_backup = {"matchExpressions": [{"key": "picopaas.io/backup", "operator": "DoesNotExist"}]}
-    for name in ("allow-ingress-controller", "allow-egress-internet", "allow-egress-mysql", "allow-egress-storage"):
+    for name in ("allow-ingress-controller", "allow-egress-internet", "allow-egress-mysql", "allow-egress-storage",
+                 "allow-egress-ingress"):
         assert pols[name]["spec"]["podSelector"] == not_backup, name
     assert pols["default-deny"]["spec"]["podSelector"] == {} and pols["allow-egress-dns"]["spec"]["podSelector"] == {}
     bk = pols["allow-egress-backup"]

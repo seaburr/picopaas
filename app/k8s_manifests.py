@@ -291,6 +291,10 @@ def _internet_egress_ports() -> list[dict[str, Any]]:
     return _allowed_ranges("TCP", tcp_blocked) + _allowed_ranges("UDP", list(ABUSE_UDP_RANGES))
 
 
+INGRESS_EGRESS_POLICY = "allow-egress-ingress"
+INGRESS_POD_LABELS = {"app.kubernetes.io/name": "traefik"}
+INGRESS_WEB_PORTS = (8000, 8443, 80, 443)
+
 # cert-manager's ACME HTTP-01 solver pod listens on this port (its --listen-port default) and is labelled
 # acme.cert-manager.io/http01-solver=true. Traefik must reach it there to serve the challenge.
 ACME_SOLVER_PORT = 8089
@@ -439,12 +443,38 @@ def network_policies(
         },
     }
 
+    # Calls to any https://*.picopaas.xyz (the platform API, other apps, the app's own URL) target the load balancer's
+    # public IP, which kube-proxy short-circuits to the Traefik pods' private IPs; the internet rule excludes 10/8, so
+    # without this rule those calls fail. Scoped to the Traefik pods on their web entrypoint ports only (after DNAT the
+    # destination is the container port: 8000/8443 in the chart, 80/443 kept for a hostPort or port change).
+    allow_egress_ingress = {
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": {"name": INGRESS_EGRESS_POLICY, "namespace": namespace},
+        "spec": {
+            **app_pods_selector,
+            "policyTypes": ["Egress"],
+            "egress": [
+                {
+                    "to": [
+                        {
+                            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": INGRESS_NAMESPACE}},
+                            "podSelector": {"matchLabels": dict(INGRESS_POD_LABELS)},
+                        }
+                    ],
+                    "ports": [{"protocol": "TCP", "port": p} for p in INGRESS_WEB_PORTS],
+                }
+            ],
+        },
+    }
+
     policies = [
         default_deny,
         allow_ingress_controller,
         allow_egress_dns,
         allow_egress_internet,
         allow_egress_mysql,
+        allow_egress_ingress,
     ]
     if custom_domain:
         # Let Traefik reach the ACME HTTP-01 solver pod (port 8089). Scoped to the solver pods by label, so the

@@ -190,7 +190,7 @@ def test_render_app_manifests_includes_everything():
         "custom_ingress",
     }
     assert rendered["custom_ingress"] is None  # no custom domain in the default render
-    assert len(rendered["network_policies"]) == 5
+    assert len(rendered["network_policies"]) == 6
 
 
 def test_flatten_manifests_order_and_count():
@@ -199,12 +199,12 @@ def test_flatten_manifests_order_and_count():
     assert flat[1]["kind"] == "RoleBinding"
     assert flat[2]["kind"] == "ResourceQuota"
     assert flat[3]["kind"] == "LimitRange"
-    assert [m["kind"] for m in flat[4:9]] == ["NetworkPolicy"] * 5
-    assert flat[9]["kind"] == "Secret"
-    assert flat[10]["kind"] == "Deployment"
-    assert flat[11]["kind"] == "Service"
-    assert flat[12]["kind"] == "Ingress"
-    assert len(flat) == 13
+    assert [m["kind"] for m in flat[4:10]] == ["NetworkPolicy"] * 6
+    assert flat[10]["kind"] == "Secret"
+    assert flat[11]["kind"] == "Deployment"
+    assert flat[12]["kind"] == "Service"
+    assert flat[13]["kind"] == "Ingress"
+    assert len(flat) == 14
 
 
 def test_role_binding_is_namespaced_to_platform_sa_and_app_ns_clusterrole():
@@ -249,3 +249,21 @@ def test_render_passes_run_as_uid():
     r = k8s.render_app_manifests(APP_ID, HOSTNAME, IMAGE, PORT, ENV, MYSQL_CIDR, run_as_uid=10001)
     sc = r["deployment"]["spec"]["template"]["spec"]["containers"][0]["securityContext"]
     assert sc["runAsUser"] == 10001
+
+
+def test_egress_to_ingress_controller_is_scoped_to_traefik_web_ports():
+    # Pods calling *.picopaas.xyz hit the LB IP, which is short-circuited to the Traefik pods' private IPs.
+    pol = _policy(k8s.network_policies(APP_ID, PORT, MYSQL_CIDR), "allow-egress-ingress")
+    assert pol["spec"]["policyTypes"] == ["Egress"]
+    (rule,) = pol["spec"]["egress"]
+    (peer,) = rule["to"]
+    assert peer["namespaceSelector"] == {"matchLabels": {"kubernetes.io/metadata.name": "traefik"}}
+    assert peer["podSelector"] == {"matchLabels": {"app.kubernetes.io/name": "traefik"}}
+    assert "ipBlock" not in peer
+    assert sorted(p["port"] for p in rule["ports"]) == [80, 443, 8000, 8443]
+    assert all(p["protocol"] == "TCP" for p in rule["ports"])
+
+
+def test_backup_pod_does_not_get_ingress_egress():
+    pol = _policy(k8s.network_policies(APP_ID, PORT, MYSQL_CIDR, backup_ips=["10.1.2.3"]), "allow-egress-ingress")
+    assert pol["spec"]["podSelector"]["matchExpressions"][0]["operator"] == "DoesNotExist"
