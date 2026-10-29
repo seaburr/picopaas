@@ -142,8 +142,13 @@ def _pod_info(pod: dict[str, Any]) -> PodInfo:
     meta = pod.get("metadata") or {}
     st = pod.get("status") or {}
     conds = {c.get("type"): c.get("status") for c in st.get("conditions") or []}
+    cs = (st.get("containerStatuses") or st.get("container_statuses") or [{}])[0] or {}
+    running = (cs.get("state") or {}).get("running") or {}
+    created = _aware_ts(meta.get("creationTimestamp") or meta.get("creation_timestamp"))
+    started = _aware_ts(running.get("startedAt") or running.get("started_at")) \
+        or (_aware_ts(st.get("startTime") or st.get("start_time")) if st.get("phase") == "Running" else None) or created
     return PodInfo(
-        name=meta.get("name"), created_at=_aware_ts(meta.get("creationTimestamp") or meta.get("creation_timestamp")),
+        name=meta.get("name"), created_at=created, started_at=started,
         phase=st.get("phase"), ready=conds.get("Ready") == "True",
         terminating=bool(meta.get("deletionTimestamp") or meta.get("deletion_timestamp")),
         rollout=(meta.get("labels") or {}).get("pod-template-hash"),

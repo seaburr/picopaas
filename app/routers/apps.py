@@ -7,13 +7,14 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import audit, config, crypto, custom_domains, image_check, models, reconciler, resources, schemas, volumes
+from app import audit, config, crypto, custom_domains, image_check, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
-from app.dependencies import get_active_user, get_registry
+from app.dependencies import get_active_user, get_kube, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
 from app.providers.base import (
+    KubeProvider,
     MySQLAdmin,
     MySQLAdminError,
     ObjectStore,
@@ -99,13 +100,14 @@ def _app_out(app: models.App) -> schemas.AppOut:
     return schemas.AppOut(
         id=app.id,
         owner_id=app.owner_id,
+        project_id=app.project_id,
         name=app.name,
         hostname=f"{app.hostname}.{APP_DOMAIN}",
         image=app.image,
         image_digest=app.image_digest,
         auto_update=app.auto_update,
         image_checked_at=app.image_checked_at,
-        image_update_error=app.image_update_error,
+        image_update_error=None if app.image_update_error_dismissed else app.image_update_error,
         port=app.port,
         want_db=app.want_db,
         db_engine=app.db_engine,
@@ -130,15 +132,8 @@ def _app_out(app: models.App) -> schemas.AppOut:
     )
 
 
-def _get_owned_app_or_404(db: Session, app_id: int, owner_id: int) -> models.App:
-    app = (
-        db.query(models.App)
-        .filter(models.App.id == app_id, models.App.owner_id == owner_id, models.App.deleted_at.is_(None))
-        .first()
-    )
-    if app is None:
-        raise HTTPException(status_code=404, detail="We can't find that app. It may have been deleted.")
-    return app
+def _get_owned_app_or_404(db: Session, app_id: int, user: models.User) -> models.App:
+    return projects.get_app_for_member(db, app_id, user)
 
 
 def _forbid_if_suspended(app: models.App) -> None:
@@ -158,12 +153,12 @@ def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool
             raise HTTPException(status_code=422, detail=str(exc))
 
 
-def _active_app_count(db: Session, owner_id: int) -> int:
-    return (
-        db.query(models.App)
-        .filter(models.App.owner_id == owner_id, models.App.deleted_at.is_(None))
-        .count()
-    )
+def _target_project(db: Session, user: models.User, project_id: Optional[int]) -> models.Project:
+    """Where a new app goes: the given project (caller must be a member, else 404) or their personal project."""
+    if project_id is None:
+        return projects.get_personal_project(db, user)
+    project, _ = projects.get_project_for_member(db, project_id, user)
+    return project
 
 
 @router.post("", response_model=schemas.AppOut, status_code=201)
@@ -173,9 +168,8 @@ def create_app(
     current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
-    eff = resources.effective_app_limit(current_user)
-    if _active_app_count(db, current_user.id) >= eff:
-        raise HTTPException(status_code=403, detail=app_limit_message(eff))
+    project = _target_project(db, current_user, payload.project_id)
+    projects.check_app_limit(db, project)
 
     run_as_uid, digest = _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)
@@ -183,6 +177,7 @@ def create_app(
     hostname = generate_unique_hostname(db)
     app = models.App(
         owner_id=current_user.id,
+        project_id=project.id,
         name=payload.name,
         hostname=hostname,
         image=payload.image,
@@ -216,18 +211,22 @@ def create_app(
         db.rollback()
         raise HTTPException(status_code=409, detail="Couldn't reserve a hostname for the app. Try again in a moment.")
     db.refresh(app)
-    audit.record(db, current_user, "app.create", "app", app.id, f"name={app.name}")
+    audit.record(db, current_user, "app.create", "app", app.id, f"name={app.name} project={project.id}")
     return _app_out(app)
 
 
 @router.get("", response_model=List[schemas.AppOut])
 def list_apps(
+    project_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_active_user),
 ):
+    q = db.query(models.App).filter(projects.member_app_filter(db, current_user), models.App.deleted_at.is_(None))
+    if project_id is not None:
+        projects.get_project_for_member(db, project_id, current_user)  # 404 for non-members
+        q = q.filter(models.App.project_id == project_id)
     apps = (
-        db.query(models.App)
-        .filter(models.App.owner_id == current_user.id, models.App.deleted_at.is_(None))
+        q
         .options(
             selectinload(models.App.env_vars),
             selectinload(models.App.database),
@@ -240,14 +239,67 @@ def list_apps(
     return [_app_out(a) for a in apps]
 
 
+class AppMove(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    project_id: int
+
+
+@router.post("/{app_id}/move", response_model=schemas.AppOut)
+def move_app(
+    app_id: int,
+    payload: AppMove,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_active_user),
+):
+    """Move an app to another project. Needs the owner role in both projects; the target's app limit applies."""
+    app = _get_owned_app_or_404(db, app_id, current_user)
+    _forbid_if_suspended(app)
+    if app.project_id is None:
+        raise HTTPException(status_code=409, detail="This app isn't in a project yet; try again in a moment.")
+    projects.get_project_for_member(db, app.project_id, current_user, owner=True)
+    target, _ = projects.get_project_for_member(db, payload.project_id, current_user, owner=True)
+    if target.id == app.project_id:
+        raise HTTPException(status_code=409, detail="The app is already in that project.")
+    clash = db.query(models.App).filter(models.App.project_id == target.id, models.App.name == app.name,
+                                        models.App.deleted_at.is_(None)).first()
+    if clash is not None:
+        raise HTTPException(status_code=409, detail="That project already has an app with this name. Rename one first.")
+    projects.check_app_limit(db, target)
+    old = app.project_id
+    app.project_id = target.id
+    db.commit()
+    audit.record(db, current_user, "app.move", "app", app.id, f"from_project={old} to_project={target.id}")
+    return _app_out(app)
+
+
 @router.get("/{app_id}", response_model=schemas.AppOut)
 def get_app(
     app_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_active_user),
+    kube: KubeProvider = Depends(get_kube),
 ):
-    app = _get_owned_app_or_404(db, app_id, current_user.id)
-    return _app_out(app)
+    app = _get_owned_app_or_404(db, app_id, current_user)
+    out = _app_out(app)
+    out.uptime_seconds = _app_uptime(app, kube)
+    return out
+
+
+def _app_uptime(app: models.App, kube: KubeProvider) -> Optional[int]:
+    """Seconds since the current pods' containers started (longest of the current Running pods); None if unknown/none."""
+    if app.status == "suspended":
+        return None
+    try:
+        info = kube.pod_logs(k8s_manifests.namespace_name(app.id), 1).pod_info
+    except Exception:  # noqa: BLE001 - uptime is cosmetic
+        return None
+    now = datetime.now(timezone.utc)
+    ups = []
+    for i in info:
+        start = i.started_at or i.created_at
+        if i.current and i.phase == "Running" and start is not None:
+            ups.append(max(0, int((now - (start if start.tzinfo else start.replace(tzinfo=timezone.utc))).total_seconds())))
+    return max(ups) if ups else None
 
 
 @router.patch("/{app_id}", response_model=schemas.AppOut)
@@ -258,7 +310,7 @@ def update_app(
     current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
 ):
-    app = _get_owned_app_or_404(db, app_id, current_user.id)
+    app = _get_owned_app_or_404(db, app_id, current_user)
     _forbid_if_suspended(app)
 
     workload_changed = False  # anything that changes the rendered Deployment/Secret
@@ -340,7 +392,7 @@ def delete_app(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_active_user),
 ):
-    app = _get_owned_app_or_404(db, app_id, current_user.id)
+    app = _get_owned_app_or_404(db, app_id, current_user)
     _forbid_if_suspended(app)  # no delete+recreate to evade suspension; admin can still delete
     app.deleted_at = datetime.now(timezone.utc)
     db.commit()
@@ -378,7 +430,7 @@ def rotate_credentials(
     mysql_admin_factory=Depends(get_mysql_admin_factory),
     object_store: ObjectStore = Depends(get_object_store),
 ):
-    app = _get_owned_app_or_404(db, app_id, user.id)
+    app = _get_owned_app_or_404(db, app_id, user)
     _forbid_if_suspended(app)
     if body.target == "db":
         row = app.database
@@ -458,7 +510,7 @@ def set_custom_domain(
     """Attach (or replace) a custom domain. Generates the ownership token and returns the DNS records to add.
     The domain isn't served until it's verified (POST .../domain/verify)."""
     _require_custom_domains_enabled()
-    app = _get_owned_app_or_404(db, app_id, user.id)
+    app = _get_owned_app_or_404(db, app_id, user)
     _forbid_if_suspended(app)
     try:
         host = custom_domains.normalize_host(payload.host)
@@ -499,7 +551,7 @@ def verify_custom_domain(
     the reconciler renders the custom Ingress + cert. On failure, the error is stored (and shown) — status stays
     pending so the user can fix DNS and retry."""
     _require_custom_domains_enabled()
-    app = _get_owned_app_or_404(db, app_id, user.id)
+    app = _get_owned_app_or_404(db, app_id, user)
     _forbid_if_suspended(app)  # verify requeues the app (status='pending'), which would un-suspend it
     if not app.custom_domain:
         raise HTTPException(status_code=400, detail="This app has no custom domain to verify.")
@@ -529,7 +581,7 @@ def clear_custom_domain(
     """Detach the custom domain. If it was live, requeue so the reconciler deletes the custom Ingress (and
     cert-manager GCs its cert). The generated *.APP_DOMAIN subdomain is unaffected."""
     _require_custom_domains_enabled()
-    app = _get_owned_app_or_404(db, app_id, user.id)
+    app = _get_owned_app_or_404(db, app_id, user)
     _forbid_if_suspended(app)  # detaching a live domain requeues the app, which would un-suspend it
     if app.custom_domain:
         was_active = app.custom_domain_status == "active"

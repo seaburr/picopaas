@@ -63,6 +63,7 @@ class AppSpec(BaseModel):
     healthCheck: _HealthCheck = Field(default_factory=_HealthCheck)
     env: Dict[StrictStr, StrictStr] = Field(default_factory=dict)
     secrets: List[StrictStr] = Field(default_factory=list)
+    project: Optional[StrictStr] = Field(default=None, min_length=1, max_length=80)  # project slug; default personal
 
 
 def _loc(loc) -> str:

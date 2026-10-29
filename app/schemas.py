@@ -237,6 +237,7 @@ class AppCreate(BaseModel):
         default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: bool = True
     volume: Optional[VolumeIn] = None  # needs VOLUMES_ENABLED (else 422)
+    project_id: Optional[int] = None  # default: the caller's personal project
 
     @field_validator("health_check_path")
     @classmethod
@@ -297,6 +298,8 @@ class AppQuotaOut(BaseModel):
 class AppEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: Optional[int] = None
+    dismissed_at: Optional[datetime] = None  # set when the owner dismissed this alert; a new occurrence is a new event
     at: datetime
     kind: str  # disk | evicted | oom | crashed
     message: str
@@ -333,13 +336,15 @@ class CustomDomainOut(BaseModel):
 class AppOut(BaseModel):
     id: int
     owner_id: int
+    project_id: Optional[int] = None
     name: str
     hostname: str
     image: str
     image_digest: Optional[str] = None
     auto_update: bool = True
     image_checked_at: Optional[datetime] = None
-    image_update_error: Optional[str] = None
+    image_update_error: Optional[str] = None  # null once dismissed, until a different error is recorded
+    uptime_seconds: Optional[int] = None  # GET /apps/{id} only: longest uptime of the current running pods (null when none runs)
     port: int
     want_db: bool
     db_engine: str = "mysql"

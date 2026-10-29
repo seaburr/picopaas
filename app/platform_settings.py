@@ -287,8 +287,16 @@ def update(db: Session, changes: Dict[str, Any], actor_email: Optional[str]) -> 
     if errs:
         return errs
     proposed = {s.key: get(db, s.key) for s in REGISTRY}
+    before_user_ceiling = proposed["max_apps_per_user"]
     for k, v in changes.items():
         proposed[k] = BY_KEY[k].default() if v is None else v
+    # Raising the user app ceiling lifts the admin pair to at least that ceiling (admins never get fewer than users).
+    new_ceiling = proposed["max_apps_per_user"]
+    if new_ceiling > before_user_ceiling:
+        changes = dict(changes)
+        for k in ("max_apps_per_admin", "admin_default_app_limit"):
+            if proposed[k] < new_ceiling:
+                proposed[k] = changes[k] = new_ceiling
     errs = _invariants(proposed, {k for k, v in changes.items() if v is not None})
     if errs:
         return errs

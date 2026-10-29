@@ -260,6 +260,8 @@ def last_event(app: models.App, now: Optional[datetime] = None) -> Optional[mode
     if not app.events:
         return None
     ev = app.events[0]
+    if ev.dismissed_at is not None:
+        return None
     return ev if (_naive(now) if now else _utcnow()) - _naive(ev.at) < LAST_EVENT_MAX_AGE else None
 
 

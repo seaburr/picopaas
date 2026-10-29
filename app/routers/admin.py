@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import audit, backups, config, crypto, health, models, naming, platform_settings, quota, resources, schemas, volumes
+from app import audit, backups, config, crypto, health, models, naming, platform_settings, projects, quota, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_admin_session, require_platform_admin
@@ -129,11 +129,7 @@ class DbServerPatch(BaseModel):
 
 
 def _user_out(db: Session, user: models.User) -> dict:
-    count = (
-        db.query(models.App)
-        .filter(models.App.owner_id == user.id, models.App.deleted_at.is_(None))
-        .count()
-    )
+    count = len(_live_apps(db, user.id))
     key_count = (
         db.query(models.ApiKey)
         .filter(models.ApiKey.user_id == user.id, models.ApiKey.revoked_at.is_(None))
@@ -182,8 +178,69 @@ def _protect_platform_admin(user: models.User, db: Optional[Session] = None) -> 
         raise HTTPException(status_code=400, detail="The main administrator account can't be suspended or deleted.")
 
 
-def _live_apps(db: Session, owner_id: int) -> list:
-    return db.query(models.App).filter(models.App.owner_id == owner_id, models.App.deleted_at.is_(None)).all()
+def _live_apps(db: Session, user_id: int) -> list:
+    """The user's own apps: those in their personal project (legacy rows without a project: created by them). Apps in
+    shared projects belong to the team and are unaffected by suspending or deleting one member."""
+    personal = db.query(models.Project.id).filter(models.Project.slug == projects.personal_slug(user_id)).scalar_subquery()
+    return (db.query(models.App).filter(
+        models.App.deleted_at.is_(None),
+        or_(models.App.project_id == personal, (models.App.project_id.is_(None)) & (models.App.owner_id == user_id))).all())
+
+
+def _shared_memberships(db: Session, user_id: int) -> list:
+    return (db.query(models.ProjectMember).join(models.Project, models.Project.id == models.ProjectMember.project_id)
+            .filter(models.ProjectMember.user_id == user_id, models.Project.is_personal.is_(False),
+                    models.Project.deleted_at.is_(None)).all())
+
+
+class AdminProjectOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    is_personal: bool
+    app_count: int
+    member_count: int
+    owner_emails: List[str]
+    app_limit: Optional[int]
+    app_limit_effective: int
+
+
+class AdminProjectPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    app_limit: Optional[int] = Field(default=None, ge=0)  # null = back to the platform default
+
+
+def _admin_project_out(db: Session, p: models.Project) -> AdminProjectOut:
+    return AdminProjectOut(
+        id=p.id, name=p.name, slug=p.slug, is_personal=p.is_personal, app_count=projects.live_app_count(db, p.id),
+        member_count=db.query(models.ProjectMember).filter_by(project_id=p.id).count(),
+        owner_emails=projects.owner_emails_map(db, [p.id]).get(p.id, []), app_limit=p.app_limit,
+        app_limit_effective=projects.effective_project_app_limit(db, p))
+
+
+@router.get("/projects", response_model=List[AdminProjectOut], dependencies=[Depends(require_admin_session)])
+def list_projects(db: Session = Depends(get_db)):
+    return [_admin_project_out(db, p) for p in
+            db.query(models.Project).filter(models.Project.deleted_at.is_(None), models.Project.is_personal.is_(False))
+            .order_by(models.Project.id).all()]
+
+
+@router.patch("/projects/{project_id}", response_model=AdminProjectOut)
+def patch_project(project_id: int, payload: AdminProjectPatch, db: Session = Depends(get_db),
+                  admin: models.User = Depends(require_platform_admin)):
+    """Override a shared project's active-app limit (capped at the per-account ceiling). Personal projects follow the
+    user's own limit (PATCH /admin/users/{id})."""
+    project = projects.live_project(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="We can't find that project.")
+    if project.is_personal:
+        raise HTTPException(status_code=409, detail="A personal project follows its owner's app limit. Change it on the user.")
+    if payload.app_limit is not None and payload.app_limit > platform_settings.get(db, "max_apps_per_user"):
+        raise HTTPException(status_code=422, detail="That's above the platform's per-account app limit.")
+    project.app_limit = payload.app_limit
+    db.commit()
+    audit.record(db, admin, "project.update", "project", project.id, f"project={project.id} app_limit={payload.app_limit}")
+    return _admin_project_out(db, project)
 
 
 @router.post("/users/{user_id}/approve", response_model=AdminUserOut)
@@ -276,7 +333,20 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.Us
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
+    shared = _shared_memberships(db, user.id)
+    for m in shared:
+        if m.role == "owner" and projects.owner_count(db, m.project_id) <= 1 and projects.live_app_count(db, m.project_id):
+            raise HTTPException(status_code=409, detail=(
+                f"This user is the only owner of the project {m.project.name} (id {m.project_id}) and it still has apps. "
+                "Make another member an owner or move the apps first."))
     now = datetime.now(timezone.utc)
+    for m in shared:
+        pid, was_owner = m.project_id, m.role == "owner"
+        project = m.project
+        db.delete(m)
+        db.flush()
+        if was_owner and projects.owner_count(db, pid) == 0:
+            project.deleted_at = now  # ownerless and (checked above) app-less
     for a in _live_apps(db, user.id):
         a.deleted_at = now  # the reconciler tears these down
     for k in db.query(models.ApiKey).filter(models.ApiKey.user_id == user.id, models.ApiKey.revoked_at.is_(None)):

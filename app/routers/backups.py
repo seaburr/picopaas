@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app import audit, backups, config, models, platform_settings
+from app import audit, backups, config, models, platform_settings, projects
 from app.db import get_db
 from app.dependencies import get_active_user, require_admin_session, require_platform_admin
 from app.providers.backup import BackupRunner, BackupRunnerError, KubeBackupRunner
@@ -279,7 +279,7 @@ def create_backup(app_id: int, body: Optional[BackupCreateIn] = None, db: Sessio
     if wait is not None:
         raise HTTPException(status_code=429, detail=f"You can start {per_hour} backup{'' if per_hour == 1 else 's'} per hour for this app. "
                             f"Try again in {max(1, wait // 60)} minutes.", headers={"Retry-After": str(wait)})
-    wait = backups.user_manual_cooldown(db, app.owner_id)
+    wait = backups.user_manual_cooldown(db, app.owner_id, project_id=app.project_id)
     if wait is not None:
         raise HTTPException(status_code=429, detail="You've started a lot of backups across your apps this hour. "
                             f"Try again in {max(1, wait // 60)} minutes.", headers={"Retry-After": str(wait)})
@@ -604,7 +604,7 @@ def admin_list_backup_sets(app_id: int, db: Session = Depends(get_db)):
     live = backups.live_exports_by_set(db, app.id, [st.id for st, _ in sets]) if sets else {}
     deleted = app.deleted_at is not None
     return AdminBackupSetsOut(
-        app_id=app.id, app_name=app.name, owner_email=owner.email if owner else None, deleted=deleted,
+        app_id=app.id, app_name=app.name, owner_email=projects.owners_label(db, app, owner.email if owner else "") or None, deleted=deleted,
         purge_after=cfg.deleted_retention_until if cfg and deleted else None, purged=bool(cfg and cfg.purged_at),
         backups=[_set_out(st, parts, live.get(st.id)) for st, parts in sets])
 

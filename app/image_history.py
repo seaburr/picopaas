@@ -75,6 +75,8 @@ def maybe_auto_rollback(session: Session, app: models.App) -> bool:
     bad = app.image_digest
     _apply_entry(app, prev, rejected=bad)
     app.status_detail = ROLLBACK_MESSAGE
+    if app.image_update_error != ROLLBACK_MESSAGE:
+        app.image_update_error_dismissed = False
     app.image_update_error = ROLLBACK_MESSAGE
     session.add(models.AppEvent(
         app_id=app.id, at=_now(), kind="rollback", message=ROLLBACK_MESSAGE,

@@ -6,12 +6,12 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, resources, schemas, volumes
+from app import audit, crypto, models, projects, resources, schemas, volumes
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
 from app.providers.base import Registry
-from app.routers.apps import _active_app_count, app_limit_message, _app_out, _check_image_cap, _validate_env
+from app.routers.apps import _app_out, _check_image_cap, _validate_env
 from app.schemas import MASKED_VALUE
 from app.spec import MAX_SPEC_BYTES, SpecError, parse_spec
 
@@ -22,10 +22,23 @@ class SpecDeploy(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     spec: str = Field(max_length=MAX_SPEC_BYTES)
     secrets: Dict[str, str] = Field(default_factory=dict)
+    project: Optional[str] = Field(default=None, min_length=1, max_length=80)  # slug; the spec's own `project:` wins
 
 
 class SpecDeployOut(schemas.AppOut):
     created: bool
+
+
+def _resolve_project(db: Session, user: models.User, ref: Optional[str]) -> models.Project:
+    """`project:` value -> a project the caller belongs to. None/"personal" = their personal project; else the slug.
+    Unknown slug and non-member look identical (404)."""
+    if ref is None or ref == "personal":
+        return projects.get_personal_project(db, user)
+    project = (db.query(models.Project)
+               .filter(models.Project.slug == ref, models.Project.deleted_at.is_(None)).first())
+    if project is None or projects.get_membership(db, project.id, user.id) is None:
+        raise HTTPException(status_code=404, detail=f"We can't find a project with the slug {ref}. Check `picopaas projects`.")
+    return project
 
 
 @router.post("/spec", response_model=SpecDeployOut)
@@ -50,10 +63,15 @@ def deploy_spec(
             ),
         )
 
+    ref = spec.project or payload.project
+    if spec.project and payload.project and spec.project != payload.project:
+        raise HTTPException(status_code=422, detail=(
+            f"The spec says project: {spec.project} but the request asks for {payload.project}. Use one of them."))
+    project = _resolve_project(db, current_user, ref)
     app = (
         db.query(models.App)
         .filter(
-            models.App.owner_id == current_user.id,
+            models.App.project_id == project.id,
             models.App.name == spec.name,
             models.App.deleted_at.is_(None),
         )
@@ -110,9 +128,7 @@ def deploy_spec(
         )
 
     if created:
-        eff = resources.effective_app_limit(current_user)
-        if _active_app_count(db, current_user.id) >= eff:
-            raise HTTPException(status_code=403, detail=app_limit_message(eff))
+        projects.check_app_limit(db, project)
 
     run_as_uid, digest = _check_image_cap(registry, spec.image, app)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
@@ -120,6 +136,7 @@ def deploy_spec(
     if created:
         app = models.App(
             owner_id=current_user.id,
+            project_id=project.id,
             name=spec.name,
             hostname=generate_unique_hostname(db),
             image=spec.image,

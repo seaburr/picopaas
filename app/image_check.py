@@ -126,6 +126,8 @@ def refresh_app_image(db: Session, app: models.App, registry: Registry, actor: O
         else:
             msg = f"New image for :{tag} runs as root, which isn't allowed; still running the previous version."
         app.image_checked_at = _utcnow()
+        if app.image_update_error != msg[:255]:
+            app.image_update_error_dismissed = False
         app.image_update_error = msg[:255]
         db.commit()
         return "rejected"

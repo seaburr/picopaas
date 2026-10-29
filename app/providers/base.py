@@ -36,6 +36,7 @@ class PodInfo:
     current: bool = False
     terminating: bool = False
     rollout: Optional[str] = None
+    started_at: Optional[Any] = None  # when the current container started (falls back to the pod's start/creation time)
 
 
 def mark_current(infos: list["PodInfo"]) -> list["PodInfo"]:

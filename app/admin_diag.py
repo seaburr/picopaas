@@ -7,7 +7,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import backup_sweeper, backups, config, models, platform_settings
+from app import backup_sweeper, backups, config, models, platform_backup, platform_settings
 
 TOP_APPS = 10
 BACKUP_KINDS = ("db", "bucket", "volume")
@@ -93,4 +93,5 @@ def failures_and_stuck(db: Session, days: int = 7, now: Optional[datetime] = Non
 
 def backup_health(db: Session, days: int = 7) -> dict[str, Any]:
     return {"enabled": backups.enabled(), "configured": config.backups_configured(),
-            "storage": storage(db), **failures_and_stuck(db, days), "sweeper": backup_sweeper.last_sweep(db)}
+            "storage": storage(db), **failures_and_stuck(db, days), "sweeper": backup_sweeper.last_sweep(db),
+            "platform_db": platform_backup.summary(db)}

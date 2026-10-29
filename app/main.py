@@ -3,16 +3,19 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+import hmac
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy import or_
 
 from app import config
-from app import models
+from app import models, metrics
+from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
-from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, spec, templates, usage
+from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, spec, templates, usage
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
 # create_all is a no-op against tables that already exist, which keeps the SQLite
@@ -41,6 +44,7 @@ app = FastAPI(title="PicoPaaS API", lifespan=lifespan)
 
 app.include_router(auth.router)
 app.include_router(apps.router)
+app.include_router(projects_router.router)
 app.include_router(app_ops.router)
 app.include_router(backups.router)
 app.include_router(usage.router)
@@ -59,6 +63,21 @@ def healthz():
     return {"status": "ok"}
 
 
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint(request: Request, db=Depends(get_db)):
+    """Prometheus metrics (app/metrics.py). `Authorization: Bearer $METRICS_TOKEN`, or a platform-admin browser session."""
+    token = config.METRICS_TOKEN
+    given = request.headers.get("authorization", "")
+    ok = bool(token) and given.startswith("Bearer ") and hmac.compare_digest(given[7:].encode(), token.encode())
+    if not ok:
+        user = _user_from_request(request, db)
+        if user is None or not user.is_platform_admin or user.status != "active" or \
+                getattr(request.state, "auth_via", None) != "cookie":
+            return JSONResponse({"detail": "Not found."}, status_code=404)  # don't advertise the endpoint
+    body, ctype = metrics.render(db)
+    return Response(body, media_type=ctype, headers={"Cache-Control": "no-store"})
+
+
 # --- Frontend (Vue SPA, built by `frontend/` into ../static — see
 # frontend/vite.config.ts outDir and docs/ARCHITECTURE.md "Platform service") ---
 #
@@ -67,13 +86,13 @@ def healthz():
 # missing — tests and a bare `uvicorn app.main:app` don't need a frontend build.
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _INDEX_HTML = _STATIC_DIR / "index.html"
-_API_PREFIXES = ("auth", "apps", "admin", "api", "healthz", "static")
+_API_PREFIXES = ("auth", "apps", "projects", "invites", "admin", "api", "healthz", "metrics", "static")
 
 if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # Paths a browser may navigate to that must NOT be swapped for the SPA.
-_NAV_PASSTHROUGH = ("/static/", "/healthz", "/docs", "/redoc", "/openapi.json")
+_NAV_PASSTHROUGH = ("/static/", "/healthz", "/metrics", "/docs", "/redoc", "/openapi.json")
 
 
 # The same URL serves the SPA (navigation) and JSON (fetch), so caches must key on these request headers.
@@ -261,6 +280,9 @@ def _add_security_headers(response, path: str) -> None:
     # FastAPI's /docs and /redoc pull Swagger/ReDoc from a CDN with inline scripts; a strict CSP would break them.
     if path not in ("/docs", "/redoc"):
         response.headers["Content-Security-Policy"] = _csp()
+
+
+app.middleware("http")(metrics.middleware)  # inside robots_and_noindex (security headers) but sees every routed request
 
 
 @app.middleware("http")

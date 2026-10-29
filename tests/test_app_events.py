@@ -183,7 +183,7 @@ def test_events_endpoint_authz_and_order(make_client, db_session, kube):
     r = owner.get(f"/apps/{app_id}/events")
     assert r.status_code == 200
     assert [e["message"] for e in r.json()] == ["Restarted: new", "Restarted: old"]
-    assert set(r.json()[0]) == {"at", "kind", "message"}
+    assert set(r.json()[0]) == {"id", "at", "kind", "message", "dismissed_at"}
     assert admin.get(f"/apps/{app_id}/events").status_code == 200
     assert other.get(f"/apps/{app_id}/events").status_code == 404
     assert make_client().get(f"/apps/{app_id}/events").status_code in (401, 403)

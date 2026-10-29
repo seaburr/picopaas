@@ -21,6 +21,7 @@ class CliError(Exception):
 TIMEOUT_S = 30
 _TRANSPORT: Optional[httpx.BaseTransport] = None  # tests inject one for the presigned-URL transfer
 _VERBOSE = False
+_PROJECT: Optional[str] = None  # --project / PICOPAAS_PROJECT: slug, name or id of the project to work in
 _POLL_S = 3  # seconds between checks while a backup download is being prepared
 _DOWNLOAD_WAIT_S = 20 * 60
 # What the UI calls these states (the API keeps the raw values).
@@ -95,10 +96,28 @@ def _request(c: httpx.Client, method: str, path: str, **kw) -> httpx.Response:
     return resp
 
 
+def _resolve_project(c: httpx.Client, ref: str) -> dict:
+    """A project the caller belongs to, by slug, name or id ("personal" = your personal project)."""
+    mine = _request(c, "GET", "/projects").json()
+    for p in mine:
+        if ref == "personal" and p["is_personal"] or ref in (p["slug"], str(p["id"])):
+            return p
+    named = [p for p in mine if p["name"].lower() == ref.lower()]
+    if len(named) == 1:
+        return named[0]
+    raise CliError(f"No project {ref} (or its name is ambiguous). Run `picopaas projects` to see your projects and their slugs.")
+
+
 def _find_app(c: httpx.Client, name: str) -> dict:
-    for a in _request(c, "GET", "/apps").json():
-        if a["name"] == name:
-            return a
+    path = "/apps"
+    if _PROJECT:
+        path = f"/apps?project_id={_resolve_project(c, _PROJECT)['id']}"
+    hits = [a for a in _request(c, "GET", path).json() if a["name"] == name]
+    if len(hits) > 1:
+        raise CliError(f"More than one of your projects has an app named {name}. Pick one with --project <slug> "
+                       "(or PICOPAAS_PROJECT); `picopaas projects` lists the slugs.")
+    if hits:
+        return hits[0]
     raise CliError(f"No app named {name}. Run `picopaas apps` to see your apps.")
 
 
@@ -153,7 +172,10 @@ def cmd_apply(c, args) -> None:
             text = f.read()
     except OSError as exc:
         raise CliError(f"Can't read {args.file}: {(exc.strerror or 'unknown error').lower()}. Check the path passed to -f.")
-    r = _request(c, "POST", "/apps/spec", json={"spec": text, "secrets": _parse_secrets(args.secret)}).json()
+    body = {"spec": text, "secrets": _parse_secrets(args.secret)}
+    if _PROJECT:
+        body["project"] = _resolve_project(c, _PROJECT)["slug"]
+    r = _request(c, "POST", "/apps/spec", json=body).json()
     verb = "Created" if r["created"] else "Updated"
     word = _word(r["status"])
     url = f"https://{r['hostname']}"
@@ -166,8 +188,18 @@ def cmd_apply(c, args) -> None:
     print(f"Check progress: picopaas status {r['name']}")
 
 
+def cmd_projects(c, args) -> None:
+    rows = [("SLUG", "NAME", "ROLE", "APPS", "MEMBERS")] + [
+        (p["slug"], p["name"], p["role"], f"{p['app_count']}/{p['app_limit_effective']}", str(p["member_count"]))
+        for p in _request(c, "GET", "/projects").json()]
+    widths = [max(len(r[i]) for r in rows) for i in range(5)]
+    for r in rows:
+        print("  ".join(v.ljust(w) for v, w in zip(r, widths)).rstrip())
+
+
 def cmd_apps(c, args) -> None:
-    apps = _request(c, "GET", "/apps").json()
+    path = f"/apps?project_id={_resolve_project(c, _PROJECT)['id']}" if _PROJECT else "/apps"
+    apps = _request(c, "GET", path).json()
     if not apps:
         print("No apps yet. Create one with: picopaas apply -f app.yaml")
         return
@@ -630,13 +662,16 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("-v", "--verbose", action="store_true", help="show HTTP status codes in error messages")
+    p.add_argument("--project", default=None, metavar="SLUG",
+                   help="work inside this project (slug, name or id; default env PICOPAAS_PROJECT; apply defaults to your personal project)")
     sub = p.add_subparsers(dest="command", required=True)
     ap = sub.add_parser("apply", help="create or update an app from a YAML spec")
     ap.add_argument("-f", "--file", required=True, help="path to the YAML spec")
     ap.add_argument("--secret", action="append", default=[], metavar="NAME=value",
                     help="supply a secret declared in the spec (repeatable)")
     ap.set_defaults(fn=cmd_apply)
-    sub.add_parser("apps", help="list your apps").set_defaults(fn=cmd_apps)
+    sub.add_parser("apps", help="list your apps (all projects, or one with --project)").set_defaults(fn=cmd_apps)
+    sub.add_parser("projects", help="list your projects with their slugs, roles and app usage").set_defaults(fn=cmd_projects)
     st = sub.add_parser("status", help="show an app's state, URL and, if it failed, why")
     st.add_argument("name", help="the app's name")
     st.set_defaults(fn=cmd_status)
@@ -724,14 +759,17 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--to", required=True, metavar="APP", help="target app (name or id); never the source unless --overwrite-source")
     rs.add_argument("--overwrite-source", action="store_true", help="allow restoring over the source app (it must be suspended)")
     rs.set_defaults(fn=cmd_admin_backup_restore)
+    for name, sp in sub.choices.items():  # also accept `picopaas apps --project x`
+        sp.add_argument("--project", default=argparse.SUPPRESS, metavar="SLUG", help="work inside this project (slug, name or id)")
     return p
 
 
 def main(argv: Optional[List[str]] = None, transport: Optional[httpx.BaseTransport] = None) -> int:
-    global _VERBOSE, _TRANSPORT
+    global _VERBOSE, _TRANSPORT, _PROJECT
     _TRANSPORT = transport
     args = build_parser().parse_args(argv)
     _VERBOSE = args.verbose
+    _PROJECT = args.project or os.environ.get("PICOPAAS_PROJECT") or None
     try:
         with _client(transport) as c:
             args.fn(c, args)

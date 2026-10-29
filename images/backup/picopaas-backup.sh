@@ -13,7 +13,7 @@
 #                              s3://$EXPORT_BUCKET/$EXPORT_KEY with the backup key (owner download; the API presigns it)
 #   MODE=package  PARTS="db=<snap>,bucket=<snap>,volume=<snap>" REPO_BASE=<repo url without the kind>  one .tar.gz holding
 #                              database.sql.gz|database.pgdump, blob-storage.tar.gz, volume.tar.gz (only the parts listed) and
-#                              MANIFEST.json (app, set, parts with sizes and sha256, engine, version); streamed to $EXPORT_KEY
+#                              MANIFEST.json (app, set, image url/tag/digest at backup time, parts with sizes and sha256, engine, version); streamed to $EXPORT_KEY
 #                              (EXPORT_TO_FILE=<path> writes it to a local file instead: used by images/backup/tests/smoke.sh only)
 #   MODE=forget   KIND=db|bucket  SNAPSHOT=<id>  `restic forget <id> --prune` (owner deleted one backup); a snapshot that is already gone
 #                              (pruned by retention) counts as success; prints {"forgotten":true,"repo_bytes":N}
@@ -271,9 +271,12 @@ if [ "$MODE" = "package" ]; then
   done
   step "writing the manifest"
   jq -n --arg app "${APP_NAME:-}" --arg set "${SET_ID:-0}" --arg created "${SET_CREATED_AT:-}" --arg engine "$ENGINE_FOUND" \
-    --arg ver "${PICOPAAS_VERSION:-}" --argjson parts "$PJSON" \
+    --arg ver "${PICOPAAS_VERSION:-}" --arg iurl "${IMAGE_URL:-}" --arg itag "${IMAGE_TAG:-}" --arg idig "${IMAGE_DIGEST:-}" \
+    --argjson parts "$PJSON" \
     '{format: 1, app: $app, set_id: ($set | tonumber), created_at: $created, engine: (if $engine == "" then null else $engine end),
-      picopaas_version: $ver, parts: $parts}' > "$PK/MANIFEST.json" || fail "writing the manifest failed"
+      picopaas_version: $ver,
+      image: (if $iurl == "" then null else {url: $iurl, tag: $itag, digest: (if $idig == "" then null else $idig end)} end),
+      parts: $parts}' > "$PK/MANIFEST.json" || fail "writing the manifest failed"
   step "uploading the package"
   rm -f "$TMP/pkg.status"
   if [ -n "${EXPORT_TO_FILE:-}" ]; then  # test hook (images/backup/tests/smoke.sh): same stream, a local file as the target

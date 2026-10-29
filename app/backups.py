@@ -28,7 +28,7 @@ from typing import Any, Optional
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app import audit, config, crypto, k8s_manifests, models, platform_settings, resources, volume_stat
+from app import audit, config, crypto, k8s_manifests, models, platform_settings, projects, resources, volume_stat
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
@@ -219,7 +219,8 @@ def enqueue(session: Session, app: models.App, kind: str, trigger: str, now: Opt
 def enqueue_set(session: Session, app: models.App, kinds: list[str], trigger: str,
                 now: Optional[datetime] = None) -> tuple[models.BackupSet, list[models.BackupRun]]:
     """ONE backup: a set plus one queued run per kind (taken one after another by the tick, not at one instant)."""
-    st = models.BackupSet(app_id=app.id, trigger=trigger, created_at=_now(now))
+    st = models.BackupSet(app_id=app.id, trigger=trigger, created_at=_now(now), image=(app.image or None) and app.image[:512],
+                          image_digest=app.image_digest)
     session.add(st)
     session.flush()
     return st, [enqueue(session, app, kind, trigger, now, set_id=st.id) for kind in kinds]
@@ -293,13 +294,16 @@ def manual_cooldown(session: Session, app_id: int, now: Optional[datetime] = Non
 USER_MANUAL_FACTOR = 5  # one account may start at most this many times the per-app limit per hour across all its apps
 
 
-def user_manual_cooldown(session: Session, owner_id: int, now: Optional[datetime] = None) -> Optional[int]:
-    """The same hourly limit per account, across its apps (so many apps can't be used to multiply the manual rate)."""
+def user_manual_cooldown(session: Session, owner_id: int, now: Optional[datetime] = None,
+                         project_id: Optional[int] = None) -> Optional[int]:
+    """The same hourly limit per account (per project when given), across its apps, so many apps (or team members)
+    can't be used to multiply the manual rate."""
     now = _now(now)
     limit = int(platform_settings.get(session, "backup_manual_per_hour")) * USER_MANUAL_FACTOR
     recent = sorted(_naive(c) for c in session.execute(
         select(models.BackupSet.created_at).join(models.App, models.App.id == models.BackupSet.app_id).where(
-            models.App.owner_id == owner_id, models.BackupSet.trigger == "manual",
+            (models.App.project_id == project_id) if project_id is not None else (models.App.owner_id == owner_id),
+            models.BackupSet.trigger == "manual",
             models.BackupSet.created_at > now - timedelta(hours=1))).scalars())
     if len(recent) < limit:
         return None
@@ -534,6 +538,8 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
     _enqueue_purges(session, now)
     _start_queued(session, runner, now)
     volume_stat.tick(session, runner, now)
+    from app import platform_backup
+    platform_backup.tick(session, runner, now)
 
 
 def _ensure_egress(runner: BackupRunner) -> None:
@@ -599,7 +605,8 @@ def active_jobs(session: Session) -> set[str]:
     """Names of every Job that is legitimately alive: running backup runs and in-flight volume stat Jobs."""
     names = {r.job_name for r in _running(session) if r.job_name}
     names |= set(session.execute(select(models.App.volume_stat_job).where(models.App.volume_stat_job.is_not(None))).scalars())
-    return names
+    from app import platform_backup
+    return names | platform_backup.active_job_names(session)
 
 
 def _running(session: Session) -> list[models.BackupRun]:
@@ -1309,6 +1316,19 @@ def enqueue_set_export(session: Session, app: models.App, st: models.BackupSet,
     return run, True
 
 
+def split_image(ref: Optional[str]) -> tuple[str, str]:
+    """(url, tag) of an image reference: 'ghcr.io/x/y:1.2' -> ('ghcr.io/x/y', '1.2'); no tag -> 'latest'; '@sha256:..' dropped
+    ('' , '' for an unknown image, e.g. a backup taken before the image was recorded)."""
+    if not ref:
+        return "", ""
+    ref = ref.split("@", 1)[0]
+    last = ref.rsplit("/", 1)[-1]
+    if ":" in last:
+        url, tag = ref.rsplit(":", 1)
+        return url, tag
+    return ref, "latest"
+
+
 def _build_package_env(session: Session, run: models.BackupRun) -> dict[str, str]:
     st = session.get(models.BackupSet, run.set_id) if run.set_id else None
     cfg = session.get(models.AppBackupConfig, run.app_id)
@@ -1316,12 +1336,14 @@ def _build_package_env(session: Session, run: models.BackupRun) -> dict[str, str
     parts = _package_parts(session, st)
     if st is None or app is None or cfg is None or cfg.purged_at is not None or not parts or not run.export_key:
         raise ValueError("the backup to download is gone")
+    image_url, image_tag = split_image(st.image)
     env = _repo_env(session, run.app_id, parts[0].kind, cfg)
     env.pop("RESTIC_REPOSITORY")  # one repo per kind: the script derives each from REPO_BASE
     env.update({
         "MODE": "package", "REPO_BASE": repo_base(run.app_id), "TAG": "export",
         "PARTS": ",".join(f"{p.kind}={p.snapshot_id}" for p in parts),
-        "APP_NAME": app.name, "SET_ID": str(st.id), "SET_CREATED_AT": _naive(st.created_at).isoformat() + "Z",
+        "APP_NAME": app.name, "IMAGE_URL": image_url, "IMAGE_TAG": image_tag, "IMAGE_DIGEST": st.image_digest or "",
+        "SET_ID": str(st.id), "SET_CREATED_AT": _naive(st.created_at).isoformat() + "Z",
         "PICOPAAS_VERSION": config.PICOPAAS_VERSION, "MAX_VOLUME_BYTES": str(config.BACKUP_VOLUME_EXPORT_MAX_BYTES),
         "VOLUME_DIR": config.BACKUP_VOLUME_MOUNT,
         "EXPORT_ENDPOINT": config.backup_endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET, "EXPORT_KEY": run.export_key,
@@ -1471,7 +1493,9 @@ def overview(session: Session, now: Optional[datetime] = None) -> dict[str, Any]
         .join(models.App, models.App.id == models.AppBackupConfig.app_id)
         .join(models.User, models.User.id == models.App.owner_id).order_by(models.App.id)
     ).all()
-    for cfg, app, email in rows:
+    owners = projects.owner_emails_map(session, {a.project_id for _, a, _ in rows})
+    for cfg, app, creator_email in rows:
+        email = ", ".join(owners.get(app.project_id) or []) or creator_email  # notices go to the project's owners
         if app.deleted_at is not None:
             out["retained"].append({
                 "app_id": app.id, "name": app.name, "owner_email": email, "repo_bytes": repo_bytes(cfg),

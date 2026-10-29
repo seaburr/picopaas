@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, models, schemas
+from app import audit, models, projects, schemas
 from app import config, platform_settings, ratelimit, resources
 from app.config import (
     DB_QUOTA_BYTES,
@@ -61,6 +61,8 @@ def _try_insert(db: Session, email: str, password: str, first: bool,
         # Singleton row with a fixed PK: only one transaction can ever insert it.
         db.add(models.PlatformInit(id=1))
     try:
+        db.flush()  # assigns user.id (duplicate email raises here)
+        projects.create_personal_project(db, user)
         db.commit()
     except IntegrityError:
         db.rollback()

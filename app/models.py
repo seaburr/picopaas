@@ -71,6 +71,49 @@ class ApiKey(Base):
     user: Mapped["User"] = relationship(back_populates="api_keys")
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    is_personal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    app_limit: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+    members: Mapped[List["ProjectMember"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_member"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")  # owner | member
+    added_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+    project: Mapped["Project"] = relationship(back_populates="members")
+
+
+class ProjectInvite(Base):
+    __tablename__ = "project_invites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")
+    invited_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+
+
 class App(Base):
     __tablename__ = "apps"
     __table_args__ = (
@@ -80,7 +123,10 @@ class App(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Creator of the app (kept for history/admin reports). Access is by project membership (app/projects.py).
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Nullable until a later migration enforces it; every user has a personal project.
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hostname: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     image: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -91,6 +137,8 @@ class App(Base):
     auto_update: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
     image_checked_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # last successful registry resolve
     image_update_error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Owner dismissed the current image_update_error; cleared when a different error is recorded (a new occurrence).
+    image_update_error_dismissed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     # Digest that failed to start (auto-rollback) or was rolled away from (manual rollback): the watcher won't redeploy it.
     rejected_digest: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     port: Mapped[int] = mapped_column(nullable=False)
@@ -213,6 +261,8 @@ class AppEvent(Base):
     message: Mapped[str] = mapped_column(String(255), nullable=False)
     # pod uid + restartCount/finishedAt: the same occurrence seen on many sweeps is stored once.
     dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    # Set when the owner dismisses this alert. A new occurrence is a new row (new dedupe_key), so it shows again.
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
 
 class AppMetricSample(Base):
@@ -417,6 +467,26 @@ class BackupSet(Base):
     trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual | final
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     delete_status: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # NULL | deleting | deleted
+    # The app's image (as configured, e.g. ghcr.io/x/y:1.2) and pinned manifest digest when the backup was taken; for MANIFEST.json.
+    image: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    image_digest: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+
+
+class PlatformBackupRun(Base):
+    """One backup Job of the platform's own database (app/platform_backup.py). No app: not tied to any tenant."""
+    __tablename__ = "platform_backup_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(12), nullable=False)  # scheduled | manual
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="queued")  # queued | running | succeeded | failed
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    bytes_added: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    repo_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    job_name: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
 
 
 class AuditLog(Base):

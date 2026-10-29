@@ -74,7 +74,7 @@ def test_logs_pod_info(owner, kube):
     body = owner.get(f"/apps/{aid}/logs").json()
     assert body["pods"] == ["web-b", "web-a"]
     info = {i["name"]: i for i in body["pod_info"]}
-    assert set(info["web-a"]) == {"name", "created_at", "phase", "ready", "current"}
+    assert set(info["web-a"]) == {"name", "created_at", "phase", "ready", "current", "started_at", "uptime_seconds"}
     assert info["web-a"]["current"] is False and info["web-b"]["current"] is True
     assert info["web-b"]["phase"] == "Running" and info["web-b"]["created_at"].startswith("2026-01-01T01:00")
 

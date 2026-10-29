@@ -33,6 +33,19 @@ def health_backups(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_
     return admin_diag.backup_health(db, days)
 
 
+@router.post("/backups/platform-db/run", status_code=202, dependencies=[Depends(require_admin_session)])
+def platform_db_backup_run(db: Session = Depends(get_db), admin=Depends(require_platform_admin)):
+    """Queue a backup of the platform's own database now (the scheduler tick starts it within BACKUP_TICK_SECONDS)."""
+    from app import audit, platform_backup
+    if not platform_backup.active():
+        raise HTTPException(status_code=409, detail="Platform database backups aren't active (backups off, bucket not configured, or the platform DB isn't MySQL).")
+    run = platform_backup.enqueue(db, "manual")
+    if run is None:
+        raise HTTPException(status_code=409, detail="A platform database backup is already running.")
+    audit.record(db, admin, "platform_backup.create", "platform", "db", f"run={run.id} trigger=manual")
+    return {"run_id": run.id, "status": run.status}
+
+
 @router.get("/logs/pods", dependencies=[Depends(require_admin_session)])
 def platform_pods(kube=Depends(get_kube)):
     """Platform components (pods in platform namespaces, discovered; never app-* namespaces) and their containers."""

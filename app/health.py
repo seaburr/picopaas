@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app import config, models
+from app import config, models, projects
 from app import resources
 from app.k8s_manifests import namespace_name
 from app.providers.base import KubeProvider, is_platform_namespace
@@ -177,7 +177,10 @@ def build(db: Session, kube: KubeProvider, server_outs: list[dict], mysql_factor
         .filter(models.App.deleted_at.is_(None))
         .order_by(models.App.id)
     )
-    for app_, email in q.all():
+    rows = q.all()
+    owners = projects.owner_emails_map(db, {a.project_id for a, _ in rows})
+    for app_, creator_email in rows:
+        email = ", ".join(owners.get(app_.project_id) or []) or creator_email  # the project's owners, not the creator
         ns = namespace_name(app_.id)
         ps = by_ns.get(ns, [])
         eff = resources.effective(app_)

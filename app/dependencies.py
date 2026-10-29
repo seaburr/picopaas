@@ -136,6 +136,13 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Option
         return None
 
 
+def require_session_user(request: Request, current_user: models.User = Depends(get_active_user)) -> models.User:
+    """Active user on a browser session only: membership management must not be possible with a (leaked) API key."""
+    if getattr(request.state, "auth_via", None) != "cookie":
+        raise HTTPException(status_code=403, detail="Managing project members needs a browser login, not an API key.")
+    return current_user
+
+
 def require_platform_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
     if not current_user.is_platform_admin or current_user.status != "active":
         raise HTTPException(status_code=403, detail="This needs administrator access.")

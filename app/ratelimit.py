@@ -163,3 +163,21 @@ def check_register(db: Session, request: Request) -> None:
         _bump(db, key, config.REGISTER_WINDOW_SECONDS)
 
     _safe(db, "check_register", run)
+
+
+def check_invite_accept(db: Session, request: Request, user_id: int) -> None:
+    """Count this invite-accept attempt (valid token or not) against the user and the client IP; 429 past the cap."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        w, n = config.INVITE_ACCEPT_WINDOW_SECONDS, config.INVITE_ACCEPT_MAX
+        keys = [_key("invite-user", str(user_id)), _key("invite-ip", client_ip(request))]
+        wait = max(_remaining(db, k, n, w) for k in keys)
+        if wait:
+            raise _deny(wait)
+        _prune(db)
+        for k in keys:
+            _bump(db, k, w)
+
+    _safe(db, "check_invite_accept", run)

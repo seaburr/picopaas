@@ -18,3 +18,4 @@ PyYAML==6.0.3
 kubernetes==37.0.1
 APScheduler==3.11.3
 boto3==1.43.118
+prometheus-client==0.21.1

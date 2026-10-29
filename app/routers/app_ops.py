@@ -2,15 +2,15 @@
 import json
 import logging
 import uuid
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import audit, config, resources, image_check, image_history, k8s_manifests, models, schemas
+from app import audit, config, resources, image_check, image_history, k8s_manifests, models, projects, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, get_kube, get_registry
 from app.providers.base import KubeProvider, Registry
@@ -35,6 +35,8 @@ class PodInfoOut(BaseModel):
     phase: Optional[str] = None
     ready: bool = False
     current: bool = False  # running+ready and part of the newest rollout; false for old/terminating/crashlooping pods
+    started_at: Optional[datetime] = None  # when this pod's container started (pod start/creation time if unknown)
+    uptime_seconds: Optional[int] = None  # now - started_at; null unless the pod is Running
 
 
 class LogsOut(BaseModel):
@@ -46,17 +48,21 @@ class LogsOut(BaseModel):
     pods: List[str] = []
     sections: List[PodLogsOut] = []
     pod_info: List[PodInfoOut] = []  # one per entry of `pods`
+    uptime_seconds: Optional[int] = None  # Status card: longest uptime among current running pods (null when none is running)
 
 
 def _get_app_or_404(db: Session, app_id: int, user: models.User) -> models.App:
-    """Owner or administrator; anyone else gets 404 (no existence leak)."""
-    q = db.query(models.App).filter(models.App.id == app_id, models.App.deleted_at.is_(None))
-    if not user.is_platform_admin:
-        q = q.filter(models.App.owner_id == user.id)
-    app = q.first()
-    if app is None:
-        raise HTTPException(status_code=404, detail="App not found.")
-    return app
+    """Project member or administrator; anyone else gets 404 (no existence leak)."""
+    return projects.get_app_for_member(db, app_id, user, allow_admin=True, detail="App not found.")
+
+
+def _uptime(info, now: datetime) -> Optional[int]:
+    start = info.started_at or info.created_at
+    if start is None or info.phase != "Running":
+        return None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    return max(0, int((now - start).total_seconds()))
 
 
 @router.get("/{app_id}/logs", response_model=LogsOut)
@@ -79,10 +85,13 @@ def app_logs(
     except Exception as exc:  # noqa: BLE001
         log.warning("app %s: reading logs failed: %s", app.id, type(exc).__name__)
         return LogsOut(lines=[], pod=None, note="Couldn't read the logs right now. Try again in a moment.")
+    now = datetime.now(timezone.utc)
+    infos = [PodInfoOut(name=i.name, created_at=i.created_at, phase=i.phase, ready=i.ready, current=i.current,
+                        started_at=i.started_at, uptime_seconds=_uptime(i, now)) for i in result.pod_info]
+    ups = [i.uptime_seconds for i in infos if i.current and i.uptime_seconds is not None]
     return LogsOut(
-        lines=result.lines, pod=result.pod, note=result.note, pods=result.pods,
-        pod_info=[PodInfoOut(name=i.name, created_at=i.created_at, phase=i.phase, ready=i.ready, current=i.current)
-                  for i in result.pod_info],
+        lines=result.lines, pod=result.pod, note=result.note, pods=result.pods, pod_info=infos,
+        uptime_seconds=max(ups) if ups else None,
         sections=[PodLogsOut(pod=x.pod, lines=x.lines, note=x.note, restarts=x.restarts) for x in result.sections],
     )
 
@@ -201,6 +210,52 @@ def app_events(
     """Recent restart events (disk, out of memory, crash), newest first; at most the last 20."""
     app = _get_app_or_404(db, app_id, user)
     return list(app.events)
+
+
+def _event_or_404(db: Session, app: models.App, event_id: int) -> models.AppEvent:
+    ev = db.query(models.AppEvent).filter(models.AppEvent.id == event_id, models.AppEvent.app_id == app.id).first()
+    if ev is None:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    return ev
+
+
+@router.post("/{app_id}/alerts/{kind}/dismiss", response_model=schemas.AppOut)
+def dismiss_alert(app_id: int, kind: Literal["event", "image_update"], db: Session = Depends(get_db),
+                  user: models.User = Depends(get_active_user)):
+    """Dismiss the alert currently shown on the app (`event` = the newest restart event, `image_update` = the image update
+    error). Owner only. It stays dismissed until a NEW occurrence (a new event / a different update error)."""
+    app = projects.get_app_for_member(db, app_id, user, detail="App not found.")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if kind == "event":
+        if app.events and app.events[0].dismissed_at is None:
+            app.events[0].dismissed_at = now
+    elif app.image_update_error:
+        app.image_update_error_dismissed = True
+    db.commit()
+    audit.record(db, user, "app.alert_dismiss", "app", app.id, kind)
+    return _app_out(app)
+
+
+@router.post("/{app_id}/events/{event_id}/dismiss", response_model=schemas.AppEventOut)
+def dismiss_event(app_id: int, event_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Dismiss an alert (e.g. 'Restarted 17 h ago: exited with code 137'). It stays dismissed; only a NEW occurrence shows again."""
+    app = _get_app_or_404(db, app_id, user)
+    ev = _event_or_404(db, app, event_id)
+    if ev.dismissed_at is None:
+        ev.dismissed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+    return ev
+
+
+@router.delete("/{app_id}/events/{event_id}/dismiss", response_model=schemas.AppEventOut)
+def undismiss_event(app_id: int, event_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Show a dismissed alert again."""
+    app = _get_app_or_404(db, app_id, user)
+    ev = _event_or_404(db, app, event_id)
+    if ev.dismissed_at is not None:
+        ev.dismissed_at = None
+        db.commit()
+    return ev
 
 
 @router.post("/{app_id}/restart", response_model=schemas.AppOut)

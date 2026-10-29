@@ -138,6 +138,18 @@ MAX_APPS_PER_USER = int(os.environ.get("MAX_APPS_PER_USER", "5"))
 ADMIN_DEFAULT_APP_LIMIT = int(os.environ.get("ADMIN_DEFAULT_APP_LIMIT", "5"))
 MAX_APPS_PER_ADMIN = int(os.environ.get("MAX_APPS_PER_ADMIN", "10"))
 
+# Projects (team apps). A project's active-app limit defaults to PROJECT_DEFAULT_APP_LIMIT (an admin can set a
+# per-project value) and never exceeds the per-account ceiling MAX_APPS_PER_USER. Personal projects keep the user's own
+# app_limit semantics (resources.effective_app_limit).
+PROJECT_DEFAULT_APP_LIMIT = int(os.environ.get("PROJECT_DEFAULT_APP_LIMIT", "3"))
+MAX_PROJECTS_PER_USER = int(os.environ.get("MAX_PROJECTS_PER_USER", "5"))   # shared projects one user may have created and still own
+MAX_PROJECT_MEMBERS = int(os.environ.get("MAX_PROJECT_MEMBERS", "10"))
+MAX_PENDING_INVITES_PER_PROJECT = int(os.environ.get("MAX_PENDING_INVITES_PER_PROJECT", "20"))
+PROJECT_INVITE_TTL_DAYS = 7
+# Invite accept attempts per user and per client IP per window (counted on every attempt, so tokens can't be guessed).
+INVITE_ACCEPT_MAX = int(os.environ.get("INVITE_ACCEPT_MAX", "20"))
+INVITE_ACCEPT_WINDOW_SECONDS = 60 * 60
+
 # Ceiling for the admin-set per-app replica count (PUT /admin/apps/{id}/replicas).
 MAX_REPLICAS = int(os.environ.get("MAX_REPLICAS", "3"))
 
@@ -256,6 +268,8 @@ DB_METRICS_CA = os.environ.get("DB_METRICS_CA", "")
 # --- Backups (docs/design/backups.md, REQ-9). OFF by default: nothing runs and nothing is provisioned until request
 # 0008 is approved and the bucket + key exist. The backup bucket and its scoped key are SEPARATE from the tenant Spaces
 # credentials (SPACES_*); with any of them missing the feature reports "misconfigured" and does nothing.
+# Bearer token for GET /metrics (Prometheus scraper). Unset = only a platform-admin browser session can read it.
+METRICS_TOKEN = os.environ.get("METRICS_TOKEN", "")
 BACKUPS_ENABLED = os.environ.get("BACKUPS_ENABLED", "0") == "1"
 # Scheduled backups are opt-in: new per-app configs start disabled unless this is "1". Manual backups work regardless.
 BACKUP_DEFAULT_ENABLED = os.environ.get("BACKUP_DEFAULT_ENABLED", "0") == "1"
@@ -271,6 +285,12 @@ BACKUP_NAMESPACE = "picopaas-backup"
 BACKUP_KEEP_DAILY = int(os.environ.get("BACKUP_KEEP_DAILY", 1))
 BACKUP_KEEP_WEEKLY = int(os.environ.get("BACKUP_KEEP_WEEKLY", 1))
 BACKUP_KEEP_MONTHLY = int(os.environ.get("BACKUP_KEEP_MONTHLY", 1))
+# Self-backup of the platform's own database (app/platform_backup.py): on when backups are usable and DATABASE_URL is MySQL.
+PLATFORM_BACKUP_ENABLED = os.environ.get("PLATFORM_BACKUP_ENABLED", "1") == "1"
+PLATFORM_BACKUP_INTERVAL_HOURS = int(os.environ.get("PLATFORM_BACKUP_INTERVAL_HOURS", 24))
+PLATFORM_BACKUP_KEEP_DAILY = int(os.environ.get("PLATFORM_BACKUP_KEEP_DAILY", 7))
+PLATFORM_BACKUP_KEEP_WEEKLY = int(os.environ.get("PLATFORM_BACKUP_KEEP_WEEKLY", 4))
+PLATFORM_BACKUP_KEEP_MONTHLY = int(os.environ.get("PLATFORM_BACKUP_KEEP_MONTHLY", 3))
 # Backup bytes are metered separately from the 50 MB DB / 100 MB storage caps: per app (all repos) and platform total.
 BACKUP_MAX_BYTES_PER_APP = int(os.environ.get("BACKUP_MAX_BYTES_PER_APP", 2 * 1024**3))
 BACKUP_MAX_BYTES_TOTAL = int(os.environ.get("BACKUP_MAX_BYTES_TOTAL", 100 * 1024**3))
