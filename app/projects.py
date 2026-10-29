@@ -80,6 +80,12 @@ def get_project_for_member(db: Session, project_id: int, user: models.User, *, o
     return member.project, member
 
 
+def lock_project(db: Session, project_id: int) -> None:
+    """Row-lock the project (SELECT ... FOR UPDATE; no-op on SQLite) until commit/rollback, so concurrent last-owner,
+    member-cap and app-limit checks serialize instead of both passing."""
+    db.query(models.Project).filter(models.Project.id == project_id).with_for_update().first()
+
+
 def owner_count(db: Session, project_id: int) -> int:
     return db.query(models.ProjectMember).filter_by(project_id=project_id, role="owner").count()
 
@@ -99,6 +105,7 @@ def effective_project_app_limit(db: Session, project: models.Project) -> int:
 
 
 def check_app_limit(db: Session, project: models.Project) -> None:
+    lock_project(db, project.id)
     eff = effective_project_app_limit(db, project)
     if live_app_count(db, project.id) >= eff:
         plural = "" if eff == 1 else "s"

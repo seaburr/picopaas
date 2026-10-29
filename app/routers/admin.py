@@ -335,6 +335,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
     _protect_platform_admin(user, db)
     shared = _shared_memberships(db, user.id)
     for m in shared:
+        projects.lock_project(db, m.project_id)
         if m.role == "owner" and projects.owner_count(db, m.project_id) <= 1 and projects.live_app_count(db, m.project_id):
             raise HTTPException(status_code=409, detail=(
                 f"This user is the only owner of the project {m.project.name} (id {m.project_id}) and it still has apps. "

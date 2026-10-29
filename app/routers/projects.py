@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app import audit, config, models, projects, ratelimit
@@ -77,6 +77,12 @@ class InviteCreate(BaseModel):
         if not _EMAIL.match(v):
             raise ValueError("That doesn't look like an email address.")
         return v
+
+    @model_validator(mode="after")
+    def _link_is_member_only(self):
+        if self.email is None and self.role != "member":
+            raise ValueError("An invite link can only add a member. To invite an owner, enter their email.")
+        return self
 
 
 class InviteOut(BaseModel):
@@ -194,6 +200,7 @@ def _target_member(db: Session, project_id: int, user_id: int) -> models.Project
 
 
 def _guard_last_owner(db: Session, member: models.ProjectMember) -> None:
+    projects.lock_project(db, member.project_id)
     if member.role == "owner" and projects.owner_count(db, member.project_id) <= 1:
         raise HTTPException(status_code=409, detail="A project needs at least one owner. Make someone else an owner first.")
 
@@ -311,6 +318,7 @@ def accept_invite(token: str, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status_code=410, detail=_DEAD)
     if inv.email and inv.email != user.email.lower():
         raise HTTPException(status_code=403, detail="This invite was sent to a different email address. Log in with that account.")
+    projects.lock_project(db, project.id)
     if projects.get_membership(db, project.id, user.id) is not None:
         raise HTTPException(status_code=409, detail="You're already in this project.")
     if db.query(models.ProjectMember).filter_by(project_id=project.id).count() >= config.MAX_PROJECT_MEMBERS:

@@ -481,7 +481,7 @@ def test_delete_user_blocked_if_sole_owner_with_apps(team):
     app_id = a.post("/apps", json={**_APP, "project_id": p["id"]}).json()["id"]
     r = admin.delete(f"/admin/users/{_uid('a@example.com')}")
     assert r.status_code == 409 and _db().query(models.User).filter_by(email="a@example.com").one().status == "active"
-    _join(a, c, p["id"], role="owner")
+    _join(a, c, p["id"], role="owner", email="c@example.com")
     assert admin.delete(f"/admin/users/{_uid('a@example.com')}").status_code == 204
     db = _db()
     db.expire_all()
@@ -506,3 +506,32 @@ def test_owner_notifications_target_project_owners(team):
     assert emails == {p["id"]: ["a@example.com"]}
     app_row = _db().query(models.App).filter_by(project_id=p["id"]).one()
     assert projects.owners_label(_db(), app_row, "x") == "a@example.com"
+
+
+def test_link_invite_owner_role_rejected(team):
+    _, a, b, c, p = team
+    r = a.post(f"/projects/{p['id']}/invites", json={"role": "owner"})
+    assert r.status_code == 422
+    assert _db().query(models.ProjectInvite).filter_by(project_id=p["id"]).count() == 1  # only b's earlier invite
+    ok = a.post(f"/projects/{p['id']}/invites", json={"role": "member"})
+    assert ok.status_code == 201 and ok.json()["role"] == "member"
+    bound = a.post(f"/projects/{p['id']}/invites", json={"role": "owner", "email": "c@example.com"})
+    assert bound.status_code == 201 and bound.json()["role"] == "owner"
+
+
+def test_last_owner_invariant_holds_across_paths(team):
+    admin, a, b, c, p = team
+    pid, ua = p["id"], _uid("a@example.com")
+    assert a.patch(f"/projects/{pid}/members/{ua}", json={"role": "member"}).status_code == 409
+    assert a.delete(f"/projects/{pid}/members/{ua}").status_code == 409
+    assert a.post(f"/projects/{pid}/leave").status_code == 409
+    owners = _db().query(models.ProjectMember).filter_by(project_id=pid, role="owner").count()
+    assert owners == 1
+
+
+def test_member_cap_enforced_on_accept(team, monkeypatch):
+    _, a, b, c, p = team
+    monkeypatch.setattr(config, "MAX_PROJECT_MEMBERS", 2)
+    inv = a.post(f"/projects/{p['id']}/invites", json={}).json()
+    assert c.post(f"/invites/{inv['token']}/accept").status_code == 403
+    assert _db().query(models.ProjectMember).filter_by(project_id=p["id"]).count() == 2
