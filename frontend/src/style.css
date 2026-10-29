@@ -1,6 +1,270 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-pico-bg: #0d0d14;
+  --color-pico-panel: #16161f;
+  --color-pico-card: #1c1c28;
+  --color-pico-border: #2c2c3c;
+  --color-pico-muted: #4a4a5e;
+
+  --color-accent: #4a78c2;
+  --color-accent-dark: #233775;
+  --color-accent-light: #7aa0d4;
+
+  --color-primary: #3a6bd0;
+  --color-primary-hover: #2f5fc4;
+  --color-primary-active: #2653b0;
+
+  --color-zinc-500: #8b8b96;
+  --color-zinc-600: #8b8b96;
+
+  --color-danger: #d95555;
+  --color-danger-dark: #9e2424;
+  --color-danger-light: #e87070;
+
+  --color-status-pending: #d4aa20;
+  --color-status-running: #6a9e4a;
+  --color-status-error: #d95555;
+  --color-status-stopped: #7a7a8c;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/*
+ * Design tokens as component classes. Use these instead of ad-hoc utility soup.
+ *   Buttons : .btn-primary .btn-secondary .btn-danger .btn-danger-solid .btn-ghost  (+ .btn-sm, .btn-block)
+ *   Forms   : .input .label .help .field-error .check
+ *   Surfaces: .card .card-pad .alert-error .alert-warn .alert-info .alert-success
+ *   Badges  : .badge-ok .badge-warn .badge-error .badge-neutral .badge-info
+ *   Text    : .page-title .section-title .meta .link .table-th
+ */
+
+@utility btn {
+  @apply inline-flex min-h-[32px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium transition-colors;
+  @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
+}
+
+@utility btn-sm {
+  @apply min-h-[28px] px-2 py-0.5 text-xs;
+}
+
+@utility btn-block {
+  @apply w-full;
+}
+
+@utility btn-primary {
+  @apply btn bg-primary text-white hover:bg-primary-hover active:bg-primary-active;
+  @apply disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+  @apply aria-disabled:border-zinc-700 aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
+}
+
+@utility btn-secondary {
+  @apply btn border-zinc-500 bg-transparent text-zinc-200 hover:bg-pico-card hover:text-white;
+  @apply disabled:border-dashed disabled:border-zinc-700 disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
+  @apply aria-disabled:border-dashed aria-disabled:border-zinc-700 aria-disabled:text-zinc-500;
+}
+
+@utility btn-danger {
+  @apply btn border-danger/50 bg-transparent text-danger-light hover:bg-danger/10;
+  @apply disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500 disabled:hover:bg-transparent;
+}
+
+@utility btn-danger-solid {
+  @apply btn bg-danger-dark text-white hover:bg-[#b32b2b] active:bg-[#8a1f1f];
+  @apply disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+}
+
+@utility btn-ghost {
+  @apply btn text-zinc-300 hover:bg-pico-card hover:text-white;
+  @apply disabled:text-zinc-500 disabled:hover:bg-transparent;
+}
+
+@utility input {
+  @apply block min-h-[32px] w-full rounded-md border border-zinc-500 bg-pico-card px-2.5 py-1 text-sm text-white placeholder:text-zinc-500;
+  @apply focus-visible:border-accent-light disabled:cursor-not-allowed disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500;
+  &[aria-invalid='true'] {
+    @apply border-danger-light;
+  }
+  /* Selects: our own chevron with room on the right (the native arrow hugs the border). */
+  &select {
+    @apply appearance-none bg-no-repeat pr-8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.5rem center;
+    background-size: 14px 14px;
+  }
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-medium text-zinc-200;
+}
+
+@utility help {
+  @apply mt-1 text-xs text-zinc-400;
+}
+
+@utility field-error {
+  @apply mt-1 text-xs text-danger-light;
+}
+
+@utility check {
+  @apply h-4 w-4 rounded-sm border-zinc-500 accent-primary;
+}
+
+@utility card {
+  @apply rounded-lg border border-pico-border bg-pico-panel;
+}
+
+@utility card-pad {
+  @apply p-3 sm:p-4;
+}
+
+@utility alert-error {
+  @apply rounded-md border px-3 py-2 text-sm;
+  @apply border-danger/40 bg-danger/10 text-danger-light;
+}
+
+@utility alert-warn {
+  @apply rounded-md border px-3 py-2 text-sm;
+  @apply border-amber-500/40 bg-amber-500/10 text-amber-300;
+}
+
+@utility alert-info {
+  @apply rounded-md border px-3 py-2 text-sm;
+  @apply border-accent/40 bg-accent/10 text-accent-light;
+}
+
+@utility alert-success {
+  @apply rounded-md border px-3 py-2 text-sm;
+  @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300;
+}
+
+@utility badge {
+  @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium;
+}
+
+@utility badge-ok {
+  @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
+}
+
+@utility badge-warn {
+  @apply badge border-amber-500/30 bg-amber-500/10 text-amber-300;
+}
+
+@utility badge-error {
+  @apply badge border-danger/40 bg-danger/10 text-danger-light;
+}
+
+@utility badge-neutral {
+  @apply badge border-zinc-500/40 bg-zinc-500/10 text-zinc-300;
+}
+
+@utility badge-info {
+  @apply badge border-accent/40 bg-accent/10 text-accent-light;
+}
+
+@utility nav-link {
+  @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-border hover:text-white;
+  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
+  &.nav-active {
+    @apply bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60;
+  }
+}
+
+@utility nav-active {
+  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
+  &.nav-link {
+    @apply bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60;
+  }
+}
+
+@utility page-title {
+  @apply text-lg font-semibold text-white;
+}
+
+@utility section-title {
+  @apply text-sm font-semibold text-white;
+}
+
+@utility meta {
+  @apply text-xs text-zinc-400;
+}
+
+@utility link {
+  @apply text-accent-light underline-offset-2 hover:underline;
+}
+
+@utility table-th {
+  @apply text-left text-[11px] font-medium uppercase tracking-wide text-zinc-400;
+}
+
+@utility mono {
+  /* Technical data (hostnames, images, ports, ids, keys, timestamps, resources). Same look as the audit table. */
+  @apply font-mono text-xs tabular-nums;
+}
+
+@utility btn-icon {
+  /* Icon buttons: square hit area, quiet until hovered. Danger turns red on hover/focus only. */
+  @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-zinc-400 transition-colors hover:bg-pico-card hover:text-white;
+  @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400 aria-disabled:cursor-not-allowed aria-disabled:opacity-40;
+}
+
+@utility btn-icon-busy {
+  & svg {
+    @apply animate-spin;
+  }
+}
+
+@utility btn-icon-sm {
+  @apply h-7 w-7;
+}
+
+@utility btn-icon-danger {
+  @apply hover:bg-danger/10 hover:text-danger-light focus-visible:text-danger-light;
+}
+
+@utility tbl {
+  /*
+   * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. th/td share padding; right-align numeric
+   * and action columns with .text-right on BOTH th and td. Technical values: add .truncate + title on the td.
+   */
+  @apply w-full table-fixed border-collapse text-sm;
+  & th {
+    @apply table-th px-3 py-2 align-middle;
+  }
+  & td {
+    @apply px-3 py-1.5 align-middle;
+  }
+  & th.text-right {
+    text-align: right;
+  }
+  & td.text-right {
+    text-align: right;
+  }
+  & tbody tr {
+    @apply border-t border-pico-border;
+  }
+}
+
+@utility row-pad {
+  /* Grid-row lists (stacked below md): header and rows use the same fixed template via the *-cols classes. */
+  @apply px-3 py-2;
+}
 
 @layer base {
   input[type='number']::-webkit-outer-spin-button,
@@ -15,6 +279,12 @@
   html {
     color-scheme: dark;
   }
+  /* Tailwind 4 preflight no longer sets a pointer cursor on buttons. */
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
   html,
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
@@ -27,7 +297,7 @@
     @apply border-pico-border;
   }
   :focus-visible {
-    @apply outline-none ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
+    @apply outline-hidden ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
   }
   main:focus {
     outline: none; /* skip-link target only */
@@ -43,187 +313,5 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
-  }
-}
-
-/*
- * Design tokens as component classes. Use these instead of ad-hoc utility soup.
- *   Buttons : .btn-primary .btn-secondary .btn-danger .btn-danger-solid .btn-ghost  (+ .btn-sm, .btn-block)
- *   Forms   : .input .label .help .field-error .check
- *   Surfaces: .card .card-pad .alert-error .alert-warn .alert-info .alert-success
- *   Badges  : .badge-ok .badge-warn .badge-error .badge-neutral .badge-info
- *   Text    : .page-title .section-title .meta .link .table-th
- */
-@layer components {
-  .btn {
-    @apply inline-flex min-h-[32px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium transition-colors;
-    @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
-  }
-  .btn-sm {
-    @apply min-h-[28px] px-2 py-0.5 text-xs;
-  }
-  .btn-block {
-    @apply w-full;
-  }
-  .btn-primary {
-    @apply btn bg-primary text-white hover:bg-primary-hover active:bg-primary-active;
-    @apply disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
-    @apply aria-disabled:border-zinc-700 aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
-  }
-  .btn-secondary {
-    @apply btn border-zinc-500 bg-transparent text-zinc-200 hover:bg-pico-card hover:text-white;
-    @apply disabled:border-dashed disabled:border-zinc-700 disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
-    @apply aria-disabled:border-dashed aria-disabled:border-zinc-700 aria-disabled:text-zinc-500;
-  }
-  .btn-danger {
-    @apply btn border-danger/50 bg-transparent text-danger-light hover:bg-danger/10;
-    @apply disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500 disabled:hover:bg-transparent;
-  }
-  .btn-danger-solid {
-    @apply btn bg-danger-dark text-white hover:bg-[#b32b2b] active:bg-[#8a1f1f];
-    @apply disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
-  }
-  .btn-ghost {
-    @apply btn text-zinc-300 hover:bg-pico-card hover:text-white;
-    @apply disabled:text-zinc-500 disabled:hover:bg-transparent;
-  }
-
-  .input {
-    @apply block min-h-[32px] w-full rounded-md border border-zinc-500 bg-pico-card px-2.5 py-1 text-sm text-white placeholder-zinc-500;
-    @apply focus-visible:border-accent-light disabled:cursor-not-allowed disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500;
-  }
-  .input[aria-invalid='true'] {
-    @apply border-danger-light;
-  }
-  /* Selects: our own chevron with room on the right (the native arrow hugs the border). */
-  select.input {
-    @apply appearance-none bg-no-repeat pr-8;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-    background-position: right 0.5rem center;
-    background-size: 14px 14px;
-  }
-  .label {
-    @apply mb-1 block text-xs font-medium text-zinc-200;
-  }
-  .help {
-    @apply mt-1 text-xs text-zinc-400;
-  }
-  .field-error {
-    @apply mt-1 text-xs text-danger-light;
-  }
-  .check {
-    @apply h-4 w-4 rounded border-zinc-500 accent-primary;
-  }
-
-  .card {
-    @apply rounded-lg border border-pico-border bg-pico-panel;
-  }
-  .card-pad {
-    @apply p-3 sm:p-4;
-  }
-  .alert-error,
-  .alert-warn,
-  .alert-info,
-  .alert-success {
-    @apply rounded-md border px-3 py-2 text-sm;
-  }
-  .alert-error {
-    @apply border-danger/40 bg-danger/10 text-danger-light;
-  }
-  .alert-warn {
-    @apply border-amber-500/40 bg-amber-500/10 text-amber-300;
-  }
-  .alert-info {
-    @apply border-accent/40 bg-accent/10 text-accent-light;
-  }
-  .alert-success {
-    @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300;
-  }
-
-  .badge {
-    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium;
-  }
-  .badge-ok {
-    @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
-  }
-  .badge-warn {
-    @apply badge border-amber-500/30 bg-amber-500/10 text-amber-300;
-  }
-  .badge-error {
-    @apply badge border-danger/40 bg-danger/10 text-danger-light;
-  }
-  .badge-neutral {
-    @apply badge border-zinc-500/40 bg-zinc-500/10 text-zinc-300;
-  }
-  .badge-info {
-    @apply badge border-accent/40 bg-accent/10 text-accent-light;
-  }
-
-  .nav-link {
-    @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-card/90 hover:text-white;
-  }
-  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
-  .nav-link.nav-active {
-    @apply bg-pico-card font-medium text-white;
-  }
-
-  .page-title {
-    @apply text-lg font-semibold text-white;
-  }
-  .section-title {
-    @apply text-sm font-semibold text-white;
-  }
-  .meta {
-    @apply text-xs text-zinc-400;
-  }
-  .link {
-    @apply text-accent-light underline-offset-2 hover:underline;
-  }
-  .table-th {
-    @apply text-left text-[11px] font-medium uppercase tracking-wide text-zinc-400;
-  }
-  /* Technical data (hostnames, images, ports, ids, keys, timestamps, resources). Same look as the audit table. */
-  .mono {
-    @apply font-mono text-xs tabular-nums;
-  }
-
-  /* Icon buttons: square hit area, quiet until hovered. Danger turns red on hover/focus only. */
-  .btn-icon {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-zinc-400 transition-colors hover:bg-pico-card hover:text-white;
-    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400 aria-disabled:cursor-not-allowed aria-disabled:opacity-40;
-  }
-  .btn-icon-busy svg {
-    @apply animate-spin;
-  }
-  .btn-icon-sm {
-    @apply h-7 w-7;
-  }
-  .btn-icon-danger {
-    @apply hover:bg-danger/10 hover:text-danger-light focus-visible:text-danger-light;
-  }
-
-  /*
-   * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. th/td share padding; right-align numeric
-   * and action columns with .text-right on BOTH th and td. Technical values: add .truncate + title on the td.
-   */
-  .tbl {
-    @apply w-full table-fixed border-collapse text-sm;
-  }
-  .tbl th {
-    @apply table-th px-3 py-2 align-middle;
-  }
-  .tbl td {
-    @apply px-3 py-1.5 align-middle;
-  }
-  .tbl th.text-right,
-  .tbl td.text-right {
-    text-align: right;
-  }
-  .tbl tbody tr {
-    @apply border-t border-pico-border;
-  }
-  /* Grid-row lists (stacked below md): header and rows use the same fixed template via the *-cols classes. */
-  .row-pad {
-    @apply px-3 py-2;
   }
 }
