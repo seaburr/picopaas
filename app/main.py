@@ -11,11 +11,13 @@ from fastapi.staticfiles import StaticFiles
 
 from sqlalchemy import or_
 
-from app import config
+from app import config, logging_setup
 from app import models, metrics
 from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
 from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, spec, templates, usage
+
+logging_setup.configure()
 
 # No Alembic auto-run here: migrations are applied explicitly (`alembic upgrade head`).
 # create_all is a no-op against tables that already exist, which keeps the SQLite

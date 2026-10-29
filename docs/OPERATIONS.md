@@ -26,3 +26,16 @@ When the API has no ready pods, Traefik would answer with its bare "no available
 - Edit a page: change the HTML, push; deploy.yml re-creates the ConfigMap, then `kubectl -n picopaas-system rollout restart deployment/error-pages` (ConfigMap mounts refresh in ~1 min without restart, but the restart is deterministic).
 - Test (rollout first, then): `kubectl -n picopaas-system scale deployment/picopaas --replicas=0`; `curl -si https://platform.picopaas.xyz/ | head -20` must show `HTTP/2 503` and the PicoPaaS page, in a browser too; then `scale --replicas=2` (the next deploy also restores it). Single-replica kill: `kubectl delete pod -l app=picopaas` leaves the other replica serving. Error pages themselves: `kubectl -n picopaas-system port-forward svc/error-pages 8081:80` then open `/platform.html` and `/app.html`.
 - If the platform host ever shows a 404 instead of the app: the Middleware is missing; `kubectl -n picopaas-system get middleware` and apply `deploy/error-pages/error-pages.yaml`.
+
+## Reading platform logs
+
+Every platform line carries a UTC timestamp, level, logger, thread and the call site (`app/logging_setup.py`):
+
+```
+2026-10-29T14:03:12.345Z WARNING app.reconciler [ThreadPoolExecutor-0_0] reconciler.py:123 reconcile_app() app 7 failed
+2026-10-29T14:03:12.400Z INFO    access 10.150.0.57:51832 "GET /healthz HTTP/1.1" 200
+```
+
+Set `LOG_LEVEL=DEBUG` on the platform deployment for more detail (default `INFO`). `apscheduler`, `httpx` and `httpcore` stay at
+`WARNING` regardless, because they log every 15 s job run and every request URL. Admin > Health > Logs still redacts secrets
+before showing or downloading lines.
