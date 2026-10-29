@@ -8,6 +8,7 @@ replaces uvicorn's formats too (access lines included); no `--log-config` flag i
 import logging
 import logging.config
 import os
+import re
 import time
 
 FORMAT = "%(asctime)s %(levelname)-7s %(name)s [%(threadName)s] %(filename)s:%(lineno)d %(funcName)s() %(message)s"
@@ -21,16 +22,26 @@ class UTCFormatter(logging.Formatter):
     default_msec_format = "%s.%03dZ"
 
 
+# Capability tokens that travel in the URL path or query: an invite link token is a bearer credential (43 url-safe chars,
+# which the generic log_redact rules do not match), so it must not reach pod logs or the admin log viewer.
+_PATH_SECRETS = re.compile(r"(/invites/)[^/\s?]+")
+_QUERY_SECRETS = re.compile(r"(?i)([?&][^=&\s]*(?:token|key|secret|password|code|sig)[^=&\s]*=)[^&\s]*")
+
+
+def scrub_request_path(path: str) -> str:
+    return _QUERY_SECRETS.sub(r"\1<redacted>", _PATH_SECRETS.sub(r"\1<redacted>", str(path)))
+
+
 class UTCAccessFormatter(UTCFormatter):
     """uvicorn passes (client_addr, method, path, http_version, status_code) as record.args."""
 
     def formatMessage(self, record: logging.LogRecord) -> str:
         if isinstance(record.args, tuple) and len(record.args) == 5:
             client_addr, method, path, version, status = record.args
-            record.__dict__.update(client_addr=client_addr, request_line=f"{method} {path} HTTP/{version}",
+            record.__dict__.update(client_addr=client_addr, request_line=f"{method} {scrub_request_path(path)} HTTP/{version}",
                                    status_code=status)
         else:  # not uvicorn's shape: fall back to the plain message
-            record.__dict__.update(client_addr="-", request_line=record.getMessage(), status_code="-")
+            record.__dict__.update(client_addr="-", request_line=scrub_request_path(record.getMessage()), status_code="-")
         return super().formatMessage(record)
 
 

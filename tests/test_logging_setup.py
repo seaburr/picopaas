@@ -36,3 +36,15 @@ def test_level_from_env(monkeypatch):
 def test_noisy_libraries_stay_at_warning():
     loggers = logging_setup.config_dict("DEBUG")["loggers"]
     assert all(loggers[n]["level"] == "WARNING" for n in ("apscheduler", "httpx", "httpcore"))
+
+
+def test_access_line_masks_invite_token_and_secret_query_values():
+    tok = "A" * 43
+    rec = logging.LogRecord("uvicorn.access", logging.INFO, "h11_impl.py", 1, '%s - "%s %s HTTP/%s" %d',
+                            ("10.0.0.1:5000", "POST", f"/invites/{tok}/accept", "1.1", 200), None)
+    line = _fmt("access", rec)
+    assert tok not in line and "/invites/<redacted>/accept" in line
+    rec = logging.LogRecord("uvicorn.access", logging.INFO, "h11_impl.py", 1, '%s - "%s %s HTTP/%s" %d',
+                            ("10.0.0.1:5000", "GET", "/x?tail=5&api_key=not-the-key&token=not-a-token", "1.1", 200), None)
+    line = _fmt("access", rec)
+    assert "not-the-key" not in line and "not-a-token" not in line and "tail=5" in line
