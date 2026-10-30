@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0d0d14">
 <title>PicoPaaS: tiny hosting for throwaway projects</title>
-<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, an S3-compatible bucket, and nightly backups. A small, approval-only platform for hobby and throwaway projects.">
+<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, an S3-compatible bucket, and nightly backups, plus Kaisen (in preview) to build small apps from a description. A small, approval-only platform for hobby and throwaway projects.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -60,11 +60,23 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <ul class="inc">
 <li><strong>Templates and recipes.</strong> One-click starters for Ghost, WordPress, Directus, Grafana, n8n, Shlink, Gatus and an nginx static site.</li>
 <li><strong>Safe deploys.</strong> Roll back with one click; a new image that fails to start is reverted automatically.</li>
+<li><strong>Kaisen (in preview).</strong> Describe an app and have Claude build and deploy it for you.</li>
 <li><strong>Teams.</strong> Share apps with others in a project.</li>
 <li><strong>Your tools.</strong> A CLI, API keys, your own domain with automatic TLS, and an audit log.</li>
 <li><strong>Visibility.</strong> Live status, logs, restarts, and recent CPU and memory history.</li>
 <li><strong>Isolation.</strong> Apps are walled off from each other and from the platform.</li>
 </ul>
+</section>
+<section>
+<h2>Build with Kaisen (in preview)</h2>
+<p class="pre" style="margin-top:0">Describe a small app in plain words. Kaisen (Claude) writes it, deploys it into your project as a normal app, and changes it when you tell it what to change. For example, it built a Markdown notes app with a nested page tree, MySQL storage, image uploads and dark mode in one run, for about five US cents on Claude Haiku 5.5.</p>
+<div class="grid grid-4" style="margin-top:16px">
+<div class="card"><h3>Your key, your caps</h3><p>Bring your own Anthropic API key and set spend caps per project.</p></div>
+<div class="card"><h3>A normal app</h3><p>It lands in your personal or team project with a &ldquo;Built with Kaisen &middot; Preview&rdquo; pill, and counts against the project&rsquo;s app limit. Add an optional MySQL database.</p></div>
+<div class="card"><h3>Iterate by typing</h3><p>Tell it what to change and it redeploys. Take an app offline and deploy it again later.</p></div>
+<div class="card"><h3>Your code stays yours</h3><p>Download the code plus the full conversation (CONVERSATION.md), or push each build to its own GitHub repo.</p></div>
+</div>
+<p class="pre">Kaisen is in preview and meant for small apps. It doesn&rsquo;t run its generated tests yet, has no web access yet, and previews have no blob storage, secrets or email. <a href="https://platform.picopaas.xyz/guide/user">How to use Kaisen</a>.</p>
 </section>
 <section>
 <h2>How it works</h2>

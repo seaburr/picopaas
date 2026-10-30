@@ -10,6 +10,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 ## Features
 
+- Build with Kaisen (in preview): describe a small app in plain words and Kaisen (Claude) writes it and deploys it into your project as a normal app. You bring your own Anthropic API key and set spend caps per project.
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
 - Optional MySQL or PostgreSQL database and S3-compatible blob storage bucket per app, each with its own credentials.
