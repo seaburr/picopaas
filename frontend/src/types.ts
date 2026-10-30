@@ -649,6 +649,7 @@ export interface KaisenRun {
   finished_at: string | null
   step?: number | null
   last_tool?: string | null
+  context_resets?: number | null
   transcript: { role: string; text: string }[] | null
   transcript_trimmed: boolean
   suggestions?: string[]

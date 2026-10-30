@@ -16,6 +16,7 @@ const label = computed(() => RUN_KIND_LABEL[props.run.kind] ?? props.run.kind)
       <span class="motion-safe:animate-pulse">{{ label }} running</span>
       <span v-if="run.step">step {{ run.step }}</span>
       <span v-if="run.last_tool" class="mono">{{ run.last_tool }}</span>
+      <span v-if="run.context_resets">fresh context ×{{ run.context_resets }}</span>
       <span>{{ elapsed(run.started_at, t) }}</span>
       <span>{{ fmtUsd(run.cost_usd) }} this run</span>
       <span class="meta">{{ fmtUsd(buildUsd) }} of {{ fmtUsd(capBuild) }} build cap</span>
