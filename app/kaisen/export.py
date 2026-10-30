@@ -2,22 +2,37 @@ import gzip
 import io
 import re
 import tarfile
+import time
+from datetime import timezone
 
 from app import config
 from .paths import normalize_path
 
 
-def build_tarball(slug: str, files: list[tuple[str, str]]) -> bytes:
-    """Deterministic tar.gz of (path, content) under a `<slug>/` directory. Held in memory."""
+def build_mtime(db, b) -> int:
+    """Timestamp for tar entries: the build's latest run activity, else its creation time. Stable for a given build
+    state (so identical content hashes identically), and a real date instead of 1969."""
+    from sqlalchemy import select
+    from .models import KaisenRun
+
+    stamps = [t for run in db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id)) for t in (run.finished_at, run.created_at) if t]
+    t = max(stamps) if stamps else b.created_at
+    return int(t.replace(tzinfo=timezone.utc).timestamp()) if t else int(time.time())
+
+
+def build_tarball(slug: str, files: list[tuple[str, str]], mtime: int | None = None) -> bytes:
+    """Deterministic tar.gz of (path, content) under a `<slug>/` directory. Held in memory. `mtime` (epoch seconds)
+    is applied to every entry and the gzip header; defaults to now when not given."""
+    mtime = int(time.time()) if mtime is None else int(mtime)
     buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz:
+    with gzip.GzipFile(fileobj=buf, mode="wb", mtime=mtime) as gz:
         with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
             for path, content in sorted(files):
                 safe = normalize_path(path)  # re-check: never trust stored names
                 data = content.encode()
                 info = tarfile.TarInfo(f"{slug}/{safe}")
                 info.size = len(data)
-                info.mtime = 0
+                info.mtime = mtime
                 info.mode = 0o644
                 info.uid = info.gid = 0
                 info.uname = info.gname = ""

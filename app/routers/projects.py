@@ -10,6 +10,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import audit, config, models, projects, ratelimit
@@ -118,6 +119,19 @@ def _slug_for(db: Session, name: str) -> str:
             return slug
 
 
+def _ensure_unique_name(db: Session, user: models.User, name: str, exclude_id: Optional[int] = None) -> None:
+    """Project names are unique per user (case-insensitive, trimmed) among the projects they belong to.
+    Only the caller's own projects are consulted, so other users' names are never revealed."""
+    q = (db.query(models.Project.id)
+         .join(models.ProjectMember, models.ProjectMember.project_id == models.Project.id)
+         .filter(models.ProjectMember.user_id == user.id, models.Project.deleted_at.is_(None),
+                 func.lower(func.trim(models.Project.name)) == name.strip().lower()))
+    if exclude_id is not None:
+        q = q.filter(models.Project.id != exclude_id)
+    if q.first() is not None:
+        raise HTTPException(status_code=409, detail=f"You already have a project named {name}.")
+
+
 def _shared_only(project: models.Project) -> None:
     if project.is_personal:
         raise HTTPException(status_code=409, detail="Your personal project can't be shared, renamed or deleted. Create a new project for a team.")
@@ -131,6 +145,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db), user: 
                      models.Project.is_personal.is_(False), models.Project.deleted_at.is_(None)).count())
     if owned >= config.MAX_PROJECTS_PER_USER:
         raise HTTPException(status_code=403, detail=f"You can own up to {config.MAX_PROJECTS_PER_USER} shared projects. Delete one first.")
+    _ensure_unique_name(db, user, payload.name)
     project = models.Project(name=payload.name, slug=_slug_for(db, payload.name), is_personal=False, created_by=user.id)
     project.members.append(models.ProjectMember(user_id=user.id, role="owner"))
     db.add(project)
@@ -159,6 +174,7 @@ def rename_project(project_id: int, payload: ProjectCreate, db: Session = Depend
                    user: models.User = Depends(get_active_user)):
     project, member = projects.get_project_for_member(db, project_id, user, owner=True)
     _shared_only(project)
+    _ensure_unique_name(db, user, payload.name, exclude_id=project.id)
     project.name = payload.name
     db.commit()
     audit.record(db, user, "project.update", "project", project.id, f"project={project.id} name={project.name}")

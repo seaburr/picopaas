@@ -555,3 +555,49 @@ def _join_new(owner, joiner, name):
     pid = _mk(owner, name)["id"]
     _join(owner, joiner, pid)
     return pid
+
+
+# --- unique project names (F2) -------------------------------------------------------------
+
+def test_create_project_duplicate_name_is_409_case_insensitive_trimmed(make_client):
+    a = _user(make_client, "dupa@example.com")
+    assert a.post("/projects", json={"name": "Alpha"}).status_code == 201
+    r = a.post("/projects", json={"name": "  aLPHA "})
+    assert r.status_code == 409 and r.json()["detail"] == "You already have a project named aLPHA."
+    assert _db().query(models.Project).filter(models.Project.name.ilike("alpha")).count() == 1
+
+
+def test_duplicate_of_personal_project_name_is_409(make_client):
+    a = _user(make_client, "dupp@example.com")
+    assert a.post("/projects", json={"name": "personal"}).status_code == 409
+
+
+def test_other_users_names_do_not_collide_or_leak(make_client):
+    a = _user(make_client, "dupb@example.com")
+    b = _user(make_client, "dupc@example.com")
+    assert a.post("/projects", json={"name": "Shared name"}).status_code == 201
+    r = b.post("/projects", json={"name": "shared NAME"})
+    assert r.status_code == 201
+
+
+def test_deleted_project_name_can_be_reused(make_client):
+    a = _user(make_client, "dupd@example.com")
+    pid = a.post("/projects", json={"name": "Gone"}).json()["id"]
+    assert a.delete(f"/projects/{pid}").status_code == 204
+    assert a.post("/projects", json={"name": "gone"}).status_code == 201
+
+
+def test_rename_to_existing_name_is_409_but_own_name_and_case_change_ok(make_client):
+    a = _user(make_client, "dupe@example.com")
+    p1 = a.post("/projects", json={"name": "One"}).json()["id"]
+    a.post("/projects", json={"name": "Two"})
+    r = a.patch(f"/projects/{p1}", json={"name": " two"})
+    assert r.status_code == 409 and r.json()["detail"] == "You already have a project named two."
+    assert a.patch(f"/projects/{p1}", json={"name": "ONE"}).status_code == 200
+    assert _db().get(models.Project, p1).name == "ONE"
+
+
+def test_project_name_validation_and_anonymous(make_client):
+    a = _user(make_client, "dupf@example.com")
+    assert a.post("/projects", json={"name": "   "}).status_code == 422
+    assert make_client().post("/projects", json={"name": "X"}).status_code == 401
