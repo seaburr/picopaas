@@ -421,3 +421,8 @@ def test_snapshot_failure_does_not_block_starting_a_run(built, monkeypatch):
         raise RuntimeError("packet too large")
     monkeypatch.setattr(snapshots, "take", boom)
     assert a.post(f"/kaisen/builds/{bid}/feedback", json={"text": "change it"}).status_code == 200
+
+
+def test_build_detail_says_how_many_restore_points_are_kept(built):
+    a, _, _, _, bid = built
+    assert a.get(f"/kaisen/builds/{bid}").json()["snapshots_kept"] == config.KAISEN_SNAPSHOTS_KEPT

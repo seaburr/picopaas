@@ -16,6 +16,7 @@ const props = defineProps<{
   active: boolean // a run is active: restoring is blocked
   canRun: boolean
   canDeploy: boolean
+  kept?: number // restore points kept per build (build detail snapshots_kept)
   deploying?: boolean
   refreshKey?: string | number
 }>()
@@ -67,6 +68,7 @@ async function doRestore() {
 <template>
   <section class="card card-pad" aria-labelledby="h-restore">
     <h2 id="h-restore" class="section-title mb-2">Restore points</h2>
+    <p v-if="kept" class="meta mb-2">Kaisen keeps the last {{ kept }}. For the full history, send this build's output to GitHub in Output settings.</p>
     <div v-if="error" class="alert-error flex items-center justify-between gap-2">
       <span>{{ error }}</span>
       <IconButton :icon="RotateCw" label="Retry" sm @click="load" />

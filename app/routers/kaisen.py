@@ -279,6 +279,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         "tests": _tests_view(b, sec),
         "secrets": buildsecrets.describe(db, b.id),
         "has_anthropic_key": bool(rs.anthropic_api_key),
+        "snapshots_kept": config.KAISEN_SNAPSHOTS_KEPT,
         "can_run": getattr(request.state, "api_scope", "full") != "read",
     })
     return out

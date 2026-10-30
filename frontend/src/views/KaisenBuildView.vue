@@ -376,7 +376,7 @@ async function doDelete() {
 
           <BuildRuns :build-id="build.id" :runs="build.runs" :now="now" :can-pick="!feedbackReason" @pick="feedback = $event" />
           <BuildFiles :build-id="build.id" :files="build.files" />
-          <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
+          <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
 
           <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
 

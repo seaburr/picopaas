@@ -691,6 +691,7 @@ export interface KaisenBuildDetail extends KaisenBuild {
   spend: { build_usd: number; cap_build: number; month_usd: number; cap_month?: number }
   output: KaisenOutput
   can_run: boolean
+  snapshots_kept?: number
   secrets?: KaisenBuildSecret[]
   tests?: KaisenTests | null
 }
