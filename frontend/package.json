@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "vue-tsc --noEmit",
+    "check:layout": "node scripts/check-page-width.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { LogOut, Pencil, Plus, RotateCw, Trash2, X } from 'lucide-vue-next'
 import NavBar from '../components/NavBar.vue'
 import IconButton from '../components/IconButton.vue'
@@ -18,6 +19,7 @@ import { fullDate, humanDate } from '../utils/format'
 // /projects/new (no id) = create form; /projects/:id = members, invites, rename, delete.
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const store = useProjectsStore()
 const toast = useToastStore()
@@ -68,6 +70,10 @@ async function load() {
     else loadError.value = err(e, "Couldn't load the project.")
   } finally {
     loading.value = false
+    if (route.hash === '#invite') {
+      await nextTick()
+      document.getElementById('invite')?.scrollIntoView({ block: 'start' })
+    }
   }
 }
 onMounted(load)
@@ -205,11 +211,11 @@ async function confirmDelete() {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-3xl space-y-3 px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main space-y-3">
       <!-- create -->
       <template v-if="pid === null">
         <h1 class="page-title">New project</h1>
-        <form class="card card-pad space-y-3" @submit.prevent="onCreate">
+        <form class="card card-pad space-y-3 [&_.input]:max-w-3xl" @submit.prevent="onCreate">
           <div>
             <label for="p-name" class="label">Name</label>
             <input id="p-name" v-model="newName" class="input" maxlength="80" required :aria-invalid="!!createError" autocomplete="off" />
@@ -238,42 +244,22 @@ async function confirmDelete() {
             <h1 class="page-title break-all">{{ project.is_personal ? 'Personal project' : project.name }}</h1>
             <span class="meta">{{ project.app_count }} of {{ project.app_limit_effective }} apps · {{ project.member_count }} {{ project.member_count === 1 ? 'member' : 'members' }}</span>
           </div>
-          <p v-if="project.is_personal" class="help">Your personal project can't be shared, renamed or deleted.</p>
+          <p v-if="project.is_personal" class="help">
+            Your personal project can't be shared, renamed or deleted. To work with others, <RouterLink to="/projects/new" class="underline">create a new project</RouterLink> and invite them to it.
+          </p>
           <p v-if="memberError" role="alert" class="alert-error">{{ memberError }}</p>
 
           <form v-if="shared && isOwner" class="card card-pad" @submit.prevent="onRename">
             <label for="p-rename" class="label">Name</label>
             <div class="flex gap-2">
-              <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" />
+              <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" :aria-invalid="!!renameError" />
               <IconButton :icon="Pencil" label="Rename project" :busy="renaming" @click="onRename" />
             </div>
             <p v-if="renameError" role="alert" class="field-error mt-1">{{ renameError }}</p>
           </form>
 
-          <section v-if="shared" class="card" aria-labelledby="h-members">
-            <h2 id="h-members" class="section-title card-pad pb-0">Members</h2>
-            <ul class="divide-y divide-pico-border">
-              <li v-for="m in members" :key="m.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
-                <div class="min-w-0">
-                  <div class="truncate text-sm text-white" :title="m.email">{{ m.email }}<span v-if="isMe(m)" class="meta ml-1">(you)</span></div>
-                  <div class="meta" :title="fullDate(m.added_at)">Joined {{ humanDate(m.added_at) }}</div>
-                </div>
-                <div class="flex shrink-0 items-center gap-1">
-                  <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id" @change="onRole(m, $event)">
-                    <option value="owner">Owner</option>
-                    <option value="member">Member</option>
-                  </select>
-                  <span v-else class="badge-info">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
-                  <IconButton v-if="isMe(m)" :icon="LogOut" label="Leave project" danger @click="leaving = true" />
-                  <IconButton v-else-if="isOwner" :icon="X" :label="`Remove ${m.email}`" danger @click="removing = m" />
-                </div>
-              </li>
-            </ul>
-            <p v-if="members.length === 0" class="meta px-4 py-3">No members.</p>
-          </section>
-
-          <section v-if="shared && isOwner" class="card card-pad" aria-labelledby="h-invite">
-            <h2 id="h-invite" class="section-title">Invite</h2>
+          <section v-if="shared && isOwner" id="invite" class="card card-pad" aria-labelledby="h-invite">
+            <h2 id="h-invite" class="section-title">Invite people to this project</h2>
             <p class="help">No email is sent. Create an invite and share the link. It works once and expires in 7 days. Leave the email blank to let anyone with an approved account use it.</p>
             <form class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onInvite">
               <div class="min-w-0 flex-1">
@@ -309,6 +295,28 @@ async function confirmDelete() {
               </li>
             </ul>
             <p v-else class="meta mt-1">No pending invites.</p>
+          </section>
+
+          <section v-if="shared" class="card" aria-labelledby="h-members">
+            <h2 id="h-members" class="section-title card-pad pb-0">Members</h2>
+            <ul class="divide-y divide-pico-border">
+              <li v-for="m in members" :key="m.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
+                <div class="min-w-0">
+                  <div class="truncate text-sm text-white" :title="m.email">{{ m.email }}<span v-if="isMe(m)" class="meta ml-1">(you)</span></div>
+                  <div class="meta" :title="fullDate(m.added_at)">Joined {{ humanDate(m.added_at) }}</div>
+                </div>
+                <div class="flex shrink-0 items-center gap-1">
+                  <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id" @change="onRole(m, $event)">
+                    <option value="owner">Owner</option>
+                    <option value="member">Member</option>
+                  </select>
+                  <span v-else class="badge-info">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
+                  <IconButton v-if="isMe(m)" :icon="LogOut" label="Leave project" danger @click="leaving = true" />
+                  <IconButton v-else-if="isOwner" :icon="X" :label="`Remove ${m.email}`" danger @click="removing = m" />
+                </div>
+              </li>
+            </ul>
+            <p v-if="members.length === 0" class="meta px-4 py-3">No members.</p>
           </section>
 
           <section v-if="shared && isOwner" class="card card-pad border-danger/40" aria-labelledby="h-pdanger">

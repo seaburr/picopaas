@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Settings2, UserPlus } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
+import { useProjectsStore } from '../stores/projects'
 import NavBar from '../components/NavBar.vue'
 import ApiKeysCard from '../components/ApiKeysCard.vue'
 import PasswordField from '../components/PasswordField.vue'
@@ -38,6 +41,8 @@ async function onZone(e: Event) {
 
 const auth = useAuthStore()
 const toast = useToastStore()
+const projects = useProjectsStore()
+onMounted(() => { void projects.load() })
 const form = reactive({ current: '', next: '', confirm: '' })
 const error = ref('')
 const loading = ref(false)
@@ -67,7 +72,7 @@ async function onSubmit() {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl space-y-3 px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main space-y-3">
       <h1 class="page-title">Account</h1>
 
       <div class="grid gap-3 lg:grid-cols-2 lg:items-start">
@@ -97,6 +102,24 @@ async function onSubmit() {
         <section class="card card-pad" aria-labelledby="proj-title">
           <h2 id="proj-title" class="section-title">Projects</h2>
           <p class="help">Share apps with other people in a project. Your personal project stays private to you.</p>
+          <p v-if="projects.loadError" role="alert" class="field-error mt-2">{{ projects.loadError }}</p>
+          <ul v-if="projects.projects.length" class="mt-2 divide-y divide-pico-border rounded-sm border border-pico-border">
+            <li v-for="p in projects.projects" :key="p.id" class="flex items-center justify-between gap-2 px-3 py-2">
+              <RouterLink :to="`/projects/${p.id}`" class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-white">
+                  {{ p.is_personal ? 'Personal project' : p.name }}
+                  <span v-if="p.is_personal" class="badge-info ml-1">personal</span>
+                  <span v-else class="badge-info ml-1">{{ p.role }}</span>
+                </div>
+                <div class="meta">{{ p.app_count }} {{ p.app_count === 1 ? 'app' : 'apps' }}<template v-if="!p.is_personal"> · {{ p.member_count }} {{ p.member_count === 1 ? 'member' : 'members' }}</template></div>
+              </RouterLink>
+              <div class="flex shrink-0 items-center gap-1">
+                <IconButton v-if="!p.is_personal && p.role === 'owner'" :icon="UserPlus" :label="`Invite people to ${p.name}`" :to="`/projects/${p.id}#invite`" />
+                <IconButton v-if="!p.is_personal" :icon="Settings2" :label="p.role === 'owner' ? `Manage ${p.name}` : `View ${p.name}`" :to="`/projects/${p.id}`" />
+              </div>
+            </li>
+          </ul>
+          <p v-if="projects.loaded && !projects.projects.some((p) => !p.is_personal)" class="meta mt-2">No shared projects yet. Create one, then invite people from it.</p>
           <RouterLink to="/projects/new" class="btn-secondary mt-2 inline-flex">New project</RouterLink>
         </section>
 

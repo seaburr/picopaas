@@ -16,10 +16,29 @@ const projects = useProjectsStore()
 const store = useKaisenStore()
 const toast = useToastStore()
 
-const MAX_BRIEF = 4000
-const EXAMPLES = ['A URL shortener with click counts', 'A markdown notes page that saves to a database']
+const maxBrief = ref(8000) // replaced by the server value (config.KAISEN_BRIEF_MAX) once settings load
+const STARTERS = [
+  { title: "Fancy Docs", name: "Fancy Docs", brief: "I want a Markdown note-taking application that saves to a MySQL database. The editor is on the left and the rendered Markdown is on the right, with a nav tree in the center. Pages can be nested underneath other pages, and the nav tree can be used to move pages around in the tree (drag and drop, plus buttons for keyboard users). The editor pane can be collapsed. Support image uploads that are stored in the MySQL database and can be referenced in the Markdown. Include a dark mode toggle for the entire page, remembered in the browser." },
+  { title: "Team standup board", name: "Team standup board", brief: "Build a small standup board with Python and MySQL. Anyone can open the page, type their name and post three short fields for a chosen date: yesterday, today and blockers. There is no login. The main screen is a day view: a date picker with previous and next day buttons, and one card per person who posted that day, with blockers highlighted. Posting again for the same person and date replaces the earlier post. A second page shows one person's history, newest first, reachable by clicking a name. Save everything in MySQL. Include a dark mode toggle remembered in the browser. Out of scope: accounts, passwords, email or chat notifications, editing other people's posts." },
+  { title: "Link shortener with click counts", name: "Link shortener", brief: "Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count." },
+  { title: "Habit tracker with streaks", name: "Habit tracker", brief: "Build a habit tracker as a static page that saves to the browser's localStorage, with no server. I can add and remove habits. Each habit shows a month grid where I click a day to tick it on or off, with buttons to move to the previous and next month. Next to each habit show the current streak (consecutive ticked days ending today or yesterday) and the best streak ever. Add Export and Import buttons for all data as a JSON file, and validate the file on import. Support a dark mode toggle remembered in the browser. Out of scope: reminders, accounts, syncing between devices." },
+  { title: "Recipe scaler", name: "Recipe scaler", brief: "Build a recipe scaler as a static page with no server and nothing saved. I paste a recipe's ingredient list, one ingredient per line (like \"1 1/2 cups flour\"), and set the original and wanted number of servings. The page shows the scaled list, handling fractions and decimals and showing results as friendly fractions. A toggle converts between metric and US units (cups, tablespoons, teaspoons, ounces, pounds, grams, millilitres) and leaves lines it cannot parse unchanged. Include a print view that shows only the scaled recipe in a clean layout. Light theme only. Out of scope: saving recipes, importing from web pages, nutrition information." },
+]
 const name = ref('')
 const brief = ref('')
+const undo = ref<{ name: string; brief: string } | null>(null)
+function useStarter(st: { name: string; brief: string }) {
+  // Replace, and keep the previous text one click away.
+  undo.value = name.value.trim() || brief.value.trim() ? { name: name.value, brief: brief.value } : null
+  name.value = st.name
+  brief.value = st.brief
+}
+function undoStarter() {
+  if (!undo.value) return
+  name.value = undo.value.name
+  brief.value = undo.value.brief
+  undo.value = null
+}
 const projectId = ref<number | null>(null)
 const busy = ref(false)
 const error = ref('')
@@ -40,6 +59,7 @@ async function checkKey() {
   try {
     const s = await getKaisenSettings(projectId.value)
     store.settings = s
+    if (s.brief_max) maxBrief.value = s.brief_max
     noKey.value = !s.anthropic_key.set
     if (!s.github_token.set && outForm.github_auth === 'project') outForm.github_auth = 'build'
   } catch {
@@ -47,7 +67,7 @@ async function checkKey() {
   }
 }
 
-const overLimit = computed(() => brief.value.length > MAX_BRIEF)
+const overLimit = computed(() => brief.value.length > maxBrief.value)
 const canEditKey = computed(() => !!store.settings?.can_edit)
 
 async function submit() {
@@ -94,7 +114,7 @@ async function submit() {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main">
       <nav class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
       </nav>
@@ -109,7 +129,7 @@ async function submit() {
         <template v-else>Ask a project owner to add one.</template>
       </p>
 
-      <form class="card card-pad space-y-4" novalidate @submit.prevent="submit">
+      <form class="card card-pad space-y-4 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
         <div>
           <label for="kb-name" class="label">Name</label>
           <input id="kb-name" v-model="name" class="input" autocomplete="off" maxlength="60" :aria-invalid="nameError ? 'true' : undefined" aria-describedby="kb-name-help" placeholder="Todo list" />
@@ -120,10 +140,11 @@ async function submit() {
           <label for="kb-brief" class="label">What should it do?</label>
           <textarea id="kb-brief" v-model="brief" class="input min-h-32" autocomplete="off" :aria-invalid="briefError || overLimit ? 'true' : undefined" aria-describedby="kb-brief-help" />
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
-          <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ MAX_BRIEF }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
-          <div class="mt-2 flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center">
-            <span class="help mr-1">Examples:</span>
-            <button v-for="ex in EXAMPLES" :key="ex" type="button" class="btn-secondary btn-sm text-left" @click="brief = ex">{{ ex }}</button>
+          <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
+          <div class="mt-2 flex flex-wrap items-center gap-1">
+            <span class="help mr-1">Start from:</span>
+            <button v-for="st in STARTERS" :key="st.title" type="button" class="btn-secondary btn-sm" :title="st.brief" @click="useStarter(st)">{{ st.title }}</button>
+            <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
           </div>
         </div>
         <div v-if="projects.hasShared">

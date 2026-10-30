@@ -55,6 +55,15 @@
  *   Text    : .page-title .section-title .meta .link .table-th
  */
 
+/* Page width. Every signed-in page's <main> uses page-main so all pages line up; only the small centered
+   sign-in/status pages use page-narrow. Enforced by scripts/check-page-width.mjs (npm run check:layout, CI). */
+@utility page-main {
+  @apply mx-auto max-w-6xl px-4 py-4 sm:px-6;
+}
+@utility page-narrow {
+  @apply mx-auto max-w-md px-4;
+}
+
 @utility btn {
   @apply inline-flex min-h-[32px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium transition-colors;
   @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;

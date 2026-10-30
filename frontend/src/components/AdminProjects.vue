@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Check, RotateCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { listAdminProjects, setProjectAppLimit } from '../api/admin'
@@ -15,6 +15,8 @@ const error = ref('')
 const rowError = reactive<Record<number, string>>({})
 const draft = reactive<Record<number, string>>({})
 
+// Rows without an override show the platform default as their effective limit.
+const defaultLimit = computed(() => rows.value.find((p) => p.app_limit === null)?.app_limit_effective ?? null)
 const orig = (p: AdminProject) => (p.app_limit === null ? '' : String(p.app_limit))
 
 async function load() {
@@ -58,7 +60,11 @@ async function save(p: AdminProject) {
     </div>
     <p v-else-if="loading" class="meta" aria-busy="true">Loading projects…</p>
     <p v-else-if="rows.length === 0" class="card card-pad meta">No shared projects yet.</p>
-    <ul v-else class="card divide-y divide-pico-border">
+    <template v-else>
+    <p class="help mb-2">
+      App limit is the most apps a project may hold. Leave it blank to use the default from settings ({{ defaultLimit ?? 'unknown' }} apps).
+    </p>
+    <ul class="card divide-y divide-pico-border">
       <li v-for="p in rows" :key="p.id" class="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div class="min-w-0">
           <div class="truncate font-medium text-white" :title="p.name">{{ p.name }}</div>
@@ -68,13 +74,14 @@ async function save(p: AdminProject) {
           <p v-if="rowError[p.id]" role="alert" class="field-error">{{ rowError[p.id] }}</p>
         </div>
         <form class="flex shrink-0 items-center gap-1" @submit.prevent="save(p)">
-          <label :for="`pl-${p.id}`" class="sr-only">App limit override for {{ p.name }}</label>
-          <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="default" class="input mono w-20" />
+          <label :for="`pl-${p.id}`" class="meta">App limit <span class="text-zinc-500">(effective {{ p.app_limit_effective }})</span></label>
+          <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="blank = default" class="input mono w-40" />
           <button v-if="draft[p.id] !== orig(p)" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${p.name}`" title="Save limit">
             <Check :size="16" aria-hidden="true" />
           </button>
         </form>
       </li>
     </ul>
+    </template>
   </div>
 </template>

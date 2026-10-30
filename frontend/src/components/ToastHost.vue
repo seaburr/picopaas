@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { X } from 'lucide-vue-next'
+import IconButton from './IconButton.vue'
 import { useToastStore } from '../stores/toast'
 
 const toast = useToastStore()
@@ -20,7 +22,7 @@ const glyph = { success: '✓', error: '!', info: 'i' } as const
     >
       <span aria-hidden="true" class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-xs font-bold">{{ glyph[t.kind] }}</span>
       <p class="min-w-0 flex-1 wrap-break-word">{{ t.message }}</p>
-      <button type="button" class="btn-ghost btn-sm -mr-1 -mt-1 min-h-[28px] px-1.5" aria-label="Dismiss notification" @click="toast.dismiss(t.id)">✕</button>
+      <IconButton :icon="X" label="Dismiss notification" sm @click="toast.dismiss(t.id)" />
     </div>
   </div>
 </template>

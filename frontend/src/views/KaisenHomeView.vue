@@ -95,7 +95,7 @@ function askDelete(b: KaisenBuild) {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main">
       <nav class="meta mb-2" aria-label="Breadcrumb">Kaisen</nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">

@@ -10,7 +10,7 @@ const route = useRoute()
 <template>
   <div class="min-h-screen">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-md px-4 py-16 text-center">
+    <main id="main" tabindex="-1" class="page-narrow py-16 text-center">
       <p class="meta tracking-widest">404</p>
       <h1 class="page-title mt-2">Page not found</h1>
       <p class="mt-3 wrap-break-word text-sm text-zinc-300">

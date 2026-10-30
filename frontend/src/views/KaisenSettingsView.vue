@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
+import KaisenMemberLimits from '../components/KaisenMemberLimits.vue'
 import KaisenKeyHelp from '../components/KaisenKeyHelp.vue'
 import NavBar from '../components/NavBar.vue'
 import PasswordField from '../components/PasswordField.vue'
@@ -33,11 +34,15 @@ const form = reactive({
   clear_anthropic_key: false,
   model: '',
   effort: '',
+  reviewer: false,
+  reviewer_model: '',
   cap_run: 0,
   cap_day: 0,
   cap_build: 0,
   github_token: '',
   clear_github_token: false,
+  web_access: false,
+  web_domains: '',
 })
 
 const pid = computed(() => projects.current?.id ?? null)
@@ -47,7 +52,8 @@ function fill(v: KaisenSettings) {
   s.value = v
   Object.assign(form, {
     anthropic_key: '', clear_anthropic_key: false, github_token: '', clear_github_token: false,
-    model: v.model, effort: v.effort, cap_run: v.cap_run, cap_day: v.cap_day, cap_build: v.cap_build,
+    model: v.model, effort: v.effort, reviewer: v.reviewer === 'on', reviewer_model: v.reviewer_model || v.reviewer_default_model || v.model, cap_run: v.cap_run, cap_day: v.cap_day, cap_build: v.cap_build,
+    web_access: v.web_access, web_domains: (v.web_allowed_domains ?? []).join('\n'),
   })
 }
 const snapshot = () => JSON.stringify(form)
@@ -85,7 +91,10 @@ async function save() {
   for (const k of Object.keys(fieldErr)) delete fieldErr[k]
   const payload: KaisenSettingsPayload = {
     model: form.model, effort: form.effort,
+    reviewer: form.reviewer ? 'on' : 'off', reviewer_model: form.reviewer_model,
     cap_run: Number(form.cap_run) || 0, cap_day: Number(form.cap_day) || 0, cap_build: Number(form.cap_build) || 0,
+    web_access: form.web_access,
+    web_allowed_domains: form.web_domains.split('\n').map((d) => d.trim()).filter(Boolean),
   }
   if (form.anthropic_key) payload.anthropic_key = form.anthropic_key
   if (form.clear_anthropic_key) payload.clear_anthropic_key = true
@@ -127,7 +136,7 @@ async function test(which: 'anthropic') {
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main">
       <nav class="meta mb-2" aria-label="Breadcrumb"><RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>Settings</nav>
       <div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 class="page-title">Kaisen settings</h1><PreviewBadge />
@@ -171,6 +180,17 @@ async function test(which: 'anthropic') {
           <KaisenKeyHelp kind="anthropic" />
         </section>
 
+        <section class="card card-pad space-y-3" aria-labelledby="ks-reviewer">
+          <h2 id="ks-reviewer" class="section-title">Reviewer</h2>
+          <p class="help">Adds a second, cheaper model pass after each run, then at most one automatic fix round. Usually adds a few cents per run.</p>
+          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.reviewer" type="checkbox" class="check" :disabled="readOnly" /> Review each run<span v-if="readOnly" class="meta">({{ s.reviewer === 'on' ? 'on' : 'off' }})</span></label>
+          <div>
+            <label for="ks-reviewer-model" class="label">Reviewer model</label>
+            <select id="ks-reviewer-model" v-model="form.reviewer_model" class="input" :disabled="readOnly" :aria-invalid="!!fieldErr.reviewer_model"><option v-for="m in s.models" :key="m" :value="m">{{ m }}</option></select>
+            <p v-if="fieldErr.reviewer_model" class="field-error" role="alert">{{ fieldErr.reviewer_model }}</p>
+          </div>
+        </section>
+
         <section class="card card-pad" aria-labelledby="ks-caps">
           <h2 id="ks-caps" class="section-title mb-2">Spend limits (USD)</h2>
           <div class="grid gap-3 sm:grid-cols-3">
@@ -179,6 +199,22 @@ async function test(which: 'anthropic') {
             <div><label for="ks-cap-build" class="label">Per build</label><input id="ks-cap-build" v-model.number="form.cap_build" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>
           </div>
           <p v-if="monthUsd !== null" class="meta mt-2">This month: <span class="mono">{{ fmtUsd(monthUsd) }}</span></p>
+        </section>
+
+        <KaisenMemberLimits v-if="pid" :project-id="pid" />
+
+        <section class="card card-pad space-y-3" aria-labelledby="ks-web">
+          <h2 id="ks-web" class="section-title">Web access</h2>
+          <p class="help">Lets the builder search the web and read pages, for example to check a library's docs. Web content is untrusted: a page can contain text that tries to steer the builder. The allow-list limits which sites it can read.</p>
+          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.web_access" type="checkbox" class="check" :disabled="readOnly" /> Allow web access<span v-if="readOnly" class="meta">({{ s.web_access ? 'on' : 'off' }})</span></label>
+          <div>
+            <label for="ks-web-domains" class="label">Allowed sites</label>
+            <textarea id="ks-web-domains" v-model="form.web_domains" class="input mono" rows="4" :disabled="readOnly" :aria-invalid="!!fieldErr.web_allowed_domains" placeholder="docs.python.org&#10;github.com/owner" />
+            <p class="help">One domain per line, no https://, a path is optional. Leave empty to allow any site. Up to {{ s.web_domains_max }}.</p>
+            <p v-if="fieldErr.web_allowed_domains" class="field-error" role="alert">{{ fieldErr.web_allowed_domains }}</p>
+          </div>
+          <p v-if="s.web_note" class="text-sm text-zinc-300" role="status">{{ s.web_note }}</p>
+          <p class="help">Each web search costs {{ fmtUsd(s.web_search_usd) }} plus tokens.</p>
         </section>
 
         <section class="card card-pad space-y-3" aria-labelledby="ks-output">

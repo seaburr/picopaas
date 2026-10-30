@@ -1,4 +1,4 @@
-import type { KaisenBuild, KaisenBuildDetail, KaisenFile, KaisenOutputPayload, KaisenSettings, KaisenSettingsPayload, KaisenSpend, KaisenTestResult } from '../types'
+import type { KaisenBuild, KaisenBuildSecret, KaisenMembers, KaisenSecretsResult, KaisenBuildDetail, KaisenFile, KaisenOutputPayload, KaisenSettings, KaisenSettingsPayload, KaisenSpend, KaisenTestResult } from '../types'
 import { apiFetch } from './client'
 
 // Matches docs/design/kaisen-ui.md section 9 (app/kaisen routers).
@@ -35,3 +35,14 @@ export const testKaisen = (projectId: number, which: 'anthropic') =>
   post<KaisenTestResult>(`/projects/${projectId}/kaisen/test/${which}`)
 export const getKaisenSpend = (projectId?: number | null) =>
   apiFetch<KaisenSpend>(projectId ? `/kaisen/spend?project_id=${projectId}` : '/kaisen/spend')
+
+export const getKaisenMembers = (projectId: number) => apiFetch<KaisenMembers>(`/projects/${projectId}/kaisen/members`)
+// null clears a limit; omit a field to leave it unchanged.
+export const saveKaisenMember = (projectId: number, userId: number, payload: { cap_day?: number | null; cap_build?: number | null }) =>
+  apiFetch<unknown>(`/projects/${projectId}/kaisen/members/${userId}`, { method: 'PUT', body: JSON.stringify(payload) })
+
+export const listBuildSecrets = (id: number) => apiFetch<KaisenBuildSecret[]>(`/kaisen/builds/${id}/secrets`)
+export const putBuildSecret = (id: number, name: string, value: string) =>
+  apiFetch<KaisenSecretsResult>(`/kaisen/builds/${id}/secrets/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ value }) })
+export const deleteBuildSecret = (id: number, name: string) =>
+  apiFetch<KaisenSecretsResult>(`/kaisen/builds/${id}/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' })

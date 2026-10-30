@@ -343,7 +343,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl space-y-3 px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main space-y-3">
       <h1 class="page-title">Admin</h1>
 
       <div v-if="error" class="alert-error" role="alert">{{ error }}</div>

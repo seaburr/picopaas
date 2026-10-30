@@ -42,3 +42,24 @@ export function outputFieldErrors(errs: Record<string, string>): Record<string, 
   for (const [k, v] of Object.entries(errs)) out[OUTPUT_FIELD[k] ?? k] = v
   return out
 }
+
+const parseIso = (iso: string) => new Date(iso.endsWith('Z') || /[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z').getTime()
+
+// Elapsed time since a run started, as "42 s" / "3 min 05 s".
+export function elapsed(startIso: string, nowMs: number): string {
+  const s = Math.max(0, Math.round((nowMs - parseIso(startIso)) / 1000))
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
+}
+
+// Pre-run hint: the range of this build's earlier finished runs, else the per-run cap from settings.
+export function costHint(runs: { cost_usd: number; finished_at: string | null }[], model: string | null, capRun: number | null): string {
+  const on = model ? ` on ${model}` : ''
+  const costs = runs.filter((r) => r.finished_at && r.cost_usd > 0).map((r) => r.cost_usd)
+  const cap = capRun ? ` (capped at ${fmtUsd(capRun)} per run)` : ''
+  if (costs.length) {
+    const lo = Math.min(...costs)
+    const hi = Math.max(...costs)
+    return `Usually ${lo === hi ? fmtUsd(lo) : `${fmtUsd(lo)}–${fmtUsd(hi)}`}${on}${cap}.`
+  }
+  return capRun ? `Capped at ${fmtUsd(capRun)} per run${on}.` : ''
+}

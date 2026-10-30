@@ -7,6 +7,8 @@ import userMd from '@docs/USER_GUIDE.md?raw'
 import apiMd from '@docs/API.md?raw'
 import cliMd from '@docs/CLI.md?raw'
 import recipesMd from '@docs/RECIPES.md?raw'
+import { RotateCw } from 'lucide-vue-next'
+import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import { getAdminGuide } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
@@ -185,7 +187,7 @@ function onClick(e: MouseEvent) {
         <p v-if="adminLoading" class="help" role="status">Loading admin guide...</p>
         <div v-else-if="adminError" role="alert">
           <p class="text-red-400">{{ adminError }}</p>
-          <button type="button" class="btn-secondary btn-sm mt-2" @click="loadAdmin">Retry</button>
+          <IconButton :icon="RotateCw" label="Retry" class="mt-2" @click="loadAdmin" />
         </div>
       </div>
       <article v-else class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />

@@ -42,7 +42,7 @@ onMounted(accept)
 <template>
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
-    <main id="main" tabindex="-1" class="mx-auto max-w-md px-4 py-10 text-center">
+    <main id="main" tabindex="-1" class="page-narrow py-10 text-center">
       <h1 class="page-title">Project invite</h1>
       <p v-if="busy" class="help" aria-busy="true">Joining the project…</p>
       <template v-else-if="error">

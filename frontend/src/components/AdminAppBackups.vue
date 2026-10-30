@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Download } from 'lucide-vue-next'
+import IconButton from './IconButton.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { adminBackupSets, adminDownloadBackupSet, adminGetBackupExport } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -86,9 +88,7 @@ async function download(setId: number) {
             <td>{{ b.parts.map((p) => p.kind).join(', ') }}</td>
             <td class="mono text-right">{{ size(b.size_bytes) }}</td>
             <td class="text-right">
-              <button type="button" class="btn-secondary btn-sm" :disabled="busy.has(b.id) || b.status === 'running' || b.status === 'failed' || b.status === 'deleting'" @click="download(b.id)">
-                {{ busy.has(b.id) ? 'Preparing…' : 'Download' }}
-              </button>
+<IconButton :icon="Download" label="Download backup set" sm :busy="busy.has(b.id)" :disabled="b.status === 'running' || b.status === 'failed' || b.status === 'deleting'" @click="download(b.id)" />
             </td>
           </tr>
         </tbody>

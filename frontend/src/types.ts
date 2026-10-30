@@ -648,8 +648,24 @@ export interface KaisenRun {
   started_at: string
   finished_at: string | null
   step?: number | null
+  last_tool?: string | null
   transcript: { role: string; text: string }[] | null
   transcript_trimmed: boolean
+  suggestions?: string[]
+  review?: KaisenReview | null
+}
+
+export interface KaisenReview {
+  verdict: 'approve' | 'changes' | 'skipped'
+  model: string | null
+  findings: string[]
+  note: string | null
+}
+
+export interface KaisenTests {
+  status: 'running' | 'pass' | 'fail' | 'timeout'
+  ran_at: string | null
+  tail: string | null
 }
 
 export interface KaisenInboxItem {
@@ -673,6 +689,34 @@ export interface KaisenBuildDetail extends KaisenBuild {
   spend: { build_usd: number; cap_build: number; month_usd: number; cap_month?: number }
   output: KaisenOutput
   can_run: boolean
+  secrets?: KaisenBuildSecret[]
+  tests?: KaisenTests | null
+}
+
+export interface KaisenBuildSecret {
+  name: string
+  value: string // always masked by the API
+  updated_at: string
+}
+
+export interface KaisenSecretsResult {
+  secrets: KaisenBuildSecret[]
+  applies_on_next_deploy: boolean
+}
+
+export interface KaisenMember {
+  user_id: number
+  email: string
+  role: string
+  cap_day: number | null
+  cap_build: number | null
+  spend_today_usd: number
+}
+
+export interface KaisenMembers {
+  project_id: number
+  can_edit: boolean
+  members: KaisenMember[]
 }
 
 export interface KaisenOutput {
@@ -732,10 +776,23 @@ export interface KaisenSettings {
   effort: string
   models: string[]
   efforts: string[]
+  reviewer?: 'off' | 'on'
+  reviewer_model?: string
+  reviewer_modes?: string[]
+  reviewer_default_model?: string
   cap_run: number
   cap_day: number
   cap_build: number
   github_token: KaisenSecretState
+  web_access: boolean
+  web_allowed_domains: string[]
+  web_supported: boolean
+  web_models: string[]
+  web_note: string
+  web_search_usd: number
+  web_domains_max: number
+  brief_max?: number
+  feedback_max?: number
   can_edit: boolean
   updated_at: string | null
 }
@@ -745,11 +802,15 @@ export interface KaisenSettingsPayload {
   clear_anthropic_key?: boolean
   model: string
   effort: string
+  reviewer?: 'off' | 'on'
+  reviewer_model?: string
   cap_run: number
   cap_day: number
   cap_build: number
   github_token?: string
   clear_github_token?: boolean
+  web_access?: boolean
+  web_allowed_domains?: string[]
 }
 
 export interface KaisenSpend {

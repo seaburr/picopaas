@@ -127,7 +127,7 @@ function meta(app: App) {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
 
-    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+    <main id="main" tabindex="-1" class="page-main">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-baseline gap-3">
           <h1 class="page-title">{{ !projects.current ? 'Apps' : projects.current.is_personal ? 'Personal apps' : `Apps in ${projects.current.name}` }}</h1>
