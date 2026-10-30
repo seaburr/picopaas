@@ -29,7 +29,8 @@ def _turn_script(n):
 def test_turn_limit_continues_in_a_fresh_context_with_the_plan(env, monkeypatch):
     monkeypatch.setattr(config, "KAISEN_MAX_TURNS", 3)
     start(env)
-    model = FakeModelClient(_turn_script(3) + [reply(tool_use("finish", {"summary": "all done"}))])
+    # the plan has an unticked item, so the first finish is refused once (PLAN.md gate); the second goes through
+    model = FakeModelClient(_turn_script(3) + [reply(tool_use("finish", {"summary": "all done"}))] * 2)
     go(model)
     d = detail(env)
     assert d["status"] == "running" and d["runs"][0]["context_resets"] == 1  # waiting for the next tick
@@ -107,7 +108,7 @@ def test_resume_of_a_long_history_starts_fresh_from_the_plan(env, monkeypatch):
     _long_history(env, monkeypatch)
     old = _runs(env)[0].messages
     assert env.a.post(f"/kaisen/builds/{env.bid}/run").json()["runs"][0]["kind"] == "resume"
-    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
+    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))] * 2)  # the first is refused: PLAN.md has open items
     go(model)
     assert len(model.calls[0]) == 1 and "<plan>" in model.calls[0][0]["content"]
     assert "session cookie `sid`" in model.calls[0][0]["content"]

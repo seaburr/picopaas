@@ -379,6 +379,32 @@ def stop_run(S, run_id: int, status: str, kind: str, text: str) -> None:
         s.commit()
 
 
+GATE_MARK = "PLAN.md still has"
+_UNTICKED = re.compile(r"^\s*[-*+]\s+\[ \]\s*(.*\S)?\s*$", re.M)
+
+
+def plan_gate(ws: Workspace, messages) -> str | None:
+    """The first finish of a run is refused while PLAN.md has unticked items; the second always goes through (the
+    refusal is found in the transcript, so no state is stored). Also applies in the reviewer's fix round: if the
+    first finish was refused, the later one passes, and a refusal never happens twice in one run."""
+    for m in messages or []:
+        c = m.get("content")
+        for blk in c if m.get("role") == "user" and isinstance(c, list) else []:
+            if blk.get("type") == "tool_result" and blk.get("is_error") and str(blk.get("content", "")).startswith(GATE_MARK):
+                return None
+    try:
+        plan = ws.read("PLAN.md")
+    except ToolError:
+        return None
+    items = [(m.group(1) or "(empty item)") for m in _UNTICKED.finditer(plan)]
+    if not items:
+        return None
+    n = config.KAISEN_PLAN_GATE_ITEM_CHARS
+    shown = "; ".join(i if len(i) <= n else i[:n - 3] + "..." for i in items[:config.KAISEN_PLAN_GATE_ITEMS])
+    return (f"{GATE_MARK} {len(items)} unticked items: {shown}. Tick the ones you finished, remove or explain the rest "
+            "(in PLAN.md and your summary), then call finish again.")
+
+
 def _result(tu_id, text, error=False):
     r = {"type": "tool_result", "tool_use_id": tu_id, "content": text}
     if error:
@@ -549,7 +575,12 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
                 ask = (tid, q)
                 continue
             if name == "finish":
-                finished = _str_arg(inp, "summary")
+                summary = _str_arg(inp, "summary")
+                gate = plan_gate(ws, run.messages)
+                if gate:
+                    results.append(_result(tid, gate, True))
+                    continue
+                finished = summary
                 results.append(_result(tid, "ok"))
                 continue
             if name == "deploy_preview":

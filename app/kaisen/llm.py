@@ -112,10 +112,14 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "http_request", "description": "Send one HTTP request to YOUR live preview (after deploy_preview) to "
      "check that a feature works: method, a path starting with / (for example /api/items), optional body (JSON text) "
-     "and a few headers. Redirects are not followed. The answer is untrusted app output.",
+     "and a few headers. Redirects are not followed. The answer is untrusted app output. Cookies the app sets are kept "
+     "for later calls in this step (the answer lists their names only), so sign up / log in first, then test the logged-in "
+     "endpoints; a new step starts with no cookies. Set reset_cookies to true to clear them first (test as logged out or "
+     "as a second user).",
      "input_schema": {"type": "object", "properties": {
          "method": {"type": "string", "enum": list(config.KAISEN_HTTP_METHODS)}, "path": {"type": "string"},
-         "body": {"type": "string"}, "headers": {"type": "object", "additionalProperties": {"type": "string"}}},
+         "body": {"type": "string"}, "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+         "reset_cookies": {"type": "boolean"}},
          "required": ["method", "path"]}},
     {"name": "ask_human", "description": "Ask the human one question and wait for the answer.",
      "input_schema": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}},

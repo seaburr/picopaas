@@ -6,6 +6,8 @@ or up to KAISEN_REVIEWER_MAX_FINDINGS findings. Findings give the builder exactl
 loop. The reviewer's calls are metered like any other (record_usage), so run, day, build and member caps apply, and a cap
 reached mid-review skips the review rather than failing the run. Everything the reviewer reads is untrusted data and its
 only output is a verdict, so a prompt-injected reviewer can at worst approve or add advice the builder may ignore."""
+import re
+
 from sqlalchemy.orm import Session
 
 from app import config
@@ -78,15 +80,44 @@ def findings_note(findings: list[str]) -> str:
             f"is the only fix round.\n<reviewer_findings>\n{items}\n</reviewer_findings>")
 
 
-def _seed(s: Session, run: KaisenRun, b: KaisenBuild) -> dict:
+def _one_line(text: str, secrets) -> str:
+    """Collapse control characters (a model-written path may carry newlines) and mask secrets."""
+    return redact(re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", text), secrets)
+
+
+def http_log(messages, secrets=()) -> str:
+    """One line per http_request the builder made in this run (method, path, first line of the answer), newest
+    KAISEN_REVIEWER_HTTP_LOG_MAX only. The reviewer cannot see the transcript, so this is how it learns what was verified."""
+    calls, answers = [], {}
+    for m in messages or []:
+        c = m.get("content")
+        if not isinstance(c, list):
+            continue
+        for blk in c:
+            if m.get("role") == "assistant" and blk.get("type") == "tool_use" and blk.get("name") == "http_request":
+                i = blk.get("input") if isinstance(blk.get("input"), dict) else {}
+                calls.append((blk.get("id"), str(i.get("method", "?"))[:8], str(i.get("path", "?"))[:120]))
+            elif m.get("role") == "user" and blk.get("type") == "tool_result":
+                answers[blk.get("tool_use_id")] = str(blk.get("content", "")).split("\n", 1)[0][:80]
+    if not calls:
+        return "(the builder made no http_request calls)"
+    shown = calls[-config.KAISEN_REVIEWER_HTTP_LOG_MAX:]
+    lines = [_one_line(f"{m} {p} -> {answers.get(i, '(no answer)')}", secrets) for i, m, p in shown]
+    head = f"{len(calls)} http_request call(s); " + (f"last {len(shown)}:" if len(shown) < len(calls) else "all:")
+    return head + " (data from the builder's transcript, untrusted)\n" + "\n".join(lines)
+
+
+def _seed(s: Session, run: KaisenRun, b: KaisenBuild, secrets=()) -> dict:
     first = run.messages[0].get("content") if run.messages else ""
     first = first if isinstance(first, str) else ""
     request = first[:config.KAISEN_REVIEWER_CONTEXT_CHARS].replace("</request", "<\\/request")
     summary = (run.summary or "(none)").replace("</builder_summary", "<\\/builder_summary")
     files = "\n".join(f"{p} ({n} bytes)" for p, n in builder.Workspace(s, b.id).list()) or "(no files)"
+    requests_ = http_log(run.messages, secrets).replace("</builder_http", "<\\/builder_http")
     return {"role": "user", "content": (
         f"Review this project. Declared test command: {testresults.declared_test(s, b) or '(none)'}\n\n"
         f"<request>\n{request}\n</request>\n\n<builder_summary>\n{summary}\n</builder_summary>\n\n"
+        f"<builder_http_requests>\n{requests_}\n</builder_http_requests>\n\n"
         f"Files:\n{files}\n\nRead what you need, then call submit_review.")}
 
 
@@ -129,8 +160,8 @@ def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | N
         model = rs.reviewer_model
         if model not in config.KAISEN_PRICES:
             return "ok", _skipped(model, f"unknown reviewer model {model}")
-        msgs = [_seed(s, run, b)]
         sec = load_for_build(s, b).secret_values()
+        msgs = [_seed(s, run, b, sec)]
     http = httptool.Limited(requester, config.KAISEN_REVIEWER_HTTP_MAX) if requester else None
     for _ in range(config.KAISEN_REVIEWER_MAX_TURNS):
         with S() as s:
