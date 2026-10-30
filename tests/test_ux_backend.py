@@ -185,7 +185,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.delenv(k, raising=False)
     me = admin.get("/auth/me").json()
-    assert me["features"] == {"databases": False, "storage": False, "volumes": False, "db_engines": []}
+    assert me["features"] == {"databases": False, "storage": False, "volumes": False, "kaisen": True, "db_engines": []}
     assert me["limits"] == {
         "cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI,
         "cpu_request_m": config.DEFAULT_CPU_REQUEST_M, "mem_request_mi": config.DEFAULT_MEM_REQUEST_MI,
@@ -200,7 +200,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
     db_session.commit()
     for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"):
         monkeypatch.setenv(k, "not-a-secret")
-    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True, "volumes": False, "db_engines": ["mysql"]}
+    assert admin.get("/auth/me").json()["features"] == {"databases": True, "storage": True, "volumes": False, "kaisen": True, "db_engines": ["mysql"]}
 
 
 def test_me_databases_false_when_no_server_can_take_one(admin, db_session):

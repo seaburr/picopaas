@@ -46,6 +46,7 @@ def try_decrypt(token: str) -> str | None:
 
 def _encrypted_columns():
     from app import models
+    from app.kaisen import models as kmodels
 
     return [
         (models.AppEnvVar, "value_encrypted"),
@@ -53,6 +54,8 @@ def _encrypted_columns():
         (models.AppDatabase, "password_encrypted"),
         (models.AppStorage, "secret_key_encrypted"),
         (models.AppBackupConfig, "repo_password_enc"),  # nullable until the first backup
+        (kmodels.KaisenSettings, "anthropic_key_enc"),  # nullable
+        (kmodels.KaisenSettings, "github_token_enc"),  # nullable
     ]
 
 

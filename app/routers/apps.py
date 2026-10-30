@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import audit, config, crypto, custom_domains, image_check, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
+from app.kaisen.models import KaisenBuild
 from app.dependencies import get_active_user, get_kube, get_registry
 from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
@@ -101,6 +102,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         id=app.id,
         owner_id=app.owner_id,
         project_id=app.project_id,
+        kaisen_build_id=app.kaisen_build_id,
         name=app.name,
         hostname=f"{app.hostname}.{APP_DOMAIN}",
         image=app.image,
@@ -395,6 +397,8 @@ def delete_app(
     app = _get_owned_app_or_404(db, app_id, current_user)
     _forbid_if_suspended(app)  # no delete+recreate to evade suspension; admin can still delete
     app.deleted_at = datetime.now(timezone.utc)
+    if app.kaisen_build_id:  # a Kaisen build keeps its files but no longer points at the deleted app
+        db.query(KaisenBuild).filter(KaisenBuild.id == app.kaisen_build_id, KaisenBuild.app_id == app.id).update({"app_id": None})
     db.commit()
     audit.record(db, current_user, "app.delete", "app", app_id)
     return None

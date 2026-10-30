@@ -181,3 +181,20 @@ def check_invite_accept(db: Session, request: Request, user_id: int) -> None:
             _bump(db, k, w)
 
     _safe(db, "check_invite_accept", run)
+
+
+def check_bundle_fetch(db: Session, request: Request) -> None:
+    """Count a public Kaisen bundle download (valid token or not) against the client IP; 429 past the cap."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        w, n = config.KAISEN_BUNDLE_FETCH_WINDOW_SECONDS, config.KAISEN_BUNDLE_FETCH_MAX
+        key = _key("kaisen-bundle-ip", client_ip(request))
+        wait = _remaining(db, key, n, w)
+        if wait:
+            raise _deny(wait)
+        _prune(db)
+        _bump(db, key, w)
+
+    _safe(db, "check_bundle_fetch", run)

@@ -15,7 +15,7 @@ from app import config, logging_setup
 from app import models, metrics
 from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
-from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, spec, templates, usage
+from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, spec, templates, usage
 
 logging_setup.configure()
 
@@ -47,6 +47,7 @@ app = FastAPI(title="PicoPaaS API", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(apps.router)
 app.include_router(projects_router.router)
+app.include_router(kaisen_router.router)
 app.include_router(app_ops.router)
 app.include_router(backups.router)
 app.include_router(usage.router)
@@ -88,13 +89,13 @@ def metrics_endpoint(request: Request, db=Depends(get_db)):
 # missing — tests and a bare `uvicorn app.main:app` don't need a frontend build.
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 _INDEX_HTML = _STATIC_DIR / "index.html"
-_API_PREFIXES = ("auth", "apps", "projects", "invites", "admin", "api", "healthz", "metrics", "static")
+_API_PREFIXES = ("auth", "apps", "projects", "invites", "admin", "kaisen", "api", "healthz", "metrics", "static")
 
 if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # Paths a browser may navigate to that must NOT be swapped for the SPA.
-_NAV_PASSTHROUGH = ("/static/", "/healthz", "/metrics", "/docs", "/redoc", "/openapi.json")
+_NAV_PASSTHROUGH = ("/kaisen/bundles/", "/static/", "/healthz", "/metrics", "/docs", "/redoc", "/openapi.json")
 
 
 # The same URL serves the SPA (navigation) and JSON (fetch), so caches must key on these request headers.

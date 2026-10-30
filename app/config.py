@@ -351,3 +351,63 @@ def backup_export_prefix_ok() -> bool:
 def backups_configured() -> bool:
     """True when the bucket, endpoint and the SEPARATE backup key are all set (the tenant SPACES_* key is never a fallback)."""
     return bool(BACKUP_BUCKET and backup_endpoint() and BACKUP_ACCESS_KEY_ID and BACKUP_SECRET_ACCESS_KEY)
+
+
+# --- Kaisen (Preview): builds an app from a brief, deploys it into the build's project (docs/design/kaisen.md) ---
+# KAISEN_ENABLED (env) AND the admin platform setting `kaisen_enabled` must both be on; when off, /kaisen* routes 404.
+KAISEN_ENABLED = os.environ.get("KAISEN_ENABLED", "1") == "1"
+# Generic runtime image previews run (pin by digest in prod). Empty = deploys are refused with a clear message.
+KAISEN_RUNTIME_IMAGE = os.environ.get("KAISEN_RUNTIME_IMAGE", "").strip()
+# Public base URL of the platform: where preview pods download their bundle. Default https://PLATFORM_HOST.
+PLATFORM_PUBLIC_URL = os.environ.get("PLATFORM_PUBLIC_URL", "").strip().rstrip("/")
+
+
+def platform_public_url() -> str:
+    return PLATFORM_PUBLIC_URL or f"https://{PLATFORM_HOST}"
+
+
+# USD per million tokens. A model not listed here is refused.
+KAISEN_PRICES = {
+    "claude-opus-5-5": {"in": 4.00, "out": 20.00, "cache_read": 0.20, "cache_write": 5.00},
+    "claude-sonnet-5-5": {"in": 2.00, "out": 10.00, "cache_read": 0.20, "cache_write": 2.50},
+    "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
+}
+KAISEN_DEFAULT_MODEL = "claude-opus-5-5"
+KAISEN_EFFORTS = ("low", "medium", "high")
+KAISEN_DEFAULT_EFFORT = "medium"
+KAISEN_OUTPUT_MODES = ("download", "github")
+# Default spend caps in USD (per run, per UTC day for the project, per build in total).
+KAISEN_DEFAULT_CAP_RUN = 2.0
+KAISEN_DEFAULT_CAP_DAY = 8.0
+KAISEN_DEFAULT_CAP_BUILD = 30.0
+KAISEN_CAP_MAX = 1000.0
+# Builder limits.
+KAISEN_MAX_FILE_BYTES = 200 * 1024
+KAISEN_MAX_FILES = 300
+KAISEN_MAX_BUILD_BYTES = 5 * 1024 * 1024
+KAISEN_MAX_TURNS = 40  # model calls per step
+KAISEN_STEP_SECONDS = 15 * 60
+KAISEN_BRIEF_MAX = 8000
+KAISEN_NAME_MAX = 60
+KAISEN_FEEDBACK_MAX = 4000
+KAISEN_ANSWER_MAX = 4000
+KAISEN_MAX_BUILDS_PER_PROJECT = int(os.environ.get("KAISEN_MAX_BUILDS_PER_PROJECT", "20"))
+# Preview loop.
+KAISEN_BUNDLES_KEPT = 3
+KAISEN_PREVIEW_WAIT_TOOL = 240  # seconds the deploy_preview tool waits for running + an HTTP answer
+KAISEN_PREVIEW_RESULT_BYTES = 4096
+KAISEN_PREVIEW_LOG_LINES = 60
+KAISEN_PREVIEW_PORT = 8080
+# Retention (scheduler-free: the worker trims on its own cadence).
+KAISEN_TRANSCRIPT_DAYS = 14
+KAISEN_EVENT_DAYS = 90
+KAISEN_TRANSCRIPT_CLIP = 1500
+# Worker.
+KAISEN_WORKER_LOCK_NAME = "picopaas-kaisen-worker"
+KAISEN_WORKER_IDLE_SECONDS = 2.0
+KAISEN_WORKER_BUSY_SECONDS = 0.5
+# Public bundle route: fetches per client IP per window (the preview pod downloads once per boot).
+KAISEN_BUNDLE_FETCH_MAX = int(os.environ.get("KAISEN_BUNDLE_FETCH_MAX", "120"))
+KAISEN_BUNDLE_FETCH_WINDOW_SECONDS = 60 * 60
+KAISEN_HEARTBEAT_FILE = os.environ.get("KAISEN_HEARTBEAT_FILE", "/tmp/kaisen-worker-heartbeat")  # touched by the worker; the pod's liveness probe reads it
+KAISEN_HEARTBEAT_SECONDS = 30

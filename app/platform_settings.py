@@ -115,6 +115,9 @@ REGISTRY: List[Setting] = [
             G_BAK, "int", "per hour", _c("BACKUP_EXPORT_MAX_PER_HOUR"), 1, 100),
     Setting("backups_enabled_default", "Scheduled backups on for new apps", "New apps start with scheduled backups turned on.",
             G_BAK, "bool", "", _c("BACKUP_DEFAULT_ENABLED")),
+    # --- Features ---
+    Setting("kaisen_enabled", "Kaisen (Preview)", "Let users build apps with Kaisen. Also needs KAISEN_ENABLED on the platform.",
+            "Features", "bool", "", _c("KAISEN_ENABLED")),
 ]
 BY_KEY: Dict[str, Setting] = {s.key: s for s in REGISTRY}
 
@@ -154,7 +157,7 @@ _SINGLES = [  # (group, row id, row label, key, column)
     (G_BAK, "backup_held", "Backups kept per app", "backup_max_held_per_app", "default"),
     (G_BAK, "backup_manual", "On-demand backups per app per hour", "backup_manual_per_hour", "default"),
     (G_BAK, "backup_export", "Backup downloads per app per hour", "backup_export_max_per_hour", "default"),
-    (G_BAK, "backup_default_on", "Scheduled backups on for new apps", "backups_enabled_default", "default"),
+    (G_BAK, "backup_default_on", "Scheduled backups on for new apps", "backups_enabled_default", "default"),    (G_ACC, "kaisen", "Kaisen (Preview)", "kaisen_enabled", "default"),
 ]
 _LAYOUT = {}
 for _g, _r, _l, _dk, _ck in _PAIRS:
@@ -233,6 +236,11 @@ def get(db: Optional[Session], key: str) -> Any:
             except ValueError:
                 pass
     return s.default()
+
+
+def kaisen_on(db: Optional[Session]) -> bool:
+    """Kaisen is available: the deploy-time env switch AND the admin setting."""
+    return bool(config.KAISEN_ENABLED and get(db, "kaisen_enabled"))
 
 
 def effective_volume_max_gi(db: Optional[Session]) -> int:

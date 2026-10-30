@@ -127,6 +127,9 @@ class App(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Nullable until a later migration enforces it; every user has a personal project.
     project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    # The Kaisen build this app was deployed from ("Built with Kaisen", Preview); NULL for ordinary apps.
+    kaisen_build_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("kaisen_builds.id", use_alter=True, name="fk_apps_kaisen_build"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hostname: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     image: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -533,3 +536,6 @@ class PlatformSetting(Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     updated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+from app.kaisen import models as _kaisen_models  # noqa: E402,F401  (registers the kaisen_* tables on Base.metadata)

@@ -142,6 +142,7 @@ class Features(BaseModel):
     databases: bool
     storage: bool
     volumes: bool = False  # persistent volumes enabled (VOLUMES_ENABLED); hide the volume option when false
+    kaisen: bool = False  # Kaisen (Preview) is on: KAISEN_ENABLED and the admin setting kaisen_enabled
     db_engines: List[str] = []  # engines with free capacity now: a subset of ["mysql", "pg"], for the deploy form's engine picker
 
 
@@ -337,6 +338,7 @@ class AppOut(BaseModel):
     id: int
     owner_id: int
     project_id: Optional[int] = None
+    kaisen_build_id: Optional[int] = None  # set when the app was deployed from a Kaisen build
     name: str
     hostname: str
     image: str

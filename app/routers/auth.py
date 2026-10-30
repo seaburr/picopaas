@@ -186,6 +186,7 @@ def _me_out(current_user: models.User, db: Session) -> schemas.MeOut:
             databases=bool(db_engines),
             storage=_spaces_configured(),
             volumes=config.VOLUMES_ENABLED,
+            kaisen=platform_settings.kaisen_on(db),
             db_engines=db_engines,
         ),
         limits=schemas.Limits(
