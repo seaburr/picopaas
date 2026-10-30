@@ -629,12 +629,23 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 - **Invites.** Owners create an invite link (optionally for one email address). No email is sent: copy the link and send it yourself.
   A link works once and expires after 7 days. The person must log in with an approved account (use the account whose email you entered, if you did)
   and open the link. Owners can revoke open invites.
+- **Names.** A project name must be unique among the projects you belong to (ignoring case and surrounding spaces). Creating or renaming to a name you already use gives a 409 "You already have a project named ...". Other people's project names are never checked or shown.
 - **Leaving.** Any member can leave (owners need another owner first). Removing someone ends their access immediately, including their API keys.
 - **Limits.** Each project has its own app limit (default `PROJECT_DEFAULT_APP_LIMIT`; an administrator can change it). Your personal project uses your account limit.
 - **Deleting a project** is refused while it still has apps: delete them or move them (owner of both projects) first.
 - **CLI and YAML.** `picopaas apply --project my-team-ab12 -f app.yaml`, `PICOPAAS_PROJECT=my-team-ab12`, or `project: my-team-ab12` in the spec. `picopaas projects` shows the slugs.
 - Databases and buckets stay with their app. Suspending a member's account does not stop the team's apps. Project owners (not the app's creator) are the contacts administrators see for a team app.
 - API keys act as you, but cannot invite, remove or change roles. Do that in the browser.
+
+
+### Invite someone to a project
+
+1. Open **Account**. The **Projects** card lists every project you belong to with its role and counts. Shared projects you own show an invite (person) button and a manage (gear) button; members see only manage.
+2. Pick the invite button, or open the project and go to **Invite people to this project** (`/projects/<id>#invite`). Your personal project cannot be shared: choose **New project** first.
+3. Optionally enter the person's email. With an email you can also choose the role (*Member* or *Owner*); without one the link is a member link that any approved account can use.
+4. Press **Create invite** and copy the link now; it is shown once. No email is sent, so paste it into a message yourself.
+5. The person logs in with an approved account (register first if needed) and opens the link. It works once and expires after 7 days. If you entered an email, they must use that account.
+6. Open invites are listed under **Pending invites**, where you can revoke them. After accepting, the person appears in **Members**.
 
 ## 16. Kaisen
 
@@ -645,10 +656,17 @@ Kaisen is in preview. You describe a small web app in plain language; Kaisen wri
 A built app is a normal app in the build's project. It appears in the apps list with a "Built with Kaisen · Preview" badge, has the usual health and settings pages, and counts against the project's app limit. Kaisen apps run on a shared runtime image and read a `kaisen.json` at the project root:
 
 ```json
-{"runtime": "python", "start": "uvicorn main:app --host 0.0.0.0 --port $PORT", "health": "/", "database": "mysql"}
+{"runtime": "python", "start": "uvicorn main:app --host 0.0.0.0 --port $PORT", "health": "/", "database": "postgres", "bucket": true, "volume": {"path": "/data"}, "test": "python -m unittest discover -s tests"}
 ```
 
-`runtime` is `static`, `python` or `node`; `start` is needed for python (node defaults to `npm start`); servers listen on `0.0.0.0:$PORT` (8080). You rarely write this yourself; Kaisen does.
+`runtime` is `static`, `python` or `node`; `start` is needed for python (node defaults to `npm start`); servers listen on `0.0.0.0:$PORT` (8080). The other keys are optional:
+
+- `database`: `mysql` or `postgres`. The app gets its own database and the `DB_*` and `DATABASE_URL` variables (see "Kaisen limits").
+- `bucket`: `true` gives the app a blob storage bucket and the `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` variables.
+- `volume`: `{"path": "/data"}` gives the app a persistent volume mounted there. It needs volumes to be turned on for this instance, and limits the app to one instance.
+- `test`: a command that runs the app's tests (see "Generated tests").
+
+`static` apps have no server code, so they can't use a database, bucket or volume. Once added, a database (and its engine), bucket or volume can't be removed. You rarely write this file yourself; Kaisen does.
 
 ### Before you start
 
@@ -660,9 +678,11 @@ Kaisen uses your project's own Anthropic API key, so model cost is billed to you
 
 Also in settings:
 
-- **Model.** `claude-opus-5-5` (default), `claude-sonnet-5-5` or `claude-haiku-5-5`. Haiku is the cheapest and fine for small apps.
+- **Model.** `claude-sonnet-5-5` (default, right for most builds), `claude-opus-5-5` or `claude-haiku-5-5`. Haiku is the cheapest and fine for small apps. Existing projects keep the model they saved.
 - **Effort.** Low, medium (default) or high.
 - **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
+- **Member limits.** Owners can cap what each person spends. See "Kaisen limits".
+- **Web access** (off by default) and **Reviewer** (off by default). See "Web access" and "Reviewer step".
 - **GitHub token (optional).** See "Download or push to GitHub".
 
 ### Your first build
@@ -670,13 +690,17 @@ Also in settings:
 1. Choose **New app > Build with Kaisen**, or **Kaisen > New build**.
 2. Give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
 3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why.
-4. Watch the build page. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off. Work happens in steps of up to 15 minutes; the transcript is redacted and trimmed 14 days after a run ends.
+4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off. Work happens in steps of up to 15 minutes; the transcript is redacted and trimmed 14 days after a run ends.
 5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
 6. When it is `done`, open the app from the **Live app** card.
 
 ### Ask for changes
 
-Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money.
+Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.
+
+- **Next ideas.** When a run finishes, up to three suggestion chips ("Next: ...") appear for the latest run. Pressing one copies it into the box so you can edit and send it; nothing runs until you send.
+- **Fix it.** When the preview app is in `error` or `retrying`, the Live app card shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
+- **Starter cards.** On **New build**, the starter chips fill the name and brief from the examples below. Press **Undo** to get your text back.
 
 ### Write a good brief
 
@@ -684,7 +708,8 @@ Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. K
 - Say what is saved and where. If the app must remember anything between visits, name MySQL; otherwise say "browser only" (localStorage).
 - List the must-have interactions (drag and drop, keyboard alternatives, export).
 - Say what is out of scope, so Kaisen does not build it anyway.
-- Remember the limits: previews have no blob storage, volumes, secrets or email. Ask for images stored in the database, no sign-in emails, no outside API keys.
+- Name the storage you want: MySQL or PostgreSQL for data, a bucket for uploaded files, a volume for files on disk (for example SQLite), or "browser only".
+- Remember the limits: one web process only (no background workers or cron), no email sending. Outside API keys go in as build secrets (see "Build secrets").
 - Fold changes you already know you want into the brief. One bigger first run is cheaper than three small follow-ups.
 
 ### Starter briefs
@@ -731,16 +756,73 @@ Build a recipe scaler as a static page with no server and nothing saved. I paste
 
 To make a token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into Kaisen settings or the build's Output card; GitHub shows it once. For an organization, an owner may need to approve it.
 
+### Web access
+
+Off by default. In **Kaisen > Settings > Web access** an owner can let the builder search the web and read pages, for example to check a library's documentation or a link in your brief. It works with all three models.
+
+- **Allowed sites.** Leave the list empty to allow any site, or enter up to 20 domains, one per line, without `https://` (a path such as `github.com/owner` is allowed). The settings page says in words what is in force.
+- **Untrusted content.** A page can contain text that tries to steer the builder. Kaisen treats web content as data, and the builder has no secrets and can only touch its own build's files, but an allow-list is the safest setting. Page text is not shown in the transcript or `CONVERSATION.md`; they say only "searched for ..." or "read ...".
+- **Builds with secrets.** A build that has [build secrets](#build-secrets) only uses the web when the allowed-sites list is set; with an empty list it runs without web tools, so a hostile page can't talk the builder into shipping code that sends your secrets elsewhere.
+- **Cost.** Each web search costs a flat $0.01 on top of the tokens it adds. Reading a page costs tokens only. Searches count toward every cap.
+
+### Build secrets
+
+The **Secrets** card on the build page holds environment values the built app needs, such as an API key. Anyone in the project who can run the build can add one.
+
+1. Enter a name (UPPER_SNAKE_CASE) and a value, then save. Saving an existing name replaces its value.
+2. Press **Deploy now**. Secrets reach the running app on its next deploy. Deleting a secret removes it from the running app at once.
+
+Kaisen sees the names only and is told to read them from the environment; values are encrypted, masked in the page and API and redacted from transcripts, logs and downloads. Limits are under "Kaisen limits".
+
+### Generated tests
+
+Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`. The runtime runs that command after installing dependencies and before the app starts, with a time limit and without any platform credentials in the environment. The app starts whatever the result. The build page shows a **Tests** row (pass, fail, timed out, running) with the output tail, and Kaisen reads the result when it checks the preview, fixing failures before it finishes. Results appear once the runtime has run them; until then the row says there is no result yet.
+
+### Reviewer step
+
+Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. The run shows the verdict, findings and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
+
 ### Offline, redeploy, delete
 
 **Take offline** on the build page deletes the app, and its database and data if it has one, but keeps the build, its files and its conversation. **Deploy again** brings the app back with a new address and an empty database. Deleting the app from its own pages does the same as taking it offline. Deleting the build asks whether to delete the app too.
 
-### Spend and limits
+### Kaisen limits
 
-- Model cost is billed to your Anthropic account; caps stop a build at the per-run, per-day or per-build amount you set.
-- A built app uses one of the project's app slots and follows the same limits as any app. With `"database": "mysql"` it gets its own MySQL database (same 50 MB limit as any app) with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CA_CERT` (certificate text) and `DATABASE_URL`. TLS is required, and the first deploy takes a minute or two longer. The database stays with the app once added.
-- A build holds files up to 200 KB each, 300 files and 5 MB in total.
+Everything that caps what Kaisen can do, in one place. Defaults come from the platform and are shown in the settings page; administrators can't raise the fixed numbers below without a platform change.
+
+**Spend (US dollars)**
+
+- Model cost is billed to your Anthropic account; the project's caps stop a build early. Defaults: $2 per run, $8 per day, $30 per build; each can be set from 0 to $1000. A cap that is reached stops the run and leaves a note in the inbox; raise the cap and resume.
+- **Member limits.** In **Kaisen > Settings > Member limits** an owner sets, for each person, a daily and a per-build limit; blank means no limit. These apply on top of the project caps. Spend is counted against the person who started the run. The daily amount counts all builds in the project and resets at 00:00 UTC. Members see only their own row and can't edit it. A run that would exceed a limit isn't started, or stops mid-run, with a message naming the limit.
+- **Costs that are extra.** Web search is $0.01 per search. The reviewer adds at least one model call per run. Every call counts toward all caps.
+
+**Builds and files**
+
+- A project holds at most 20 builds. A name is up to 60 characters, a brief up to 8000, a change request or an answer up to 4000.
+- A run works in steps of up to 15 minutes and 40 model calls each. A build holds files up to 200 KB each, 300 files and 5 MB in total.
+- Transcripts are trimmed 14 days after a run ends.
+
+**Built apps**
+
+- A built app uses one of the project's app slots and follows the same limits as any app (memory, CPU, image, quotas).
+- A database has the same 50 MB limit as any app; MySQL and PostgreSQL are equal choices. Variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CA_CERT` (certificate text) and `DATABASE_URL` (PostgreSQL also sets `DB_TLS`). TLS is required, and the first deploy takes a minute or two longer.
+- A bucket has the platform's bucket size limit; a volume has the platform's default volume size and needs volumes to be enabled on this instance.
+- The platform owns the variable names starting with `KAISEN_` or `DB_` and these too: `DATABASE_URL`, `PORT`, `PATH`, `HOME`, `HOSTNAME`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `NODE_OPTIONS`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`.
+
+**Build secrets**
+
+- Up to 20 per build. A name is UPPER_SNAKE_CASE (capital letters, digits and underscores, not starting with a digit), up to 64 characters, and not one of the reserved names above.
+- A value is 6 to 4000 characters (shorter ones can't be hidden reliably in logs) and can't contain `${{`.
+
+**Web, tests and reviewer**
+
+- Web access: 20 allowed domains; up to 5 searches and 5 page reads per model request; a page read is capped at about 20,000 tokens.
+- Tests: the command is up to 300 characters, runs for up to 120 seconds, and only the last part of its output (about 4 KB) is kept. The test can't see database, bucket or platform variables.
+- Reviewer: up to 5 findings of 400 characters and 8 model calls per review; one fix round.
+- Previews are one web process: no background workers or cron, and no email.
 
 ### Not supported yet
 
-PostgreSQL, buckets and volumes for built apps; secrets in previews; running generated tests; a separate reviewer step; per-member spend limits; reading the app's logs while Kaisen debugs a deploy (it sees status and an HTTP check only); and web access for the builder, which is planned.
+- Test results show up only once the runtime image on this instance has been updated; until then the Tests row says there is no result yet.
+- Background workers, cron jobs and email sending in built apps.
+- Removing a database, bucket or volume from a built app, or changing a database's engine, after it has been added.

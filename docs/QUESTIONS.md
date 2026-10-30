@@ -7,6 +7,15 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Approve a bootstrap re-pin of the Kaisen runtime image? (2026-10-30)** This wave changed
+  `images/kaisen-runtime/boot.py` so a built app's own tests run in the preview pod at boot (kaisen.json `"test"`).
+  It's backward compatible; until the re-pin, Kaisen just reports "no test result yet". After the push I'd run
+  `bootstrap.yml` with the new `kaisen_runtime_image_digest` (KAISEN_OPS s3). No cost change. Reply "approved" here.
+- **Feedback wave 2026-10-30: calls I made, say if you disagree.** (1) Project names are unique **per owner**
+  (case-insensitive), not platform-wide, so nobody learns another user's project names from a 409. (2) Building the
+  starter-brief demos spends the Demo project's Anthropic key (Haiku, ~$0.05 each); I'll take demo apps offline between
+  builds to stay under Demo's 3-app limit. (3) "Running generated tests" will run the app's own test command inside the
+  preview pod at boot (the worker still never executes code), with results fed back through the new log path.
 - **Kaisen in PicoPaaS (Preview): three calls I made, tell me if you disagree (2026-10-29).** Design: docs/design/kaisen.md.
   (1) Kaisen settings (Anthropic key, caps, GitHub) belong to the PicoPaaS project, so in a team project any member can
   start builds that spend the team's key; owners edit the settings. (2) The agent loop runs in a separate `kaisen-worker`
@@ -22,6 +31,7 @@ background on each item if you want it.
   the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
+- [ ] 2026-10-30 (security review, K16): Kaisen web access + build secrets + auto-deploy lets a prompt-injected web page make the builder write code that reads the preview's env (the build secrets) and sends it out. Pick one: (a) turn the web tools off for any build that has secrets, (b) require a domain allow-list when a build has secrets, (c) accept and show a warning next to the web toggle. I recommend (a) or (b). Also: should build-secret set/delete be owner-only (K20)? See docs/PENTEST.md "Feedback wave 2026-10-30". **Manager call:** went with (b): builds with secrets get the web only with an allow-list; tell me if you want (a) stricter or (c) looser.
 
 ## To-dos (only you can do these)
 

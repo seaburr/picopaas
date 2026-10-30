@@ -42,7 +42,8 @@ One START and one DONE per chunk. Keep each line to what the next reader needs; 
   or right after push; every wave gets one pass regardless.
 - Tests: SQLite in-memory, real register/login flow, infra faked behind `app/providers` interfaces, fixtures that do
   not look like secrets. Repeatable checks belong in CI; agents explore.
-- Frontend: typecheck + build, and a browser check or an explicit `NOT browser-checked` handoff to ui-ux-designer.
+- Frontend: typecheck + build + `npm run check:layout` (every view's `<main>` uses `page-main`, the one page width;
+  never a per-page `max-w-*`; narrow content goes inside the page), and a browser check or an explicit `NOT browser-checked` handoff to ui-ux-designer.
 - Caps and defaults come from `app/config.py`; docs quote them, never redefine them.
 - Questions for Chas go in `docs/QUESTIONS.md`; paid resources need `docs/requests/` first.
 - Token thrift: one chunk per invocation; read ranges not whole files; focused tests while iterating, full suite once;

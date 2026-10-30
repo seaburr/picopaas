@@ -30,10 +30,11 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 - **Previews** are ordinary apps running `KAISEN_RUNTIME_IMAGE`; `boot.py` downloads the build's files at boot from the
   public, single-use capability URL `GET /kaisen/bundles/{token}.tar.gz` (token passed as the app **secret**
   `KAISEN_BUNDLE_URL`, only the latest bundle stays valid), checks the sha256, installs deps and starts the app.
-  `kaisen.json` `{"runtime": "static|python|node", "start", "health", "database": "mysql"}`; the database adds
-  `DB_*`/`DATABASE_URL` refs.
+  `kaisen.json` `{"runtime": "static|python|node", "start", "health", "database": "mysql|postgres", "bucket": true, "volume": {"path"}, "test"}`; a database adds
+  `DB_*`/`DATABASE_URL` refs, a bucket `S3_*`. Build secrets (names only to the model) are merged in as app secrets on every deploy. `boot.py` runs `test` before the app (result via the log snapshot).
 - **Gates**: env `KAISEN_ENABLED` (default on) **and** admin setting `kaisen_enabled`; `features.kaisen` in `/auth/me`.
-- **Logs**: the worker can't read app logs yet (`deploy_preview` returns status + HTTP probe only; roadmap item).
+- **Logs**: the worker never reads pods. The reconciler (API pod) snapshots a redacted 100-line/8 KB tail of each preview whose build has an active run into table `kaisen_preview_logs` (`app/kaisen/logs.py`, hook in `reconcile_all`); `deploy_preview` reads that row, so output can be one reconcile tick old. The same snapshot carries the test markers.
+- **Migrations** (2026-10-30): four new files under `alembic/versions/` named `*_kaisen_preview_logs`, `*_kaisen_web_access_suggestions`, `*_kaisen_member_limits_secrets`, `*_kaisen_reviewer_tests` (single head: the reviewer_tests one; check with `alembic heads`). The API pods apply them on start (`entrypoint.sh` runs `alembic upgrade head` before uvicorn, so a bad migration fails the rollout); app/main.py itself does not run them.
 
 ## 3. Shipping changes
 
@@ -77,7 +78,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 - MySQL `DATETIME` has no fractions and `UPDATE` returns changed (not matched) rows unless `CLIENT.FOUND_ROWS` is set
   (lease CAS bug class).
 - Anthropic: Opus 5.5 / Sonnet 5.5 reject forced `tool_choice` and `thinking: disabled`; verify model support before
-  adding server tools (web access, design section 11, is queued: check Haiku 5.5 support first).
+  adding server tools (web access, design section 11, is built; all three KAISEN_PRICES models support the web tools).
 - Wording Chas set: "Kaisen is in preview", badge "Built with Kaisen · Preview", success text "Key valid. Selected model
   available."; never compare PicoPaaS to Heroku.
 
@@ -86,4 +87,4 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 Shipped and live: Kaisen in PicoPaaS (per-build output, start on create, CONVERSATION.md, Take offline, inbox dismiss),
 final pentest (no HIGH/MEDIUM; open LOWs K9 accepted, P3 no per-user rate limit on Kaisen run/test/push), coverage 94%,
 blog posts, user guide how-to with starter briefs, landing page section. Next: Chas's testing feedback (expected
-2026-10-30), web access (design section 11), logs in `deploy_preview`, retire the standalone instance.
+2026-10-30), retire the standalone instance. Built 2026-10-30 (pending push and security review): logs in `deploy_preview`, web access, PostgreSQL/bucket/volume previews, build secrets, member limits, generated tests, reviewer. **Runtime image re-pin pending** (`boot.py` runs generated tests; needs `kaisen-runtime-image` to publish, then a bootstrap run with Chas's approval, s3). Until then the test result is "no result in the log yet" and existing previews are unaffected.
