@@ -1,4 +1,4 @@
-# Kaisen agent-loop worker (docs/design/kaisen.md section 1): same image and env as the platform Deployment, command
+# Kaisen agent-loop worker (docs/design/kaisen.md section 1): same image as the platform Deployment, but only the picopaas-env keys it needs, command
 # `python -m app.kaisen.worker`. Own pod so a long model stream or runaway build cannot OOM/starve the API pods.
 # No Service, no Ingress, NO kube permissions (dedicated ServiceAccount, token not mounted). deploy.yml seds the image tag,
 # env-checksum and __DB_EGRESS_CIDR__ (MYSQL_EGRESS_CIDR from picopaas-env) the same way it does for deployment.yaml.
@@ -51,11 +51,135 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-          envFrom:
-            - secretRef:
-                name: picopaas-env
+          # K6: NOT envFrom. The worker gets only what it reads (app/config.py names, via app.kaisen.worker -> app.db, crypto,
+          # routers.spec deploy path); it must not see DIGITALOCEAN_TOKEN, SPACES_*, BACKUP_*, BOOTSTRAP_*, PLATFORM_DB_PASSWORD, METRICS_TOKEN.
+          # DATABASE_URL carries ?ssl_ca=/etc/picopaas/db-ca/ca.crt (the db-ca volume below). SECRET_KEY is derived from FERNET_KEY
+          # unless set, so it is optional. Add a key here when app/config.py starts to need it in this process.
           env:
-            # Explicit env wins over envFrom: this pod must never run the reconciler/quota/backup jobs.
+            - name: ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: ENVIRONMENT
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: DATABASE_URL
+            - name: FERNET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: FERNET_KEY
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: SECRET_KEY
+                  optional: true
+            - name: FERNET_KEYS_PREVIOUS
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: FERNET_KEYS_PREVIOUS
+                  optional: true
+            - name: PLATFORM_PUBLIC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: PLATFORM_PUBLIC_URL
+                  optional: true
+            - name: PLATFORM_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: PLATFORM_HOST
+                  optional: true
+            - name: APP_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: APP_DOMAIN
+                  optional: true
+            - name: KAISEN_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: KAISEN_ENABLED
+                  optional: true
+            - name: KAISEN_RUNTIME_IMAGE
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: KAISEN_RUNTIME_IMAGE
+                  optional: true
+            - name: DB_POOL_SIZE
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: DB_POOL_SIZE
+                  optional: true
+            - name: DB_MAX_OVERFLOW
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: DB_MAX_OVERFLOW
+                  optional: true
+            - name: DB_POOL_TIMEOUT
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: DB_POOL_TIMEOUT
+                  optional: true
+            - name: DB_POOL_RECYCLE
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: DB_POOL_RECYCLE
+                  optional: true
+            - name: LOG_LEVEL
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: LOG_LEVEL
+                  optional: true
+            - name: MAX_APPS_PER_USER
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: MAX_APPS_PER_USER
+                  optional: true
+            - name: ADMIN_DEFAULT_APP_LIMIT
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: ADMIN_DEFAULT_APP_LIMIT
+                  optional: true
+            - name: MAX_APPS_PER_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: MAX_APPS_PER_ADMIN
+                  optional: true
+            - name: PROJECT_DEFAULT_APP_LIMIT
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: PROJECT_DEFAULT_APP_LIMIT
+                  optional: true
+            - name: MAX_IMAGE_SIZE_BYTES
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: MAX_IMAGE_SIZE_BYTES
+                  optional: true
+            - name: MAX_REPLICAS
+              valueFrom:
+                secretKeyRef:
+                  name: picopaas-env
+                  key: MAX_REPLICAS
+                  optional: true
+            # Fixed values (not from the secret): this pod must never run the reconciler/quota/backup jobs.
             - name: KAISEN_WORKER
               value: "1"
             - name: RECONCILER_ENABLED
