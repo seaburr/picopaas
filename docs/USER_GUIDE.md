@@ -636,63 +636,111 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 - Databases and buckets stay with their app. Suspending a member's account does not stop the team's apps. Project owners (not the app's creator) are the contacts administrators see for a team app.
 - API keys act as you, but cannot invite, remove or change roles. Do that in the browser.
 
-## 16. Kaisen (Preview)
+## 16. Kaisen
 
-Kaisen builds a small web app from a plain-language brief and deploys it as a normal app in your project. It is in preview: it can change or break, and generated apps are throwaway-grade. It appears as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on.
+Kaisen is in preview. You describe a small web app in plain language; Kaisen writes the code, runs it and deploys it for you, then changes it when you ask. It shows as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on. Expect rough edges: generated apps are throwaway-grade.
 
-**You bring the key.** Kaisen uses your project's own Anthropic API key, so the model cost is billed to you (or your team), not to PicoPaaS. Everyone in a project can start builds with its key; only owners change settings.
+### What a built app is
 
-### Project settings
-
-Open **Kaisen > Settings** (`/kaisen/settings`) for the current project. Settings belong to the project, so a team project has its own key, model and caps. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
-
-- **Anthropic key, model, effort.** Models: `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5`. Effort: low, medium (default) or high.
-- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); any cap can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
-- **GitHub token (optional).** One token every build in the project can use to push. Anyone who can run builds here can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean. Where each build pushes is set on the build (see below).
-- **Test Anthropic** checks the saved key and model without starting a build ("Key valid. Selected model available.").
-
-### Get an Anthropic key
-
-1. Open console.anthropic.com > API keys and create a key named `picopaas-kaisen`.
-2. Paste it into Kaisen settings and save, then press **Test Anthropic**.
-3. Set a spend limit on the Anthropic side too. PicoPaaS caps are a second guard, not a replacement.
-
-### Build an app
-
-1. **Kaisen > New build**: give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
-2. Press **Start building**: creating the build starts it (if the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why). The build page shows the status: `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off.
-3. If Kaisen has a question it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
-4. When it is `done`, open the live app from the **Live app** card.
-
-Builds work in steps of up to 15 minutes. The transcript on the build page is redacted, and is trimmed 14 days after a run ends.
-
-### Ask for changes
-
-Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys. Feedback needs a first run to have happened.
-
-### The live app
-
-The deployed preview is an ordinary app in the build's project: it appears in the apps list with a "Built with Kaisen · Preview" badge, has the usual health and settings pages, uses one of the project's app slots and follows the same limits. **Take offline** on the build page deletes the app (and its database and data, if it has one) but keeps the build, its files and its conversation; **Deploy again** brings it back with a new address. Deleting the app from its own pages does the same. Deleting the build asks whether to delete the app too.
-
-Kaisen apps run on a shared runtime image and read a `kaisen.json` at the project root:
+A built app is a normal app in the build's project. It appears in the apps list with a "Built with Kaisen · Preview" badge, has the usual health and settings pages, and counts against the project's app limit. Kaisen apps run on a shared runtime image and read a `kaisen.json` at the project root:
 
 ```json
 {"runtime": "python", "start": "uvicorn main:app --host 0.0.0.0 --port $PORT", "health": "/", "database": "mysql"}
 ```
 
-`runtime` is `static`, `python` or `node`; `start` is needed for python (node defaults to `npm start`); servers listen on `0.0.0.0:$PORT` (8080). No secrets are available to previews.
+`runtime` is `static`, `python` or `node`; `start` is needed for python (node defaults to `npm start`); servers listen on `0.0.0.0:$PORT` (8080). You rarely write this yourself; Kaisen does.
 
-### Database
+### Before you start
 
-Add `"database": "mysql"` and the app gets its own MySQL database (same 50 MB limit as any app) with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CA_CERT` (certificate text) and `DATABASE_URL`. TLS is required. The first deploy takes a minute or two longer. Once added, the database stays with the app. PostgreSQL, buckets and volumes are not supported for Kaisen apps yet.
+Kaisen uses your project's own Anthropic API key, so model cost is billed to you (or your team), not to PicoPaaS. Open **Kaisen > Settings** (`/kaisen/settings`). Settings belong to the project, so a team project has its own key, model and caps. In a team project, owners edit settings; members can build and spend the project's key. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
+
+1. Open console.anthropic.com > API keys and create a key named `picopaas-kaisen`.
+2. Set a spend limit on the Anthropic side too. PicoPaaS caps are a second guard, not a replacement.
+3. Paste the key into Kaisen settings and save, then press **Test Anthropic** ("Key valid. Selected model available.").
+
+Also in settings:
+
+- **Model.** `claude-opus-5-5` (default), `claude-sonnet-5-5` or `claude-haiku-5-5`. Haiku is the cheapest and fine for small apps.
+- **Effort.** Low, medium (default) or high.
+- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
+- **GitHub token (optional).** See "Download or push to GitHub".
+
+### Your first build
+
+1. Choose **New app > Build with Kaisen**, or **Kaisen > New build**.
+2. Give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
+3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why.
+4. Watch the build page. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off. Work happens in steps of up to 15 minutes; the transcript is redacted and trimmed 14 days after a run ends.
+5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
+6. When it is `done`, open the app from the **Live app** card.
+
+### Ask for changes
+
+Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money.
+
+### Write a good brief
+
+- Say what the screen looks like: panes, where things sit, what is collapsible.
+- Say what is saved and where. If the app must remember anything between visits, name MySQL; otherwise say "browser only" (localStorage).
+- List the must-have interactions (drag and drop, keyboard alternatives, export).
+- Say what is out of scope, so Kaisen does not build it anyway.
+- Remember the limits: previews have no blob storage, volumes, secrets or email. Ask for images stored in the database, no sign-in emails, no outside API keys.
+- Fold changes you already know you want into the brief. One bigger first run is cheaper than three small follow-ups.
+
+### Starter briefs
+
+Paste one into the brief box and edit to taste. Costs vary by model, effort and how many questions Kaisen asks; the figures below are what we saw, not a promise.
+
+**Fancy Docs (Markdown notes with a page tree)**
+
+```
+I want a Markdown note-taking application that saves to a MySQL database. The editor is on the left and the rendered Markdown is on the right, with a nav tree in the center. Pages can be nested underneath other pages, and the nav tree can be used to move pages around in the tree (drag and drop, plus buttons for keyboard users). The editor pane can be collapsed. Support image uploads that are stored in the MySQL database and can be referenced in the Markdown. Include a dark mode toggle for the entire page, remembered in the browser.
+```
+
+This rebuilt in one run for about five US cents on Claude Haiku 5.5 (the original took three runs, about 7 cents).
+
+**Team standup board**
+
+```
+Build a small standup board with Python and MySQL. Anyone can open the page, type their name and post three short fields for a chosen date: yesterday, today and blockers. There is no login. The main screen is a day view: a date picker with previous and next day buttons, and one card per person who posted that day, with blockers highlighted. Posting again for the same person and date replaces the earlier post. A second page shows one person's history, newest first, reachable by clicking a name. Save everything in MySQL. Include a dark mode toggle remembered in the browser. Out of scope: accounts, passwords, email or chat notifications, editing other people's posts.
+```
+
+**Link shortener with click counts**
+
+```
+Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.
+```
+
+**Habit tracker with streaks**
+
+```
+Build a habit tracker as a static page that saves to the browser's localStorage, with no server. I can add and remove habits. Each habit shows a month grid where I click a day to tick it on or off, with buttons to move to the previous and next month. Next to each habit show the current streak (consecutive ticked days ending today or yesterday) and the best streak ever. Add Export and Import buttons for all data as a JSON file, and validate the file on import. Support a dark mode toggle remembered in the browser. Out of scope: reminders, accounts, syncing between devices.
+```
+
+**Recipe scaler**
+
+```
+Build a recipe scaler as a static page with no server and nothing saved. I paste a recipe's ingredient list, one ingredient per line (like "1 1/2 cups flour"), and set the original and wanted number of servings. The page shows the scaled list, handling fractions and decimals and showing results as friendly fractions. A toggle converts between metric and US units (cups, tablespoons, teaspoons, ounces, pounds, grams, millilitres) and leaves lines it cannot parse unchanged. Include a print view that shows only the scaled recipe in a clean layout. Light theme only. Out of scope: saving recipes, importing from web pages, nutrition information.
+```
 
 ### Download or push to GitHub
 
 - **Download** (`.tar.gz`) is always available from the build page. It holds the files plus `CONVERSATION.md`: your brief, feedback and answers, and Kaisen's replies, questions and summaries for every run (no internal agent detail; saved keys are redacted).
 - **Push**: each build has its own **Output** card (also an optional section on New build). Choose *Download and push to GitHub*, enter the repository (`https://github.com/owner/repo`) and a branch (optional; blank = `kaisen/<build>`), then pick the auth: *Use the project's GitHub token* or *Use a token for this build only*. Options: push when a build finishes, and open a pull request. **Test** checks push access to that repository with the chosen token; **Push now** pushes immediately. The download's `CONVERSATION.md` is not pushed.
+- The project token is shared: anyone who can run builds in the project can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean.
 
-To make the token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into Kaisen settings or the build's Output card; GitHub shows it once. For an organization, an owner may need to approve it.
+To make a token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into Kaisen settings or the build's Output card; GitHub shows it once. For an organization, an owner may need to approve it.
+
+### Offline, redeploy, delete
+
+**Take offline** on the build page deletes the app, and its database and data if it has one, but keeps the build, its files and its conversation. **Deploy again** brings the app back with a new address and an empty database. Deleting the app from its own pages does the same as taking it offline. Deleting the build asks whether to delete the app too.
+
+### Spend and limits
+
+- Model cost is billed to your Anthropic account; caps stop a build at the per-run, per-day or per-build amount you set.
+- A built app uses one of the project's app slots and follows the same limits as any app. With `"database": "mysql"` it gets its own MySQL database (same 50 MB limit as any app) with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CA_CERT` (certificate text) and `DATABASE_URL`. TLS is required, and the first deploy takes a minute or two longer. The database stays with the app once added.
+- A build holds files up to 200 KB each, 300 files and 5 MB in total.
 
 ### Not supported yet
 
-Reading the app's logs while Kaisen debugs a deploy (it sees status and an HTTP check only), running generated tests, a separate reviewer step, per-member spend limits, and apps that need storage or volumes. Limits: files up to 200 KB, 300 files and 5 MB per build.
+PostgreSQL, buckets and volumes for built apps; secrets in previews; running generated tests; a separate reviewer step; per-member spend limits; reading the app's logs while Kaisen debugs a deploy (it sees status and an HTTP check only); and web access for the builder, which is planned.
