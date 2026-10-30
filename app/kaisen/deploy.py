@@ -162,7 +162,11 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
         db.rollback()
         raise DeployError(f"This project already has an app named {name}. Rename the build and deploy again.", final=True, status=409)
     database = wanted_database(db, b)
-    url, sha, unchanged = make_bundle(db, b, reuse=existing is not None and not force)
+    # An app deployed before the URL became a secret still holds it as a visible plain variable: never reuse that
+    # one, mint a fresh URL (the old one stops working) so the redeploy stores it as a secret.
+    legacy_plain_url = existing is not None and any(
+        v.key == "KAISEN_BUNDLE_URL" and not v.is_secret for v in existing.env_vars)
+    url, sha, unchanged = make_bundle(db, b, reuse=existing is not None and not force and not legacy_plain_url)
     if url is None:
         close_deploy_notices(db, b)
         db.commit()

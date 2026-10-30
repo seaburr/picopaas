@@ -22,9 +22,9 @@ class UTCFormatter(logging.Formatter):
     default_msec_format = "%s.%03dZ"
 
 
-# Capability tokens that travel in the URL path or query: an invite link token is a bearer credential (43 url-safe chars,
+# Capability tokens that travel in the URL path or query: an invite link token and a Kaisen bundle token are bearer credentials (43 url-safe chars,
 # which the generic log_redact rules do not match), so it must not reach pod logs or the admin log viewer.
-_PATH_SECRETS = re.compile(r"(/invites/)[^/\s?]+")
+_PATH_SECRETS = re.compile(r"(/invites/|/kaisen/bundles/)[^/\s?]+?(?=\.tar\.gz|[/\s?]|$)")
 _QUERY_SECRETS = re.compile(r"(?i)([?&][^=&\s]*(?:token|key|secret|password|code|sig)[^=&\s]*=)[^&\s]*")
 
 

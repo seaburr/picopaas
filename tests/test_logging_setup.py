@@ -48,3 +48,11 @@ def test_access_line_masks_invite_token_and_secret_query_values():
                             ("10.0.0.1:5000", "GET", "/x?tail=5&api_key=not-the-key&token=not-a-token", "1.1", 200), None)
     line = _fmt("access", rec)
     assert "not-the-key" not in line and "not-a-token" not in line and "tail=5" in line
+
+
+def test_access_line_masks_kaisen_bundle_token():
+    tok = "B" * 43
+    rec = logging.LogRecord("uvicorn.access", logging.INFO, "h11_impl.py", 1, '%s - "%s %s HTTP/%s" %d',
+                            ("10.0.0.1:5000", "GET", f"/kaisen/bundles/{tok}.tar.gz", "1.1", 200), None)
+    line = _fmt("access", rec)
+    assert tok not in line and "/kaisen/bundles/<redacted>.tar.gz" in line

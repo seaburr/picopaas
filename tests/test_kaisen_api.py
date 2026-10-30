@@ -621,6 +621,25 @@ def test_auto_redeploy_unchanged_keeps_live_bundle_url(team, client):
     assert client.get(url.removeprefix(config.platform_public_url())).status_code == 200  # still valid
 
 
+def test_auto_redeploy_rotates_legacy_plain_bundle_url(team, client):
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid)
+    app_id = _deploy(a, bid).json()["app"]["id"]
+    url = app_env(app_id)["KAISEN_BUNDLE_URL"][0]
+    from app import models
+    s = db()
+    row = s.query(models.AppEnvVar).filter_by(app_id=app_id, key="KAISEN_BUNDLE_URL").one()
+    row.is_secret = False  # state of an app deployed before the URL became a secret
+    s.commit()
+    from app.kaisen import deploy as deploy_mod
+    from app.kaisen.models import KaisenBuild
+    _, changed = deploy_mod.deploy_build(s, s.get(KaisenBuild, bid), FakeRegistry(default_size_bytes=1024), force=False)
+    assert changed is True
+    after = app_env(app_id)["KAISEN_BUNDLE_URL"]
+    assert after[1] is True and after[0] != url
+    assert client.get(url.removeprefix(config.platform_public_url())).status_code == 404  # old URL no longer works
+
+
 # ---- spend -----------------------------------------------------------------------------------------
 
 def test_spend_endpoint(team):
