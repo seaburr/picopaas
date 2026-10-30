@@ -364,6 +364,21 @@ def answer(build_id: int, item_id: int, payload: TextIn, request: Request, db: S
     return _detail(db, b, request)
 
 
+@router.post("/kaisen/builds/{build_id}/inbox/{item_id}/dismiss")
+def dismiss(build_id: int, item_id: int, request: Request, db: Session = Depends(get_db),
+            user: models.User = Depends(get_active_user)):
+    """Close a notice (deploy/push/error/budget/refusal) for everyone in the project. Questions are answered, not dismissed."""
+    b = get_build(db, build_id, user)
+    item = db.get(KaisenInbox, item_id)
+    if item is None or item.build_id != b.id:
+        raise HTTPException(status_code=404, detail="We can't find that message.")
+    if item.kind == "question" and item.status == "open":
+        raise HTTPException(status_code=409, detail="Answer the question instead; Kaisen is waiting for it.")
+    item.status = "closed"
+    db.commit()
+    return _detail(db, b, request)
+
+
 @router.post("/kaisen/builds/{build_id}/deploy")
 def deploy(build_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
            registry=Depends(get_registry)):

@@ -472,6 +472,7 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 | POST | `/kaisen/builds/{id}/run` | | Starts, or resumes a stopped/failed build. 422 without an Anthropic key, 409 if a run is active or the project is at a cap. Audit `kaisen.run`. Returns detail. |
 | POST | `/kaisen/builds/{id}/feedback` | `{text (<=4000)}` | New change run. 409 before a first run. Audit `kaisen.run`. |
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/answer` | `{text (<=4000)}` | Answer an open question; 409 if already answered. |
+| POST | `/kaisen/builds/{id}/inbox/{item_id}/dismiss` | none | Close a notice (deploy, push, error, budget, refusal) for everyone in the project; returns the build. 409 for an open question (answer it instead). A deploy that goes through also closes the build's open deploy notices. |
 | POST | `/kaisen/builds/{id}/deploy` | | Redeploys the current files as the build's app, in its project, with the usual app limits and errors. Audit `kaisen.deploy`. |
 | GET | `/kaisen/builds/{id}/files/{path}` | | `{path, size, content, binary, truncated}` (redacted). |
 | GET | `/kaisen/builds/{id}/download` | | `{slug}.tar.gz`, with a `CONVERSATION.md` (your brief, change requests and answers, and Kaisen's text, questions and summaries; no tool calls, thinking or file contents); 409 with no files. |

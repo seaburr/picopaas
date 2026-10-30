@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, config, crypto, models, projects
 from . import export
-from .models import KaisenBuild, KaisenBundle, KaisenFile
+from .models import KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox
 from .redact import redact
 
 NOT_YET = (404, 502, 503, 504)  # what the edge answers while the app is not up yet
@@ -132,6 +132,12 @@ def live_app(db: Session, b: KaisenBuild) -> models.App | None:
     return a if (a is not None and a.deleted_at is None and a.kaisen_build_id == b.id and a.project_id == b.project_id) else None
 
 
+def close_deploy_notices(db: Session, b: KaisenBuild) -> None:
+    """A deploy that went through makes earlier "deploy failed" inbox items obsolete."""
+    (db.query(KaisenInbox).filter(KaisenInbox.build_id == b.id, KaisenInbox.kind == "deploy",
+                                  KaisenInbox.status == "open").update({"status": "closed"}, synchronize_session=False))
+
+
 def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -> tuple[models.App, bool]:
     """Deploy (or update) the build's app. Returns (app, changed). Raises DeployError with a plain message."""
     from app.routers.spec import SpecDeploy, deploy_spec  # late: routers import this package
@@ -158,6 +164,7 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
     database = wanted_database(db, b)
     url, sha, unchanged = make_bundle(db, b, reuse=existing is not None and not force)
     if url is None:
+        close_deploy_notices(db, b)
         db.commit()
         return existing, False
     keep_env, keep_secrets = user_env(existing)
@@ -171,6 +178,7 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
     app = db.get(models.App, out.id)
     app.kaisen_build_id = b.id
     b.app_id = app.id
+    close_deploy_notices(db, b)
     db.commit()
     audit.record(db, creator, "kaisen.deploy", "kaisen_build", b.id, f"app={app.id} created={out.created}")
     return app, True

@@ -751,3 +751,47 @@ def test_download_includes_conversation_but_bundle_and_push_do_not(team, fakes):
     assert "CONVERSATION.md" not in str(_tar(s.query(KaisenBundle).filter_by(build_id=bid).one().data))
     assert b.get(f"/kaisen/builds/{bid}/download").status_code == 200
     assert c.get(f"/kaisen/builds/{bid}/download").status_code == 404
+
+
+# ---- inbox notices --------------------------------------------------------------------------------
+
+def _notice(build_id, kind="deploy", text="Automatic preview deploy failed: not configured", status="open"):
+    from app.kaisen.models import KaisenInbox
+    s = db()
+    item = KaisenInbox(build_id=build_id, kind=kind, text=text, status=status)
+    s.add(item)
+    s.commit()
+    return item.id
+
+
+def _open(c, bid):
+    return [(i["kind"], i["status"]) for i in c.get(f"/kaisen/builds/{bid}").json()["inbox"] if i["status"] == "open"]
+
+
+def test_successful_deploy_closes_stale_deploy_notices(team):
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid)
+    _notice(bid)
+    _notice(bid, kind="question", text="Which colour?")  # questions are not touched by a deploy
+    assert ("deploy", "open") in _open(a, bid)
+    assert _deploy(a, bid).status_code == 200
+    assert _open(a, bid) == [("question", "open")]
+
+
+def test_dismiss_is_saved_for_everyone_and_scoped(team):
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid)
+    nid = _notice(bid)
+    assert c.post(f"/kaisen/builds/{bid}/inbox/{nid}/dismiss").status_code == 404  # non-member
+    r = b.post(f"/kaisen/builds/{bid}/inbox/{nid}/dismiss")  # member
+    assert r.status_code == 200 and ("deploy", "open") not in _open(a, bid)  # gone for the owner too
+    other = _new_build(a, pid, name="Other")
+    assert a.post(f"/kaisen/builds/{other}/inbox/{nid}/dismiss").status_code == 404  # item of another build
+
+
+def test_open_question_cannot_be_dismissed(team):
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid)
+    qid = _notice(bid, kind="question", text="Which colour?")
+    r = a.post(f"/kaisen/builds/{bid}/inbox/{qid}/dismiss")
+    assert r.status_code == 409 and "Answer the question" in r.json()["detail"]
