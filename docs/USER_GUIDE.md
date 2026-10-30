@@ -780,7 +780,7 @@ Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`
 
 ### What the builder can check
 
-Kaisen edits files in place (one exact piece of text at a time) and can search across them, so changes to a bigger app cost fewer tokens. Each time it writes a file it is told about Python syntax errors, invalid JSON and `kaisen.json` mistakes straight away, without running anything. After a preview is up it can also send requests (GET, POST and so on) to the app's own endpoints and check the answers before it finishes; it can only reach that build's own preview, never another site, and the answers are shown to it as untrusted data. The reviewer can search files and fetch (GET only) from the preview too.
+Kaisen edits files in place (one exact piece of text at a time) and can search across them, so changes to a bigger app cost fewer tokens. Each time it writes a file it is told about Python syntax errors, invalid JSON and `kaisen.json` mistakes straight away, without running anything. After a preview is up it can also send requests (GET, POST and so on) to the app's own endpoints and check the answers before it finishes; it can only reach that build's own preview, never another site, and the answers are shown to it as untrusted data. Within one step it keeps the app's cookies between requests (so it can sign up, log in and then test logged-in pages; it sees cookie names, never values, and can clear them to test as a logged-out or second user); a new step starts with none. Before it finishes it is also asked once to tick or explain any open items in `PLAN.md`. The reviewer can search files and fetch (GET only) from the preview too.
 
 ### Reviewer step
 
