@@ -39,3 +39,6 @@ frontend/dist/
 # --- Claude local ---
 .claude/settings.local.json
 .claude/worktrees/
+
+# Kaisen eval output
+eval-data/

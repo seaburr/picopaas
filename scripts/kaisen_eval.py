@@ -6,15 +6,24 @@ settles, runs HTTP checks against the preview and prints a markdown table (desig
 
     E2E_USER_TOKEN=... python scripts/kaisen_eval.py --project-id 123 --briefs "Habit tracker" --max-usd 0.50
 
-The token is read from an environment variable (--token-env) and is never printed.
+The token is read from an environment variable (--token-env) and is never printed or written: data files hold only
+API response bodies, never request headers, and any occurrence of the token is scrubbed before writing.
+
+Data collection (--data-dir): per brief <slug>/detail.json, code.tar.gz, run-<id>-diff.json, checks.json, poll.jsonl,
+plus summary.json and summary.md at the top. --model/--effort set the project's Kaisen model for the run and restore
+the previous values afterwards.
 """
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import re
 import sys
+import tarfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -61,7 +70,11 @@ def load_briefs(path: Path = BRIEFS_FILE, names: list[str] | None = None) -> lis
             if not (isinstance(exp, int) or (isinstance(exp, list) and exp and all(isinstance(x, int) for x in exp))):
                 raise EvalError(f"brief {name!r}: check {c['path']} needs expect_status (int or list of ints)")
     if names:
-        by = {b["name"].lower(): b for b in data}
+        by = {}
+        for b in data:
+            by[slugify(b["name"])] = b
+            by[b["name"].lower()] = b
+        names = [n if n.lower() in by else slugify(n) for n in names]
         missing = [n for n in names if n.lower() not in by]
         if missing:
             raise EvalError(f"unknown brief(s): {', '.join(missing)}; known: {', '.join(b['name'] for b in data)}")
@@ -69,14 +82,149 @@ def load_briefs(path: Path = BRIEFS_FILE, names: list[str] | None = None) -> lis
     return data
 
 
-def evaluate_check(client: httpx.Client, base: str, check: dict) -> tuple[bool, str]:
-    """Run one HTTP check against the preview. Returns (passed, reason)."""
+TOOLS = ("write_file", "edit_file", "read_file", "search_files", "deploy_preview", "http_request", "ask_human", "finish")
+SNIPPET = 2048
+_CALL = re.compile(r"^\[call\] (\S+)")
+_HTTP = re.compile(r"^\[result\] HTTP (\d{3})")
+_TICK = re.compile(r"^\s*[-*]\s+\[([ xX])\]", re.M)
+
+
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "brief"
+
+
+def parse_ts(s: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+    except (ValueError, AttributeError):
+        return None
+
+
+def run_seconds(run: dict) -> float | None:
+    a, b = parse_ts(run.get("started_at")), parse_ts(run.get("finished_at"))
+    if a is None or b is None:
+        return None
+    try:
+        return round((b - a).total_seconds(), 1)
+    except TypeError:  # naive vs aware
+        return None
+
+
+def deploy_ok_seen(runs: list[dict]) -> bool:
+    for r in runs or []:
+        for line in r.get("transcript") or []:
+            if isinstance(line, dict) and "Result: OK" in str(line.get("text", "")):
+                return True
+    return False
+
+
+def analyze_transcripts(runs: list[dict]) -> dict:
+    """Behaviour counters from runs[].transcript (list of {role, text}). Calls render as '[call] name {json}', results
+    as '[result] ...'; results carry no tool name, so they are paired with calls in order. Parsing is tolerant."""
+    tools = {t: 0 for t in TOOLS}
+    other = 0
+    m = {"tool_calls": tools, "other_tool_calls": 0, "write_warnings": 0, "deploy_not_ok": 0, "deploy_ok": 0,
+         "http_status": {}, "repeat_stops": 0, "max_tokens_stops": 0, "turn_limit_stops": 0,
+         "context_resets": 0, "transcripts_missing": 0}
+    for r in sorted(runs or [], key=lambda x: x.get("id") or 0):
+        m["context_resets"] += int(r.get("context_resets") or 0)
+        lines = r.get("transcript")
+        err = str(r.get("error") or "")
+        if not isinstance(lines, list):
+            m["transcripts_missing"] += 1
+            lines = []
+        pending: list[str] = []
+        for ln in lines:
+            if not isinstance(ln, dict):
+                continue
+            text = str(ln.get("text") or "")
+            c = _CALL.match(text)
+            if c:
+                name = c.group(1)
+                pending.append(name)
+                if name in tools:
+                    tools[name] += 1
+                else:
+                    other += 1
+                continue
+            if not text.startswith("[result]"):
+                continue
+            name = pending.pop(0) if pending else ""
+            if name in ("write_file", "edit_file"):
+                m["write_warnings"] += text.count("WARNING:")
+            if "Result: NOT OK" in text:
+                m["deploy_not_ok"] += 1
+            elif "Result: OK" in text:
+                m["deploy_ok"] += 1
+            h = _HTTP.match(text)
+            if h:
+                m["http_status"][h.group(1)] = m["http_status"].get(h.group(1), 0) + 1
+            low = text.lower()
+            if "repeat detector" in low:
+                m["repeat_stops"] += 1
+                err = ""  # same event also stored as run.error; count once
+            if "max_tokens" in low:
+                m["max_tokens_stops"] += 1
+                err = err if "max_tokens" not in err else ""
+        low = err.lower()
+        m["repeat_stops"] += "repeat detector" in low
+        m["max_tokens_stops"] += "max_tokens" in low
+        m["turn_limit_stops"] += "turn limit" in low
+    m["other_tool_calls"] = other
+    return m
+
+
+def analyze_tarball(data: bytes) -> dict:
+    """Facts about the saved code. The generated CONVERSATION file is not counted."""
+    out = {"files": 0, "bytes": 0, "has_tests": False, "has_readme": False, "dockerfile_user": None,
+           "kaisen_json": None, "plan_ticked": None, "plan_unticked": None, "error": None}
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(data), mode="r:gz")
+    except (tarfile.TarError, OSError, EOFError) as e:
+        out["error"] = f"bad tarball: {type(e).__name__}"
+        return out
+    with tf:
+        for mem in tf.getmembers():
+            if not mem.isfile():
+                continue
+            rel = mem.name.split("/", 1)[1] if "/" in mem.name else mem.name
+            base = rel.rsplit("/", 1)[-1]
+            if base.upper().startswith("CONVERSATION"):
+                continue
+            out["files"] += 1
+            out["bytes"] += mem.size
+            low = rel.lower()
+            if "test" in low.split("/")[-1] or low.startswith(("tests/", "test/")) or "/tests/" in low:
+                out["has_tests"] = True
+            if rel.lower() in ("readme.md", "readme", "readme.txt"):
+                out["has_readme"] = True
+            f = tf.extractfile(mem)
+            txt = f.read(200_000).decode("utf-8", "replace") if f and mem.size <= 200_000 else ""
+            if rel == "Dockerfile":
+                users = [ln.strip() for ln in txt.splitlines() if ln.strip().upper().startswith("USER ")]
+                out["dockerfile_user"] = users[-1] if users else ""
+            elif rel == "kaisen.json":
+                try:
+                    out["kaisen_json"] = json.loads(txt)
+                except ValueError:
+                    out["kaisen_json"] = {"unparseable": txt[:200]}
+            elif rel == "PLAN.md":
+                ticks = _TICK.findall(txt)
+                out["plan_ticked"] = sum(t != " " for t in ticks)
+                out["plan_unticked"] = sum(t == " " for t in ticks)
+    return out
+
+
+def evaluate_check_detail(client: httpx.Client, base: str, check: dict) -> dict:
+    """Run one HTTP check against the preview. Never records request headers."""
     kwargs = {}
     if "body" in check:
         kwargs["json"] = check["body"]
     resp = None
     err = ""
+    attempts = 0
     for attempt in range(3):  # a fresh preview can need a moment
+        attempts += 1
         try:
             resp = client.request(check["method"], base + check["path"], **kwargs)
         except httpx.HTTPError as e:
@@ -86,16 +234,29 @@ def evaluate_check(client: httpx.Client, base: str, check: dict) -> tuple[bool, 
             break
         if attempt < 2:
             time.sleep(CHECK_RETRY_SLEEP)
+    rec = {"request": {"method": check["method"], "path": check["path"], "body": check.get("body")},
+           "expect_status": check["expect_status"], "expect_contains": check.get("expect_contains"),
+           "status": resp.status_code if resp is not None else None,
+           "body_snippet": resp.text[:SNIPPET] if resp is not None else "", "attempts": attempts}
+    tag = f"{check['method']} {check['path']}"
     if resp is None:
-        return False, f"{check['method']} {check['path']}: request failed ({err})"
+        rec.update(passed=False, reason=f"{tag}: request failed ({err})")
+        return rec
     exp = check["expect_status"]
     exp = exp if isinstance(exp, list) else [exp]
-    if resp.status_code not in exp:
-        return False, f"{check['method']} {check['path']}: status {resp.status_code}, wanted {exp}"
     want = check.get("expect_contains")
-    if want and want not in resp.text:
-        return False, f"{check['method']} {check['path']}: body lacks {want!r}"
-    return True, "ok"
+    if resp.status_code not in exp:
+        rec.update(passed=False, reason=f"{tag}: status {resp.status_code}, wanted {exp}")
+    elif want and want not in resp.text:
+        rec.update(passed=False, reason=f"{tag}: body lacks {want!r}")
+    else:
+        rec.update(passed=True, reason="ok")
+    return rec
+
+
+def evaluate_check(client: httpx.Client, base: str, check: dict) -> tuple[bool, str]:
+    rec = evaluate_check_detail(client, base, check)
+    return rec["passed"], rec["reason"]
 
 
 CHECK_RETRY_SLEEP = 5
@@ -108,15 +269,85 @@ def preview_base(detail: dict) -> str | None:
     return host.rstrip("/") if "://" in host else f"https://{host}"
 
 
+def new_row(brief: dict, model: str = "") -> dict:
+    return {"name": brief["name"], "slug": slugify(brief["name"]), "model": model, "status": "error", "runs": 0,
+            "steps": 0, "cost": 0.0, "minutes": 0.0, "tests": "-", "checks_passed": 0,
+            "checks_total": len(brief["checks"]), "review": "-", "notes": [], "metrics": {}, "code": {},
+            "first_deploy_ok_min": None, "run_seconds": []}
+
+
 class Evaluator:
     def __init__(self, api: httpx.Client, check_client: httpx.Client, *, project_id: int, max_usd: float,
                  keep: bool = False, sleep=time.sleep, clock=time.monotonic,
-                 poll_seconds: float = POLL_SECONDS, timeout_seconds: float = TIMEOUT_SECONDS, log=None):
+                 poll_seconds: float = POLL_SECONDS, timeout_seconds: float = TIMEOUT_SECONDS, log=None,
+                 data_dir: Path | str | None = None, model: str | None = None, effort: str | None = None,
+                 scrub: list[str] | None = None):
         self.api, self.check_client = api, check_client
         self.project_id, self.max_usd, self.keep = project_id, max_usd, keep
         self.sleep, self.clock = sleep, clock
         self.poll_seconds, self.timeout_seconds = poll_seconds, timeout_seconds
         self.log = log or (lambda m: print(m, file=sys.stderr))
+        self.data_dir = Path(data_dir) if data_dir else None
+        self.want_model, self.want_effort = model, effort
+        self.scrub = [x for x in (scrub or []) if x]
+        self.model_used = model or ""
+        self.previous: dict | None = None
+        self._polls: list[dict] = []
+        self._first_ok_at: float | None = None
+
+    # -- data files (only API response bodies are ever written, never request headers)
+    def _clean(self, text: str) -> str:
+        for sec in self.scrub:
+            text = text.replace(sec, "[redacted]")
+        return text
+
+    def _write(self, rel: str, content: str | bytes) -> None:
+        if self.data_dir is None:
+            return
+        path = self.data_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(self._clean(content))
+
+    def _write_json(self, rel: str, obj) -> None:
+        self._write(rel, json.dumps(obj, indent=2, default=str))
+
+    # -- project settings
+    def apply_settings(self) -> None:
+        """Set the project's model/effort for the eval, remembering the previous values for restore_settings."""
+        try:
+            cur = self._req("GET", f"/projects/{self.project_id}/kaisen").json()
+        except (EvalError, httpx.HTTPError):
+            if self.want_model or self.want_effort:
+                raise
+            return  # only reading for the record; not fatal
+        self.model_used = self.want_model or cur.get("model", "")
+        if not (self.want_model or self.want_effort):
+            return
+        body = {}
+        self.previous = {}
+        if self.want_model:
+            self.previous["model"] = cur.get("model")
+            body["model"] = self.want_model
+        if self.want_effort:
+            self.previous["effort"] = cur.get("effort")
+            body["effort"] = self.want_effort
+        self._req("PUT", f"/projects/{self.project_id}/kaisen", json=body)
+        self.log(f"project {self.project_id}: model/effort set to {body} (was {self.previous})")
+
+    def restore_settings(self) -> bool:
+        if not self.previous:
+            return True
+        try:
+            self._req("PUT", f"/projects/{self.project_id}/kaisen", json=self.previous)
+        except (EvalError, httpx.HTTPError) as e:
+            self.log(f"WARNING: could not restore project settings {self.previous}: {e}")
+            return False
+        self.log(f"project {self.project_id}: settings restored to {self.previous}")
+        self.previous = None
+        return True
 
     # -- API helpers
     def _req(self, method: str, path: str, **kw) -> httpx.Response:
@@ -133,11 +364,22 @@ class Evaluator:
         return self._req("GET", f"/kaisen/builds/{build_id}").json()
 
     # -- poll loop
+    def _record_poll(self, d: dict) -> None:
+        t = round(self.clock() - self._t0, 1)
+        runs = d.get("runs") or []
+        latest = runs[0] if runs else {}
+        self._polls.append({"t": t, "status": d.get("status"), "run_id": latest.get("id"), "step": latest.get("step"),
+                            "last_tool": latest.get("last_tool"), "cost_usd": d.get("cost_usd") if d.get("cost_usd") is not None
+                            else latest.get("cost_usd"), "context_resets": latest.get("context_resets")})
+        if self._first_ok_at is None and deploy_ok_seen(runs):
+            self._first_ok_at = t
+
     def wait_settled(self, build_id: int, state: dict) -> dict:
         """Poll until done/stopped/error. Answers a waiting question once, resumes a stop/error once."""
         deadline = self.clock() + self.timeout_seconds
         while True:
             d = self._detail(build_id)
+            self._record_poll(d)
             st = d.get("status")
             if st == "done":
                 return d
@@ -165,10 +407,12 @@ class Evaluator:
 
     # -- one brief
     def run_brief(self, brief: dict) -> dict:
-        row = {"name": brief["name"], "status": "error", "runs": 0, "steps": 0, "cost": 0.0, "minutes": 0.0,
-               "tests": "-", "checks_passed": 0, "checks_total": len(brief["checks"]), "review": "-", "notes": []}
-        start = self.clock()
+        row = new_row(brief, self.model_used)
+        self._polls, self._first_ok_at = [], None
+        start = self._t0 = self.clock()
         build_id = None
+        final: dict | None = None
+        check_records: list[dict] = []
         try:
             r = self._req("POST", "/kaisen/builds", json={"project_id": self.project_id,
                                                           "name": f"eval {brief['name']}"[:60], "brief": brief["brief"]})
@@ -180,7 +424,7 @@ class Evaluator:
             if created.get("status") == "idle":
                 self._req("POST", f"/kaisen/builds/{build_id}/run")
             state = {"answered": False, "resumed": False}
-            d = self.wait_settled(build_id, state)
+            d = final = self.wait_settled(build_id, state)
             row["minutes"] = round((self.clock() - start) / 60, 1)
             self._fill(row, d)
             if state["answered"]:
@@ -190,18 +434,63 @@ class Evaluator:
             if d["status"] == "done":
                 base = preview_base(d)
                 if base:
-                    self._run_checks(row, brief["checks"], base)
+                    check_records = self._run_checks(row, brief["checks"], base)
                 else:
                     row["notes"].append("no preview hostname")
         except EvalError as e:
             row["notes"].append(str(e))
         finally:
+            try:
+                self._collect(row, build_id, final, check_records)
+            except Exception as e:  # data collection must never block the cleanup below
+                row["notes"].append(f"data collection failed: {type(e).__name__}: {e}")
             if build_id is not None and not self.keep:
                 try:
                     self._req("DELETE", f"/kaisen/builds/{build_id}", params={"delete_app": "true"})
                 except (EvalError, httpx.HTTPError) as e:
                     row["notes"].append(f"cleanup failed: {e}")
         return row
+
+    def _collect(self, row: dict, build_id: int | None, final: dict | None, check_records: list[dict]) -> None:
+        """Metrics always; files only with a data dir. Runs before the build is deleted."""
+        if build_id is None:
+            return
+        slug = row["slug"]
+        if final is None:  # the poll loop died: fetch whatever exists
+            try:
+                final = self._detail(build_id)
+            except (EvalError, httpx.HTTPError):
+                final = None
+        runs = (final or {}).get("runs") or []
+        row["metrics"] = analyze_transcripts(runs)
+        row["run_seconds"] = [run_seconds(r) for r in sorted(runs, key=lambda x: x.get("id") or 0)]
+        if self._first_ok_at is not None:
+            row["first_deploy_ok_min"] = round(self._first_ok_at / 60, 1)
+        tar = None
+        try:
+            tar = self._req("GET", f"/kaisen/builds/{build_id}/download").content
+        except (EvalError, httpx.HTTPError) as e:
+            row["notes"].append(f"no code download: {str(e)[:80]}")
+        if tar:
+            row["code"] = analyze_tarball(tar)
+        if self.data_dir is None:
+            return
+        if final is not None:
+            self._write_json(f"{slug}/detail.json", final)
+        if tar:
+            self._write(f"{slug}/code.tar.gz", tar)
+        for r in runs:
+            if not r.get("has_diff"):
+                continue
+            try:
+                resp = self.api.get(f"/kaisen/builds/{build_id}/runs/{r['id']}/diff")
+            except httpx.HTTPError:
+                continue
+            if resp.status_code == 200:
+                self._write(f"{slug}/run-{r['id']}-diff.json", resp.text)
+            # 404 (endpoint not deployed yet or no restore point): tolerated
+        self._write_json(f"{slug}/checks.json", check_records)
+        self._write(f"{slug}/poll.jsonl", "".join(json.dumps(p) + "\n" for p in self._polls))
 
     @staticmethod
     def _fill(row: dict, d: dict) -> None:
@@ -215,21 +504,25 @@ class Evaluator:
         verdicts = [r["review"]["verdict"] for r in runs if isinstance(r.get("review"), dict)]
         row["review"] = verdicts[0] if verdicts else "-"  # runs are newest first
 
-    def _run_checks(self, row: dict, checks: list[dict], base: str) -> None:
+    def _run_checks(self, row: dict, checks: list[dict], base: str) -> list[dict]:
+        records = []
         for c in checks:
-            ok, why = evaluate_check(self.check_client, base, c)
-            row["checks_passed"] += ok
-            if not ok:
-                row["notes"].append(why)
+            rec = evaluate_check_detail(self.check_client, base, c)
+            records.append(rec)
+            row["checks_passed"] += rec["passed"]
+            if not rec["passed"]:
+                row["notes"].append(rec["reason"])
+        return records
 
     # -- all briefs
     def run_all(self, briefs: list[dict]) -> tuple[list[dict], float]:
         rows, spent = [], 0.0
         for b in briefs:
             if spent >= self.max_usd:
-                rows.append({"name": b["name"], "status": "skipped", "runs": 0, "steps": 0, "cost": 0.0, "minutes": 0.0,
-                             "tests": "-", "checks_passed": 0, "checks_total": len(b["checks"]), "review": "-",
-                             "notes": [f"spend guard: ${spent:.3f} >= ${self.max_usd:.2f}"]})
+                row = new_row(b, self.model_used)
+                row["status"] = "skipped"
+                row["notes"].append(f"spend guard: ${spent:.3f} >= ${self.max_usd:.2f}")
+                rows.append(row)
                 continue
             row = self.run_brief(b)
             spent += row["cost"]
@@ -237,23 +530,50 @@ class Evaluator:
         return rows, spent
 
 
+def _fmt_counts(d: dict) -> str:
+    return " ".join(f"{k}:{v}" for k, v in sorted(d.items())) or "-"
+
+
 def render_table(rows: list[dict], *, date: str = "", model_note: str = "") -> str:
     out = []
     if date or model_note:
         out.append(f"### Kaisen eval {date} {model_note}".rstrip())
         out.append("")
-    out.append("| Brief | Status | Runs | Steps | Cost | Time | Tests | Checks | Review | Notes |")
-    out.append("|---|---|---|---|---|---|---|---|---|---|")
+    out.append("| Brief | Model | Status | Runs | Steps | Cost | Time | Tests | Checks | Review | Notes |")
+    out.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:
         notes = "; ".join(r["notes"]).replace("|", "/")
-        out.append(f"| {r['name']} | {r['status']} | {r['runs']} | {r['steps']} | ${r['cost']:.3f} | {r['minutes']:.1f} min "
-                   f"| {r['tests']} | {r['checks_passed']}/{r['checks_total']} | {r['review']} | {notes} |")
+        out.append(f"| {r['name']} | {r.get('model') or '-'} | {r['status']} | {r['runs']} | {r['steps']} | ${r['cost']:.3f} "
+                   f"| {r['minutes']:.1f} min | {r['tests']} | {r['checks_passed']}/{r['checks_total']} | {r['review']} | {notes} |")
     ran = [r for r in rows if r["status"] != "skipped"]
     done = sum(r["status"] == "done" for r in rows)
     cp, ct = sum(r["checks_passed"] for r in rows), sum(r["checks_total"] for r in ran)
     out.append("")
     out.append(f"Totals: {done}/{len(rows)} done, cost ${sum(r['cost'] for r in rows):.3f}, "
                f"{sum(r['minutes'] for r in rows):.1f} min, {sum(r['steps'] for r in rows)} steps, checks {cp}/{ct}.")
+    behaving = [r for r in rows if r.get("metrics")]
+    if behaving:
+        out += ["", "#### Behaviour", "",
+                "| Brief | Model | Tool calls | WARNINGs | Deploy not OK | HTTP statuses | Stops (repeat/max_tokens/turns) "
+                "| Ctx resets | 1st deploy OK | Run durations (s) | Files / bytes | Tests / README | USER | PLAN done/open | kaisen.json |",
+                "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for r in behaving:
+            m, c = r["metrics"], r.get("code") or {}
+            tools = " ".join(f"{k}:{v}" for k, v in m["tool_calls"].items() if v) or "-"
+            if m.get("other_tool_calls"):
+                tools += f" other:{m['other_tool_calls']}"
+            fd = r.get("first_deploy_ok_min")
+            plan = "-" if c.get("plan_ticked") is None else f"{c['plan_ticked']}/{c['plan_unticked']}"
+            kj = c.get("kaisen_json")
+            kjs = "-" if kj is None else json.dumps(kj, separators=(",", ":"))[:60]
+            out.append(
+                f"| {r['name']} | {r.get('model') or '-'} | {tools} | {m['write_warnings']} | {m['deploy_not_ok']} "
+                f"| {_fmt_counts(m['http_status'])} | {m['repeat_stops']}/{m['max_tokens_stops']}/{m['turn_limit_stops']} "
+                f"| {m['context_resets']} | {'-' if fd is None else f'{fd:.1f} min'} "
+                f"| {','.join('?' if x is None else f'{x:.0f}' for x in r.get('run_seconds') or []) or '-'} "
+                f"| {c.get('files', '-')} / {c.get('bytes', '-')} "
+                f"| {'yes' if c.get('has_tests') else 'no'} / {'yes' if c.get('has_readme') else 'no'} "
+                f"| {c.get('dockerfile_user') if c.get('dockerfile_user') is not None else '-'} | {plan} | {kjs.replace('|', '/')} |")
     return "\n".join(out) + "\n"
 
 
@@ -261,11 +581,15 @@ def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Manual Kaisen eval over the starter briefs (spends real money; never in CI).")
     p.add_argument("--base-url", default=DEFAULT_BASE_URL)
     p.add_argument("--project-id", type=int, required=True)
-    p.add_argument("--briefs", default="all", help='comma-separated brief names, or "all"')
+    p.add_argument("--briefs", default="all", help='comma-separated brief names or slugs, in run order, or "all"')
     p.add_argument("--token-env", default="E2E_USER_TOKEN", help="env var holding the API token")
     p.add_argument("--max-usd", type=float, default=1.00, help="stop starting new briefs once this much is spent")
     p.add_argument("--out", help="markdown file to append the results table to (default: stdout)")
     p.add_argument("--keep", action="store_true", help="do not delete builds and previews afterwards")
+    p.add_argument("--data-dir", help="where to save per-brief data (default: <scratch-dir>/eval-data/<timestamp>)")
+    p.add_argument("--scratch-dir", default=".", help="base for the default data dir")
+    p.add_argument("--model", help="set the project's Kaisen model for this run; restored afterwards")
+    p.add_argument("--effort", help="set the project's Kaisen effort for this run; restored afterwards")
     return p.parse_args(argv)
 
 
@@ -281,17 +605,35 @@ def main(argv=None) -> int:
     except EvalError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    with httpx.Client(base_url=a.base_url.rstrip("/"), headers={"Authorization": f"Bearer {token}"}, timeout=30) as api, \
+    data_dir = Path(a.data_dir) if a.data_dir else Path(a.scratch_dir) / "eval-data" / time.strftime("%Y%m%d-%H%M%S")
+    restored = True
+    with httpx.Client(base_url=a.base_url.rstrip("/"), headers={"Authorization": f"Bearer {token}"}, timeout=60) as api, \
             httpx.Client(timeout=20, follow_redirects=False) as chk:
-        ev = Evaluator(api, chk, project_id=a.project_id, max_usd=a.max_usd, keep=a.keep)
-        rows, _ = ev.run_all(briefs)
-    table = render_table(rows, date=time.strftime("%Y-%m-%d"), model_note=f"(project {a.project_id})")
+        ev = Evaluator(api, chk, project_id=a.project_id, max_usd=a.max_usd, keep=a.keep, data_dir=data_dir,
+                       model=a.model, effort=a.effort, scrub=[token])
+        t0 = time.monotonic()
+        try:
+            ev.apply_settings()
+            rows, _ = ev.run_all(briefs)
+        except EvalError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        finally:
+            restored = ev.restore_settings()
+        wall = round(time.monotonic() - t0, 1)
+    date = time.strftime("%Y-%m-%d")
+    table = render_table(rows, date=date, model_note=f"(project {a.project_id}, model {ev.model_used or '?'})")
+    summary = {"date": date, "project_id": a.project_id, "model": ev.model_used, "effort": a.effort,
+               "wall_seconds": wall, "settings_restored": restored, "rows": rows}
+    ev._write_json("summary.json", summary)
+    ev._write("summary.md", table)
+    print(f"data saved in {data_dir}", file=sys.stderr)
     if a.out:
         with open(a.out, "a") as f:
             f.write("\n" + table)
     else:
         print(table)
-    return 0 if all(r["status"] == "done" for r in rows) else 1
+    return 0 if all(r["status"] == "done" for r in rows) and restored else 1
 
 
 if __name__ == "__main__":
