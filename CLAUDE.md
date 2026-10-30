@@ -10,6 +10,8 @@ MySQL DB (50MB) and Spaces bucket (100MB). Caps: 384MB RAM, 512MB image, CPU per
   carry answers into ARCHITECTURE/requests, and move answered items to its Resolved section. Put every new question for
   Chas here (one place to look), linking to the request file for background.
 - `docs/requests/`: infra requests to Chas (what / why / monthly cost). Never provision without an approved request.
+- `docs/KAISEN_OPS.md`: how PicoPaaS and the seaburr/kaisen repo fit together, how Kaisen ships and runs (worker,
+  runtime image pin via bootstrap), test accounts and traps. Read it before any Kaisen work.
 
 ## Hard rules
 - Budget: approx. $60/mo target (baseline ~$75 with approved requests). Any new paid resource needs a request in `docs/requests/`.
