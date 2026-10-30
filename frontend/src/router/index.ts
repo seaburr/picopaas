@@ -35,6 +35,10 @@ const router = createRouter({
       props: true,
     },
     { path: '/apps/:id(\\d+)/settings', redirect: (to) => `/apps/${to.params.id}/edit` },
+    { path: '/kaisen', component: () => import('../views/KaisenHomeView.vue'), meta: { requiresAuth: true, title: 'Kaisen' } },
+    { path: '/kaisen/new', component: () => import('../views/KaisenNewView.vue'), meta: { requiresAuth: true, title: 'New build' } },
+    { path: '/kaisen/settings', component: () => import('../views/KaisenSettingsView.vue'), meta: { requiresAuth: true, title: 'Kaisen settings' } },
+    { path: '/kaisen/:id(\\d+)', component: () => import('../views/KaisenBuildView.vue'), meta: { requiresAuth: true, title: 'Build' }, props: true },
     { path: '/projects/new', component: () => import('../views/ProjectView.vue'), meta: { requiresAuth: true, title: 'New project' } },
     { path: '/projects/:id(\\d+)', component: () => import('../views/ProjectView.vue'), meta: { requiresAuth: true, title: 'Project' }, props: true },
     { path: '/invite/:token', component: () => import('../views/InviteView.vue'), meta: { requiresAuth: true, title: 'Project invite' }, props: true },
@@ -70,6 +74,7 @@ router.beforeEach(async (to) => {
   const home = auth.user?.role === 'platform_admin' && auth.user.features?.databases === false ? '/admin' : '/apps'
   if (to.path === '/') return home
   if (to.path === '/pending') return home
+  if (to.path.startsWith('/kaisen') && auth.user?.features?.kaisen !== true) return '/apps'
   if (to.meta.requiresAdmin && auth.user?.role !== 'platform_admin') return '/apps'
   if ((to.path === '/login' || to.path === '/register') && auth.user) return home
 })

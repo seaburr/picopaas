@@ -27,5 +27,7 @@ const what = computed(() => {
     :require-text="app?.name"
     @confirm="$emit('confirm')"
     @cancel="$emit('cancel')"
-  />
+  >
+    <p v-if="app?.kaisen_build_id" class="help">The build and its code stay in Kaisen.</p>
+  </ConfirmDialog>
 </template>

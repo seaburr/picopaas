@@ -162,6 +162,7 @@ function meta(app: App) {
         <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <RouterLink to="/apps/new" class="btn-primary">Create app</RouterLink>
           <button type="button" class="btn-secondary" @click="trySample">Try a sample app</button>
+          <RouterLink v-if="auth.user?.features?.kaisen" to="/kaisen/new" class="btn-secondary">Build with Kaisen (Preview)</RouterLink>
           <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
         </div>
         <p class="help">The sample deploys podinfo ({{ SAMPLE_APP.image }}, port {{ SAMPLE_APP.port }}), a tiny demo web app.</p>
@@ -174,6 +175,9 @@ function meta(app: App) {
               <div class="flex min-w-0 items-center gap-2">
                 <RouterLink :to="`/apps/${app.id}`" class="truncate font-medium text-white hover:underline" :title="app.name">{{ app.name }}</RouterLink>
                 <StatusBadge :status="app.status" />
+                <RouterLink v-if="app.kaisen_build_id" :to="`/kaisen/${app.kaisen_build_id}`" class="badge-info shrink-0" title="Built with Kaisen (Preview)">
+                  <span class="sm:hidden" aria-hidden="true">Kaisen</span><span class="hidden sm:inline" aria-hidden="true">Built with Kaisen · Preview</span><span class="sr-only">Built with Kaisen, Preview</span>
+                </RouterLink>
                 <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="badge-warn" :title="overCapTip(app)">over cap</span>
               </div>
               <div class="mt-0.5"><HostLink :hostname="primaryHost(app)" /></div>

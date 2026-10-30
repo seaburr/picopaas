@@ -61,6 +61,7 @@ function skip(e: Event) {
         <nav aria-label="Main" class="hidden items-center gap-0.5 sm:flex">
           <template v-if="auth.user">
             <RouterLink to="/apps" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Apps</RouterLink>
+            <RouterLink v-if="auth.user.features?.kaisen" to="/kaisen" class="nav-link" active-class="nav-active">Kaisen <span class="badge-info ml-1.5">Preview</span></RouterLink>
           </template>
           <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
           <div v-if="isAdmin" class="ml-2 flex items-center gap-0.5 border-l border-pico-border pl-2" role="group" aria-label="Administration">
@@ -108,6 +109,7 @@ function skip(e: Event) {
       <div class="flex flex-col gap-0.5">
         <template v-if="auth.user">
           <RouterLink to="/apps" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Apps</RouterLink>
+          <RouterLink v-if="auth.user.features?.kaisen" to="/kaisen" class="nav-link" active-class="nav-active">Kaisen <span class="badge-info ml-1.5">Preview</span></RouterLink>
         </template>
         <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
         <a v-if="!auth.user" href="/privacy" class="nav-link">Privacy</a>

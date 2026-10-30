@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 // Status is never colour-only: every state has a text label plus a distinct glyph.
 // Labels: pending -> Queued, error -> Failed (see UX copy decisions).
-const props = defineProps<{ status: string }>()
+const props = defineProps<{ status: string; kind?: 'app' | 'build' }>()
 
 interface Look { label: string; cls: string; glyph: 'dot' | 'pulse' | 'clock' | 'lock' | 'cross' | 'square' | 'check'; tip: string }
 const looks: Record<string, Look> = {
@@ -17,8 +17,18 @@ const looks: Record<string, Look> = {
   active: { label: 'Active', cls: 'badge-ok', glyph: 'dot', tip: '' },
   revoked: { label: 'Revoked', cls: 'badge-neutral', glyph: 'square', tip: '' },
 }
+// Kaisen build statuses (kind="build"): "running" would clash with an app's Running.
+const buildLooks: Record<string, Look> = {
+  idle: { label: 'Not built', cls: 'badge-neutral', glyph: 'square', tip: 'No run yet.' },
+  queued: { label: 'Queued', cls: 'badge-neutral', glyph: 'clock', tip: 'Waiting for the builder.' },
+  running: { label: 'Building', cls: 'badge-warn', glyph: 'pulse', tip: 'Kaisen is writing code.' },
+  waiting: { label: 'Needs you', cls: 'badge-info', glyph: 'dot', tip: 'Kaisen asked a question.' },
+  done: { label: 'Ready', cls: 'badge-ok', glyph: 'dot', tip: 'Last run finished.' },
+  error: { label: 'Failed', cls: 'badge-error', glyph: 'cross', tip: 'The last run stopped with an error.' },
+  stopped: { label: 'Stopped', cls: 'badge-neutral', glyph: 'square', tip: 'Stopped at a spend cap, a refusal or a loop guard.' },
+}
 const look = computed<Look>(
-  () => looks[props.status] ?? { label: props.status ? props.status[0].toUpperCase() + props.status.slice(1) : 'Unknown', cls: 'badge-neutral', glyph: 'dot', tip: '' },
+  () => (props.kind === 'build' ? buildLooks : looks)[props.status] ?? { label: props.status ? props.status[0].toUpperCase() + props.status.slice(1) : 'Unknown', cls: 'badge-neutral', glyph: 'dot', tip: '' },
 )
 </script>
 

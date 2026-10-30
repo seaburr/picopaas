@@ -8,7 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
 import UsageBar from '../components/UsageBar.vue'
 import HostLink from '../components/HostLink.vue'
-import { Download, PackageSearch, RefreshCw, RotateCw, Settings, X, Undo2 } from 'lucide-vue-next'
+import { Download, PackageSearch, Wand2, RefreshCw, RotateCw, Settings, X, Undo2 } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import Sparkline from '../components/Sparkline.vue'
@@ -355,6 +355,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <div class="flex flex-wrap items-center gap-2">
               <h1 class="page-title break-all">{{ app.name }}</h1>
               <StatusBadge :status="app.status" />
+              <span v-if="app.kaisen_build_id" class="badge-info" title="Built with Kaisen (Preview)">Built with Kaisen · Preview</span>
             </div>
             <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2">
               <HostLink :hostname="primaryHost(app)" class="text-base font-medium" />
@@ -365,6 +366,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </ul>
           </div>
           <div class="flex items-center gap-2">
+            <IconButton v-if="app.kaisen_build_id" :icon="Wand2" label="Open in Kaisen" :to="`/kaisen/${app.kaisen_build_id}`" />
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
             <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
             <IconButton :icon="Settings" label="Settings" :to="`/apps/${app.id}/edit`" />

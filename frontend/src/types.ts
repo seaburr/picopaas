@@ -22,6 +22,7 @@ export interface Features {
   storage: boolean
   db_engines?: string[] // engines with free capacity now: a subset of ['mysql', 'pg']
   volumes?: boolean // persistent volumes enabled (off by default)
+  kaisen?: boolean // Kaisen (Preview) enabled on this instance; hidden unless true
 }
 
 export interface Limits {
@@ -116,6 +117,7 @@ export interface ImageVersion {
 
 export interface App {
   id: number
+  kaisen_build_id?: number | null
   project_id?: number | null
   owner_id: number
   name: string
@@ -613,4 +615,120 @@ export interface AdminProject {
   owner_emails: string[]
   app_limit: number | null
   app_limit_effective: number
+}
+
+// ---- Kaisen (Preview). Shapes per docs/design/kaisen-ui.md section 9; align with app/kaisen schemas. ----
+// Mirrors app/kaisen: idle (never run) | queued | running | waiting (question) | done | stopped (cap, refusal,
+// repeat detector) | error.
+export type BuildStatus = 'idle' | 'queued' | 'running' | 'waiting' | 'done' | 'stopped' | 'error'
+
+export interface KaisenBuild {
+  id: number
+  name: string
+  status: BuildStatus
+  app_id: number | null
+  app_hostname: string | null
+  app_status: string | null
+  file_count: number
+  cost_usd: number
+  last_run_at: string | null
+  last_error: string | null
+  open_questions: number
+  created_by: { id: number; email: string }
+  created_at: string
+}
+
+export interface KaisenRun {
+  id: number
+  kind: 'build' | 'feedback' | 'resume'
+  status: BuildStatus
+  summary: string | null
+  error: string | null
+  cost_usd: number
+  started_at: string
+  finished_at: string | null
+  step?: number | null
+  transcript: { role: string; text: string }[] | null
+  transcript_trimmed: boolean
+}
+
+export interface KaisenInboxItem {
+  id: number
+  kind: 'question' | 'budget' | 'refusal' | 'error' | 'push' | 'deploy'
+  text: string
+  status: 'open' | 'answered' | 'dismissed'
+  answer: string | null
+  created_at: string
+}
+
+export interface KaisenBuildDetail extends KaisenBuild {
+  brief: string
+  project_id: number
+  slug: string
+  files: { path: string; size: number }[]
+  runs: KaisenRun[]
+  inbox: KaisenInboxItem[]
+  spend: { build_usd: number; cap_build: number; month_usd: number; cap_month?: number }
+  output: { mode: 'download' | 'github'; repo: string | null; branch: string | null; can_push: boolean; pr_url?: string | null }
+  can_run: boolean
+}
+
+export interface KaisenFile {
+  path: string
+  size: number
+  content: string | null
+  binary: boolean
+  truncated: boolean
+}
+
+export interface KaisenSecretState {
+  set: boolean
+  last4: string | null
+}
+
+export interface KaisenSettings {
+  anthropic_key: KaisenSecretState
+  model: string
+  effort: string
+  models: string[]
+  efforts: string[]
+  cap_run: number
+  cap_day: number
+  cap_build: number
+  output_mode: 'download' | 'github'
+  github_repo: string
+  github_branch: string
+  github_token: KaisenSecretState
+  push_on_finish: boolean
+  open_pr: boolean
+  can_edit: boolean
+  updated_at: string | null
+}
+
+export interface KaisenSettingsPayload {
+  anthropic_key?: string
+  clear_anthropic_key?: boolean
+  model: string
+  effort: string
+  cap_run: number
+  cap_day: number
+  cap_build: number
+  output_mode: 'download' | 'github'
+  github_repo: string
+  github_branch: string
+  github_token?: string
+  clear_github_token?: boolean
+  push_on_finish: boolean
+  open_pr: boolean
+}
+
+export interface KaisenSpend {
+  month_usd: number
+  cap_day: number
+  today_usd: number
+}
+
+export interface KaisenTestResult {
+  ok: boolean
+  message: string
 }

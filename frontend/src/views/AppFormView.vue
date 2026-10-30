@@ -8,6 +8,7 @@ import BackupSettings from '../components/BackupSettings.vue'
 import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import HostLink from '../components/HostLink.vue'
+import KaisenChooser from '../components/KaisenChooser.vue'
 import NavBar from '../components/NavBar.vue'
 import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -355,6 +356,7 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
+      <KaisenChooser v-if="!isEdit && auth.user?.features?.kaisen" />
       <div v-if="!gone" class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
@@ -370,6 +372,10 @@ async function onSubmit() {
         <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" :to="`/apps/${loadedApp.id}`" />
       </div>
 
+      <p v-if="isEdit && loadedApp?.kaisen_build_id" class="alert-info mb-3">
+        This app is built by Kaisen. Changes you make here can be overwritten the next time Kaisen deploys.
+        <RouterLink :to="`/kaisen/${loadedApp.kaisen_build_id}`" class="link">Open in Kaisen</RouterLink>
+      </p>
       <p v-if="templateNote" class="alert-info mb-3">
         <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
       </p>
