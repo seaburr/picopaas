@@ -90,6 +90,7 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 Shipped: per-project settings (Anthropic key, model, effort, caps, output), builds with questions, feedback and resume, previews deployed as normal apps in the project, MySQL for previews, download and GitHub push (optional pull request), spend caps, audit events, the `kaisen-worker` Deployment and a pinned runtime image.
 
 Next:
+- Web access for the builder (queued): Anthropic's server-side web fetch and search behind a per-project toggle, off by default, with a domain allow-list (design section 11).
 - Logs in `deploy_preview`, routed through the platform's pod-log path so the builder can read why a preview fails.
 - Run generated tests before finishing a build.
 - A reviewer role that checks the result before it is marked done.

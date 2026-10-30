@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-29 [release-blogger] DONE: published release-kaisen-moves-into-picopaas (Kaisen moves in, Preview); slug was new, linked back to release-kaisen-agent-factory-builds-on-picopaas.
 - 2026-10-30 [scm-security] DONE: pushed e794224 (backend+tests+docs), 32a754f (frontend). Dismiss route: build access via get_build (non-member 404), item must belong to build (404), open question 409, read-scope keys blocked by get_active_user (403 on non-safe methods); pushed without separate security review. gitleaks clean; Kaisen tests 77 passed, typecheck+build green; CI 40986611263, image 40986611235, deploy 40986693209 ok; /healthz 200. Closed stale deploy notices 1 and 2 on build 1 (0 open after).
 - 2026-10-30 [manager] NOTE: Kaisen web access (server-side web_fetch/web_search, per-project toggle) approved by Chas; design docs/design/kaisen.md section 11; queued after the final pentest + coverage pass.
 - 2026-10-30 [manager] DONE: Kaisen inbox: a deploy that goes through closes the build's open 'deploy' notices; POST /kaisen/builds/{id}/inbox/{item}/dismiss saves dismissal for the whole project (open questions 409); frontend dismiss uses it; 'Preview deployed' notice now green, not red. Tests: 3 new, Kaisen 77 passed.
@@ -1119,3 +1120,7 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-10-29 [ui-ux-designer] DONE: Kaisen UI browser-checked (desktop + 390px emulated via headless Chrome; Chrome window resize unavailable). Fixed: home meta line no longer truncates on mobile; New build example chips stack/left-align on mobile; build page no longer says 'app was deleted' for a never-deployed failed build. typecheck+build green. Not committed.
 - 2026-10-29 [ui-ux-designer] START: second browser check of Kaisen UI (widths/grids vs Account, App settings, Apps list, App health).
 - 2026-10-29 [ui-ux-designer] DONE: second Kaisen browser check. Widths match: main 1152 (left 159) at 1470 on all full-width pages; cards 1104; Kaisen settings = Account two-col 546+546; New build = New app 672. At 390 (CDP emulation) main 390, cards 358 at left 16, no h-scroll anywhere. No deviations; no frontend edits.
+- 2026-10-29 [security] START: final live pentest pass (Kaisen authz, bundles, tenant isolation regression).
+- 2026-10-29 [qa] START: final coverage pass incl. Kaisen modules.
+- 2026-10-30 [security] DONE: final live pass (PENTEST 'Final live pass'): no HIGH/MEDIUM; fixed LOW P1 (bundle token in access log), P2 (legacy plain bundle URL rotated on redeploy) with tests; open P3. Throwaway build/apps/project deleted. App 184 needs one Deploy after release to hold its URL as a secret. Not committed.
+- 2026-10-29 [qa] DONE: full suite 1879 -> 1909 tests (+30: tests/test_kaisen_units.py 24, 6 in test_kaisen_worker.py); coverage 93% -> 94% (803 -> 691 miss). app/kaisen: builder 86->99, deploy 82->96, paths 82->100, worker 72->91, router 96. Gaps: github.py/llm.py real clients (live-only).

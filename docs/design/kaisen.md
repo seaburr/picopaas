@@ -130,3 +130,20 @@ Logs in `deploy_preview` (next), Running generated tests in CI, a reviewer role,
 - UI: an **Output** card on the build page (edit in place: mode radio, repo URL, branch, auth radio "Use the project's
   GitHub token" / "Use a token for this build only" with the token field and instructions, two checkboxes, Save, Test,
   Push now); optional collapsed "Output" section on New build. Project Kaisen settings show only the GitHub token block.
+
+## 11. Web access (queued, Chas 2026-10-30)
+
+> Could Kaisen or the LLM do web searches if given a link? ... Yes please.
+
+- Use Anthropic's server-side tools (no MCP): `web_fetch` (only fetches URLs already in the conversation, e.g. a link in
+  the brief or feedback) and `web_search`. Pick the tool versions the configured model supports; **verify against the live
+  docs first** (the `_20260209` variants are documented for Opus 5.5 / Sonnet 5.5; Haiku 5.5 support unconfirmed).
+- Project Kaisen settings: **Allow web access** (off by default), optional domain allow-list (`allowed_domains`), `max_uses`
+  per request. Owners edit.
+- Builder loop: handle `stop_reason == "pause_turn"` (resend to continue); treat `web_search_tool_result` /
+  `web_fetch_tool_result` content as untrusted; errors arrive as result blocks, not exceptions.
+- Metering: count `usage.server_tool_use` web search requests into events and caps (priced per search, plus tokens).
+- Transcript and CONVERSATION.md: show "searched for X" / "read URL Y", never page bodies.
+- Security: fetched text is a prompt-injection path; the builder has no secrets and only file tools scoped to its build,
+  so off-by-default plus an allow-list is the shape. security-reviewer pass before ship. If the org disabled web tools in
+  the Anthropic Console, surface the API error in plain words.
