@@ -16,7 +16,7 @@ from app.main import app as fastapi_app
 from app.providers.fake import FakeRegistry
 from app.routers.kaisen import get_github_factory, get_model_factory
 from tests.conftest import register_and_login
-from tests.kaisen_helpers import KEY, TOKEN, FakeRuntime, Fakes, Keep, db
+from tests.kaisen_helpers import KEY, TOKEN, FakeRuntime, Fakes, Keep, app_env, db
 
 IMG = "ghcr.io/example/kaisen-runtime:1"
 PER_CALL = (1000 * 4.00 + 500 * 20.00) / 1_000_000  # default fake usage on the default model
@@ -33,8 +33,9 @@ def env(make_client, monkeypatch):
     a = make_client()
     register_and_login(a, "a@example.com")
     pid = a.post("/projects", json={"name": "Team"}).json()["id"]
-    assert a.put(f"/projects/{pid}/kaisen", json={"anthropic_key": KEY}).status_code == 200
+    # build first, key second: creating a build with a key queues its first run, these tests start it themselves
     bid = a.post("/kaisen/builds", json={"project_id": pid, "name": "Todo list", "brief": "A tiny todo list"}).json()["id"]
+    assert a.put(f"/projects/{pid}/kaisen", json={"anthropic_key": KEY}).status_code == 200
     return type("Env", (), {"admin": admin, "a": a, "pid": pid, "bid": bid, "fakes": f})
 
 
@@ -63,7 +64,8 @@ def detail(env):
 # ---- the full path -------------------------------------------------------------------------------
 
 def test_scripted_build_with_question_resume_finish_and_auto_deploy(env):
-    env.a.put(f"/projects/{env.pid}/kaisen", json={"output_mode": "github", "github_repo": "octo/demo", "github_token": TOKEN})
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"github_token": TOKEN})
+    assert env.a.put(f"/kaisen/builds/{env.bid}/output", json={"mode": "github", "repo": "octo/demo"}).status_code == 200
     start(env)
     seen = []
     model = FakeModelClient([
@@ -97,6 +99,7 @@ def test_scripted_build_with_question_resume_finish_and_auto_deploy(env):
     assert len(apps) == 1 and apps[0]["kaisen_build_id"] == env.bid and apps[0]["want_db"] is True
     assert apps[0]["image"] == IMG and apps[0]["id"] == d["app_id"]
     envs = {e["key"] for e in apps[0]["env"]}
+    assert app_env(apps[0]["id"])["KAISEN_BUNDLE_URL"][1] is True
     assert {"KAISEN_BUNDLE_URL", "KAISEN_BUNDLE_SHA256", "DB_HOST", "DATABASE_URL"} <= envs
     kinds = [i["kind"] for i in d["inbox"]]
     assert kinds.count("deploy") == 1 and "push" in kinds  # push on finish reported in the inbox
@@ -367,3 +370,24 @@ def test_retention_trims_old_transcripts_and_events(env):
     assert run["transcript"] is None and run["transcript_trimmed"] is True
     # a trimmed run cannot be resumed from; a fresh build run starts instead
     assert builder.start_build(s, s.get(KaisenBuild, env.bid))[0].kind == "build"
+
+
+def test_push_on_finish_uses_the_build_token_and_respects_the_flag(env):
+    build_token = "not-the-build-github-token"
+    r = env.a.put(f"/kaisen/builds/{env.bid}/output", json={
+        "mode": "github", "repo": "https://github.com/octo/mine.git", "auth": "build", "github_token": build_token,
+        "push_on_finish": True})
+    assert r.status_code == 200, r.text
+    start(env)
+    seen, gh = [], Fakes().github
+    model = FakeModelClient([reply(write("app.py", "x = 1"), tool_use("finish", {"summary": "done"}))])
+    assert go(model, gh_fn=lambda t: (seen.append(t), gh)[1]) is True
+    assert seen == [build_token] and gh.pushes[-1]["repo"] == "octo/mine"
+    d = detail(env)
+    assert any(i["kind"] == "push" and "Pushed to" in i["text"] for i in d["inbox"]) and build_token not in str(d)
+
+    env.a.put(f"/kaisen/builds/{env.bid}/output", json={"push_on_finish": False})
+    start(env)
+    seen.clear()
+    assert go(FakeModelClient([reply(tool_use("finish", {"summary": "again"}))]), gh_fn=lambda t: (seen.append(t), gh)[1]) is True
+    assert seen == []

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint
-from sqlalchemy import false as sa_false
+from sqlalchemy import false as sa_false, true as sa_true
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,12 +28,7 @@ class KaisenSettings(Base):
     cap_run: Mapped[float] = mapped_column(Float, nullable=False)
     cap_day: Mapped[float] = mapped_column(Float, nullable=False)
     cap_build: Mapped[float] = mapped_column(Float, nullable=False)
-    github_repo: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
-    github_branch: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
-    github_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    output_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="download", server_default="download")
-    push_on_finish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    open_pr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    github_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # the project GitHub token (builds may use it)
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
@@ -53,6 +48,14 @@ class KaisenBuild(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    # Output is per build (design section 10)
+    output_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="download", server_default="download")
+    github_repo: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    github_branch: Mapped[str] = mapped_column(String(255), nullable=False, default="", server_default="")
+    push_on_finish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
+    open_pr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    github_auth: Mapped[str] = mapped_column(String(16), nullable=False, default="project", server_default="project")
+    github_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # only when github_auth == "build"
 
 
 class KaisenFile(Base):

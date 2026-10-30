@@ -376,6 +376,7 @@ KAISEN_DEFAULT_MODEL = "claude-opus-5-5"
 KAISEN_EFFORTS = ("low", "medium", "high")
 KAISEN_DEFAULT_EFFORT = "medium"
 KAISEN_OUTPUT_MODES = ("download", "github")
+KAISEN_GITHUB_AUTHS = ("project", "build")
 # Default spend caps in USD (per run, per UTC day for the project, per build in total).
 KAISEN_DEFAULT_CAP_RUN = 2.0
 KAISEN_DEFAULT_CAP_DAY = 8.0
@@ -393,7 +394,7 @@ KAISEN_FEEDBACK_MAX = 4000
 KAISEN_ANSWER_MAX = 4000
 KAISEN_MAX_BUILDS_PER_PROJECT = int(os.environ.get("KAISEN_MAX_BUILDS_PER_PROJECT", "20"))
 # Preview loop.
-KAISEN_BUNDLES_KEPT = 3
+KAISEN_BUNDLES_KEPT = 1  # the bundle URL is a bearer capability held by the app; only the newest stays valid
 KAISEN_PREVIEW_WAIT_TOOL = 240  # seconds the deploy_preview tool waits for running + an HTTP answer
 KAISEN_PREVIEW_RESULT_BYTES = 4096
 KAISEN_PREVIEW_LOG_LINES = 60

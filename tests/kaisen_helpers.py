@@ -6,7 +6,7 @@ from app.kaisen.llm import FakeModelClient, ModelError
 from app.main import app as fastapi_app
 
 KEY = "not-the-anthropic-key"
-TOKEN = "fixture-github-token-5678"
+TOKEN = "not-the-github-token"
 
 
 class Keep:
@@ -69,5 +69,15 @@ class FakeAnthropic:
 class Fakes:
     def __init__(self):
         self.github = FakeGitHub()
+        self.tokens = []  # the token each GitHub client was built with
         self.anthropic = FakeAnthropic()
         self.model = None
+
+
+def app_env(app_id):
+    """Decrypted env of an app straight from the database: {key: (value, is_secret)}."""
+    from app import crypto
+    s = db()
+    s.expire_all()
+    a = s.get(models.App, app_id)
+    return {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in a.env_vars}

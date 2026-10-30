@@ -20,7 +20,7 @@ from .llm import AnthropicClient, ModelError
 from .models import KaisenBuild, KaisenEvent, KaisenInbox, KaisenRun
 from .paths import ToolError
 from .redact import redact
-from .settings import load as load_settings
+from .settings import load as load_settings, load_for_build, output_for
 
 log = logging.getLogger("app.kaisen.worker")
 
@@ -100,7 +100,7 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
     def _deployer(s, run):
         s.commit()  # persist this turn's file writes: a deploy failure rolls the session back
         b = s.get(KaisenBuild, run.build_id)
-        rs = load_settings(s, b.project_id)
+        rs = load_for_build(s, b)
         try:
             app, _ = deploy_mod.deploy_build(s, b, registry_factory(), force=False)
         except deploy_mod.DeployError as e:
@@ -119,7 +119,7 @@ def deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep=time.sl
     with S() as s:
         run = s.get(KaisenRun, run_id)
         b = s.get(KaisenBuild, run.build_id)
-        rs = load_settings(s, b.project_id)
+        rs = load_for_build(s, b)
         try:
             app, changed = deploy_mod.deploy_build(s, b, registry_factory(), force=False)
             res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, sleep=sleep)
@@ -134,13 +134,14 @@ def push_on_finish(S, run_id, gh_factory) -> None:
     with S() as s:
         run = s.get(KaisenRun, run_id)
         b = s.get(KaisenBuild, run.build_id)
-        rs = load_settings(s, b.project_id)
-        if not (rs.push_enabled and rs.push_on_finish):
+        rs = load_for_build(s, b)
+        out = output_for(b, rs)
+        if not (out.push_enabled and out.push_on_finish):
             return
         try:
-            msg = pushing.push_build(s, b, rs, gh_factory)
+            msg = pushing.push_build(s, b, out, gh_factory)
         except GitHubError as e:
-            msg = redact(f"Automatic push failed: {e}. Fix Kaisen settings, then press Push on the build page.",
+            msg = redact(f"Automatic push failed: {e}. Fix the build's Output settings, then press Push on the build page.",
                          rs.secret_values())
         s.add(KaisenInbox(build_id=b.id, run_id=run_id, kind="push", text=msg))
         s.commit()

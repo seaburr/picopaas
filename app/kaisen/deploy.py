@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app import audit, config, models
+from app import audit, config, crypto, models, projects
 from . import export
 from .models import KaisenBuild, KaisenBundle, KaisenFile
 from .redact import redact
@@ -42,24 +42,26 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def make_bundle(db: Session, b: KaisenBuild) -> tuple[str, str, bool]:
-    """Store a bundle for the build's current files (reusing the newest if identical) and keep the last few.
-    Returns (bundle URL, sha256, reused). A reused bundle's token is unknown (only its hash is stored), so a new
-    token row is always minted; `reused` only says the content did not change."""
+def make_bundle(db: Session, b: KaisenBuild, *, reuse: bool = False) -> tuple[str | None, str, bool]:
+    """Store a bundle for the build's current files and keep only the newest (the URL is a bearer capability the app
+    holds; older URLs 404). Returns (bundle URL, sha256, unchanged). With reuse=True and identical content nothing is
+    minted and the URL is None: the app already holds the live URL (only its hash is stored)."""
     files = [(r.path, r.content) for r in db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))]
     if not files:
         raise DeployError("The build has no files yet.")
     data = export.build_tarball(b.slug, files)
     sha = hashlib.sha256(data).hexdigest()
     newest = db.scalars(select(KaisenBundle).where(KaisenBundle.build_id == b.id).order_by(KaisenBundle.id.desc())).first()
-    reused = newest is not None and newest.sha256 == sha
+    unchanged = newest is not None and newest.sha256 == sha
+    if unchanged and reuse:
+        return None, sha, True
     token = secrets.token_urlsafe(32)
     db.add(KaisenBundle(build_id=b.id, token_hash=token_hash(token), sha256=sha, data=data))
     db.flush()
     keep = db.scalars(select(KaisenBundle.id).where(KaisenBundle.build_id == b.id).order_by(KaisenBundle.id.desc())
                       .limit(config.KAISEN_BUNDLES_KEPT)).all()
     db.execute(delete(KaisenBundle).where(KaisenBundle.build_id == b.id, KaisenBundle.id.not_in(keep)))
-    return f"{config.platform_public_url()}/kaisen/bundles/{token}.tar.gz", sha, reused
+    return f"{config.platform_public_url()}/kaisen/bundles/{token}.tar.gz", sha, unchanged
 
 
 # A build that declares {"database": "mysql"} in kaisen.json gets its own PicoPaaS MySQL database and these env refs.
@@ -83,16 +85,43 @@ def wanted_database(db: Session, b: KaisenBuild) -> str | None:
     return want
 
 
-def spec_yaml(name: str, image: str, url: str, sha: str, project_slug: str, database: str | None = None) -> str:
+def owned_key(key: str) -> bool:
+    """Env keys a Kaisen deploy owns and rewrites; everything else on the app is the user's and is preserved."""
+    return key.startswith("KAISEN_") or key.startswith("DB_") or key == "DATABASE_URL"
+
+
+def spec_yaml(name: str, image: str, sha: str, project_slug: str, database: str | None = None,
+              keep_env: dict[str, str] | None = None, keep_secrets: list[str] | None = None) -> str:
+    """The bundle URL is a bearer capability, so it goes in as a spec secret (KAISEN_BUNDLE_URL), never in the YAML.
+    keep_env / keep_secrets carry the user's own variables (names only for secrets) through the deploy."""
     q = json.dumps  # JSON strings are valid YAML scalars
     out = (f"apiVersion: picopaas/v1\nname: {q(name)}\nimage: {q(image)}\nport: {config.KAISEN_PREVIEW_PORT}\n"
            f"project: {q(project_slug)}\nhealthCheck:\n  enabled: false\n")
     if database:
         out += f"resources:\n  db: true\n  db_engine: {database}\n"
-    out += f"env:\n  KAISEN_BUNDLE_URL: {q(url)}\n  KAISEN_BUNDLE_SHA256: {q(sha)}\n"
-    if database:
-        out += "".join(f"  {k}: {q(v)}\n" for k, v in DB_ENV.items())
+    env = {"KAISEN_BUNDLE_SHA256": sha, **(DB_ENV if database else {}), **(keep_env or {})}
+    out += "env:\n" + "".join(f"  {q(k)}: {q(v)}\n" for k, v in env.items())
+    out += "secrets:\n" + "".join(f"  - {q(k)}\n" for k in ["KAISEN_BUNDLE_URL", *(keep_secrets or [])])
     return out
+
+
+def user_env(existing: models.App | None) -> tuple[dict[str, str], list[str]]:
+    """The existing app's variables Kaisen does not own: (plain values, secret names). Secret values stay in the
+    database; deploy_spec keeps a secret that is declared but not supplied."""
+    plain: dict[str, str] = {}
+    secret_names: list[str] = []
+    if existing is None:
+        return plain, secret_names
+    for v in existing.env_vars:
+        if owned_key(v.key):
+            continue
+        if v.is_secret:
+            secret_names.append(v.key)
+        else:
+            val = crypto.try_decrypt(v.value_encrypted)
+            if val is not None:
+                plain[v.key] = val
+    return plain, secret_names
 
 
 def live_app(db: Session, b: KaisenBuild) -> models.App | None:
@@ -118,20 +147,24 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
     project = db.get(models.Project, b.project_id)
     if project is None or project.deleted_at is not None:
         raise DeployError("The project this build belongs to was deleted.", final=True)
+    projects.lock_project(db, project.id)  # serialise the name-clash check and the deploy with other creators
     existing = live_app(db, b)
     name = existing.name if existing is not None else b.name
     clash = (db.query(models.App).filter(models.App.project_id == project.id, models.App.name == name,
                                          models.App.deleted_at.is_(None)).first())
     if clash is not None and clash.kaisen_build_id != b.id:
+        db.rollback()
         raise DeployError(f"This project already has an app named {name}. Rename the build and deploy again.", final=True, status=409)
     database = wanted_database(db, b)
-    url, sha, reused = make_bundle(db, b)
-    if existing is not None and reused and not force:
+    url, sha, unchanged = make_bundle(db, b, reuse=existing is not None and not force)
+    if url is None:
         db.commit()
         return existing, False
-    yaml_text = spec_yaml(name, config.KAISEN_RUNTIME_IMAGE, url, sha, project.slug, database)
+    keep_env, keep_secrets = user_env(existing)
+    yaml_text = spec_yaml(name, config.KAISEN_RUNTIME_IMAGE, sha, project.slug, database, keep_env, keep_secrets)
     try:
-        out = deploy_spec(SpecDeploy(spec=yaml_text), db=db, current_user=creator, registry=registry)
+        out = deploy_spec(SpecDeploy(spec=yaml_text, secrets={"KAISEN_BUNDLE_URL": url}), db=db, current_user=creator,
+                          registry=registry)
     except HTTPException as e:
         db.rollback()
         raise DeployError(str(e.detail), final=e.status_code in (403, 404), status=e.status_code) from None

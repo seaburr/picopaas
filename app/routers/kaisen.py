@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, deploy as deploy_mod, pushing, settings as ksettings
+from app.kaisen import builder, deploy as deploy_mod, export, pushing, settings as ksettings
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
 from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun)
@@ -56,13 +56,8 @@ class SettingsIn(BaseModel):
     cap_run: Optional[float] = None
     cap_day: Optional[float] = None
     cap_build: Optional[float] = None
-    output_mode: Optional[str] = Field(default=None, max_length=16)
-    github_repo: Optional[str] = Field(default=None, max_length=300)
-    github_branch: Optional[str] = Field(default=None, max_length=100)
     github_token: Optional[str] = Field(default=None, max_length=500)
     clear_github_token: bool = False
-    push_on_finish: Optional[bool] = None
-    open_pr: Optional[bool] = None
 
 
 @router.get("/projects/{project_id}/kaisen")
@@ -96,11 +91,12 @@ def test_settings(what: str, project_id: int, db: Session = Depends(get_db),
             if not rs.anthropic_api_key:
                 return {"ok": False, "message": "No Anthropic API key is saved for this project yet."}
             got = model_factory(rs.anthropic_api_key).retrieve_model(rs.model)
-            return {"ok": True, "message": f"OK: the key works and can use {got}."}
+            return {"ok": True, "message": "Key valid. Selected model available."}
         if what == "github":
-            if not (rs.github_repo and rs.github_token):
-                return {"ok": False, "message": "Save a repository URL and an access token first."}
-            return {"ok": True, "message": github_factory(rs.github_token).check_repo(rs.github_repo)}
+            if not rs.github_token:
+                return {"ok": False, "message": "No GitHub token is saved for this project yet."}
+            return {"ok": True, "message": "A project GitHub token is saved. Builds that choose it can push; "
+                                           "use Test on a build's Output card to check a repository."}
     except (ModelError, GitHubError) as exc:
         return {"ok": False, "message": redact(str(exc), rs.secret_values())}
     raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -108,11 +104,25 @@ def test_settings(what: str, project_id: int, db: Session = Depends(get_db),
 
 # ---------------------------------------------------------------- builds
 
+class OutputIn(BaseModel):
+    """Per-build output (design section 10). Every field optional on PUT; secrets are write-only."""
+    model_config = ConfigDict(extra="forbid")
+    mode: Optional[str] = Field(default=None, max_length=16)
+    repo: Optional[str] = Field(default=None, max_length=300)
+    branch: Optional[str] = Field(default=None, max_length=100)
+    push_on_finish: Optional[bool] = None
+    open_pr: Optional[bool] = None
+    auth: Optional[str] = Field(default=None, max_length=16)
+    github_token: Optional[str] = Field(default=None, max_length=500)
+    clear_github_token: bool = False
+
+
 class BuildIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     project_id: Optional[int] = None  # default: the caller's personal project
     name: str = Field(min_length=1, max_length=config.KAISEN_NAME_MAX)
     brief: str = Field(min_length=1, max_length=config.KAISEN_BRIEF_MAX)
+    output: Optional[OutputIn] = None
 
     @field_validator("name", "brief")
     @classmethod
@@ -145,7 +155,7 @@ def get_build(db: Session, build_id: int, user: models.User, *, include_deleted:
 
 
 def _secrets(db: Session, b: KaisenBuild) -> list[str]:
-    return ksettings.load(db, b.project_id).secret_values()
+    return ksettings.load_for_build(db, b).secret_values()
 
 
 def _app_view(db: Session, b: KaisenBuild) -> Optional[dict]:
@@ -178,7 +188,7 @@ def _list_item(db: Session, b: KaisenBuild) -> dict:
 def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
     out = _list_item(db, b)
     sec = _secrets(db, b)
-    rs = ksettings.load(db, b.project_id)
+    rs = ksettings.load_for_build(db, b)
     runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id.desc()).limit(10)).all()
     out.update({
         "brief": b.brief,
@@ -199,7 +209,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         "app": _app_view(db, b),
         "spend": {"build_usd": round(builder.spend_build(db, b.id), 6), "cap_build": rs.cap_build,
                   "month_usd": round(builder.spend_month(db, b.project_id), 6)},
-        "output": {"mode": rs.output_mode, "repo": rs.github_repo, "branch": rs.github_branch, "can_push": rs.push_enabled},
+        "output": ksettings.describe_output(b, rs),
         "has_anthropic_key": bool(rs.anthropic_api_key),
         "can_run": getattr(request.state, "api_scope", "full") != "read",
     })
@@ -233,11 +243,35 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
         raise HTTPException(status_code=403, detail=(
             f"This project already has {n} builds, the most allowed. Delete one you no longer need."))
     b = KaisenBuild(project_id=project.id, created_by=user.id, name=payload.name, brief=payload.brief,
-                    slug=builder.unique_slug(db, payload.name), status="idle")
+                    slug=builder.unique_slug(db, payload.name), status="idle",
+                    output_mode="download", github_repo="", github_branch="", push_on_finish=True, open_pr=False,
+                    github_auth="project")
+    out_data = payload.output.model_dump(exclude_unset=True) if payload.output else {}
+    if out_data:
+        try:
+            ksettings.apply_output(b, ksettings.load(db, project.id), out_data)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
     db.add(b)
     db.commit()
     audit.record(db, user, "kaisen.build_create", "kaisen_build", b.id, f"project={project.id}")
-    return _detail(db, b, request)
+    start_error = None
+    if not ksettings.load(db, project.id).anthropic_api_key:
+        start_error = ("This project has no Anthropic API key yet, so the build was created but not started. "
+                       "A project owner can add one in Kaisen settings, then press Build.")
+    else:
+        run, msg = builder.start_build(db, b)
+        if run is None:
+            start_error = msg
+        else:
+            db.commit()
+            audit.record(db, user, "kaisen.run", "kaisen_build", b.id, f"run={run.id} kind={run.kind}")
+    if out_data:
+        audit.record(db, user, "kaisen.output_update", "kaisen_build", b.id,
+                     "fields=" + ",".join(ksettings.changed_fields(out_data)))
+    out = _detail(db, b, request)
+    out["start_error"] = start_error  # null when the first run was queued; else a plain reason (build stays idle)
+    return out
 
 
 @router.get("/kaisen/builds/{build_id}")
@@ -357,11 +391,13 @@ def read_file(build_id: int, path: str, db: Session = Depends(get_db), user: mod
 
 @router.get("/kaisen/builds/{build_id}/download")
 def download(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    from app.kaisen import export
     b = get_build(db, build_id, user)
     files = [(r.path, r.content) for r in db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))]
     if not files:
         raise HTTPException(status_code=409, detail="The build has no files yet.")
+    runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id)).all()
+    files = [f for f in files if f[0] != export.CONVERSATION_FILE]
+    files.append((export.CONVERSATION_FILE, export.build_conversation(b.name, b.brief, runs, _secrets(db, b))))
     return Response(export.build_tarball(b.slug, files), media_type="application/gzip", headers={
         "Content-Disposition": f'attachment; filename="{b.slug}.tar.gz"', "Cache-Control": "no-store"})
 
@@ -370,18 +406,59 @@ def download(build_id: int, db: Session = Depends(get_db), user: models.User = D
 def push(build_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
          github_factory=Depends(get_github_factory)):
     b = get_build(db, build_id, user)
-    rs = ksettings.load(db, b.project_id)
-    if not rs.push_enabled:
+    rs = ksettings.load_for_build(db, b)
+    out = ksettings.output_for(b, rs)
+    if not out.push_enabled:
         raise HTTPException(status_code=422, detail=(
-            "Pushing to GitHub is not set up. A project owner can choose it under Output in Kaisen settings."))
+            "Pushing to GitHub is not set up for this build. Choose GitHub under Output, with a repository and a token."))
     try:
-        msg = pushing.push_build(db, b, rs, github_factory)
+        msg = pushing.push_build(db, b, out, github_factory)
     except GitHubError as exc:
         raise HTTPException(status_code=502, detail=redact(str(exc), rs.secret_values()))
     db.add(KaisenInbox(build_id=b.id, kind="push", text=msg, status="closed"))
     db.commit()
-    audit.record(db, user, "kaisen.push", "kaisen_build", b.id, f"repo={rs.github_repo}")
+    audit.record(db, user, "kaisen.push", "kaisen_build", b.id, f"repo={out.repo}")
     return _detail(db, b, request)
+
+
+@router.get("/kaisen/builds/{build_id}/output")
+def get_output(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    return ksettings.describe_output(b, ksettings.load(db, b.project_id))
+
+
+@router.put("/kaisen/builds/{build_id}/output")
+def put_output(build_id: int, payload: OutputIn, db: Session = Depends(get_db),
+               user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    data = payload.model_dump(exclude_unset=True)
+    rs = ksettings.load(db, b.project_id)
+    try:
+        ksettings.apply_output(b, rs, data)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    db.commit()
+    audit.record(db, user, "kaisen.output_update", "kaisen_build", b.id, "fields=" + ",".join(ksettings.changed_fields(data)))
+    return ksettings.describe_output(b, rs)
+
+
+@router.post("/kaisen/builds/{build_id}/output/test")
+def test_output(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
+                github_factory=Depends(get_github_factory)):
+    b = get_build(db, build_id, user)
+    rs = ksettings.load_for_build(db, b)
+    out = ksettings.output_for(b, rs)
+    if out.mode != "github":
+        return {"ok": False, "message": "Output is set to download only. Choose GitHub first."}
+    if not out.repo:
+        return {"ok": False, "message": "Save a repository URL first."}
+    if not out.token:
+        return {"ok": False, "message": "No access token is available. Add one for this build or in the project's Kaisen settings."}
+    try:
+        return {"ok": True, "message": github_factory(out.token).check_repo(out.repo)}
+    except GitHubError as exc:
+        return {"ok": False, "message": redact(str(exc), rs.secret_values())}
 
 
 @router.get("/kaisen/spend")
