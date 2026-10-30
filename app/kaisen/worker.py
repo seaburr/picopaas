@@ -108,6 +108,19 @@ def _fit(block: str, text: str) -> str:
     return (block + head + sep + body)[-config.KAISEN_PREVIEW_RESULT_BYTES:]
 
 
+def _await_tests(s, b, runtime, app_id, secrets_, clock, sleep) -> None:
+    """The app answers, so its tests already ran (boot.py runs them first), but the log snapshot the reconciler takes
+    every few seconds may predate them: wait a little for the result instead of telling the builder "no result"."""
+    deadline = clock() + config.KAISEN_TEST_WAIT_SECONDS
+    while testresults.awaiting(b) and clock() < deadline:
+        s.commit()  # no transaction held while sleeping
+        sleep(5)
+        s.refresh(b)
+        logs = runtime.logs(app_id)
+        if logs:
+            testresults.record(s, b, deploy_mod.sanitize(logs, secrets_))
+
+
 def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sleep=time.sleep):
     """The builder's deploy_preview tool: (session, run) -> (ok, text). Raises ToolError."""
     def _deployer(s, run):
@@ -126,6 +139,8 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
         res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, clock, sleep)
         s.refresh(b)
         testresults.record(s, b, res.logs)
+        if res.ok:
+            _await_tests(s, b, runtime, app.id, rs.secret_values(), clock, sleep)
         block = redact(testresults.tool_block(s, b), rs.secret_values())
         s.commit()
         return res.ok, _fit(block, res.text)
@@ -134,7 +149,8 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
 
 def make_requester(runtime):
     """The builder's http_request tool: (session, run, input) -> text. Raises ToolError."""
-    return lambda s, run, inp: httptool.perform(s, run, runtime, inp)
+    jar = httptool.CookieJar()  # one per step (make_requester runs per tick): a fresh context starts logged out
+    return lambda s, run, inp: httptool.perform(s, run, runtime, inp, jar)
 
 
 def deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep=time.sleep) -> None:

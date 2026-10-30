@@ -5,12 +5,13 @@ has the kube client and already powers the user-facing logs view) snapshots the 
 `kaisen_preview_logs` while the build has an active run. The worker only reads that row from the database. Snapshots are
 redacted with the build's secrets before they are stored, stripped of control characters, line- and byte-capped, and the
 worker redacts again when it hands them to the model. App output is untrusted data."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import config, k8s_manifests, models
+from . import testresults
 from .builder import ACTIVE
 from .deploy import sanitize
 from .models import KaisenBuild, KaisenPreviewLog
@@ -53,7 +54,12 @@ def snapshot_preview_logs(session: Session, kube) -> int:
     rows = session.execute(
         select(models.App, KaisenBuild).join(KaisenBuild, KaisenBuild.id == models.App.kaisen_build_id).where(
             models.App.deleted_at.is_(None), models.App.status.in_(LOGGED_STATUSES),
-            KaisenBuild.deleted_at.is_(None), KaisenBuild.status.in_(ACTIVE))).all()
+            KaisenBuild.deleted_at.is_(None),
+            KaisenBuild.status.in_(ACTIVE) | (
+                KaisenBuild.test_status.in_((testresults.PENDING, "running"))
+                & (KaisenBuild.test_ran_at > _now() - timedelta(seconds=config.KAISEN_TEST_WATCH_SECONDS))))).all()
+    # a finished run's build stays in only while its test result is still awaited (bounded by the watch window)
+    rows = [(app, b) for app, b in rows if b.status in ACTIVE or testresults.awaiting(b)]
     keep = {app.id for app, _ in rows}
     stale = [r for r in session.scalars(select(KaisenPreviewLog.app_id)) if r not in keep]
     if stale:
@@ -73,6 +79,8 @@ def snapshot_preview_logs(session: Session, kube) -> int:
             session.add(KaisenPreviewLog(app_id=app.id, text=text, captured_at=_now()))
         else:
             row.text, row.captured_at = text, _now()
+        if testresults.awaiting(build):
+            testresults.record(session, build, text)  # results land even when no tool call is looking
         done += 1
     session.commit()
     return done

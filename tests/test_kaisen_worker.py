@@ -44,9 +44,13 @@ def env(make_client, monkeypatch):
 def go(model, runtime=None, **kw):
     """One worker tick with scripted model replies; returns whether work was attempted."""
     kw.setdefault("gh_fn", lambda token: Fakes().github)
+    now = [0.0]  # fake clock that only sleep() moves, so deploy_preview's waits cost no real time
+
+    def sleep(n):
+        now[0] += n
     return worker.tick(Keep(db()), worker.Lease(), model_fn=lambda key: model,
                        registry_factory=lambda: FakeRegistry(default_size_bytes=1024 * 1024),
-                       runtime=runtime or FakeRuntime(), wait_s=1, sleep=lambda s: None, **kw)
+                       runtime=runtime or FakeRuntime(), wait_s=1, clock=lambda: now[0], sleep=sleep, **kw)
 
 
 def write(path, content):

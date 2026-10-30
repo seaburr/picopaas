@@ -292,7 +292,7 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
     app = db.get(models.App, out.id)
     app.kaisen_build_id = b.id
     b.app_id = app.id
-    testresults.reset(b)  # the new bundle's tests have not run yet
+    testresults.reset(db, b)  # the new bundle's tests have not run yet
     close_deploy_notices(db, b)
     db.commit()
     audit.record(db, creator, "kaisen.deploy", "kaisen_build", b.id, f"app={app.id} created={out.created}")
@@ -309,7 +309,7 @@ class Runtime(Protocol):
     def probe(self, url: str) -> int | None: ...
     def logs(self, app_id: int) -> str | None: ...
     def request(self, method: str, url: str, body: bytes | None, headers: dict[str, str],
-                max_bytes: int) -> tuple[int, dict[str, str], bytes] | None: ...  # None = no answer
+                max_bytes: int) -> tuple[int, dict[str, str | list[str]], bytes] | None: ...  # None = no answer; set-cookie is a list
 
 
 class PlatformRuntime:
@@ -351,7 +351,9 @@ class PlatformRuntime:
                         n += len(chunk)
                         if n > max_bytes or time.monotonic() > deadline:
                             break
-                    return r.status_code, dict(r.headers), b"".join(chunks)[:max_bytes + 1]
+                    hdrs: dict = dict(r.headers)
+                    hdrs["set-cookie"] = r.headers.get_list("set-cookie")  # dict() would keep only one
+                    return r.status_code, hdrs, b"".join(chunks)[:max_bytes + 1]
         except httpx.HTTPError:
             return None
 

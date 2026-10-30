@@ -24,6 +24,7 @@ from .models import KaisenBuild, KaisenBundle, KaisenFile
 BEGIN = "KAISEN_TESTS_BEGIN"
 _RESULT = re.compile(r"^KAISEN_TESTS_RESULT (pass|fail|timeout) exit=(-?\d+)(?: sha=([0-9a-f]{0,12}))?\s*$")
 STATUSES = ("running", "pass", "fail", "timeout")
+PENDING = "pending"  # a test is declared and the new bundle's result has not been seen yet (test_ran_at = since when)
 
 
 @dataclass
@@ -81,8 +82,22 @@ def current_sha(db: Session, b: KaisenBuild) -> str:
     return row.sha256[:12] if row else ""
 
 
-def reset(b: KaisenBuild) -> None:
-    b.test_status = b.test_ran_at = b.test_tail = None
+def reset(db: Session, b: KaisenBuild) -> None:
+    """A new bundle was deployed: forget the old result. With a declared test the build waits for the new one, which
+    makes the reconciler keep snapshotting the preview's logs (app/kaisen/logs.py) until it arrives or
+    KAISEN_TEST_WATCH_SECONDS pass, even after the run has finished (eval 2026-10-30: results were missed)."""
+    b.test_tail = None
+    if declared_test(db, b):
+        b.test_status, b.test_ran_at = PENDING, _now()
+    else:
+        b.test_status = b.test_ran_at = None
+
+
+def awaiting(b: KaisenBuild) -> bool:
+    """Still waiting for the current bundle's result (pending or running), within the watch window."""
+    if b.test_status not in (PENDING, "running") or b.test_ran_at is None:
+        return False
+    return (_now() - b.test_ran_at).total_seconds() < config.KAISEN_TEST_WATCH_SECONDS
 
 
 def record(db: Session, b: KaisenBuild, log: str | None) -> TestResult | None:
@@ -95,16 +110,19 @@ def record(db: Session, b: KaisenBuild, log: str | None) -> TestResult | None:
         return None  # a previous bundle's pod
     if res.status == "running" and b.test_status in ("pass", "fail", "timeout"):
         return None  # keep the finished result
+    if res.status == "running" and b.test_status == "running":
+        b.test_tail = res.tail  # keep test_ran_at: it bounds the watch window
+        db.flush()
+        return res
     b.test_status, b.test_tail = res.status, res.tail
-    if res.status != "running" or b.test_ran_at is None:
-        b.test_ran_at = _now()
+    b.test_ran_at = _now()
     db.flush()
     return res
 
 
 def view(b: KaisenBuild) -> dict | None:
     """Build detail `tests`: null until a result exists."""
-    if not b.test_status:
+    if not b.test_status or b.test_status == PENDING:
         return None
     return {"status": b.test_status, "ran_at": b.test_ran_at.isoformat() if b.test_ran_at else None,
             "tail": b.test_tail or ""}

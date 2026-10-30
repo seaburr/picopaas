@@ -447,6 +447,8 @@ KAISEN_TEST_OUTPUT_BYTES = 4096  # tail of the test output boot.py prints
 KAISEN_TEST_OUTPUT_LINES = 40
 KAISEN_TEST_COMMAND_MAX = 300  # characters in the kaisen.json "test" command
 KAISEN_TEST_TAIL_BYTES = 2000  # stored on the build and shown to the builder
+KAISEN_TEST_WATCH_SECONDS = 600  # after a deploy, keep snapshotting logs this long for the test result (even after a run ends)
+KAISEN_TEST_WAIT_SECONDS = 45  # deploy_preview waits up to this long after HTTP 2xx for a declared test's result
 # Reviewer pass (F8e): a second, cheap model call after the builder finishes. Off by default (it adds a call per run).
 # Builder harness tools (design s15): search_files and http_request.
 KAISEN_SEARCH_MAX_HITS = 50
@@ -463,6 +465,11 @@ KAISEN_HTTP_PATH_MAX = 2000
 KAISEN_HTTP_BODY_MAX = 16 * 1024  # request body
 KAISEN_HTTP_HEADERS_MAX = 8
 KAISEN_HTTP_HEADER_VALUE_MAX = 1000
+KAISEN_HTTP_COOKIES_MAX = 20  # cookies the http_request jar keeps per step
+KAISEN_HTTP_COOKIE_BYTES = 4096  # name + value of one jar cookie
+KAISEN_PLAN_GATE_ITEMS = 5  # unticked PLAN.md items quoted when the first finish is refused
+KAISEN_PLAN_GATE_ITEM_CHARS = 80
+KAISEN_REVIEWER_HTTP_LOG_MAX = 15  # http_request calls summarised in the reviewer's seed
 
 KAISEN_REVIEWER_MODES = ("off", "on")
 KAISEN_REVIEWER_DEFAULT_MODEL = "claude-haiku-5-5"
