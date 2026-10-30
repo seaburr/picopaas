@@ -3,6 +3,13 @@
 Env: KAISEN_BUNDLE_URL, KAISEN_BUNDLE_SHA256. Downloads the bundle, verifies it, safely extracts it to
 /home/app/src, reads kaisen.json, installs dependencies and starts the app on $PORT (8080).
 Every phase logs a line prefixed [kaisen-runtime]; any failure exits non-zero.
+
+Optional kaisen.json "test": a shell command run after the install and before the app starts (python and node only).
+Its output (capped) is framed by marker lines the platform parses from the log:
+    KAISEN_TESTS_BEGIN
+    ...output tail...
+    KAISEN_TESTS_RESULT <pass|fail|timeout> exit=<N> sha=<first 12 of KAISEN_BUNDLE_SHA256>
+The app starts whatever the result, so the preview stays reachable. Old manifests without "test" behave as before.
 """
 import functools
 import hashlib
@@ -13,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import urllib.request
 
@@ -22,6 +30,16 @@ SRC = os.path.join(HOME, "src")
 RUNTIMES = ("static", "python", "node")
 MAX_BUNDLE_BYTES = 20 * 1024 * 1024
 MAX_EXTRACT_BYTES = 50 * 1024 * 1024
+# Defaults only: the platform sets both from app/config.py through the app's env.
+DEFAULT_TEST_TIMEOUT = 120
+DEFAULT_TEST_BYTES = 4096
+TEST_MAX_LINES = 40
+TEST_COMMAND_MAX = 300
+TESTS_BEGIN = "KAISEN_TESTS_BEGIN"
+TESTS_RESULT = "KAISEN_TESTS_RESULT"
+# Never handed to the generated tests: platform credentials and the bundle capability.
+TEST_ENV_DROP_PREFIXES = ("KAISEN_", "DB_", "S3_")
+TEST_ENV_DROP_NAMES = ("DATABASE_URL",)
 
 
 class BootError(Exception):
@@ -35,7 +53,7 @@ def log(msg: str) -> None:
 def parse_manifest(text: str | None) -> dict:
     """kaisen.json -> {"runtime", "start", "health"}. Missing file means a static site."""
     if text is None:
-        return {"runtime": "static", "start": "", "health": "/"}
+        return {"runtime": "static", "start": "", "health": "/", "test": ""}
     try:
         data = json.loads(text)
     except ValueError as e:
@@ -53,7 +71,14 @@ def parse_manifest(text: str | None) -> dict:
         raise BootError("kaisen.json runtime 'python' needs a 'start' command")
     if runtime == "node" and not start.strip():
         start = "npm start"
-    return {"runtime": runtime, "start": start.strip(), "health": health or "/"}
+    test = data.get("test", "")
+    if test is None:
+        test = ""
+    if not isinstance(test, str):
+        raise BootError("kaisen.json 'test' must be a string (a shell command)")
+    if len(test) > TEST_COMMAND_MAX:
+        raise BootError(f"kaisen.json 'test' is longer than {TEST_COMMAND_MAX} characters")
+    return {"runtime": runtime, "start": start.strip(), "health": health or "/", "test": test.strip()}
 
 
 def sha256_file(path: str) -> str:
@@ -148,6 +173,87 @@ def run(cmd: list[str] | str, cwd: str, env: dict, shell: bool = False, timeout:
         raise BootError(f"command failed with exit code {r.returncode}: {cmd}")
 
 
+def _int_env(name: str, default: int) -> int:
+    try:
+        v = int(os.environ.get(name, ""))
+        return v if v > 0 else default
+    except ValueError:
+        return default
+
+
+def test_env(env: dict) -> dict:
+    return {k: v for k, v in env.items()
+            if not k.startswith(TEST_ENV_DROP_PREFIXES) and k not in TEST_ENV_DROP_NAMES}
+
+
+def clip_output(data: bytes, max_bytes: int, max_lines: int = TEST_MAX_LINES) -> str:
+    """Last max_lines lines / max_bytes bytes of the output as text. Marker words are defanged so test output can never
+    pass for a platform marker."""
+    text = data.decode("utf-8", errors="replace").replace("\r", "\n")
+    lines = [ln for ln in text.split("\n")]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    text = "\n".join(lines[-max_lines:])
+    raw = text.encode()
+    if len(raw) > max_bytes:
+        text = raw[-max_bytes:].decode("utf-8", errors="ignore")
+    return text.replace("KAISEN_TESTS_", "KAISEN_TESTS-")
+
+
+def run_tests(command: str, cwd: str, env: dict, timeout: int | None = None, max_bytes: int | None = None) -> tuple[str, int]:
+    """Run the manifest's test command; print the framed result. Returns (status, exit code); never raises."""
+    timeout = timeout or _int_env("KAISEN_TEST_TIMEOUT_SECONDS", DEFAULT_TEST_TIMEOUT)
+    max_bytes = max_bytes or _int_env("KAISEN_TEST_OUTPUT_BYTES", DEFAULT_TEST_BYTES)
+    sha = os.environ.get("KAISEN_BUNDLE_SHA256", "").strip().lower()[:12]
+    print(TESTS_BEGIN, flush=True)
+    status, code, out = "fail", -1, b""
+    try:
+        # own session so a timeout can kill the whole tree; output goes to a pipe we bound, never to the log directly
+        p = subprocess.Popen(["sh", "-c", command], cwd=cwd, env=test_env(env), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        # bounded reader: drain the pipe in a thread, keep only a rolling tail (clip_output needs just the end), so a
+        # noisy test cannot grow this process's memory while the child never blocks on a full pipe
+        keep = max_bytes * 4 + 8192
+        tail = bytearray()
+
+        def drain() -> None:
+            try:
+                while True:
+                    chunk = os.read(p.stdout.fileno(), 65536)
+                    if not chunk:
+                        return
+                    tail.extend(chunk)
+                    if len(tail) > keep * 2:
+                        del tail[:len(tail) - keep]
+            except OSError:
+                return
+
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
+        try:
+            code = p.wait(timeout=timeout)
+            reader.join(5)
+            status = "pass" if code == 0 else "fail"
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, 9)
+            except OSError:
+                p.kill()
+            try:
+                p.wait(timeout=5)
+            except Exception:  # noqa: BLE001
+                pass
+            reader.join(5)
+            status, code = "timeout", -1
+        out = bytes(tail[-keep:])
+    except Exception as e:  # noqa: BLE001 - e.g. cwd vanished; the app must still start
+        out = f"could not run the test command: {type(e).__name__}".encode()
+    if out:
+        print(clip_output(out, max_bytes), flush=True)
+    print(f"{TESTS_RESULT} {status} exit={code} sha={sha}", flush=True)
+    return status, code
+
+
 def serve_static(root: str, port: int) -> None:
     directory = os.path.join(root, "public")
     if not os.path.isdir(directory):
@@ -199,6 +305,9 @@ def main() -> int:
     else:
         if os.path.isfile(os.path.join(root, "package.json")):
             run(["npm", "install", "--omit=dev"], root, env)
+    if manifest.get("test"):
+        log("running the project's tests (the app starts afterwards whatever the result)")
+        run_tests(manifest["test"], root, env)
     log("phase 4/4: starting the app")
     sys.stdout.flush()
     os.chdir(root)
