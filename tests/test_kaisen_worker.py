@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import threading
+import types
 import time
 from datetime import timedelta
 
@@ -391,3 +392,94 @@ def test_push_on_finish_uses_the_build_token_and_respects_the_flag(env):
     seen.clear()
     assert go(FakeModelClient([reply(tool_use("finish", {"summary": "again"}))]), gh_fn=lambda t: (seen.append(t), gh)[1]) is True
     assert seen == []
+
+
+# ---- remaining run_step / tick branches ----------------------------------------------------------
+
+def test_unexpected_model_failure_and_no_text_nudge_and_turn_limit(env, monkeypatch):
+    start(env)
+    go(FakeModelClient([RuntimeError("boom")]))
+    assert detail(env)["status"] == "error"
+    start(env)
+    # a reply with no tool call is nudged; MAX_TURNS then stops the step
+    monkeypatch.setattr(config, "KAISEN_MAX_TURNS", 2)
+    go(FakeModelClient([reply({"type": "text", "text": "hmm"}), reply({"type": "text", "text": "hmm"})]))
+    assert detail(env)["status"] == "stopped"
+
+
+def test_wall_clock_limit_and_lease_loss_and_skipped_run(env, monkeypatch):
+    start(env)
+    rid = db().query(KaisenRun).filter_by(build_id=env.bid).one().id
+    ticks = iter([0, 10_000, 10_000, 10_000])
+    assert builder.run_step(Keep(db()), rid, FakeModelClient(), worker.Lease(), clock=lambda: next(ticks)) == "stopped"
+    assert "wall-clock" in detail(env)["inbox"][0]["text"]
+    assert builder.run_step(Keep(db()), rid, FakeModelClient(), worker.Lease()) == "skipped"
+    assert builder.run_step(Keep(db()), 99999, FakeModelClient(), worker.Lease()) == "skipped"
+
+    class Lost:
+        def check(self):
+            return False
+    start(env)
+    rid = max(r.id for r in db().query(KaisenRun).filter_by(build_id=env.bid))
+    assert builder.run_step(Keep(db()), rid, FakeModelClient([reply(tool_use("list_files", {}))]), Lost()) == "lease_lost"
+
+
+def test_metering_failure_stops_the_run(env, monkeypatch):
+    start(env)
+    def bad(*a, **k):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(builder, "record_usage", bad)
+    go(FakeModelClient([reply(tool_use("list_files", {}))]))
+    assert detail(env)["status"] == "error"
+
+
+def test_tool_errors_are_results_and_only_one_question_and_no_previews(env):
+    start(env)
+    go(FakeModelClient([
+        reply(tool_use("ask_human", {"question": "a?"}, id="q1"), tool_use("ask_human", {"question": "b?"}, id="q2"),
+              tool_use("deploy_preview", {}, id="d1"), tool_use("ask_human", {}, id="q3")),
+    ]), runtime=FakeRuntime())
+    assert detail(env)["open_questions"] == 1
+    run = db().query(KaisenRun).filter_by(build_id=env.bid).one()
+    blob = str(run.messages) + str(run.pending)
+    assert "Only one question" in blob
+
+
+def test_tick_edge_cases(env, monkeypatch):
+    # deployer missing: tool error text
+    start(env)
+    ws_s = db()
+    run = ws_s.query(KaisenRun).filter_by(build_id=env.bid).one()
+    out = builder._handle_response(ws_s, run, types.SimpleNamespace(
+        stop_reason=None, content=[tool_use("deploy_preview", {}, id="x")]), [], None)
+    assert out == "continue" and "not available" in str(run.messages)
+    ws_s.rollback()
+    # model factory rejects the key
+    def bad_model(key):
+        raise ModelError("bad key")
+    assert worker.tick(Keep(db()), worker.Lease(), model_fn=bad_model, runtime=FakeRuntime(),
+                       registry_factory=lambda: FakeRegistry()) is True
+    assert detail(env)["status"] == "error"
+    # deleted build: its queued run is stopped
+    start(env)
+    assert env.a.delete(f"/kaisen/builds/{env.bid}").status_code in (200, 204)
+    go(FakeModelClient())
+    assert db().query(KaisenRun).filter(KaisenRun.status.in_(("queued", "running"))).count() == 0
+
+
+def test_worker_factories_and_main_loop(env, monkeypatch, tmp_path):
+    from app.kaisen.github import RealGitHub
+    from app.kaisen.llm import AnthropicClient
+    assert isinstance(worker.model_factory(KEY), AnthropicClient)
+    assert isinstance(worker.github_factory(TOKEN), RealGitHub)
+    assert worker.session_factory() is not None
+    monkeypatch.setattr(config, "KAISEN_HEARTBEAT_FILE", str(tmp_path / "hb"))
+    w = worker.Worker(S=Keep(db()), lease=worker.Lease(), runtime=FakeRuntime())
+    calls = []
+    def once():
+        calls.append(1)
+        w.stop.set()
+        return False
+    monkeypatch.setattr(w, "run_once", once)
+    w.run()
+    assert calls == [1]
