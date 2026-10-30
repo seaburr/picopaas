@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ChevronRight } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { ChevronRight, FileDiff } from 'lucide-vue-next'
+import BuildDiffPanel from './BuildDiffPanel.vue'
+import { getRunDiff } from '../api/kaisen'
 import CopyButton from './CopyButton.vue'
 import StatusBadge from './StatusBadge.vue'
 import { relTime } from '../composables/appUi'
 import { duration, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
 import type { KaisenRun } from '../types'
 
-defineProps<{ runs: KaisenRun[]; now: number; canPick?: boolean }>()
+defineProps<{ buildId: number; runs: KaisenRun[]; now: number; canPick?: boolean }>()
+const showDiff = ref<number | null>(null)
 const emit = defineEmits<{ pick: [text: string] }>()
 
 // Plain text only: prefix each turn with its role; never rendered as HTML.
@@ -48,6 +52,12 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
               <summary class="cursor-pointer">Findings ({{ r.review.findings.length }})</summary>
               <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(f, k) in r.review.findings" :key="k" class="whitespace-pre-wrap break-words">{{ f }}</li></ul>
             </details>
+          </div>
+          <div v-if="r.has_diff">
+            <button type="button" class="btn-secondary btn-sm" :aria-expanded="showDiff === r.id" @click="showDiff = showDiff === r.id ? null : r.id">
+              <FileDiff :size="14" aria-hidden="true" />{{ showDiff === r.id ? 'Hide changes' : 'Show changes' }}
+            </button>
+            <BuildDiffPanel v-if="showDiff === r.id" :load="() => getRunDiff(buildId, r.id)" :title="`What run #${r.id} changed`" />
           </div>
           <p v-if="r.error" class="alert-error whitespace-pre-wrap">{{ r.error }}</p>
           <p v-if="r.transcript_trimmed" class="meta">The transcript was removed after 14 days. The summary is kept.</p>

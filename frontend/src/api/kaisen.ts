@@ -1,4 +1,4 @@
-import type { KaisenBuild, KaisenBuildSecret, KaisenMembers, KaisenSecretsResult, KaisenBuildDetail, KaisenFile, KaisenOutputPayload, KaisenSettings, KaisenSettingsPayload, KaisenSpend, KaisenTestResult } from '../types'
+import type { KaisenDiff, KaisenRestoreResult, KaisenSnapshot, KaisenBuild, KaisenBuildSecret, KaisenMembers, KaisenSecretsResult, KaisenBuildDetail, KaisenFile, KaisenOutputPayload, KaisenSettings, KaisenSettingsPayload, KaisenSpend, KaisenTestResult } from '../types'
 import { apiFetch } from './client'
 
 // Matches docs/design/kaisen-ui.md section 9 (app/kaisen routers).
@@ -46,3 +46,8 @@ export const putBuildSecret = (id: number, name: string, value: string) =>
   apiFetch<KaisenSecretsResult>(`/kaisen/builds/${id}/secrets/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify({ value }) })
 export const deleteBuildSecret = (id: number, name: string) =>
   apiFetch<KaisenSecretsResult>(`/kaisen/builds/${id}/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' })
+
+export const listSnapshots = (id: number) => apiFetch<KaisenSnapshot[]>(`/kaisen/builds/${id}/snapshots`)
+export const getSnapshotDiff = (id: number, sid: number) => apiFetch<KaisenDiff>(`/kaisen/builds/${id}/snapshots/${sid}/diff`)
+export const getRunDiff = (id: number, runId: number) => apiFetch<KaisenDiff>(`/kaisen/builds/${id}/runs/${runId}/diff`)
+export const restoreSnapshot = (id: number, sid: number) => post<KaisenRestoreResult>(`/kaisen/builds/${id}/snapshots/${sid}/restore`)

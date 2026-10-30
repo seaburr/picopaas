@@ -654,6 +654,7 @@ export interface KaisenRun {
   transcript_trimmed: boolean
   suggestions?: string[]
   review?: KaisenReview | null
+  has_diff?: boolean
 }
 
 export interface KaisenReview {
@@ -823,4 +824,29 @@ export interface KaisenSpend {
 export interface KaisenTestResult {
   ok: boolean
   message: string
+}
+
+export interface KaisenSnapshot {
+  id: number
+  run_id: number | null
+  run_number: number | null
+  kind: 'run_start' | 'before_restore'
+  created_at: string
+  files_count: number
+  bytes: number
+}
+
+export interface KaisenDiff {
+  from: string
+  to: string
+  added: string[]
+  removed: string[]
+  changed: { path: string; diff: string }[]
+  truncated: boolean
+}
+
+export interface KaisenRestoreResult {
+  restored: boolean
+  files_count: number
+  before_restore_snapshot_id: number | null
 }

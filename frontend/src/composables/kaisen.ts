@@ -63,3 +63,5 @@ export function costHint(runs: { cost_usd: number; finished_at: string | null }[
   }
   return capRun ? `Capped at ${fmtUsd(capRun)} per run${on}.` : ''
 }
+
+export const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
