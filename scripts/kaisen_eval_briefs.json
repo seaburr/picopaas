@@ -1,0 +1,113 @@
+[
+  {
+    "name": "Fancy Docs",
+    "brief": "I want a Markdown note-taking application that saves to a MySQL database. The editor is on the left and the rendered Markdown is on the right, with a nav tree in the center. Pages can be nested underneath other pages, and the nav tree can be used to move pages around in the tree (drag and drop, plus buttons for keyboard users). The editor pane can be collapsed. Support image uploads that are stored in the MySQL database and can be referenced in the Markdown. Include a dark mode toggle for the entire page, remembered in the browser.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      }
+    ]
+  },
+  {
+    "name": "Team standup board",
+    "brief": "Build a small standup board with Python and MySQL. Anyone can open the page, type their name and post three short fields for a chosen date: yesterday, today and blockers. There is no login. The main screen is a day view: a date picker with previous and next day buttons, and one card per person who posted that day, with blockers highlighted. Posting again for the same person and date replaces the earlier post. A second page shows one person's history, newest first, reachable by clicking a name. Save everything in MySQL. Include a dark mode toggle remembered in the browser. Out of scope: accounts, passwords, email or chat notifications, editing other people's posts.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      }
+    ]
+  },
+  {
+    "name": "Link shortener",
+    "brief": "Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      }
+    ]
+  },
+  {
+    "name": "Habit tracker",
+    "brief": "Build a habit tracker as a static page that saves to the browser's localStorage, with no server. I can add and remove habits. Each habit shows a month grid where I click a day to tick it on or off, with buttons to move to the previous and next month. Next to each habit show the current streak (consecutive ticked days ending today or yesterday) and the best streak ever. Add Export and Import buttons for all data as a JSON file, and validate the file on import. Support a dark mode toggle remembered in the browser. Out of scope: reminders, accounts, syncing between devices.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      }
+    ]
+  },
+  {
+    "name": "Recipe scaler",
+    "brief": "Build a recipe scaler as a static page with no server and nothing saved. I paste a recipe's ingredient list, one ingredient per line (like \"1 1/2 cups flour\"), and set the original and wanted number of servings. The page shows the scaled list, handling fractions and decimals and showing results as friendly fractions. A toggle converts between metric and US units (cups, tablespoons, teaspoons, ounces, pounds, grams, millilitres) and leaves lines it cannot parse unchanged. Include a print view that shows only the scaled recipe in a clean layout. Light theme only. Out of scope: saving recipes, importing from web pages, nutrition information.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      }
+    ]
+  },
+  {
+    "name": "Kanban board",
+    "brief": "Build a small multi-user kanban board with Python and MySQL. People sign up with a name and password and log in; each user sees only their own boards. A board has columns (To do, Doing, Done by default) and cards that can be moved between columns with buttons. Expose a JSON API: GET /api/cards returns a JSON list of the logged-in user's cards (each with id, title, column), POST /api/cards with JSON {\"title\": \"...\"} creates a card in the first column and returns it, and GET /health returns 200. Requests to /api/cards without a login must return 401 (or 403). Save everything in MySQL. Out of scope: email, sharing boards, real-time updates.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "expect_status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/api/cards",
+        "expect_status": [401, 403]
+      }
+    ]
+  },
+  {
+    "name": "Notes with uploads",
+    "brief": "Build a notes app with Python, MySQL and a storage bucket. Notes have a title and a body; each note can have file attachments (any file up to 5 MB) uploaded to the bucket and downloadable from the note. A search box finds notes whose title or body contains the text. Expose a JSON API: GET /api/notes returns a JSON list of notes, POST /api/notes with JSON {\"title\": \"...\", \"body\": \"...\"} creates a note, and GET /api/search?q=text returns the matching notes as a JSON list. GET /health returns 200. No login. Out of scope: accounts, sharing, previews of attachments.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "expect_status": 200
+      },
+      {
+        "method": "POST",
+        "path": "/api/notes",
+        "body": {
+          "title": "eval note",
+          "body": "zebra stripes"
+        },
+        "expect_status": [
+          200,
+          201
+        ],
+        "expect_contains": "eval note"
+      },
+      {
+        "method": "GET",
+        "path": "/api/search?q=zebra",
+        "expect_status": 200,
+        "expect_contains": "eval note"
+      }
+    ]
+  }
+]
