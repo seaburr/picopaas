@@ -28,7 +28,7 @@ void props
     <p v-else-if="it.kind === 'budget' && it.status === 'open'" class="alert-warn flex flex-wrap items-center justify-between gap-2">
       <span>Kaisen stopped at the spend cap (${{ spendCap }}). Raise the cap in <RouterLink to="/kaisen/settings" class="link">Kaisen settings</RouterLink> or <button type="button" class="link" :disabled="!canRun" @click="emit('resume')">Resume</button>.</span>
     </p>
-    <p v-else-if="it.status === 'open' && ['refusal', 'error', 'push', 'deploy'].includes(it.kind)" :class="['flex items-start justify-between gap-2 whitespace-pre-wrap', it.kind === 'push' && !/fail|error/i.test(it.text) ? 'alert-success' : 'alert-error']" role="alert">
+    <p v-else-if="it.status === 'open' && ['refusal', 'error', 'push', 'deploy'].includes(it.kind)" :class="['flex items-start justify-between gap-2 whitespace-pre-wrap', (it.kind === 'push' && !/fail|error/i.test(it.text)) || (it.kind === 'deploy' && it.text.startsWith('Preview deployed: ')) ? 'alert-success' : 'alert-error']" role="alert">
       <span>{{ it.text }}</span>
       <IconButton :icon="X" sm label="Dismiss alert" @click="emit('dismiss', it.id)" />
     </p>

@@ -16,6 +16,9 @@ export const runBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/
 export const sendFeedback = (id: number, text: string) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/feedback`, { text })
 export const answerInbox = (id: number, itemId: number, text: string) =>
   post<KaisenBuildDetail>(`/kaisen/builds/${id}/inbox/${itemId}/answer`, { text })
+// Closes a notice for everyone in the project (questions are answered instead).
+export const dismissInbox = (id: number, itemId: number) =>
+  post<KaisenBuildDetail>(`/kaisen/builds/${id}/inbox/${itemId}/dismiss`)
 export const deployBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/deploy`)
 export const pushBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/push`)
 export const getBuildFile = (id: number, path: string) =>

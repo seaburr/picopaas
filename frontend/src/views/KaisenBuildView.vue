@@ -15,7 +15,7 @@ import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { answerInbox, deployBuild, getBuild, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { answerInbox, deployBuild, dismissInbox, getBuild, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
@@ -41,7 +41,6 @@ const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume
 const answerBusy = ref<number | null>(null)
 const feedback = ref('')
 const pushedUrl = ref('')
-const dismissed = ref<Set<number>>(new Set())
 const confirmDelete = ref(false)
 const alsoApp = ref(false)
 const deleting = ref(false)
@@ -50,7 +49,7 @@ const buildId = computed(() => Number(props.id))
 const active = computed(() => !!build.value && isActive(build.value.status))
 const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kaisen !== false)
 const you = computed(() => build.value?.created_by.id === auth.user?.id)
-const inbox = computed(() => (build.value?.inbox ?? []).filter((i) => !dismissed.value.has(i.id)))
+const inbox = computed(() => build.value?.inbox ?? [])
 const hasQuestion = computed(() => inbox.value.some((i) => i.kind === 'question' && i.status === 'open'))
 const feedbackReason = computed(() => {
   if (!canRun.value) return 'You can not send changes to this build.'
@@ -140,6 +139,9 @@ async function sendChange() {
   const t = feedback.value.trim()
   if (!t) return
   if (await act('feedback', () => sendFeedback(buildId.value, t))) feedback.value = ''
+}
+async function dismiss(itemId: number) {
+  await act('dismiss', () => dismissInbox(buildId.value, itemId))
 }
 async function answer(itemId: number, text: string) {
   answerBusy.value = itemId
@@ -304,7 +306,7 @@ async function doDelete() {
             <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
           </section>
 
-          <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" @answer="answer" @resume="resume" @dismiss="(id) => dismissed.add(id)" />
+          <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" @answer="answer" @resume="resume" @dismiss="dismiss" />
 
           <p v-if="firstRun" class="help">Your first build is queued.</p>
           <section v-else class="card card-pad" aria-labelledby="h-change">
