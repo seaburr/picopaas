@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-10-30 [scm-security] DONE: pushed 9975266 (KAISEN_OPS.md + CLAUDE.md + ledger; CI 40992970942, image 40992971005, deploy 40993043652 all green) and seaburr/kaisen eaf33fd (CLAUDE.md + README; release 40992983389 green). Docs only, gitleaks clean.
 - 2026-10-30 [manager] DONE: cross-repo operations guide docs/KAISEN_OPS.md (Chas: keep ops context for future sessions), linked from CLAUDE.md read-first list; seaburr/kaisen got CLAUDE.md + README status (kit + retired standalone service). Session closed for the night; next: Chas's test feedback, web access (design s11), deploy_preview logs, retire standalone instance (ask first).
 - 2026-10-30 [manager] DONE: Weather (app 184) redeployed via build 1 after the K4 rotation fix: KAISEN_BUNDLE_URL now a secret (value not visible via API), same hostname, HTTP 200.
 - 2026-10-29 [tech-writer] DONE: USER_GUIDE s16 reworked into a Kaisen how-to (what a built app is, settings, first build, iterating, brief tips, five starter briefs, output, offline, limits); same section, no new tab. Briefs not run. ROADMAP unchanged.
