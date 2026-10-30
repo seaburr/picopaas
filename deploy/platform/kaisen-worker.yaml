@@ -1,0 +1,143 @@
+# Kaisen agent-loop worker (docs/design/kaisen.md section 1): same image and env as the platform Deployment, command
+# `python -m app.kaisen.worker`. Own pod so a long model stream or runaway build cannot OOM/starve the API pods.
+# No Service, no Ingress, NO kube permissions (dedicated ServiceAccount, token not mounted). deploy.yml seds the image tag,
+# env-checksum and __DB_EGRESS_CIDR__ (MYSQL_EGRESS_CIDR from picopaas-env) the same way it does for deployment.yaml.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kaisen-worker
+  namespace: picopaas-system
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaisen-worker
+  namespace: picopaas-system
+  labels:
+    app: kaisen-worker
+spec:
+  replicas: 1 # single lease holder (MySQL GET_LOCK 'picopaas-kaisen-worker'); Recreate so two never overlap on a deploy
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kaisen-worker
+  template:
+    metadata:
+      annotations:
+        picopaas.io/env-checksum: "unset" # placeholder; deploy.yml seds sha256 of picopaas-env so secret changes roll the pod
+      labels:
+        app: kaisen-worker
+    spec:
+      serviceAccountName: kaisen-worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kaisen-worker
+          image: ghcr.io/seaburr/picopaas:latest # placeholder; deploy.yml sets the real short-sha tag
+          imagePullPolicy: Always
+          command: ["python", "-m", "app.kaisen.worker"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - secretRef:
+                name: picopaas-env
+          env:
+            # Explicit env wins over envFrom: this pod must never run the reconciler/quota/backup jobs.
+            - name: KAISEN_WORKER
+              value: "1"
+            - name: RECONCILER_ENABLED
+              value: "0"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 384Mi
+          # Heartbeat contract: the worker touches /tmp/kaisen-worker-heartbeat every loop; fails when older than 120 s.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; sys.exit(0 if time.time()-os.stat('/tmp/kaisen-worker-heartbeat').st_mtime < 120 else 1)"
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/picopaas/db-ca
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: db-ca
+          secret:
+            secretName: picopaas-db-ca
+            optional: true
+---
+# Egress allow-list for the worker pod only (picopaas-system has no namespace default-deny, so the platform pods are
+# unaffected). Selecting the pod isolates it for Egress; ingress stays untouched (nothing listens). Union of:
+#  - DNS (kube-system)
+#  - the managed database servers by VPC CIDR (MySQL 3306/25060)
+#  - public internet on 443 only (api.anthropic.com, api.github.com), private ranges excluded
+#  - the Traefik pods on 80/443/8000/8443: inside the cluster the platform's public LB IP is short-circuited to Traefik pod
+#    IPs (10.244/16), which the internet rule excludes (same reason as the tenant `allow-egress-ingress` policy);
+#    needed for URL probes of preview apps.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kaisen-worker-egress
+  namespace: picopaas-system
+spec:
+  podSelector:
+    matchLabels:
+      app: kaisen-worker
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock: {cidr: __DB_EGRESS_CIDR__}
+      ports:
+        - {protocol: TCP, port: 3306}
+        - {protocol: TCP, port: 25060}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"]
+      ports:
+        - {protocol: TCP, port: 443}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 8443}
+        - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 443}

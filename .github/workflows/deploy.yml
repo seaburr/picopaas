@@ -95,6 +95,13 @@ jobs:
           sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" \
               -e "s#picopaas.io/env-checksum: .*#picopaas.io/env-checksum: \"$envsum\"#" \
               deploy/platform/deployment.yaml | kubectl apply -f -
+          # Kaisen worker: same image + env, own pod (no kube permissions). Egress policy needs the DB CIDR from the Secret.
+          dbcidr=$(kubectl -n picopaas-system get secret picopaas-env -o jsonpath='{.data.MYSQL_EGRESS_CIDR}' | base64 -d)
+          [ -n "$dbcidr" ] || { echo "kaisen-worker needs MYSQL_EGRESS_CIDR in picopaas-env"; exit 1; }
+          sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" \
+              -e "s#picopaas.io/env-checksum: .*#picopaas.io/env-checksum: \"$envsum\"#" \
+              -e "s#__DB_EGRESS_CIDR__#$dbcidr#" \
+              deploy/platform/kaisen-worker.yaml | kubectl apply -f -
           # Static 503 pages + Traefik errors Middlewares. MUST precede ingress.yaml: an Ingress that references a
           # missing Middleware loses its router (404), not just the error page.
           kubectl -n picopaas-system create configmap error-pages \
@@ -103,3 +110,4 @@ jobs:
           kubectl apply -f deploy/error-pages/error-pages.yaml
           kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
           kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s
+          kubectl -n picopaas-system rollout status deployment/kaisen-worker --timeout=300s

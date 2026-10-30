@@ -13,6 +13,9 @@ on:
       backup_image_digest:
         description: "Optional sha256:<64 hex> of ghcr.io/seaburr/picopaas-backup to pin; default = resolve :latest at run time"
         required: false
+      kaisen_runtime_image_digest:
+        description: "Optional sha256:<64 hex> of ghcr.io/seaburr/picopaas-kaisen-runtime to pin as KAISEN_RUNTIME_IMAGE; default = resolve :latest at run time"
+        required: false
       rotate_backup_key:
         description: "Create a fresh bucket-scoped backup Spaces key (picopaas-backups only) and revoke the old one after the rollout"
         type: boolean
@@ -285,6 +288,7 @@ jobs:
         env:
           PICOPAAS_FERNET_KEY: ${{ secrets.PICOPAAS_FERNET_KEY }}
           BACKUP_IMAGE_DIGEST_INPUT: ${{ inputs.backup_image_digest }}
+          KAISEN_RUNTIME_DIGEST_INPUT: ${{ inputs.kaisen_runtime_image_digest }}
           ROTATE_BACKUP_KEY: ${{ inputs.rotate_backup_key }}
         run: |
           set -euo pipefail
@@ -456,6 +460,19 @@ jobs:
           BACKUP_IMAGE="ghcr.io/seaburr/picopaas-backup@$BACKUP_IMAGE_DIGEST"
           echo "backup image: $BACKUP_IMAGE"
 
+          # Kaisen preview runtime image (kaisen-runtime-image.yml; package must be Public), pinned by digest like the backup
+          # image. Not fatal when it does not exist yet: KAISEN_RUNTIME_IMAGE stays empty and Kaisen deploys stay disabled
+          # until a later bootstrap run (after the image is published) pins it.
+          KAISEN_RUNTIME_DIGEST="${KAISEN_RUNTIME_DIGEST_INPUT:-}"
+          if [ -z "$KAISEN_RUNTIME_DIGEST" ]; then
+            KAISEN_RUNTIME_DIGEST=$(docker buildx imagetools inspect ghcr.io/seaburr/picopaas-kaisen-runtime:latest --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest 2>/dev/null || true)
+          fi
+          case "$KAISEN_RUNTIME_DIGEST" in
+            sha256:????????????????????????????????????????????????????????????????) KAISEN_RUNTIME_IMAGE="ghcr.io/seaburr/picopaas-kaisen-runtime@$KAISEN_RUNTIME_DIGEST";;
+            *) echo "::warning::kaisen runtime image digest not found (run kaisen-runtime-image.yml, make the package Public, re-run bootstrap); KAISEN_RUNTIME_IMAGE left empty"; KAISEN_RUNTIME_IMAGE="";;
+          esac
+          echo "kaisen runtime image: ${KAISEN_RUNTIME_IMAGE:-<unset>}"
+
           # app/providers/spaces.py reads DIGITALOCEAN_TOKEN; DO_API_TOKEN is kept as an alias.
           # BACKUP_ACCESS_KEY_ID/SECRET below are the bucket-scoped key from above (picopaas-backups only), never the
           # platform SPACES_* key.
@@ -478,6 +495,7 @@ jobs:
             --from-literal=BACKUP_REGION="$SPACES_REGION" \
             --from-literal=BACKUP_ENDPOINT="$BACKUP_ENDPOINT" \
             --from-literal=BACKUP_IMAGE="$BACKUP_IMAGE" \
+            --from-literal=KAISEN_RUNTIME_IMAGE="$KAISEN_RUNTIME_IMAGE" \
             --from-literal=BACKUP_ACCESS_KEY_ID="$BACKUP_KEY_ID" \
             --from-literal=BACKUP_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
             --from-literal=BACKUP_KEY_SCOPED="$BACKUP_KEY_SCOPED" \
