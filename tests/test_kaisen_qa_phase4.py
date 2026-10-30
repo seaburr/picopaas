@@ -320,7 +320,7 @@ def test_reviewer_tool_dispatch_rejects_unknown_tools():
         reviewing._tool(None, NS(id=1), [], "write_file", {})
 
 
-# ---- migrations a9c4e2b7d1f3 -> b5d8f1a3c6e2 -> c3e7a1d9b4f6 -> d7b2f4a9c1e5 --------------------------------
+# ---- migrations a9c4e2b7d1f3 -> b5d8f1a3c6e2 -> c3e7a1d9b4f6 -> d7b2f4a9c1e5 -> a8c3e5f1b2d4 --------------------------------
 
 def test_wave_migrations_up_down_restore_the_schema_exactly_and_keep_data(tmp_path):
     import os
@@ -345,7 +345,7 @@ def test_wave_migrations_up_down_restore_the_schema_exactly_and_keep_data(tmp_pa
         finally:
             con.close()
 
-    assert len(alembic("heads").strip().splitlines()) == 1 and "d7b2f4a9c1e5" in alembic("heads")
+    assert len(alembic("heads").strip().splitlines()) == 1 and "a8c3e5f1b2d4" in alembic("heads")
     alembic("upgrade", "e7a1c3d5b9f2")
     base = schema()
     con = sqlite3.connect(dbfile)
@@ -356,14 +356,14 @@ def test_wave_migrations_up_down_restore_the_schema_exactly_and_keep_data(tmp_pa
     con.close()
     alembic("upgrade", "head")
     head = schema()
-    assert "kaisen_preview_logs" in head and "kaisen_preview_logs" not in base
+    assert "kaisen_snapshots" in head and "kaisen_preview_logs" in head and "kaisen_preview_logs" not in base
     for t, cols in head.items():  # every step only adds
         assert set(base.get(t, [])) <= set(cols)
     assert head != base
     con = sqlite3.connect(dbfile)
     assert con.execute("SELECT count(*) FROM kaisen_builds").fetchone() == (1,)  # data survived the upgrade
     con.close()
-    for rev in ("c3e7a1d9b4f6", "b5d8f1a3c6e2", "a9c4e2b7d1f3", "e7a1c3d5b9f2"):  # one step at a time
+    for rev in ("d7b2f4a9c1e5", "c3e7a1d9b4f6", "b5d8f1a3c6e2", "a9c4e2b7d1f3", "e7a1c3d5b9f2"):  # one step at a time
         alembic("downgrade", rev)
     assert schema() == base
     alembic("upgrade", "head")

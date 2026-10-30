@@ -175,3 +175,18 @@ class KaisenSecret(Base):
     value_enc: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenSnapshot(Base):
+    """Restore point: the build's files (zlib-compressed JSON {path: content}) at a run start or before a restore."""
+    __tablename__ = "kaisen_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(ForeignKey("kaisen_builds.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # run_start | before_restore
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    files_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # uncompressed total
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    blob: Mapped[bytes] = mapped_column(LongBlob, nullable=False)

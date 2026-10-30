@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, testresults
+from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
-from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret)
+from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret, KaisenSnapshot)
 from app.kaisen.redact import redact, transcript_lines
 
 NOT_FOUND = "That page doesn't exist."
@@ -251,11 +251,12 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
     sec = _secrets(db, b)
     rs = ksettings.load_for_build(db, b)
     runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id.desc()).limit(10)).all()
+    with_diff = snapshots.runs_with_diff(db, b.id)
     out.update({
         "brief": b.brief,
         "files": [{"path": p, "size": n} for p, n in builder.Workspace(db, b.id).list()],
         "runs": [{
-            "id": r.id, "kind": r.kind, "status": r.status,
+            "id": r.id, "kind": r.kind, "status": r.status, "has_diff": r.id in with_diff,
             "summary": redact(r.summary, sec) if r.summary else None,
             "suggestions": [redact(x, sec) for x in (r.suggestions or [])],
             "error": redact(r.error, sec) if r.error else None,
@@ -364,6 +365,7 @@ def delete_build(build_id: int, delete_app: bool = False, db: Session = Depends(
     db.query(KaisenBundle).filter(KaisenBundle.build_id == b.id).delete()
     db.query(KaisenInbox).filter(KaisenInbox.build_id == b.id).delete()
     db.query(KaisenSecret).filter(KaisenSecret.build_id == b.id).delete()
+    db.query(KaisenSnapshot).filter(KaisenSnapshot.build_id == b.id).delete()
     if app is not None:
         app.kaisen_build_id = None
         if delete_app:
@@ -470,6 +472,78 @@ def read_file(build_id: int, path: str, db: Session = Depends(get_db), user: mod
         raise HTTPException(status_code=404, detail="We can't find that file.")
     return {"path": row.path, "size": row.size, "content": redact(row.content, _secrets(db, b)),
             "binary": False, "truncated": False}
+
+
+# ---------------------------------------------------------------- restore points (H5)
+
+def _get_snapshot(db: Session, b: KaisenBuild, sid: int) -> KaisenSnapshot:
+    snap = db.get(KaisenSnapshot, sid)
+    if snap is None or snap.build_id != b.id:
+        raise HTTPException(status_code=404, detail="We can't find that restore point.")
+    return snap
+
+
+def _load_snapshot(snap: KaisenSnapshot) -> dict:
+    try:
+        return snapshots.load(snap)
+    except snapshots.SnapshotError:
+        raise HTTPException(status_code=409, detail="That restore point can't be read.")
+
+
+def _diff_response(db: Session, b: KaisenBuild, old: dict, new: dict, frm: str, to: str) -> dict:
+    return {"from": frm, "to": to, **snapshots.diff(old, new, _secrets(db, b))}
+
+
+@router.get("/kaisen/builds/{build_id}/snapshots")
+def list_snapshots(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    nums = snapshots.run_numbers(db, b.id)
+    return [{"id": x.id, "run_id": x.run_id, "run_number": nums.get(x.run_id) if x.run_id else None, "kind": x.kind,
+             "created_at": x.created_at.isoformat(), "files_count": x.files_count, "bytes": x.bytes}
+            for x in snapshots.listing(db, b.id)]
+
+
+@router.get("/kaisen/builds/{build_id}/snapshots/{snapshot_id}/diff")
+def snapshot_diff(build_id: int, snapshot_id: int, db: Session = Depends(get_db),
+                  user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    snap = _get_snapshot(db, b, snapshot_id)
+    return _diff_response(db, b, _load_snapshot(snap), snapshots.current_files(db, b.id), "snapshot", "current")
+
+
+@router.get("/kaisen/builds/{build_id}/runs/{run_id}/diff")
+def run_diff(build_id: int, run_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """What a run changed: the snapshot taken at its start against the next snapshot, or the current files."""
+    b = get_build(db, build_id, user)
+    start = db.scalars(select(KaisenSnapshot).where(
+        KaisenSnapshot.build_id == b.id, KaisenSnapshot.run_id == run_id).order_by(KaisenSnapshot.id)).first()
+    if start is None:
+        raise HTTPException(status_code=404, detail="We can't find a restore point for that run.")
+    nxt = db.scalars(select(KaisenSnapshot).where(
+        KaisenSnapshot.build_id == b.id, KaisenSnapshot.id > start.id).order_by(KaisenSnapshot.id)).first()
+    num = snapshots.run_numbers(db, b.id).get(run_id)
+    return _diff_response(db, b, _load_snapshot(start), _load_snapshot(nxt) if nxt else snapshots.current_files(db, b.id),
+                          f"before run #{num}", f"after run #{num}")
+
+
+@router.post("/kaisen/builds/{build_id}/snapshots/{snapshot_id}/restore")
+def restore_snapshot(build_id: int, snapshot_id: int, db: Session = Depends(get_db),
+                     user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    snap = _get_snapshot(db, b, snapshot_id)
+    projects.lock_project(db, b.project_id)
+    last = builder.latest_run(db, b.id)
+    if last is not None and last.status in builder.ACTIVE:
+        raise HTTPException(status_code=409, detail="A run is in progress; stop it before restoring.")
+    try:
+        count, before_id = snapshots.restore(db, b.id, snap)
+    except snapshots.SnapshotError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That restore point can't be read.")
+    db.commit()
+    audit.record(db, user, "kaisen.restore", "kaisen_build", b.id,
+                 f"snapshot={snap.id} files={count} before={before_id}")
+    return {"restored": True, "files_count": count, "before_restore_snapshot_id": before_id}
 
 
 @router.get("/kaisen/builds/{build_id}/download")

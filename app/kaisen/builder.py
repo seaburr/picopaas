@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config
-from . import buildsecrets, checks, httptool, members, reviewing
+from . import buildsecrets, checks, httptool, members, reviewing, snapshots
 from .llm import ModelError, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
 from .paths import ToolError, normalize_path
@@ -276,6 +276,7 @@ def start_feedback(s: Session, b: KaisenBuild, feedback: str, preview_url: str |
     s.add(run)
     b.status = "queued"
     s.flush()
+    snapshots.take_safely(s, b.id, "run_start", run.id)  # restore point; a no-op when the files are unchanged or empty
     return run, "Change request queued."
 
 
@@ -300,6 +301,7 @@ def start_build(s: Session, b: KaisenBuild, user_id: int | None = None) -> tuple
     s.add(run)
     b.status = "queued"
     s.flush()
+    snapshots.take_safely(s, b.id, "run_start", run.id)  # restore point; a no-op when the files are unchanged or empty
     return run, msg
 
 

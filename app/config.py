@@ -425,6 +425,13 @@ KAISEN_NAME_MAX = 60
 KAISEN_FEEDBACK_MAX = 4000
 KAISEN_ANSWER_MAX = 4000
 KAISEN_MAX_BUILDS_PER_PROJECT = int(os.environ.get("KAISEN_MAX_BUILDS_PER_PROJECT", "20"))
+# Restore points (H5): a snapshot of the build's files at each run start, plus one before every restore.
+KAISEN_SNAPSHOTS_KEPT = 5  # per build, oldest pruned
+KAISEN_SNAPSHOT_MAX_BYTES = 6 * 1024 * 1024  # compressed; the build cap (KAISEN_MAX_BUILD_BYTES) always fits, else skipped
+KAISEN_DIFF_FILE_MAX_BYTES = 20 * 1024  # one file's unified diff, then "... diff truncated"
+KAISEN_DIFF_MAX_LINES = 5000  # per side; difflib is quadratic (100k short repeated lines took ~17 s)
+KAISEN_DIFF_BUDGET_SECONDS = 5  # CPU time for one diff response; later files are listed without a diff
+KAISEN_DIFF_MAX_BYTES = 200 * 1024  # whole diff response; files past it are listed without a diff
 # Preview loop.
 KAISEN_BUNDLES_KEPT = 1  # the bundle URL is a bearer capability held by the app; only the newest stays valid
 KAISEN_PREVIEW_WAIT_TOOL = 240  # seconds the deploy_preview tool waits for running + an HTTP answer
