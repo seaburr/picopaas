@@ -21,10 +21,12 @@ import json
 import os
 import re
 import sys
+import secrets
 import tarfile
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -35,6 +37,8 @@ TIMEOUT_SECONDS = 20 * 60
 ASSUMPTION_ANSWER = "Decide yourself and note the assumption."
 NO_RESUME_WORDS = ("cap", "refus")  # a spend cap or refusal will not fix itself on resume
 METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
+SETTLE_SECONDS = 300
+TEST_FINAL = ("pass", "fail", "timeout")
 
 
 class EvalError(Exception):
@@ -60,10 +64,15 @@ def load_briefs(path: Path = BRIEFS_FILE, names: list[str] | None = None) -> lis
         seen.add(name)
         if not isinstance(text, str) or not text.strip() or len(text) > 8000:
             raise EvalError(f"brief {name!r}: brief text must be 1-8000 characters")
+        if "version" in b and not isinstance(b["version"], int):
+            raise EvalError(f"brief {name!r}: version must be an integer")
         checks = b.get("checks")
         if not isinstance(checks, list) or not checks:
             raise EvalError(f"brief {name!r}: checks must be a non-empty list")
-        for c in checks:
+        flow = b.get("flow", [])
+        if not isinstance(flow, list):
+            raise EvalError(f"brief {name!r}: flow must be a list of steps")
+        for c in checks + flow:
             if not isinstance(c, dict) or c.get("method") not in METHODS or not str(c.get("path", "")).startswith("/"):
                 raise EvalError(f"brief {name!r}: each check needs a method and a path starting with /")
             exp = c.get("expect_status")
@@ -125,7 +134,11 @@ def analyze_transcripts(runs: list[dict]) -> dict:
     other = 0
     m = {"tool_calls": tools, "other_tool_calls": 0, "write_warnings": 0, "deploy_not_ok": 0, "deploy_ok": 0,
          "http_status": {}, "repeat_stops": 0, "max_tokens_stops": 0, "turn_limit_stops": 0,
-         "context_resets": 0, "transcripts_missing": 0}
+         "context_resets": 0, "transcripts_missing": 0,
+         # feature verification: distinct http_request paths per method, requests that carried a session
+         # (Cookie/Authorization header, or any request after a response that set a cookie), and PLAN finish-gate hits
+         "http_paths": {}, "http_authed": 0, "set_cookie_seen": 0, "plan_gate": 0}
+    paths: dict[str, set] = {}
     for r in sorted(runs or [], key=lambda x: x.get("id") or 0):
         m["context_resets"] += int(r.get("context_resets") or 0)
         lines = r.get("transcript")
@@ -133,15 +146,25 @@ def analyze_transcripts(runs: list[dict]) -> dict:
         if not isinstance(lines, list):
             m["transcripts_missing"] += 1
             lines = []
-        pending: list[str] = []
+        pending: list[tuple[str, dict]] = []
+        cookie_set = False
         for ln in lines:
             if not isinstance(ln, dict):
                 continue
             text = str(ln.get("text") or "")
+            m["plan_gate"] += text.count("PLAN.md still has")
             c = _CALL.match(text)
             if c:
                 name = c.group(1)
-                pending.append(name)
+                inp = _call_input(text, name)
+                pending.append((name, inp))
+                if name == "http_request":
+                    meth = str(inp.get("method") or "GET").upper()
+                    path = urlsplit(str(inp.get("path") or inp.get("url") or "")).path or "/"
+                    paths.setdefault(meth, set()).add(path)
+                    hdrs = inp.get("headers") if isinstance(inp.get("headers"), dict) else {}
+                    if cookie_set or any(str(k).lower() in ("cookie", "authorization") for k in hdrs):
+                        m["http_authed"] += 1
                 if name in tools:
                     tools[name] += 1
                 else:
@@ -149,7 +172,10 @@ def analyze_transcripts(runs: list[dict]) -> dict:
                 continue
             if not text.startswith("[result]"):
                 continue
-            name = pending.pop(0) if pending else ""
+            name = pending.pop(0)[0] if pending else ""
+            if name == "http_request" and "set-cookie" in text.lower():
+                m["set_cookie_seen"] += 1
+                cookie_set = True
             if name in ("write_file", "edit_file"):
                 m["write_warnings"] += text.count("WARNING:")
             if "Result: NOT OK" in text:
@@ -171,7 +197,16 @@ def analyze_transcripts(runs: list[dict]) -> dict:
         m["max_tokens_stops"] += "max_tokens" in low
         m["turn_limit_stops"] += "turn limit" in low
     m["other_tool_calls"] = other
+    m["http_paths"] = {k: len(v) for k, v in sorted(paths.items())}
     return m
+
+
+def _call_input(text: str, name: str) -> dict:
+    try:
+        v = json.loads(text[len(f"[call] {name}"):].strip())
+    except ValueError:
+        return {}
+    return v if isinstance(v, dict) else {}
 
 
 def analyze_tarball(data: bytes) -> dict:
@@ -220,10 +255,13 @@ def evaluate_check_detail(client: httpx.Client, base: str, check: dict) -> dict:
     kwargs = {}
     if "body" in check:
         kwargs["json"] = check["body"]
+    if "csv" in check:  # raw text/csv body
+        kwargs["content"] = check["csv"].encode()
+        kwargs["headers"] = {"Content-Type": "text/csv"}
     resp = None
     err = ""
     attempts = 0
-    for attempt in range(3):  # a fresh preview can need a moment
+    for attempt in range(3 if check.get("retry", True) else 1):  # a fresh preview can need a moment
         attempts += 1
         try:
             resp = client.request(check["method"], base + check["path"], **kwargs)
@@ -232,13 +270,18 @@ def evaluate_check_detail(client: httpx.Client, base: str, check: dict) -> dict:
             resp = None
         if resp is not None and resp.status_code < 500:
             break
-        if attempt < 2:
+        if attempt < 2 and check.get("retry", True):
             time.sleep(CHECK_RETRY_SLEEP)
-    rec = {"request": {"method": check["method"], "path": check["path"], "body": check.get("body")},
+    rec = {"request": {"method": check["method"], "path": check["path"], "body": check.get("body", check.get("csv"))},
            "expect_status": check["expect_status"], "expect_contains": check.get("expect_contains"),
            "status": resp.status_code if resp is not None else None,
            "body_snippet": resp.text[:SNIPPET] if resp is not None else "", "attempts": attempts}
     tag = f"{check['method']} {check['path']}"
+    for var, key in (check.get("capture") or {}).items():  # flow: remember a JSON field of the answer
+        try:
+            rec.setdefault("captured", {})[var] = resp.json()[key]
+        except (ValueError, KeyError, TypeError, AttributeError):
+            pass
     if resp is None:
         rec.update(passed=False, reason=f"{tag}: request failed ({err})")
         return rec
@@ -269,11 +312,26 @@ def preview_base(detail: dict) -> str | None:
     return host.rstrip("/") if "://" in host else f"https://{host}"
 
 
+def subst(obj, vars: dict):
+    """Replace {name} in strings (recursively). A string that is exactly one {name} takes the variable's own type."""
+    if isinstance(obj, str):
+        for k, v in vars.items():
+            if obj == "{" + k + "}":
+                return v
+            obj = obj.replace("{" + k + "}", str(v))
+        return obj
+    if isinstance(obj, list):
+        return [subst(x, vars) for x in obj]
+    if isinstance(obj, dict):
+        return {k: subst(v, vars) for k, v in obj.items()}
+    return obj
+
+
 def new_row(brief: dict, model: str = "") -> dict:
     return {"name": brief["name"], "slug": slugify(brief["name"]), "model": model, "status": "error", "runs": 0,
             "steps": 0, "cost": 0.0, "minutes": 0.0, "tests": "-", "checks_passed": 0,
-            "checks_total": len(brief["checks"]), "review": "-", "notes": [], "metrics": {}, "code": {},
-            "first_deploy_ok_min": None, "run_seconds": []}
+            "checks_total": len(brief["checks"]) + len(brief.get("flow") or []), "review": "-", "notes": [], "metrics": {}, "code": {},
+            "first_deploy_ok_min": None, "run_seconds": [], "settle": {}}
 
 
 class Evaluator:
@@ -281,7 +339,7 @@ class Evaluator:
                  keep: bool = False, sleep=time.sleep, clock=time.monotonic,
                  poll_seconds: float = POLL_SECONDS, timeout_seconds: float = TIMEOUT_SECONDS, log=None,
                  data_dir: Path | str | None = None, model: str | None = None, effort: str | None = None,
-                 scrub: list[str] | None = None):
+                 scrub: list[str] | None = None, settle_seconds: float = SETTLE_SECONDS):
         self.api, self.check_client = api, check_client
         self.project_id, self.max_usd, self.keep = project_id, max_usd, keep
         self.sleep, self.clock = sleep, clock
@@ -290,6 +348,10 @@ class Evaluator:
         self.data_dir = Path(data_dir) if data_dir else None
         self.want_model, self.want_effort = model, effort
         self.scrub = [x for x in (scrub or []) if x]
+        self.settle_seconds = settle_seconds
+        self._tar: bytes | None = None
+        self._tar_err = ""
+        self._tar_tried = False
         self.model_used = model or ""
         self.previous: dict | None = None
         self._polls: list[dict] = []
@@ -409,6 +471,7 @@ class Evaluator:
     def run_brief(self, brief: dict) -> dict:
         row = new_row(brief, self.model_used)
         self._polls, self._first_ok_at = [], None
+        self._tar, self._tar_err, self._tar_tried = None, "", False
         start = self._t0 = self.clock()
         build_id = None
         final: dict | None = None
@@ -432,9 +495,12 @@ class Evaluator:
             if state["resumed"]:
                 row["notes"].append("resumed once")
             if d["status"] == "done":
+                d = final = self._settle(build_id, d, row)
+                self._fill(row, d)
                 base = preview_base(d)
                 if base:
                     check_records = self._run_checks(row, brief["checks"], base)
+                    check_records += self._run_flow(row, brief.get("flow") or [], base)
                 else:
                     row["notes"].append("no preview hostname")
         except EvalError as e:
@@ -466,11 +532,9 @@ class Evaluator:
         row["run_seconds"] = [run_seconds(r) for r in sorted(runs, key=lambda x: x.get("id") or 0)]
         if self._first_ok_at is not None:
             row["first_deploy_ok_min"] = round(self._first_ok_at / 60, 1)
-        tar = None
-        try:
-            tar = self._req("GET", f"/kaisen/builds/{build_id}/download").content
-        except (EvalError, httpx.HTTPError) as e:
-            row["notes"].append(f"no code download: {str(e)[:80]}")
+        tar = self._download(build_id)
+        if self._tar_err:
+            row["notes"].append(f"no code download: {self._tar_err}")
         if tar:
             row["code"] = analyze_tarball(tar)
         if self.data_dir is None:
@@ -491,6 +555,59 @@ class Evaluator:
             # 404 (endpoint not deployed yet or no restore point): tolerated
         self._write_json(f"{slug}/checks.json", check_records)
         self._write(f"{slug}/poll.jsonl", "".join(json.dumps(p) + "\n" for p in self._polls))
+
+    def _download(self, build_id: int) -> bytes | None:
+        if not self._tar_tried:
+            self._tar_tried = True
+            try:
+                self._tar = self._req("GET", f"/kaisen/builds/{build_id}/download").content
+            except (EvalError, httpx.HTTPError) as e:
+                self._tar_err = str(e)[:80]
+        return self._tar
+
+    def _declares_test(self, build_id: int, d: dict) -> bool:
+        if d.get("test") or (d.get("manifest") or {}).get("test"):
+            return True
+        tar = self._download(build_id)
+        kj = analyze_tarball(tar).get("kaisen_json") if tar else None
+        return bool(isinstance(kj, dict) and kj.get("test"))
+
+    def _settle(self, build_id: int, d: dict, row: dict) -> dict:
+        """After 'done' the post-finish redeploy may still be starting and the test result not final. Poll until the app
+        is running and the test is final (or nothing is declared), up to settle_seconds. Never fails the brief."""
+        t0 = self.clock()
+        declared: bool | None = None
+        while True:
+            app = d.get("app")
+            app_ok = not isinstance(app, dict) or app.get("status") == "running"  # no app block: older API
+            t = d.get("tests")
+            if t is None:
+                if declared is None:
+                    declared = self._declares_test(build_id, d)
+                tests_ok = not declared
+            else:
+                tests_ok = not isinstance(t, dict) or t.get("status") in TEST_FINAL
+            waited = round(self.clock() - t0, 1)
+            if app_ok and tests_ok:
+                row["settle"] = {"settled": True, "seconds": waited}
+                return d
+            if self.clock() - t0 >= self.settle_seconds:
+                why = []
+                if not app_ok:
+                    why.append(f"app {app.get('status')}")
+                if not tests_ok:
+                    why.append("test " + (str(t.get("status")) if isinstance(t, dict) else "result missing"))
+                row["settle"] = {"settled": False, "seconds": waited}
+                row["notes"].append(f"not settled after {waited:.0f}s ({', '.join(why)})")
+                return d
+            self.sleep(self.poll_seconds)
+            try:
+                nd = self._detail(build_id)
+            except (EvalError, httpx.HTTPError):
+                continue
+            self._record_poll(nd)
+            if nd.get("status") == "done":
+                d = nd
 
     @staticmethod
     def _fill(row: dict, d: dict) -> None:
@@ -514,6 +631,30 @@ class Evaluator:
                 row["notes"].append(rec["reason"])
         return records
 
+    def _run_flow(self, row: dict, steps: list[dict], base: str) -> list[dict]:
+        """An ordered flow sharing one cookie jar (the check client's). Steps may use {user}/{password} and captured
+        variables; a step with "fresh": true first drops the cookies (a new visitor)."""
+        if not steps:
+            return []
+        vars: dict = {"user": "eval-" + secrets.token_hex(4), "password": "eval-" + secrets.token_hex(8)}
+        records = []
+        self.check_client.cookies.clear()
+        try:
+            for step in steps:
+                if step.get("fresh"):
+                    self.check_client.cookies.clear()
+                c = subst({k: v for k, v in step.items() if k != "fresh"}, vars)
+                c.setdefault("retry", c["method"] in ("GET", "HEAD"))
+                rec = evaluate_check_detail(self.check_client, base, c)
+                vars.update(rec.get("captured") or {})
+                records.append(rec)
+                row["checks_passed"] += rec["passed"]
+                if not rec["passed"]:
+                    row["notes"].append("flow " + rec["reason"])
+        finally:
+            self.check_client.cookies.clear()
+        return records
+
     # -- all briefs
     def run_all(self, briefs: list[dict]) -> tuple[list[dict], float]:
         rows, spent = [], 0.0
@@ -532,6 +673,12 @@ class Evaluator:
 
 def _fmt_counts(d: dict) -> str:
     return " ".join(f"{k}:{v}" for k, v in sorted(d.items())) or "-"
+
+
+def _fmt_settle(s: dict | None) -> str:
+    if not s:
+        return "-"
+    return f"{s['seconds']:.0f}s" if s.get("settled") else f"not settled ({s['seconds']:.0f}s)"
 
 
 def render_table(rows: list[dict], *, date: str = "", model_note: str = "") -> str:
@@ -555,8 +702,9 @@ def render_table(rows: list[dict], *, date: str = "", model_note: str = "") -> s
     if behaving:
         out += ["", "#### Behaviour", "",
                 "| Brief | Model | Tool calls | WARNINGs | Deploy not OK | HTTP statuses | Stops (repeat/max_tokens/turns) "
-                "| Ctx resets | 1st deploy OK | Run durations (s) | Files / bytes | Tests / README | USER | PLAN done/open | kaisen.json |",
-                "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+                "| Ctx resets | 1st deploy OK | Run durations (s) | Files / bytes | Tests / README | USER | PLAN done/open | kaisen.json "
+                "| http_request paths | Authed reqs | PLAN gate hits | Settle |",
+                "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for r in behaving:
             m, c = r["metrics"], r.get("code") or {}
             tools = " ".join(f"{k}:{v}" for k, v in m["tool_calls"].items() if v) or "-"
@@ -573,7 +721,9 @@ def render_table(rows: list[dict], *, date: str = "", model_note: str = "") -> s
                 f"| {','.join('?' if x is None else f'{x:.0f}' for x in r.get('run_seconds') or []) or '-'} "
                 f"| {c.get('files', '-')} / {c.get('bytes', '-')} "
                 f"| {'yes' if c.get('has_tests') else 'no'} / {'yes' if c.get('has_readme') else 'no'} "
-                f"| {c.get('dockerfile_user') if c.get('dockerfile_user') is not None else '-'} | {plan} | {kjs.replace('|', '/')} |")
+                f"| {c.get('dockerfile_user') if c.get('dockerfile_user') is not None else '-'} | {plan} | {kjs.replace('|', '/')} "
+                f"| {_fmt_counts(m.get('http_paths') or {})} | {m.get('http_authed', 0)} | {m.get('plan_gate', 0)} "
+                f"| {_fmt_settle(r.get('settle'))} |")
     return "\n".join(out) + "\n"
 
 
@@ -588,6 +738,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--keep", action="store_true", help="do not delete builds and previews afterwards")
     p.add_argument("--data-dir", help="where to save per-brief data (default: <scratch-dir>/eval-data/<timestamp>)")
     p.add_argument("--scratch-dir", default=".", help="base for the default data dir")
+    p.add_argument("--settle-seconds", type=float, default=SETTLE_SECONDS,
+                   help="after done, wait up to this long for the app to run and the test result to be final")
     p.add_argument("--model", help="set the project's Kaisen model for this run; restored afterwards")
     p.add_argument("--effort", help="set the project's Kaisen effort for this run; restored afterwards")
     return p.parse_args(argv)
@@ -610,7 +762,8 @@ def main(argv=None) -> int:
     with httpx.Client(base_url=a.base_url.rstrip("/"), headers={"Authorization": f"Bearer {token}"}, timeout=60) as api, \
             httpx.Client(timeout=20, follow_redirects=False) as chk:
         ev = Evaluator(api, chk, project_id=a.project_id, max_usd=a.max_usd, keep=a.keep, data_dir=data_dir,
-                       model=a.model, effort=a.effort, scrub=[token])
+                       model=a.model, effort=a.effort, scrub=[token],
+                       settle_seconds=a.settle_seconds)
         t0 = time.monotonic()
         try:
             ev.apply_settings()

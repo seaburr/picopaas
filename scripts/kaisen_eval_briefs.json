@@ -56,7 +56,7 @@
   },
   {
     "name": "Kanban board",
-    "brief": "Build a small multi-user kanban board with Python and MySQL. People sign up with a name and password and log in; each user sees only their own boards. A board has columns (To do, Doing, Done by default) and cards that can be moved between columns with buttons. Expose a JSON API: GET /api/cards returns a JSON list of the logged-in user's cards (each with id, title, column), POST /api/cards with JSON {\"title\": \"...\"} creates a card in the first column and returns it, and GET /health returns 200. Requests to /api/cards without a login must return 401 (or 403). Save everything in MySQL. Out of scope: email, sharing boards, real-time updates.",
+    "brief": "Build a small multi-user kanban board with Python and MySQL. People sign up with a name and password and log in; each user sees only their own boards. A board has columns (To do, Doing, Done by default) and cards that can be moved between columns with buttons. Expose a JSON API: POST /api/signup and POST /api/login both take JSON {\"name\": \"...\", \"password\": \"...\"} and set a session cookie; GET /api/cards returns a JSON list of the logged-in user's cards (each with id, title, column), POST /api/cards with JSON {\"title\": \"...\"} creates a card in the first column and returns it, and GET /health returns 200. Requests to /api/cards without a login must return 401 (or 403). Save everything in MySQL. Out of scope: email, sharing boards, real-time updates.",
     "checks": [
       {
         "method": "GET",
@@ -71,7 +71,66 @@
       {
         "method": "GET",
         "path": "/api/cards",
-        "expect_status": [401, 403]
+        "expect_status": [
+          401,
+          403
+        ]
+      }
+    ],
+    "version": 2,
+    "flow": [
+      {
+        "method": "POST",
+        "path": "/api/signup",
+        "body": {
+          "name": "{user}",
+          "password": "{password}"
+        },
+        "expect_status": [
+          200,
+          201,
+          204
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/login",
+        "body": {
+          "name": "{user}",
+          "password": "{password}"
+        },
+        "expect_status": [
+          200,
+          201,
+          204
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/cards",
+        "body": {
+          "title": "eval card {user}"
+        },
+        "expect_status": [
+          200,
+          201
+        ],
+        "expect_contains": "eval card"
+      },
+      {
+        "method": "GET",
+        "path": "/api/cards",
+        "expect_status": 200,
+        "expect_contains": "eval card {user}"
+      },
+      {
+        "fresh": true,
+        "method": "GET",
+        "path": "/api/cards",
+        "expect_status": [
+          401,
+          403
+        ]
       }
     ]
   },
@@ -107,6 +166,130 @@
         "path": "/api/search?q=zebra",
         "expect_status": 200,
         "expect_contains": "eval note"
+      }
+    ]
+  },
+  {
+    "name": "Small CRM",
+    "version": 1,
+    "database": "postgres",
+    "brief": "Build a small CRM with Python and PostgreSQL. Several people can use it, each with their own login: sign up with a name and password, log in, log out; everything is private to the logged-in user. Companies have a name, website and notes. Contacts have a name, email, phone and job title and belong to one company (a contact may also have no company). Each contact has a list of notes, newest first, each with text and a timestamp, and can carry any number of tags (create tags on the fly, filter the contact list by tag). A search box finds contacts and companies whose name, email or notes contain the text. The contact list is paginated (25 per page) with next and previous links. A company page lists its contacts. Support CSV import of contacts (columns name,email,phone,title,company; unknown companies are created, bad rows are skipped and reported) and CSV export of all contacts. The home page is a dashboard showing counts of companies, contacts, notes and tags and the five most recently added contacts. Include a dark mode toggle remembered in the browser. Expose a JSON API: GET /health returns 200; POST /api/signup and POST /api/login take JSON {\"name\": \"...\", \"password\": \"...\"} and set a session cookie; GET /api/contacts (optional ?q= search and ?page=) returns a JSON list of the logged-in user's contacts and must return 401 without a login; POST /api/contacts with JSON {\"name\": \"...\", \"email\": \"...\", \"company_id\": 1} creates one and returns it; GET /api/companies returns the companies as a JSON list and POST /api/companies with JSON {\"name\": \"...\"} creates one and returns it with its id; POST /api/import takes a text/csv body and imports it; GET /api/export.csv returns text/csv. Save everything in PostgreSQL. Out of scope: email sending, real-time updates, sharing between users.",
+    "checks": [
+      {
+        "method": "GET",
+        "path": "/",
+        "expect_status": [
+          200,
+          302,
+          303
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "expect_status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/api/contacts",
+        "expect_status": [
+          401,
+          403
+        ]
+      }
+    ],
+    "flow": [
+      {
+        "method": "POST",
+        "path": "/api/signup",
+        "body": {
+          "name": "{user}",
+          "password": "{password}"
+        },
+        "expect_status": [
+          200,
+          201,
+          204
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/login",
+        "body": {
+          "name": "{user}",
+          "password": "{password}"
+        },
+        "expect_status": [
+          200,
+          201,
+          204
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/api/companies",
+        "body": {
+          "name": "Acme {user}"
+        },
+        "expect_status": [
+          200,
+          201
+        ],
+        "expect_contains": "Acme",
+        "capture": {
+          "company_id": "id"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/contacts",
+        "body": {
+          "name": "Zed {user}",
+          "email": "zed@example.com",
+          "company_id": "{company_id}"
+        },
+        "expect_status": [
+          200,
+          201
+        ],
+        "expect_contains": "Zed"
+      },
+      {
+        "method": "GET",
+        "path": "/api/contacts?q=Zed",
+        "expect_status": 200,
+        "expect_contains": "Zed {user}"
+      },
+      {
+        "method": "GET",
+        "path": "/api/companies",
+        "expect_status": 200,
+        "expect_contains": "Acme {user}"
+      },
+      {
+        "method": "POST",
+        "path": "/api/import",
+        "csv": "name,email,phone,title,company\nImp One {user},one@example.com,111,Dev,Acme {user}\nImp Two {user},two@example.com,222,Ops,Beta {user}\n",
+        "expect_status": [
+          200,
+          201,
+          202
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/export.csv",
+        "expect_status": 200,
+        "expect_contains": "Imp Two {user}"
+      },
+      {
+        "fresh": true,
+        "method": "GET",
+        "path": "/api/contacts",
+        "expect_status": [
+          401,
+          403
+        ]
       }
     ]
   }

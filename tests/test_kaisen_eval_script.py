@@ -44,7 +44,11 @@ GOOD = {"name": "x", "brief": "do it", "checks": [{"method": "GET", "path": "/",
 # ---- brief loading
 def test_shipped_briefs_are_valid_and_complete():
     briefs = ke.load_briefs()
-    assert len(briefs) == 7
+    assert len(briefs) == 8
+    by = {b['name']: b for b in briefs}
+    assert by['Small CRM']['database'] == 'postgres' and by['Small CRM']['version'] == 1 and by['Small CRM']['flow']
+    assert by['Kanban board']['version'] == 2 and '/api/signup' in by['Kanban board']['brief'] and '/api/login' in by['Kanban board']['brief']
+    assert '/api/import' in by['Small CRM']['brief'] and '/api/export.csv' in by['Small CRM']['brief']
     guide = (Path(__file__).resolve().parents[1] / "docs" / "USER_GUIDE.md").read_text()
     for b in briefs[:5]:
         assert b["brief"] in guide  # copied exactly from the user guide
@@ -563,3 +567,160 @@ def test_behaviour_table_renders():
     row["run_seconds"] = [60.0, None]
     t = ke.render_table([row])
     assert "write_file:1" in t and "1.5 min" in t and "60,?" in t and "USER app" in t and "2/1" in t
+
+
+# ---- settle after done
+def test_settle_waits_for_app_running_and_final_test():
+    host = "p.picopaas.xyz"
+    p = Platform([D("done", app={"status": "pending"}, tests={"status": "running"}, app_hostname=host),
+                  D("done", app={"status": "running"}, tests={"status": "running"}, app_hostname=host),
+                  D("done", app={"status": "running"}, tests={"status": "pass"}, app_hostname=host)])
+    ev, _ = make_eval(p)
+    row = ev.run_brief(GOOD)
+    assert row["settle"] == {"settled": True, "seconds": 20.0} and row["tests"] == "pass" and row["checks_passed"] == 1
+    assert not any("not settled" in n for n in row["notes"])
+
+
+def test_settle_timeout_still_runs_checks_and_notes():
+    p = Platform([D("done", app={"status": "pending"}, tests={"status": "running"}, app_hostname="h")])
+    ev, _ = make_eval(p, settle_seconds=30)
+    row = ev.run_brief(GOOD)
+    assert row["settle"]["settled"] is False and row["checks_passed"] == 1
+    assert any("not settled" in n and "app pending" in n and "test running" in n for n in row["notes"])
+    assert "not settled" in ke.render_table([dict(row, metrics=ke.analyze_transcripts([]), code={})])
+
+
+def test_settle_declared_test_in_tarball_waits_for_result():
+    class P(DataPlatform):
+        downloads = 0
+
+        def __call__(self, req):
+            self.downloads += req.url.path.endswith("/download")
+            return super().__call__(req)
+    global TAR
+    old = TAR
+    TAR = make_tar({"kaisen.json": '{"port": 8000, "test": "python -m unittest"}'})
+    try:
+        p = P([D("done", app={"status": "running"}, tests=None, app_hostname="h"),
+               D("done", app={"status": "running"}, tests={"status": "fail"}, app_hostname="h")])
+        ev, _ = make_eval(p)
+        row = ev.run_brief(GOOD)
+        assert row["settle"] == {"settled": True, "seconds": 10.0} and row["tests"] == "fail"
+        assert p.downloads == 1  # cached, not fetched again
+    finally:
+        TAR = old
+
+
+def test_settle_no_declared_test_does_not_wait():
+    p = DataPlatform([D("done", app={"status": "running"}, tests=None, app_hostname="h")])  # TAR has no test key
+    ev, _ = make_eval(p)
+    row = ev.run_brief(GOOD)
+    assert row["settle"] == {"settled": True, "seconds": 0.0} and row["tests"] == "none"
+
+
+# ---- flows with a cookie jar
+def crm_site():
+    users, state = {}, {"contacts": [], "companies": []}
+
+    def who(req):
+        return req.headers.get("cookie", "").replace("sid=", "") or None
+
+    def h(req):
+        path, m = req.url.path, req.method
+        if path == "/api/signup":
+            b = json.loads(req.content)
+            users[b["name"]] = b["password"]
+            return httpx.Response(201, json={"ok": 1})
+        if path == "/api/login":
+            b = json.loads(req.content)
+            if users.get(b["name"]) != b["password"]:
+                return httpx.Response(401)
+            return httpx.Response(200, json={}, headers={"set-cookie": f"sid={b['name']}; Path=/"})
+        if path in ("/", "/health"):
+            return httpx.Response(200, text="ok")
+        if not who(req):
+            return httpx.Response(401)
+        if path == "/api/companies" and m == "POST":
+            c = {"id": 41, **json.loads(req.content)}
+            state["companies"].append(c)
+            return httpx.Response(201, json=c)
+        if path == "/api/companies":
+            return httpx.Response(200, json=state["companies"])
+        if path == "/api/contacts" and m == "POST":
+            c = json.loads(req.content)
+            assert c["company_id"] == 41  # captured id is substituted with its own type
+            state["contacts"].append(c)
+            return httpx.Response(201, json=c)
+        if path == "/api/contacts":
+            q = req.url.params.get("q", "")
+            return httpx.Response(200, json=[c for c in state["contacts"] if q in c["name"]])
+        if path == "/api/import":
+            assert req.headers["content-type"] == "text/csv"
+            for line in req.content.decode().splitlines()[1:]:
+                state["contacts"].append({"name": line.split(",")[0]})
+            return httpx.Response(200, json={"imported": 2})
+        if path == "/api/export.csv":
+            return httpx.Response(200, text="\n".join(c["name"] for c in state["contacts"]), headers={"content-type": "text/csv"})
+        return httpx.Response(200, text="hi")
+    return h, users
+
+
+def test_crm_flow_runs_with_cookie_jar_and_fresh_client_gets_401():
+    crm = ke.load_briefs(names=["Small CRM"])[0]
+    h, users = crm_site()
+    p = DataPlatform([D("done", app_hostname="h")])
+    ev, _ = make_eval(p, check_handler=h)
+    row = ev.run_brief(crm)
+    assert row["checks_total"] == 12 and row["checks_passed"] == 12, row["notes"]
+    (u,) = users
+    assert u.startswith("eval-") and len(u) > 9
+    assert ev.check_client.cookies.get("sid") is None  # jar cleared afterwards
+
+
+def test_flow_failure_is_noted_and_variables_substitute():
+    assert ke.subst({"a": ["x-{u}", "{n}"]}, {"u": "1", "n": 5}) == {"a": ["x-1", 5]}
+    step = {"method": "GET", "path": "/need", "expect_status": 200}
+    b = dict(GOOD, flow=[step])
+    p = Platform([D("done", app_hostname="h")])
+    ev, _ = make_eval(p, check_handler=lambda r: httpx.Response(401))
+    row = ev.run_brief(b)
+    assert row["checks_total"] == 2 and row["checks_passed"] == 0 and any(n.startswith("flow GET /need") for n in row["notes"])
+
+
+def test_flow_post_is_not_retried_on_5xx():
+    seen = []
+    ev, _ = make_eval(Platform([D("done", app_hostname="h")]), check_handler=lambda r: (seen.append(r.url.path), httpx.Response(500))[1])
+    ev.run_brief(dict(GOOD, checks=GOOD["checks"], flow=[{"method": "POST", "path": "/api/signup", "body": {}, "expect_status": 201}]))
+    assert seen.count("/api/signup") == 1
+
+
+def test_load_rejects_bad_flow_and_version(tmp_path):
+    for extra in ({"flow": "x"}, {"flow": [{"method": "GET", "path": "/"}]}, {"version": "2"}):
+        with pytest.raises(ke.EvalError):
+            ke.load_briefs(write_briefs(tmp_path, [dict(GOOD, **extra)]))
+
+
+# ---- feature verification and PLAN gate metrics
+def test_feature_verification_and_plan_gate_metrics():
+    run = {"id": 1, "transcript": [
+        call("http_request", method="GET", path="/api/items?x=1"), res("HTTP 401\n"),
+        call("http_request", method="get", path="/api/items"), res("HTTP 200\n"),
+        call("http_request", method="POST", path="/api/login", body="{}"), res("HTTP 200\nSet-Cookie: sid=1"),
+        call("http_request", method="GET", path="/api/me"), res("HTTP 200\n"),
+        call("deploy_preview"), res("Result: OK"),
+        {"role": "user", "text": "[result] PLAN.md still has 2 open items"},
+        {"role": "user", "text": "PLAN.md still has 1 open item"},
+    ]}
+    m = ke.analyze_transcripts([run])
+    assert m["http_paths"] == {"GET": 2, "POST": 1}
+    assert m["set_cookie_seen"] == 1 and m["http_authed"] == 1  # only the request after the cookie
+    assert m["plan_gate"] == 2
+    run2 = {"id": 2, "transcript": [call("http_request", method="GET", path="/a", headers={"Cookie": "sid=1"}), res("HTTP 200")]}
+    assert ke.analyze_transcripts([run2])["http_authed"] == 1
+    out = ke.render_table([dict(ke.new_row(GOOD), metrics=m, code={}, settle={"settled": True, "seconds": 20})])
+    assert "GET:2 POST:1" in out and "20s" in out
+
+
+def test_settle_seconds_cli_flag():
+    assert ke.parse_args(["--project-id", "1"]).settle_seconds == 300
+    assert ke.parse_args(["--project-id", "1", "--settle-seconds", "5"]).settle_seconds == 5
