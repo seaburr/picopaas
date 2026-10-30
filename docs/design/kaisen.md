@@ -301,3 +301,42 @@ Failure notes:
 
 Edits made: `app/kaisen/prompts/builder.md` (3 small additions above; `tests/test_kaisen_units.py` and
 `tests/test_kaisen_request.py` pass, 39 tests) and `~/source/kaisen/LESSONS.md` (two lessons). Uncommitted.
+
+## 15. Harness for bigger apps (2026-10-30)
+
+Chas asked what Kaisen needs to build increasingly complex applications. Sources: Anthropic, "Effective harnesses for
+long-running agents" (https://anthropic.com/engineering/effective-harnesses-for-long-running-agents: initializer +
+incremental coding sessions, a feature list that starts all-failing, a progress file, one feature at a time, mark a
+feature done only after end-to-end testing); Anthropic context editing docs
+(https://platform.claude.com/docs/en/build-with-claude/context-editing: tool-result clearing, compaction, memory);
+app.build (https://arxiv.org/html/2509.03310v2: per sub-task minimal context, sandbox run, validator feedback, repair loop).
+
+### What limits Kaisen today
+
+| Limit | Effect on bigger apps |
+|---|---|
+| Only `write_file` (whole file) | Every change rewrites the whole file: output tokens grow with file size, and the builder hits `max_tokens` (Fancy Docs run 1). Change requests on a 20-file app re-emit hundreds of lines for a one-line fix |
+| No search | The builder must `read_file` everything to find where a thing lives; context fills with file bodies |
+| Only verification is `deploy_preview` (health 2xx + log tail) plus tests at boot | A feature can be broken while `/` answers 200. The builder cannot hit `/api/...` itself, so "works" is unverified for everything but the home page |
+| No feedback before deploy | A Python syntax error or broken `kaisen.json` costs a 1-4 minute deploy round trip to discover |
+| One step = 40 turns / 15 min, then the run stops and a human must Resume; Resume replays the full history | Apps that need more than ~40 tool turns stall, and each resume carries an ever larger context |
+| No restore point | A bad change request can break a working app with no way back except another run |
+| No eval | Prompt/harness changes are judged by hand on 5 demos |
+
+### Plan (ranked; S/M = effort)
+
+| # | Change | Why |
+|---|---|---|
+| H1 (S) | `edit_file` (exact `old_str` -> `new_str`, must match once) and `search_files` (literal or regex across files, capped hits with line numbers) | Standard coding-agent tools; small edits instead of rewrites, find before read. Biggest token saver for iteration |
+| H2 (S) | Write-time checks: `write_file`/`edit_file` results report Python syntax errors (`ast.parse`, never executed), invalid JSON, and `kaisen.json` problems (unknown runtime, missing `start`, bad keys) | Catches the cheap mistakes in the same turn, before a deploy |
+| H3 (M) | `http_request` tool: method + path (+ optional body, a few headers) against the build's own preview host only, no redirects followed, capped and redacted body, marked untrusted | End-to-end checks of each feature (the Anthropic harness's "test like a user"). Also given to the reviewer (GET only) |
+| H4 (M) | Milestones + auto-continue: for bigger briefs PLAN.md lists features, one at a time, each verified with `http_request`; when a step hits the turn limit and caps allow, the run continues in a fresh context (seed = brief + PLAN.md + file list + last summary) instead of stopping, up to `KAISEN_MAX_STEPS_PER_RUN` | Long builds stop needing a human Resume, and context stays small (context reset with structured notes) |
+| H5 (M) | Restore points: snapshot files at each run start; build page "Restore" and per-run diff | Safe iteration on a working app (design s12 #4) |
+| H6 (M) | Eval script (`scripts/kaisen_eval.py`): run fixed briefs through the API with the test account, score deploy, endpoint checks, turns, USD | Measures every change above; manual, never in CI (spends money) |
+| H7 (later) | Server-side context editing / compaction from the API instead of our own elision, once out of beta for our models | Less code of ours; wait for GA |
+
+Status 2026-10-30: H1-H4 and H6 built (security review K22-K27 in docs/PENTEST.md; K22 regex guard + search deadline fixed).
+H5 restore points and a first eval baseline run (needs Chas's go-ahead to spend) are next.
+
+Not planned: a code-execution sandbox in the worker (the worker must never run generated code; the preview pod is the
+sandbox), multi-agent planner/implementer splits (cost), browser automation (no headless browser budget).

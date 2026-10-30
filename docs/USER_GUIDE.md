@@ -690,7 +690,7 @@ Also in settings:
 1. Choose **New app > Build with Kaisen**, or **Kaisen > New build**.
 2. Give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
 3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why.
-4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off. Work happens in steps of up to 15 minutes; the transcript is redacted and trimmed 14 days after a run ends.
+4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off; after a long run, Resume starts a fresh model context from `PLAN.md` and the files instead of the whole conversation. Work happens in steps of up to 15 minutes and 40 model calls; a long build continues on its own in a fresh context (the plan, brief and files carry over) for up to 4 steps before it stops and waits for you; the transcript is redacted and trimmed 14 days after a run ends.
 5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
 6. When it is `done`, open the app from the **Live app** card.
 
@@ -778,6 +778,10 @@ Kaisen sees the names only and is told to read them from the environment; values
 
 Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`. The runtime runs that command after installing dependencies and before the app starts, with a time limit and without any platform credentials in the environment. The app starts whatever the result. The build page shows a **Tests** row (pass, fail, timed out, running) with the output tail, and Kaisen reads the result when it checks the preview, fixing failures before it finishes. Results appear once the runtime has run them; until then the row says there is no result yet.
 
+### What the builder can check
+
+Kaisen edits files in place (one exact piece of text at a time) and can search across them, so changes to a bigger app cost fewer tokens. Each time it writes a file it is told about Python syntax errors, invalid JSON and `kaisen.json` mistakes straight away, without running anything. After a preview is up it can also send requests (GET, POST and so on) to the app's own endpoints and check the answers before it finishes; it can only reach that build's own preview, never another site, and the answers are shown to it as untrusted data. The reviewer can search files and fetch (GET only) from the preview too.
+
 ### Reviewer step
 
 Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. The run shows the verdict, findings and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
@@ -799,7 +803,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 **Builds and files**
 
 - A project holds at most 20 builds. A name is up to 60 characters, a brief up to 8000, a change request or an answer up to 4000.
-- A run works in steps of up to 15 minutes and 40 model calls each. A build holds files up to 200 KB each, 300 files and 5 MB in total.
+- A run works in steps of up to 15 minutes and 40 model calls each, and chains up to 4 steps by itself, each in a fresh context seeded from `PLAN.md` (spend caps, the wall-clock limit and the repeat detector still stop it). Resume of a history over 30 messages also starts fresh from `PLAN.md`. A build holds files up to 200 KB each, 300 files and 5 MB in total.
 - Transcripts are trimmed 14 days after a run ends.
 
 **Built apps**
