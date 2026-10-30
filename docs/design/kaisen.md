@@ -110,3 +110,23 @@ spend the team's key (documented); audit events for settings changes, builds, de
 ## 9. Out of scope for this preview
 
 Logs in `deploy_preview` (next), Running generated tests in CI, a reviewer role, per-member spend limits, billing, Kaisen for apps with storage/volumes.
+
+## 10. Output is per build (Chas, 2026-10-29)
+
+> The code repo push needs to be moved to the app config since each app gets its own repo. The GitHub key can be part of
+> project settings and reused when setting the auth method for a given Kaisen app.
+
+- **Project Kaisen settings** keep: Anthropic key, model, effort, caps, and one **project GitHub token** (secret,
+  write-only). The project-level `output_mode`, `github_repo`, `github_branch`, `push_on_finish` and `open_pr` move to the build.
+- **Build output** (`kaisen_builds` columns): `output_mode` download|github, `github_repo` (accepts
+  `https://github.com/owner/repo[.git]` or `owner/repo`), `github_branch` (blank = `kaisen/<slug>`), `push_on_finish`,
+  `open_pr`, `github_auth` project|build, `github_token_enc` (only for `build`).
+- API: `GET/PUT /kaisen/builds/{id}/output` (anyone who can run the build; secrets write-only; `clear_github_token`),
+  `POST /kaisen/builds/{id}/output/test` -> `{ok, message}` checks push access with the selected token. `POST /kaisen/builds`
+  accepts an optional `output` object. Build detail `output` = `{mode, repo, branch, push_on_finish, open_pr, auth,
+  token: {set, last4}, project_token_set, can_push}`.
+- Validation: github mode needs a repo and a usable token (project token set when auth=project; a build token when
+  auth=build). Errors in plain words. Migration copies any existing project-level repo settings onto that project's builds.
+- UI: an **Output** card on the build page (edit in place: mode radio, repo URL, branch, auth radio "Use the project's
+  GitHub token" / "Use a token for this build only" with the token field and instructions, two checkboxes, Save, Test,
+  Push now); optional collapsed "Output" section on New build. Project Kaisen settings show only the GitHub token block.

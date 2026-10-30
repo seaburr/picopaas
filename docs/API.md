@@ -462,11 +462,11 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
-| GET | `/projects/{id}/kaisen` | | Settings: `{project_id, anthropic_key: {set, last4}, has_anthropic_key, model, effort, models[], efforts[], cap_run, cap_day, cap_build, output_mode ("download"/"github"), github_repo, github_branch, github_token: {set, last4}, push_on_finish, open_pr, can_edit, updated_at}`. Secrets are never returned. |
-| PUT | `/projects/{id}/kaisen` | any of `anthropic_key`, `clear_anthropic_key`, `model`, `effort`, `cap_run`, `cap_day`, `cap_build` (0 to 1000 USD), `output_mode`, `github_repo`, `github_branch`, `github_token`, `clear_github_token`, `push_on_finish`, `open_pr` | Owner only. Blank or omitted secrets keep the saved value. 422 for unknown model/effort, bad caps, bad repo, or `github` output without repo and token. Audit `kaisen.settings_update` (field names only). |
-| POST | `/projects/{id}/kaisen/test/{anthropic\|github}` | | `{ok, message}`; any member. |
+| GET | `/projects/{id}/kaisen` | | Settings: `{project_id, anthropic_key: {set, last4}, has_anthropic_key, model, effort, models[], efforts[], cap_run, cap_day, cap_build, github_token: {set, last4}, can_edit, updated_at}`. Secrets are never returned. |
+| PUT | `/projects/{id}/kaisen` | any of `anthropic_key`, `clear_anthropic_key`, `model`, `effort`, `cap_run`, `cap_day`, `cap_build` (0 to 1000 USD), `github_token` (the project GitHub token), `clear_github_token` | Owner only. Blank or omitted secrets keep the saved value. 422 for unknown model/effort, or bad caps. Audit `kaisen.settings_update` (field names only). |
+| POST | `/projects/{id}/kaisen/test/{anthropic\|github}` | | `{ok, message}`; any member. `github` only reports whether a project token is saved (repository checks moved to the build, below). |
 | GET | `/kaisen/builds?project_id=` | | List (all your projects when omitted): `{id, project_id, name, slug, status, app_id, app_hostname, app_status, file_count, cost_usd, last_run_at, last_error, open_questions, created_by: {id, email}, created_at}`. |
-| POST | `/kaisen/builds` | `{project_id?, name (<=60), brief (<=8000)}` | 201, build detail. Default project is your personal one. 403 at 20 builds per project. Audit `kaisen.build_create`. |
+| POST | `/kaisen/builds` | `{project_id?, name (<=60), brief (<=8000), output?}` (`output` as in PUT output below). Queues the first run at once when the project has an Anthropic key; response adds `start_error` (null, or a plain reason when it stayed `idle`) | 201, build detail. Default project is your personal one. 403 at 20 builds per project. Audit `kaisen.build_create`. |
 | GET | `/kaisen/builds/{id}` | | List fields plus `brief`, `files [{path, size}]`, `runs` (last 10: `{id, kind (build/feedback/resume), status, summary, error, cost_usd, started_at, finished_at, transcript [{role, text}], transcript_trimmed}`), `inbox [{id, kind, text, status, answer, created_at}]`, `app {id, name, hostname, status}`, `spend {build_usd, cap_build, month_usd}`, `output {mode, repo, branch, can_push}`, `has_anthropic_key`, `can_run`. Status: `idle`, `queued`, `running`, `waiting`, `done`, `stopped`, `error`. |
 | DELETE | `/kaisen/builds/{id}?delete_app=false` | | 204. Stops active runs, removes files and bundles. With `delete_app=true` also deletes the live app (403 if it is suspended). Audit `kaisen.build_delete`. |
 | POST | `/kaisen/builds/{id}/run` | | Starts, or resumes a stopped/failed build. 422 without an Anthropic key, 409 if a run is active or the project is at a cap. Audit `kaisen.run`. Returns detail. |
@@ -474,11 +474,14 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/answer` | `{text (<=4000)}` | Answer an open question; 409 if already answered. |
 | POST | `/kaisen/builds/{id}/deploy` | | Redeploys the current files as the build's app, in its project, with the usual app limits and errors. Audit `kaisen.deploy`. |
 | GET | `/kaisen/builds/{id}/files/{path}` | | `{path, size, content, binary, truncated}` (redacted). |
-| GET | `/kaisen/builds/{id}/download` | | `{slug}.tar.gz`; 409 with no files. |
-| POST | `/kaisen/builds/{id}/push` | | Push to the project's GitHub repo; 422 if not set up, 502 on a GitHub error. Audit `kaisen.push`. |
+| GET | `/kaisen/builds/{id}/download` | | `{slug}.tar.gz`, with a `CONVERSATION.md` (your brief, change requests and answers, and Kaisen's text, questions and summaries; no tool calls, thinking or file contents); 409 with no files. |
+| POST | `/kaisen/builds/{id}/push` | | Push to the build's own repo with its selected token; 422 if not set up, 502 on a GitHub error. Audit `kaisen.push`. |
+| GET | `/kaisen/builds/{id}/output` | | `{mode ("download"/"github"), repo, branch, push_on_finish, open_pr, auth ("project"/"build"), token: {set, last4}, project_token_set, can_push}`; also the detail's `output`. Anyone in the project; read keys allowed. |
+| PUT | `/kaisen/builds/{id}/output` | any of `mode`, `repo` (`https://github.com/owner/repo[.git]` or `owner/repo`), `branch` (blank = `kaisen/<slug>`), `push_on_finish`, `open_pr`, `auth`, `github_token` (build only, write-only), `clear_github_token` | Anyone who can run the build (members; not read keys). GitHub mode needs a repo and a token (project token for `project`, build token for `build`); 422 otherwise. Audit `kaisen.output_update` (field names only). |
+| POST | `/kaisen/builds/{id}/output/test` | | `{ok, message}`: checks push access with the selected token. |
 | GET | `/kaisen/spend?project_id=` | | `{project_id, month_usd, today_usd, cap_day}`. |
 
-`/auth/me` carries `features.kaisen`, and `AppOut.kaisen_build_id` links a built app to its build. Preview pods fetch their code from the unauthenticated `/kaisen/bundles/{token}.tar.gz` (256-bit token, rate limited, not in the OpenAPI schema).
+`/auth/me` carries `features.kaisen`, and `AppOut.kaisen_build_id` links a built app to its build. Preview pods fetch their code from the unauthenticated `/kaisen/bundles/{token}.tar.gz` (256-bit token, rate limited, not in the OpenAPI schema). The URL is stored as an encrypted spec secret on the app and only the newest bundle per build is valid. A Kaisen redeploy rewrites only `KAISEN_*`, `DB_*` and `DATABASE_URL`; other env vars on the app are kept.
 
 ## Presigned object transfer
 

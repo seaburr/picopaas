@@ -31,7 +31,6 @@ background on each item if you want it.
   `ghcr.io/seaburr/kaisen` package to Public once; (3) get the Anthropic API key, which you paste into Kaisen's Settings page, not into PicoPaaS or GitHub; (4) optional:
   a target repo plus a fine-grained token (Contents RW, Pull requests RW, that repo only), also entered in Settings. You can skip
   (4) and download a tarball instead.
-- **Approve a bootstrap run to republish the backup image and re-pin BACKUP_IMAGE (2026-10-28).** images/backup/picopaas-backup.sh now writes the app image (url/tag/digest) into the package MANIFEST.json; the new image needs a bootstrap run to publish, then BACKUP_IMAGE re-pinned. Until then manifests simply lack `image`. Reply "approved" and I run it.
 - **Sign in with Google (design: docs/design/google-signin.md; effort M, not massive).** When you want it built: create a Google Cloud
   project, an OAuth consent screen (External; openid/email/profile; publish to Production), and a Web OAuth client with redirect
   `https://platform.picopaas.xyz/api/auth/google/callback`. Give me the secret names you used and add client id/secret as repo + k8s secrets.
@@ -39,6 +38,7 @@ background on each item if you want it.
 
 ## Resolved
 
+- 2026-10-30: **Bootstrap run approved and done** (run 40982645814, success): KAISEN_RUNTIME_IMAGE pinned to picopaas-kaisen-runtime@sha256:b11f8beb...cf1db47ce; BACKUP_IMAGE re-pinned to the latest backup image (covers the 2026-10-28 MANIFEST change). Weather build deployed into Demo (app 184, 1 of 3 apps, preview 200).
 - 2026-10-29: **Kaisen configuration (answered: in-app).** Chas: the customer configures Kaisen in a web form once it is
   deployed (API key, target repo), then it goes to work; output is a GitHub repo OR a tarball download; build the builder first,
   self-testing later. The SPEC v2 section 17 decisions are deferred to M1 (they concern the CI/ruleset path). See ~/source/kaisen/docs/BUILDER_V0.md.

@@ -638,7 +638,7 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 
 ## 16. Kaisen (Preview)
 
-Kaisen builds a small web app from a plain-language brief and deploys it as a normal app in your project. It is a **Preview**: it can change or break, and generated apps are throwaway-grade. It appears as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on.
+Kaisen builds a small web app from a plain-language brief and deploys it as a normal app in your project. It is in preview: it can change or break, and generated apps are throwaway-grade. It appears as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on.
 
 **You bring the key.** Kaisen uses your project's own Anthropic API key, so the model cost is billed to you (or your team), not to PicoPaaS. Everyone in a project can start builds with its key; only owners change settings.
 
@@ -648,8 +648,8 @@ Open **Kaisen > Settings** (`/kaisen/settings`) for the current project. Setting
 
 - **Anthropic key, model, effort.** Models: `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5`. Effort: low, medium (default) or high.
 - **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); any cap can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
-- **Output.** Download (default) or push to GitHub.
-- **Test buttons** check the saved key or token without starting a build.
+- **GitHub token (optional).** One token every build in the project can use to push. Anyone who can run builds here can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean. Where each build pushes is set on the build (see below).
+- **Test Anthropic** checks the saved key and model without starting a build ("Key valid. Selected model available.").
 
 ### Get an Anthropic key
 
@@ -660,7 +660,7 @@ Open **Kaisen > Settings** (`/kaisen/settings`) for the current project. Setting
 ### Build an app
 
 1. **Kaisen > New build**: give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
-2. Press **Run**. The build page shows the status: `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off.
+2. Press **Start building**: creating the build starts it (if the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why). The build page shows the status: `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off.
 3. If Kaisen has a question it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
 4. When it is `done`, open the live app from the **Live app** card.
 
@@ -672,7 +672,7 @@ Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. K
 
 ### The live app
 
-The deployed preview is an ordinary app in the build's project: it appears in the apps list with a "Built with Kaisen (Preview)" badge, has the usual health and settings pages, uses one of the project's app slots and follows the same limits. Deleting the app unlinks the build. Deleting the build asks whether to delete the app too.
+The deployed preview is an ordinary app in the build's project: it appears in the apps list with a "Built with Kaisen · Preview" badge, has the usual health and settings pages, uses one of the project's app slots and follows the same limits. **Take offline** on the build page deletes the app (and its database and data, if it has one) but keeps the build, its files and its conversation; **Deploy again** brings it back with a new address. Deleting the app from its own pages does the same. Deleting the build asks whether to delete the app too.
 
 Kaisen apps run on a shared runtime image and read a `kaisen.json` at the project root:
 
@@ -688,10 +688,10 @@ Add `"database": "mysql"` and the app gets its own MySQL database (same 50 MB li
 
 ### Download or push to GitHub
 
-- **Download** (`.tar.gz` of the files) is always available from the build page.
-- **Push**: choose *GitHub* under Output, enter the repository (`https://github.com/owner/repo`), a branch (optional), and a token. Options: push when a build finishes, and open a pull request instead of pushing straight to the branch. Use **Test GitHub** to check it.
+- **Download** (`.tar.gz`) is always available from the build page. It holds the files plus `CONVERSATION.md`: your brief, feedback and answers, and Kaisen's replies, questions and summaries for every run (no internal agent detail; saved keys are redacted).
+- **Push**: each build has its own **Output** card (also an optional section on New build). Choose *Download and push to GitHub*, enter the repository (`https://github.com/owner/repo`) and a branch (optional; blank = `kaisen/<build>`), then pick the auth: *Use the project's GitHub token* or *Use a token for this build only*. Options: push when a build finishes, and open a pull request. **Test** checks push access to that repository with the chosen token; **Push now** pushes immediately. The download's `CONVERSATION.md` is not pushed.
 
-To make the token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into settings; GitHub shows it once. For an organization, an owner may need to approve it.
+To make the token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into Kaisen settings or the build's Output card; GitHub shows it once. For an organization, an owner may need to approve it.
 
 ### Not supported yet
 
