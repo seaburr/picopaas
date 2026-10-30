@@ -7,6 +7,12 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Kaisen in PicoPaaS (Preview): three calls I made, tell me if you disagree (2026-10-29).** Design: docs/design/kaisen.md.
+  (1) Kaisen settings (Anthropic key, caps, GitHub) belong to the PicoPaaS project, so in a team project any member can
+  start builds that spend the team's key; owners edit the settings. (2) The agent loop runs in a separate `kaisen-worker`
+  pod (same image, no cluster permissions) so a build can't hurt the API; no new paid resource. (3) Once the built-in
+  version works, I delete the standalone test Kaisen and its two preview apps on the jimmy account. I'll ask before
+  deleting.
 - **Kaisen customers and the 1-app default (2026-10-29).** New PicoPaaS accounts get `DEFAULT_APP_LIMIT` = 1, and Kaisen itself
   uses that slot, so it can't deploy a preview into the customer's personal space. For now Kaisen can deploy into a project
   (3 apps by default). Options: (a) leave it and document "deploy previews into a project"; (b) raise the default for new

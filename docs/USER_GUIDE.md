@@ -636,3 +636,63 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 - Databases and buckets stay with their app. Suspending a member's account does not stop the team's apps. Project owners (not the app's creator) are the contacts administrators see for a team app.
 - API keys act as you, but cannot invite, remove or change roles. Do that in the browser.
 
+## 16. Kaisen (Preview)
+
+Kaisen builds a small web app from a plain-language brief and deploys it as a normal app in your project. It is a **Preview**: it can change or break, and generated apps are throwaway-grade. It appears as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on.
+
+**You bring the key.** Kaisen uses your project's own Anthropic API key, so the model cost is billed to you (or your team), not to PicoPaaS. Everyone in a project can start builds with its key; only owners change settings.
+
+### Project settings
+
+Open **Kaisen > Settings** (`/kaisen/settings`) for the current project. Settings belong to the project, so a team project has its own key, model and caps. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
+
+- **Anthropic key, model, effort.** Models: `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5`. Effort: low, medium (default) or high.
+- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); any cap can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
+- **Output.** Download (default) or push to GitHub.
+- **Test buttons** check the saved key or token without starting a build.
+
+### Get an Anthropic key
+
+1. Open console.anthropic.com > API keys and create a key named `picopaas-kaisen`.
+2. Paste it into Kaisen settings and save, then press **Test Anthropic**.
+3. Set a spend limit on the Anthropic side too. PicoPaaS caps are a second guard, not a replacement.
+
+### Build an app
+
+1. **Kaisen > New build**: give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
+2. Press **Run**. The build page shows the status: `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off.
+3. If Kaisen has a question it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
+4. When it is `done`, open the live app from the **Live app** card.
+
+Builds work in steps of up to 15 minutes. The transcript on the build page is redacted, and is trimmed 14 days after a run ends.
+
+### Ask for changes
+
+Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys. Feedback needs a first run to have happened.
+
+### The live app
+
+The deployed preview is an ordinary app in the build's project: it appears in the apps list with a "Built with Kaisen (Preview)" badge, has the usual health and settings pages, uses one of the project's app slots and follows the same limits. Deleting the app unlinks the build. Deleting the build asks whether to delete the app too.
+
+Kaisen apps run on a shared runtime image and read a `kaisen.json` at the project root:
+
+```json
+{"runtime": "python", "start": "uvicorn main:app --host 0.0.0.0 --port $PORT", "health": "/", "database": "mysql"}
+```
+
+`runtime` is `static`, `python` or `node`; `start` is needed for python (node defaults to `npm start`); servers listen on `0.0.0.0:$PORT` (8080). No secrets are available to previews.
+
+### Database
+
+Add `"database": "mysql"` and the app gets its own MySQL database (same 50 MB limit as any app) with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_CA_CERT` (certificate text) and `DATABASE_URL`. TLS is required. The first deploy takes a minute or two longer. Once added, the database stays with the app. PostgreSQL, buckets and volumes are not supported for Kaisen apps yet.
+
+### Download or push to GitHub
+
+- **Download** (`.tar.gz` of the files) is always available from the build page.
+- **Push**: choose *GitHub* under Output, enter the repository (`https://github.com/owner/repo`), a branch (optional), and a token. Options: push when a build finishes, and open a pull request instead of pushing straight to the branch. Use **Test GitHub** to check it.
+
+To make the token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into settings; GitHub shows it once. For an organization, an owner may need to approve it.
+
+### Not supported yet
+
+Reading the app's logs while Kaisen debugs a deploy (it sees status and an HTTP check only), running generated tests, a separate reviewer step, per-member spend limits, and apps that need storage or volumes. Limits: files up to 200 KB, 300 files and 5 MB per build.

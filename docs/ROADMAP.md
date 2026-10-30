@@ -85,6 +85,16 @@ Chas: "we've done it before for Tribal, so the whole thing is understood." A pro
 - Prereq worth doing first: a documented, versioned API surface (and the `/api/` prefix, issue #10) so the provider
   isn't pinned to SPA-shared paths.
 
+## Kaisen (Preview): shipped 2026-10-29
+
+Shipped: per-project settings (Anthropic key, model, effort, caps, output), builds with questions, feedback and resume, previews deployed as normal apps in the project, MySQL for previews, download and GitHub push (optional pull request), spend caps, audit events, the `kaisen-worker` Deployment and a pinned runtime image.
+
+Next:
+- Logs in `deploy_preview`, routed through the platform's pod-log path so the builder can read why a preview fails.
+- Run generated tests before finishing a build.
+- A reviewer role that checks the result before it is marked done.
+- PostgreSQL, storage and volumes for previews; per-member spend limits.
+
 ## Shipped (2026-10-20 round)
 2. App templates / one-click catalog (`/templates`: Ghost, WordPress, Directus, Grafana, n8n, Shlink, status page, nginx static site) — DONE.
 3. Instant rollback to a previous image digest (last 5 per app) — DONE.

@@ -456,6 +456,30 @@ Raising `max_apps_per_user` also raises `max_apps_per_admin` and `admin_default_
 
 Lowering a ceiling doesn't change values already set on apps; it limits future changes.
 
+## Kaisen (Preview) (`/kaisen`, `/projects/{id}/kaisen`)
+
+Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the admin setting must both be on). Callers who are not members of the build's project get 404. API keys work; read-scope keys can read but `can_run` is false. Settings edits need project owner.
+
+| Method | Path | Body | Response / notes |
+|---|---|---|---|
+| GET | `/projects/{id}/kaisen` | | Settings: `{project_id, anthropic_key: {set, last4}, has_anthropic_key, model, effort, models[], efforts[], cap_run, cap_day, cap_build, output_mode ("download"/"github"), github_repo, github_branch, github_token: {set, last4}, push_on_finish, open_pr, can_edit, updated_at}`. Secrets are never returned. |
+| PUT | `/projects/{id}/kaisen` | any of `anthropic_key`, `clear_anthropic_key`, `model`, `effort`, `cap_run`, `cap_day`, `cap_build` (0 to 1000 USD), `output_mode`, `github_repo`, `github_branch`, `github_token`, `clear_github_token`, `push_on_finish`, `open_pr` | Owner only. Blank or omitted secrets keep the saved value. 422 for unknown model/effort, bad caps, bad repo, or `github` output without repo and token. Audit `kaisen.settings_update` (field names only). |
+| POST | `/projects/{id}/kaisen/test/{anthropic\|github}` | | `{ok, message}`; any member. |
+| GET | `/kaisen/builds?project_id=` | | List (all your projects when omitted): `{id, project_id, name, slug, status, app_id, app_hostname, app_status, file_count, cost_usd, last_run_at, last_error, open_questions, created_by: {id, email}, created_at}`. |
+| POST | `/kaisen/builds` | `{project_id?, name (<=60), brief (<=8000)}` | 201, build detail. Default project is your personal one. 403 at 20 builds per project. Audit `kaisen.build_create`. |
+| GET | `/kaisen/builds/{id}` | | List fields plus `brief`, `files [{path, size}]`, `runs` (last 10: `{id, kind (build/feedback/resume), status, summary, error, cost_usd, started_at, finished_at, transcript [{role, text}], transcript_trimmed}`), `inbox [{id, kind, text, status, answer, created_at}]`, `app {id, name, hostname, status}`, `spend {build_usd, cap_build, month_usd}`, `output {mode, repo, branch, can_push}`, `has_anthropic_key`, `can_run`. Status: `idle`, `queued`, `running`, `waiting`, `done`, `stopped`, `error`. |
+| DELETE | `/kaisen/builds/{id}?delete_app=false` | | 204. Stops active runs, removes files and bundles. With `delete_app=true` also deletes the live app (403 if it is suspended). Audit `kaisen.build_delete`. |
+| POST | `/kaisen/builds/{id}/run` | | Starts, or resumes a stopped/failed build. 422 without an Anthropic key, 409 if a run is active or the project is at a cap. Audit `kaisen.run`. Returns detail. |
+| POST | `/kaisen/builds/{id}/feedback` | `{text (<=4000)}` | New change run. 409 before a first run. Audit `kaisen.run`. |
+| POST | `/kaisen/builds/{id}/inbox/{item_id}/answer` | `{text (<=4000)}` | Answer an open question; 409 if already answered. |
+| POST | `/kaisen/builds/{id}/deploy` | | Redeploys the current files as the build's app, in its project, with the usual app limits and errors. Audit `kaisen.deploy`. |
+| GET | `/kaisen/builds/{id}/files/{path}` | | `{path, size, content, binary, truncated}` (redacted). |
+| GET | `/kaisen/builds/{id}/download` | | `{slug}.tar.gz`; 409 with no files. |
+| POST | `/kaisen/builds/{id}/push` | | Push to the project's GitHub repo; 422 if not set up, 502 on a GitHub error. Audit `kaisen.push`. |
+| GET | `/kaisen/spend?project_id=` | | `{project_id, month_usd, today_usd, cap_day}`. |
+
+`/auth/me` carries `features.kaisen`, and `AppOut.kaisen_build_id` links a built app to its build. Preview pods fetch their code from the unauthenticated `/kaisen/bundles/{token}.tar.gz` (256-bit token, rate limited, not in the OpenAPI schema).
+
 ## Presigned object transfer
 
 `POST /apps/{app_id}/storage/presign` body `{"method": "PUT"|"GET", "key": "...", "content_length": int, "expires_seconds": int}`

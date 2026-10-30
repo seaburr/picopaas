@@ -322,6 +322,17 @@ configured and a MySQL `DATABASE_URL` (`PLATFORM_BACKUP_ENABLED=1` is the defaul
 (`platform_backup_repo_password`): keep `FERNET_KEY` safe elsewhere, or the repo can't be opened. Admin > Health > Backups shows the runs, last success,
 repository size and a stale warning; "Back up now" is `POST /admin/health/backups/platform-db/run`. Restore: docs/OPERATIONS.md.
 
+## Kaisen (Preview)
+
+Kaisen builds apps from a brief and deploys them into the user's project; see the User Guide section 16.
+
+- **On/off.** Two switches must both be on: env `KAISEN_ENABLED` (default `1`) and **Admin > Settings > Accounts > Kaisen (Preview)** (`kaisen_enabled`). Off hides the nav entry and makes `/kaisen*` return 404. Running builds are not killed by the switch; scale the worker to 0 for that.
+- **Worker.** Builds run in the `kaisen-worker` Deployment (1 replica, same image as the API, `python -m app.kaisen.worker`), not in the API pods, so a long build cannot starve the API. It needs no cluster access. See `OPERATIONS.md` for logs, heartbeat and restart.
+- **Runtime image.** Previews run the generic image in `KAISEN_RUNTIME_IMAGE`, pinned by digest like `BACKUP_IMAGE`. When empty, deploys are refused with a plain message. To re-pin after a new image is published, run the `bootstrap` workflow (optional `kaisen_runtime_image_digest`); existing previews keep the old image until redeployed. `PLATFORM_PUBLIC_URL` (default `https://PLATFORM_HOST`) is where preview pods download their code.
+- **Spend is the project's own.** Each project saves its own Anthropic key (encrypted, write-only), and its caps (default $2 per run, $8 per day, $30 per build) apply per project. PicoPaaS pays nothing. Any project member can spend a team project's key.
+- **Limits.** Per project: `KAISEN_MAX_BUILDS_PER_PROJECT` (20), 300 files, 200 KB per file, 5 MB per build. Previews count against the project's app limit and app caps like any app.
+- **Audit.** `kaisen.settings_update`, `kaisen.build_create`, `kaisen.build_delete`, `kaisen.run`, `kaisen.deploy`, `kaisen.push`, plus the usual `app.*` events for the preview app.
+
 ## Settings
 
 **Admin > Settings** (API: `GET/PUT /admin/settings`) holds the global limits an admin can change without a redeploy,
