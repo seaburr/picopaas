@@ -218,13 +218,26 @@ def test_stale_result_from_another_bundle_is_ignored(env):
     go(model, runtime=rt)
     assert detail(env)["tests"] is None
     assert "no result in the log yet" in json.dumps(model.calls[2])
+    assert "call deploy_preview again" not in json.dumps(model.calls[2]).lower().replace("don't call deploy_preview again", "")
 
 
-def test_no_declared_test_tells_the_model_to_add_one(env):
+def test_static_site_without_tests_is_told_that_is_fine(env):
+    # no kaisen.json means static; the hint must not push the builder into adding a server (demo 2026-10-30)
     start(env)
-    model = FakeModelClient([reply(write("app.py", "1")), reply(tool_use("deploy_preview", {})), _finish()])
+    model = FakeModelClient([reply(write("index.html", "<p>hi</p>")), reply(tool_use("deploy_preview", {})), _finish()])
     go(model)
-    assert "none declared" in json.dumps(model.calls[2])
+    result = json.dumps(model.calls[2])
+    assert "none (static site)" in result and "do not change the runtime" in result
+    assert detail(env)["tests"] is None
+
+
+def test_server_without_declared_test_gets_an_optional_hint(env):
+    start(env)
+    manifest = json.dumps({"runtime": "python", "start": "python app.py"})
+    model = FakeModelClient([reply(write("kaisen.json", manifest), write("app.py", "1")), reply(tool_use("deploy_preview", {})), _finish()])
+    go(model)
+    result = json.dumps(model.calls[2])
+    assert "none declared. Optional" in result and "Never change the runtime" in result
     assert detail(env)["tests"] is None
 
 

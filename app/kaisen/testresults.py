@@ -61,14 +61,18 @@ def parse(log: str) -> TestResult | None:
     return TestResult("running", None, "", clip_tail("\n".join(body)))
 
 
-def declared_test(db: Session, b: KaisenBuild) -> str:
-    """The `test` command in the build's kaisen.json ('' when none)."""
+def _manifest(db: Session, b: KaisenBuild) -> dict:
     row = db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id, KaisenFile.path == "kaisen.json")).first()
     try:
         data = json.loads(row.content) if row else {}
     except ValueError:
-        return ""
-    t = data.get("test") if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def declared_test(db: Session, b: KaisenBuild) -> str:
+    """The `test` command in the build's kaisen.json ('' when none)."""
+    t = _manifest(db, b).get("test")
     return t.strip() if isinstance(t, str) else ""
 
 
@@ -110,8 +114,11 @@ def tool_block(db: Session, b: KaisenBuild) -> str:
     """The test section of deploy_preview's result, written for the model. Prominent when tests failed."""
     declared = declared_test(db, b)
     if not declared:
-        return ("TESTS: none declared. Add a small test suite and put its command in kaisen.json as "
-                '"test" (for example "python -m unittest" or "npm test"), then call deploy_preview again.\n')
+        # A static site has nothing for the runtime to run; never nudge the builder into adding a server (demo 2026-10-30).
+        if _manifest(db, b).get("runtime", "static") == "static":
+            return "TESTS: none (static site). That is fine; do not change the runtime or add a server to get tests run.\n"
+        return ("TESTS: none declared. Optional: add a small test suite and put its command in kaisen.json as "
+                '"test" (for example "python -m unittest" or "npm test"). Never change the runtime just to get tests run.\n')
     st = b.test_status
     if st == "pass":
         return "TESTS: PASSED\n"
@@ -122,5 +129,8 @@ def tool_block(db: Session, b: KaisenBuild) -> str:
                 f"{b.test_tail or '(no output)'}\n")
     if st == "running":
         return "TESTS: still running; call deploy_preview again in a moment.\n"
-    return ("TESTS: no result in the log yet. Either the runtime has not got there, the output has scrolled out of the "
-            "log tail, or this runtime image predates test support. Call deploy_preview again.\n")
+    # Don't say "call again": with an image that predates test support the result never comes, and repeated identical
+    # calls trip the repeat detector (demo 2026-10-30).
+    return ("TESTS: no result in the log yet. The output may have scrolled out of the log tail or this runtime may not "
+            "report tests. Don't call deploy_preview again just for this; if the app works, finish and say the tests "
+            "are unverified.\n")
