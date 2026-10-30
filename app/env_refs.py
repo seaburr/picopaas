@@ -6,7 +6,7 @@ paths mirror that section exactly.
 """
 import re
 
-ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*\Z")  # \Z, not $: "$" also matches before a trailing newline
 REF_RE = re.compile(r"^\$\{\{\s*([a-z0-9_]+(?:\.[a-z0-9_]+)?)\s*\}\}$")
 
 ALLOWED_REFS = {

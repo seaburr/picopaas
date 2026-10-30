@@ -138,7 +138,7 @@ def test_check_outcomes():
     r = deploy.check(_RT([("running", "h.x")], [500]), 1, [], 6, clock, sleep)
     assert not r.ok and "http: 500" in r.text
     r = deploy.check(_RT([("running", "h.x")], [200], logs=None), 1, [], 6, clock, sleep)
-    assert "logs are not available" in r.text
+    assert "no logs captured yet" in r.text
 
 
 def test_check_truncates_and_redacts(monkeypatch):
@@ -203,3 +203,34 @@ def test_heartbeat(tmp_path):
     worker.touch_heartbeat(str(p))
     assert p.exists()
     worker.touch_heartbeat(str(tmp_path / "missing" / "hb"))  # OSError is logged, not raised
+
+
+def test_builder_prompt_quotes_caps_from_config(monkeypatch):
+    from app import config
+    from app.kaisen import llm
+    mb = 1024 * 1024
+    monkeypatch.setattr(config, "DEFAULT_MEM_LIMIT_MI", 777)
+    monkeypatch.setattr(config, "DB_QUOTA_BYTES", 33 * mb)
+    monkeypatch.setattr(config, "KAISEN_MAX_FILES", 123)
+    monkeypatch.setattr(config, "MAX_DB_USER_CONNECTIONS", 7)
+    text = llm.build_system()
+    assert "{{" not in text
+    for want in ("777 MB memory", "33 MB cap", "123 files", "max 7 connections", f"{config.DEFAULT_CPU_LIMIT_M} millicores",
+                 f"always {config.KAISEN_PREVIEW_PORT}", f"{config.KAISEN_MAX_FILE_BYTES // 1024} KB per file"):
+        assert want in text, want
+    for want in ("kaisen.json", "DATABASE_URL", "DB_CA_CERT", "untrusted", "Not supported in previews"):
+        assert want in text
+    assert llm.SYSTEM.startswith("You are Kaisen's builder")
+
+
+
+def test_run_progress_counts_model_turns_and_last_tool():
+    from app.routers.kaisen import _progress
+    assert _progress(None) == {"step": None, "last_tool": None}
+    msgs = [
+        {"role": "user", "content": "brief"},
+        {"role": "assistant", "content": [{"type": "text", "text": "plan"}, {"type": "tool_use", "name": "write_file", "id": "t1", "input": {}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+        {"role": "assistant", "content": [{"type": "server_tool_use", "name": "web_search", "id": "s1", "input": {}}]},
+    ]
+    assert _progress(msgs) == {"step": 2, "last_tool": "web_search"}

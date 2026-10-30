@@ -29,6 +29,10 @@ class KaisenSettings(Base):
     cap_day: Mapped[float] = mapped_column(Float, nullable=False)
     cap_build: Mapped[float] = mapped_column(Float, nullable=False)
     github_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # the project GitHub token (builds may use it)
+    web_access: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    web_allowed_domains: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # None/[] = any domain
+    reviewer: Mapped[str] = mapped_column(String(8), nullable=False, default="off", server_default="off")  # off | on
+    reviewer_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # None = config default
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
@@ -56,6 +60,10 @@ class KaisenBuild(Base):
     open_pr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     github_auth: Mapped[str] = mapped_column(String(16), nullable=False, default="project", server_default="project")
     github_token_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # only when github_auth == "build"
+    # latest generated-test result, parsed from the preview's boot log (app/kaisen/testresults.py)
+    test_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # running|pass|fail|timeout
+    test_ran_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    test_tail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class KaisenFile(Base):
@@ -80,9 +88,12 @@ class KaisenRun(Base):
     messages: Mapped[list] = mapped_column(MediumJSON, nullable=False, default=list)
     pending: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    suggestions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # "Next: ..." chips parsed from the summary
+    review: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # reviewer verdict: {verdict, findings, model, note}
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     lease_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    started_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # member whose spend this run counts against
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
@@ -100,6 +111,8 @@ class KaisenEvent(Base):
     cache_write_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    web_searches: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)  # member who started the run
     usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
@@ -126,3 +139,39 @@ class KaisenBundle(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     data: Mapped[bytes] = mapped_column(LongBlob, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenPreviewLog(Base):
+    """Latest redacted tail of a preview app's logs. Written by the reconciler (the only pod with cluster access) while
+    the build has an active run; read by the worker for deploy_preview. One row per app, replaced on each snapshot."""
+    __tablename__ = "kaisen_preview_logs"
+
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), primary_key=True)
+    text: Mapped[str] = mapped_column(MediumText, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenMemberLimit(Base):
+    """Optional per-member spend caps set by project owners (USD). NULL = no limit of that kind."""
+    __tablename__ = "kaisen_member_limits"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    cap_day: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # this member's spend per UTC day, all builds
+    cap_build: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # this member's spend on any one build
+    updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenSecret(Base):
+    """A build-level secret a member set: Fernet-encrypted value, merged into the preview app's env on deploy.
+    Never sent to the model (it sees names only), never returned in plain."""
+    __tablename__ = "kaisen_secrets"
+    __table_args__ = (UniqueConstraint("build_id", "name", name="uq_kaisen_secret_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(ForeignKey("kaisen_builds.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    value_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

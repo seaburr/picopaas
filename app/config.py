@@ -372,8 +372,25 @@ KAISEN_PRICES = {
     "claude-sonnet-5-5": {"in": 2.00, "out": 10.00, "cache_read": 0.20, "cache_write": 2.50},
     "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
 }
-KAISEN_DEFAULT_MODEL = "claude-opus-5-5"
+KAISEN_DEFAULT_MODEL = "claude-sonnet-5-5"
 KAISEN_EFFORTS = ("low", "medium", "high")
+# Request shaping (cost): old tool results are replaced by stubs in the OUTGOING request only (stored messages untouched).
+# The boundary moves in steps of KAISEN_ELIDE_STRIDE assistant turns so the cached prefix stays stable between jumps.
+KAISEN_ELIDE_KEEP_TURNS = 8  # most recent assistant turns whose tool results are always sent in full
+KAISEN_ELIDE_STRIDE = 8
+KAISEN_ELIDE_MIN_BYTES = 200  # results shorter than this are cheaper than their stub: keep them
+# "Next: ..." suggestions the builder ends its finish summary with (shown as chips)
+KAISEN_SUGGESTIONS_MAX = 3
+KAISEN_SUGGESTION_MAX_CHARS = 120
+# Web access (design s11): Anthropic server-side tools, per-project toggle, off by default. Basic (non-dynamic-filtering)
+# versions, called directly, so no code-execution container is involved; verified against the Claude docs 2026-10-30.
+KAISEN_WEB_SEARCH_TOOL = "web_search_20250305"
+KAISEN_WEB_FETCH_TOOL = "web_fetch_20250910"
+KAISEN_WEB_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5")  # models that accept both tools
+KAISEN_WEB_MAX_USES = 5  # per model request, for each of web_search and web_fetch
+KAISEN_WEB_FETCH_MAX_TOKENS = 20000  # max_content_tokens per fetched page
+KAISEN_WEB_SEARCH_USD = 0.01  # $10 per 1,000 searches; fetch has no extra charge beyond tokens
+KAISEN_WEB_DOMAINS_MAX = 20
 KAISEN_DEFAULT_EFFORT = "medium"
 KAISEN_OUTPUT_MODES = ("download", "github")
 KAISEN_GITHUB_AUTHS = ("project", "build")
@@ -382,6 +399,17 @@ KAISEN_DEFAULT_CAP_RUN = 2.0
 KAISEN_DEFAULT_CAP_DAY = 8.0
 KAISEN_DEFAULT_CAP_BUILD = 30.0
 KAISEN_CAP_MAX = 1000.0
+# Build secrets (name/value pairs a member sets; merged into the preview app's env on every deploy).
+KAISEN_SECRETS_MAX = 20  # per build
+KAISEN_SECRET_NAME_MAX = 64
+KAISEN_SECRET_VALUE_MIN = 6  # shorter values cannot be redacted reliably (app.kaisen.redact skips them)
+KAISEN_SECRET_VALUE_MAX = 4000
+KAISEN_RESERVED_ENV_PREFIXES = ("KAISEN_", "DB_")  # owned by the Kaisen deploy
+KAISEN_RESERVED_ENV_NAMES = ("DATABASE_URL", "PORT", "PATH", "HOME", "HOSTNAME", "LD_PRELOAD", "LD_LIBRARY_PATH",
+                             "PYTHONPATH", "NODE_OPTIONS", "S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY",
+                             "S3_SECRET_KEY")
+# kaisen.json resources a preview may ask for: manifest value -> spec resources.db_engine.
+KAISEN_DATABASES = {"mysql": "mysql", "postgres": "pg"}
 # Builder limits.
 KAISEN_MAX_FILE_BYTES = 200 * 1024
 KAISEN_MAX_FILES = 300
@@ -397,8 +425,25 @@ KAISEN_MAX_BUILDS_PER_PROJECT = int(os.environ.get("KAISEN_MAX_BUILDS_PER_PROJEC
 KAISEN_BUNDLES_KEPT = 1  # the bundle URL is a bearer capability held by the app; only the newest stays valid
 KAISEN_PREVIEW_WAIT_TOOL = 240  # seconds the deploy_preview tool waits for running + an HTTP answer
 KAISEN_PREVIEW_RESULT_BYTES = 4096
-KAISEN_PREVIEW_LOG_LINES = 60
+KAISEN_PREVIEW_LOG_LINES = 100  # tail of the preview's logs the reconciler snapshots for deploy_preview
+KAISEN_PREVIEW_LOG_BYTES = 8192  # stored snapshot cap (the tool result itself is capped by KAISEN_PREVIEW_RESULT_BYTES)
+KAISEN_PREVIEW_LOG_LINE_MAX = 400
 KAISEN_PREVIEW_PORT = 8080
+# Generated tests (F8f): kaisen.json "test" runs in the runtime image's boot.py after the install, before the app starts.
+# The two numbers below reach boot.py as env vars KAISEN_TEST_TIMEOUT_SECONDS / KAISEN_TEST_OUTPUT_BYTES.
+KAISEN_TEST_TIMEOUT_SECONDS = 120
+KAISEN_TEST_OUTPUT_BYTES = 4096  # tail of the test output boot.py prints
+KAISEN_TEST_OUTPUT_LINES = 40
+KAISEN_TEST_COMMAND_MAX = 300  # characters in the kaisen.json "test" command
+KAISEN_TEST_TAIL_BYTES = 2000  # stored on the build and shown to the builder
+# Reviewer pass (F8e): a second, cheap model call after the builder finishes. Off by default (it adds a call per run).
+KAISEN_REVIEWER_MODES = ("off", "on")
+KAISEN_REVIEWER_DEFAULT_MODEL = "claude-haiku-5-5"
+KAISEN_REVIEWER_EFFORT = "low"
+KAISEN_REVIEWER_MAX_TURNS = 8  # model calls in one review
+KAISEN_REVIEWER_MAX_FINDINGS = 5
+KAISEN_REVIEWER_FINDING_CHARS = 400
+KAISEN_REVIEWER_CONTEXT_CHARS = 6000  # of the brief / change request shown to the reviewer
 # Retention (scheduler-free: the worker trims on its own cadence).
 KAISEN_TRANSCRIPT_DAYS = 14
 KAISEN_EVENT_DAYS = 90

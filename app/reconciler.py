@@ -819,6 +819,13 @@ def reconcile_all(
             except Exception as exc:  # noqa: BLE001 - housekeeping; never break the sweep
                 log.warning("finished pod cleanup failed: %s", _kube_error_summary(exc))
 
+    try:
+        from app.kaisen.logs import snapshot_preview_logs
+        snapshot_preview_logs(session, kube)
+    except Exception as exc:  # noqa: BLE001 - informational; never break the sweep
+        session.rollback()
+        log.warning("kaisen preview log snapshot failed: %s", _kube_error_summary(exc))
+
     not_cleaned_up = (
         session.execute(
             select(models.App).where(

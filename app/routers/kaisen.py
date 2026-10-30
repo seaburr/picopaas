@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, deploy as deploy_mod, export, pushing, settings as ksettings
+from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, testresults
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
-from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun)
+from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret)
 from app.kaisen.redact import redact, transcript_lines
 
 NOT_FOUND = "That page doesn't exist."
@@ -58,6 +58,10 @@ class SettingsIn(BaseModel):
     cap_build: Optional[float] = None
     github_token: Optional[str] = Field(default=None, max_length=500)
     clear_github_token: bool = False
+    web_access: Optional[bool] = None
+    reviewer: Optional[str] = Field(default=None, max_length=8)
+    reviewer_model: Optional[str] = Field(default=None, max_length=64)
+    web_allowed_domains: Optional[list[str]] = Field(default=None, max_length=config.KAISEN_WEB_DOMAINS_MAX)
 
 
 @router.get("/projects/{project_id}/kaisen")
@@ -71,13 +75,51 @@ def put_settings(project_id: int, payload: SettingsIn, db: Session = Depends(get
                  user: models.User = Depends(get_active_user)):
     projects.get_project_for_member(db, project_id, user, owner=True)
     data = payload.model_dump(exclude_unset=True)
+    before = ksettings.load(db, project_id)
     try:
         ksettings.save(db, project_id, user.id, data)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     audit.record(db, user, "kaisen.settings_update", "project", project_id,
                  "fields=" + ",".join(ksettings.changed_fields(data)))
+    after = ksettings.load(db, project_id)
+    if (before.web_access, before.web_allowed_domains) != (after.web_access, after.web_allowed_domains):
+        audit.record(db, user, "kaisen.web_access_update", "project", project_id,
+                     f"web_access={'on' if after.web_access else 'off'} domains={len(after.web_allowed_domains)}")
     return ksettings.describe(db, project_id, can_edit=True)
+
+
+class MemberLimitsIn(BaseModel):
+    """null clears a limit (no limit). Omitted fields are kept."""
+    model_config = ConfigDict(extra="forbid")
+    cap_day: Optional[float] = None
+    cap_build: Optional[float] = None
+
+
+@router.get("/projects/{project_id}/kaisen/members")
+def get_member_limits(project_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Per-member spend limits and today's spend. Owners see every member; a member sees only their own row."""
+    _, member = projects.get_project_for_member(db, project_id, user)
+    return {"project_id": project_id, "can_edit": member.role == "owner",
+            "members": kmembers.describe(db, project_id, user.id, member.role == "owner")}
+
+
+@router.put("/projects/{project_id}/kaisen/members/{user_id}")
+def put_member_limits(project_id: int, user_id: int, payload: MemberLimitsIn, db: Session = Depends(get_db),
+                      user: models.User = Depends(get_active_user)):
+    projects.get_project_for_member(db, project_id, user, owner=True)
+    if projects.get_membership(db, project_id, user_id) is None:
+        raise HTTPException(status_code=404, detail="We can't find that member in this project.")
+    data = payload.model_dump(exclude_unset=True)
+    try:
+        kmembers.save(db, project_id, user_id, user.id, data)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    db.commit()
+    audit.record(db, user, "kaisen.member_limits_update", "project", project_id,
+                 f"member={user_id} " + " ".join(f"{k}={'none' if v is None else v}" for k, v in sorted(data.items())))
+    return next(m for m in kmembers.describe(db, project_id, user.id, True) if m["user_id"] == user_id)
 
 
 @router.post("/projects/{project_id}/kaisen/test/{what}")
@@ -91,7 +133,7 @@ def test_settings(what: str, project_id: int, db: Session = Depends(get_db),
             if not rs.anthropic_api_key:
                 return {"ok": False, "message": "No Anthropic API key is saved for this project yet."}
             got = model_factory(rs.anthropic_api_key).retrieve_model(rs.model)
-            return {"ok": True, "message": "Key valid. Selected model available."}
+            return {"ok": True, "message": "Key valid. Selected model available. " + ksettings.web_note(rs)}
         if what == "github":
             if not rs.github_token:
                 return {"ok": False, "message": "No GitHub token is saved for this project yet."}
@@ -158,6 +200,25 @@ def _secrets(db: Session, b: KaisenBuild) -> list[str]:
     return ksettings.load_for_build(db, b).secret_values()
 
 
+def _progress(messages: list | None) -> dict:
+    """Model turns so far and the last tool it called, for the build page's progress strip."""
+    step, last_tool = 0, None
+    for m in messages or []:
+        if isinstance(m, dict) and m.get("role") == "assistant":
+            step += 1
+            for blk in m.get("content") or []:
+                if isinstance(blk, dict) and blk.get("type") in ("tool_use", "server_tool_use"):
+                    last_tool = blk.get("name")
+    return {"step": step or None, "last_tool": last_tool}
+
+
+def _tests_view(b: KaisenBuild, secrets_: list[str]) -> Optional[dict]:
+    v = testresults.view(b)
+    if v is not None:
+        v["tail"] = redact(v["tail"], secrets_)  # secrets added after the result was stored
+    return v
+
+
 def _app_view(db: Session, b: KaisenBuild) -> Optional[dict]:
     a = deploy_mod.live_app(db, b)
     if a is None:
@@ -196,8 +257,11 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         "runs": [{
             "id": r.id, "kind": r.kind, "status": r.status,
             "summary": redact(r.summary, sec) if r.summary else None,
+            "suggestions": [redact(x, sec) for x in (r.suggestions or [])],
             "error": redact(r.error, sec) if r.error else None,
             "cost_usd": round(r.cost_usd or 0.0, 6),
+            **_progress(r.messages),
+            "review": reviewing.view(r, sec),
             "started_at": r.created_at.isoformat(),
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
             "transcript": [{"role": role, "text": text} for role, text in transcript_lines(r.messages, sec)] if r.messages else None,
@@ -210,6 +274,8 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         "spend": {"build_usd": round(builder.spend_build(db, b.id), 6), "cap_build": rs.cap_build,
                   "month_usd": round(builder.spend_month(db, b.project_id), 6)},
         "output": ksettings.describe_output(b, rs),
+        "tests": _tests_view(b, sec),
+        "secrets": buildsecrets.describe(db, b.id),
         "has_anthropic_key": bool(rs.anthropic_api_key),
         "can_run": getattr(request.state, "api_scope", "full") != "read",
     })
@@ -260,7 +326,7 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
         start_error = ("This project has no Anthropic API key yet, so the build was created but not started. "
                        "A project owner can add one in Kaisen settings, then press Build.")
     else:
-        run, msg = builder.start_build(db, b)
+        run, msg = builder.start_build(db, b, user.id)
         if run is None:
             start_error = msg
         else:
@@ -296,6 +362,7 @@ def delete_build(build_id: int, delete_app: bool = False, db: Session = Depends(
     db.query(KaisenFile).filter(KaisenFile.build_id == b.id).delete()
     db.query(KaisenBundle).filter(KaisenBundle.build_id == b.id).delete()
     db.query(KaisenInbox).filter(KaisenInbox.build_id == b.id).delete()
+    db.query(KaisenSecret).filter(KaisenSecret.build_id == b.id).delete()
     if app is not None:
         app.kaisen_build_id = None
         if delete_app:
@@ -320,7 +387,7 @@ def run_build(build_id: int, request: Request, db: Session = Depends(get_db), us
     b = get_build(db, build_id, user)
     _require_key(db, b)
     projects.lock_project(db, b.project_id)
-    run, msg = builder.start_build(db, b)
+    run, msg = builder.start_build(db, b, user.id)
     if run is None:
         raise HTTPException(status_code=409, detail=msg)
     db.commit()
@@ -339,7 +406,7 @@ def feedback(build_id: int, payload: TextIn, request: Request, db: Session = Dep
         raise HTTPException(status_code=409, detail="Run the build first, then ask for changes.")
     projects.lock_project(db, b.project_id)
     app = _app_view(db, b)
-    run, msg = builder.start_feedback(db, b, payload.text, f"https://{app['hostname']}" if app else None)
+    run, msg = builder.start_feedback(db, b, payload.text, f"https://{app['hostname']}" if app else None, user.id)
     if run is None:
         raise HTTPException(status_code=409, detail=msg)
     db.commit()
@@ -413,7 +480,7 @@ def download(build_id: int, db: Session = Depends(get_db), user: models.User = D
     runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id)).all()
     files = [f for f in files if f[0] != export.CONVERSATION_FILE]
     files.append((export.CONVERSATION_FILE, export.build_conversation(b.name, b.brief, runs, _secrets(db, b))))
-    return Response(export.build_tarball(b.slug, files), media_type="application/gzip", headers={
+    return Response(export.build_tarball(b.slug, files, export.build_mtime(db, b)), media_type="application/gzip", headers={
         "Content-Disposition": f'attachment; filename="{b.slug}.tar.gz"', "Cache-Control": "no-store"})
 
 
@@ -434,6 +501,52 @@ def push(build_id: int, request: Request, db: Session = Depends(get_db), user: m
     db.commit()
     audit.record(db, user, "kaisen.push", "kaisen_build", b.id, f"repo={out.repo}")
     return _detail(db, b, request)
+
+
+class SecretIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: str = Field(max_length=config.KAISEN_SECRET_VALUE_MAX)
+
+
+@router.get("/kaisen/builds/{build_id}/secrets")
+def list_secrets(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """Names only; values are masked and never returned."""
+    return buildsecrets.describe(db, get_build(db, build_id, user).id)
+
+
+@router.put("/kaisen/builds/{build_id}/secrets/{name}")
+def put_secret(build_id: int, name: str, payload: SecretIn, db: Session = Depends(get_db),
+               user: models.User = Depends(get_active_user)):
+    """Set or replace a secret. It reaches the preview app on the next deploy (press Deploy, or the builder deploys)."""
+    b = get_build(db, build_id, user)
+    try:
+        created = buildsecrets.put(db, b.id, name, payload.value, user.id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    db.commit()
+    audit.record(db, user, "kaisen.secret_set", "kaisen_build", b.id, f"name={name} created={created}")
+    return {"secrets": buildsecrets.describe(db, b.id), "applies_on_next_deploy": True}
+
+
+@router.delete("/kaisen/builds/{build_id}/secrets/{name}")
+def delete_secret(build_id: int, name: str, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user)
+    row = db.scalar(select(KaisenSecret).where(KaisenSecret.build_id == b.id, KaisenSecret.name == name))
+    if row is None:
+        raise HTTPException(status_code=404, detail="We can't find that secret.")
+    db.delete(row)
+    app = deploy_mod.live_app(db, b)
+    if app is not None and app.status != "suspended":  # the running preview stops getting it: drop it from the app too
+        gone = [v for v in app.env_vars if v.key == name and v.is_secret]
+        for v in gone:
+            app.env_vars.remove(v)
+        if gone:
+            app.status, app.status_detail = "pending", None
+            app.reset_retry()
+    db.commit()
+    audit.record(db, user, "kaisen.secret_delete", "kaisen_build", b.id, f"name={name}")
+    return {"secrets": buildsecrets.describe(db, b.id), "applies_on_next_deploy": False}
 
 
 @router.get("/kaisen/builds/{build_id}/output")

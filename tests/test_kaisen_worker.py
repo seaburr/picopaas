@@ -20,7 +20,8 @@ from tests.conftest import register_and_login
 from tests.kaisen_helpers import KEY, TOKEN, FakeRuntime, Fakes, Keep, app_env, db
 
 IMG = "ghcr.io/example/kaisen-runtime:1"
-PER_CALL = (1000 * 4.00 + 500 * 20.00) / 1_000_000  # default fake usage on the default model
+_P = config.KAISEN_PRICES[config.KAISEN_DEFAULT_MODEL]
+PER_CALL = (1000 * _P["in"] + 500 * _P["out"]) / 1_000_000  # default fake usage on the default model
 
 
 @pytest.fixture()
@@ -483,3 +484,93 @@ def test_worker_factories_and_main_loop(env, monkeypatch, tmp_path):
     monkeypatch.setattr(w, "run_once", once)
     w.run()
     assert calls == [1]
+
+
+# ---- suggestions, web access, pause_turn ------------------------------------------------------------------------
+
+def _web_blocks(query="fastapi docs", url="https://docs.example.com/x"):
+    return [{"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {"query": query}},
+            {"type": "web_search_tool_result", "tool_use_id": "srvtoolu_1",
+             "content": [{"type": "web_search_result", "url": url, "title": "PAGE-BODY-SECRET-TEXT", "encrypted_content": "enc"}]}]
+
+
+def _usage(searches=0):
+    return {"input_tokens": 1000, "output_tokens": 500, "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0, "web_search_requests": searches}
+
+
+def test_finish_summary_next_lines_become_suggestions(env):
+    start(env)
+    model = FakeModelClient([reply(write("kaisen.json", '{"runtime": "static"}'), write("index.html", "<p>x</p>")),
+                             reply(tool_use("finish", {"summary": "Built it.\nNext: add dark mode\nNext: add export"}))])
+    go(model)
+    run = detail(env)["runs"][0]
+    assert run["summary"] == "Built it." and run["suggestions"] == ["add dark mode", "add export"]
+    assert db().get(KaisenRun, run["id"]).suggestions == ["add dark mode", "add export"]
+
+
+def test_web_access_is_off_by_default_and_passes_nothing_to_the_model(env):
+    start(env)
+    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    assert model.webs == [None]
+
+
+def test_web_access_on_passes_the_allow_list_and_counts_search_cost(env):
+    r = env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True, "web_allowed_domains": ["Docs.Example.com"]})
+    assert r.status_code == 200 and r.json()["web_access"] is True and r.json()["web_allowed_domains"] == ["docs.example.com"]
+    start(env)
+    model = FakeModelClient([
+        reply(*_web_blocks(), tool_use("list_files", {}), usage=_usage(searches=2)),
+        reply(tool_use("finish", {"summary": "ok"})),
+    ])
+    go(model)
+    assert model.webs == [{"allowed_domains": ["docs.example.com"]}] * 2
+    d = detail(env)
+    extra = 2 * config.KAISEN_WEB_SEARCH_USD
+    assert d["runs"][0]["cost_usd"] == pytest.approx(2 * PER_CALL + extra)
+    ev = db().query(KaisenEvent).filter_by(build_id=env.bid).order_by(KaisenEvent.id).all()
+    assert [e.web_searches for e in ev] == [2, 0] and ev[0].usd == pytest.approx(PER_CALL + extra)
+    assert env.a.get("/kaisen/spend", params={"project_id": env.pid}).json()["today_usd"] == pytest.approx(2 * PER_CALL + extra)
+
+
+def test_web_tools_omitted_for_a_model_without_support(env, monkeypatch):
+    monkeypatch.setattr(config, "KAISEN_WEB_MODELS", ("claude-opus-5-5",))
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True})
+    start(env)
+    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    assert model.webs == [None]
+
+
+@pytest.mark.parametrize("domains,expect", [([], None), (["docs.example.com"], {"allowed_domains": ["docs.example.com"]})])
+def test_build_with_secrets_gets_web_only_with_an_allow_list(env, domains, expect):
+    # pentest K16: injected page text + build secrets + auto-deploy is an exfiltration chain
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True, "web_allowed_domains": domains})
+    assert env.a.put(f"/kaisen/builds/{env.bid}/secrets/WEATHER_TOKEN", json={"value": "not-the-weather-token"}).status_code == 200
+    start(env)
+    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    assert model.webs == [expect]
+
+
+def test_pause_turn_resends_the_paused_message_and_the_run_continues(env):
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True})
+    start(env)
+    model = FakeModelClient([
+        reply(*_web_blocks(), stop_reason="pause_turn"),
+        lambda msgs: reply(tool_use("finish", {"summary": "after pause"})),
+    ])
+    go(model)
+    assert detail(env)["status"] == "done" and len(model.calls) == 2
+    assert model.calls[1][-1]["role"] == "assistant" and model.calls[1][-1]["content"][0]["type"] == "server_tool_use"
+    assert db().get(KaisenRun, detail(env)["runs"][0]["id"]).messages[1]["content"][1]["content"][0]["encrypted_content"] == "enc"
+
+
+def test_transcript_shows_what_was_searched_never_page_bodies(env):
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True})
+    start(env)
+    model = FakeModelClient([reply(*_web_blocks(), tool_use("list_files", {})), reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    text = " ".join(t["text"] for t in detail(env)["runs"][0]["transcript"])
+    assert "[web] searched for fastapi docs" in text and "PAGE-BODY-SECRET-TEXT" not in text

@@ -30,6 +30,10 @@ def transcript_lines(messages: list, secrets) -> list[tuple[str, str]]:
                 txt = b.get("text", "")
             elif t == "tool_use":
                 txt = f"[call] {b.get('name')} {json.dumps(b.get('input'), default=str)}"
+            elif t == "server_tool_use":  # web search/fetch: show what was looked up, never the page bodies
+                inp = b.get("input") or {}
+                txt = (f"[web] searched for {inp.get('query')}" if b.get("name") == "web_search"
+                       else f"[web] read {inp.get('url')}")
             elif t == "tool_result":
                 c = b.get("content")
                 txt = "[result] " + (c if isinstance(c, str) else json.dumps(c, default=str))
