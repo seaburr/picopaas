@@ -100,6 +100,11 @@ def wanted_resources(db: Session, b: KaisenBuild) -> Wanted:
         return Wanted()  # a broken manifest is reported by the runtime at boot, where the builder can read it
     if not isinstance(data, dict):
         return Wanted()
+    return wanted_from_manifest(data)
+
+
+def wanted_from_manifest(data: dict) -> Wanted:
+    """The resources a parsed kaisen.json asks for. Raises DeployError for a value the deploy would refuse."""
     want = Wanted()
     database = data.get("database")
     if database not in (None, "", False):
@@ -303,6 +308,8 @@ class Runtime(Protocol):
     def status(self, app_id: int) -> tuple[str, str]: ...  # (app status, public host)
     def probe(self, url: str) -> int | None: ...
     def logs(self, app_id: int) -> str | None: ...
+    def request(self, method: str, url: str, body: bytes | None, headers: dict[str, str],
+                max_bytes: int) -> tuple[int, dict[str, str], bytes] | None: ...  # None = no answer
 
 
 class PlatformRuntime:
@@ -324,6 +331,27 @@ class PlatformRuntime:
     def probe(self, url: str) -> int | None:
         try:
             return httpx.get(url, timeout=8, follow_redirects=False).status_code
+        except httpx.HTTPError:
+            return None
+
+    def request(self, method: str, url: str, body: bytes | None, headers: dict[str, str],
+                max_bytes: int) -> tuple[int, dict[str, str], bytes] | None:
+        """One HTTP exchange, redirects not followed. Reads at most max_bytes + 1 body bytes, then stops."""
+        deadline = time.monotonic() + config.KAISEN_HTTP_TIMEOUT_SECONDS
+        # No automatic decompression: a gzip bomb would expand inside one network chunk, before the cap can apply.
+        headers = {**headers, "Accept-Encoding": "identity"}
+        t = config.KAISEN_HTTP_TIMEOUT_SECONDS
+        try:
+            with httpx.Client(timeout=httpx.Timeout(t, connect=min(t, 5), read=min(t, 5)), follow_redirects=False,
+                              trust_env=False) as c:
+                with c.stream(method, url, content=body, headers=headers) as r:
+                    chunks, n = [], 0
+                    for chunk in r.iter_raw():
+                        chunks.append(chunk)
+                        n += len(chunk)
+                        if n > max_bytes or time.monotonic() > deadline:
+                            break
+                    return r.status_code, dict(r.headers), b"".join(chunks)[:max_bytes + 1]
         except httpx.HTTPError:
             return None
 

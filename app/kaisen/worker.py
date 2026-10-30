@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy import delete, select, text, update
 
 from app import config, db as appdb, models
-from . import builder, deploy as deploy_mod, pushing, testresults
+from . import builder, deploy as deploy_mod, httptool, pushing, testresults
 from .github import GitHubError, RealGitHub
 from .llm import AnthropicClient, ModelError
 from .models import KaisenBuild, KaisenEvent, KaisenInbox, KaisenRun
@@ -132,6 +132,11 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
     return _deployer
 
 
+def make_requester(runtime):
+    """The builder's http_request tool: (session, run, input) -> text. Raises ToolError."""
+    return lambda s, run, inp: httptool.perform(s, run, runtime, inp)
+
+
 def deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep=time.sleep) -> None:
     with S() as s:
         run = s.get(KaisenRun, run_id)
@@ -195,7 +200,7 @@ def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_fac
         builder.stop_run(S, run_id, "error", "error", str(e))
         return True
     deployer = make_deployer(S, registry_factory, runtime, wait_s, clock, sleep)
-    if builder.run_step(S, run_id, client, lease, deployer=deployer) == "done":
+    if builder.run_step(S, run_id, client, lease, deployer=deployer, requester=make_requester(runtime)) == "done":
         if lease.check():
             deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep)
         if lease.check():

@@ -160,7 +160,7 @@ def test_reviewer_cannot_use_write_tools_and_gets_an_error_result(env):
 
 def test_reviewer_tool_list_is_read_only():
     names = {t["name"] for t in __import__("app.kaisen.llm", fromlist=["x"]).REVIEWER_TOOLS}
-    assert names == {"list_files", "read_file", "preview_status", "submit_review"}
+    assert names == {"list_files", "read_file", "search_files", "http_get", "preview_status", "submit_review"}
 
 
 # ---- F8f: parser and build detail ----------------------------------------------------------------

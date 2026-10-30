@@ -9,7 +9,7 @@ only output is a verdict, so a prompt-injected reviewer can at worst approve or 
 from sqlalchemy.orm import Session
 
 from app import config
-from . import builder, deploy as deploy_mod, testresults
+from . import builder, deploy as deploy_mod, httptool, testresults
 from .llm import ModelError
 from .models import KaisenBuild, KaisenRun
 from .paths import ToolError
@@ -101,12 +101,14 @@ def _preview_status(s: Session, b: KaisenBuild, secrets_) -> str:
     return text[-config.KAISEN_PREVIEW_RESULT_BYTES:]
 
 
-def _tool(s: Session, b: KaisenBuild, secrets_, name: str, inp) -> str:
+def _tool(s: Session, b: KaisenBuild, secrets_, name: str, inp, http=None) -> str:
     ws = builder.Workspace(s, b.id)
-    if name == "list_files":
+    if name in ("list_files", "read_file", "search_files"):
         return builder.exec_tool(ws, name, inp)
-    if name == "read_file":
-        return builder.exec_tool(ws, name, inp)
+    if name == "http_get":
+        if http is None:
+            raise ToolError("HTTP requests are not available here.")
+        return http({"method": "GET", "path": inp.get("path") if isinstance(inp, dict) else None})
     if name == "preview_status":
         return _preview_status(s, b, secrets_)
     raise ToolError(f"{name} is not available to the reviewer")
@@ -116,7 +118,7 @@ def _skipped(model: str, why: str) -> dict:
     return {"verdict": "skipped", "findings": [], "model": model, "note": f"Review skipped: {why}"}
 
 
-def review(S, run_id: int, client, lease) -> tuple[str, dict | None]:
+def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | None]:
     """Run the review. Returns (state, review dict): state is "ok", "stopped" (build deleted / run stopped) or
     "lease_lost". Never raises for model trouble: that becomes a "skipped" review."""
     with S() as s:
@@ -129,6 +131,7 @@ def review(S, run_id: int, client, lease) -> tuple[str, dict | None]:
             return "ok", _skipped(model, f"unknown reviewer model {model}")
         msgs = [_seed(s, run, b)]
         sec = load_for_build(s, b).secret_values()
+    http = httptool.Limited(requester, config.KAISEN_REVIEWER_HTTP_MAX) if requester else None
     for _ in range(config.KAISEN_REVIEWER_MAX_TURNS):
         with S() as s:
             run = s.get(KaisenRun, run_id)
@@ -171,7 +174,8 @@ def review(S, run_id: int, client, lease) -> tuple[str, dict | None]:
             results = []
             for u in uses:
                 try:
-                    out, err = _tool(s, b, sec, u.get("name"), u.get("input")), False
+                    out, err = _tool(s, b, sec, u.get("name"), u.get("input"),
+                                     (lambda i: http(s, run, i)) if http else None), False
                 except ToolError as e:
                     out, err = f"Error: {e}", True
                 r = {"type": "tool_result", "tool_use_id": u["id"], "content": out}

@@ -36,6 +36,8 @@ class FakeRuntime:
     def __init__(self, code=200, logs="booted ok", stay=None):
         self.code, self.logs_text, self.stay = code, logs, stay
         self.probes = []
+        self.requests = []  # (method, url, body, headers) of each http_request / http_get
+        self.answer = (200, {"content-type": "text/plain"}, b"hello")  # or a callable(method, url) -> tuple | None
 
     def status(self, app_id):
         s = db()
@@ -51,6 +53,14 @@ class FakeRuntime:
     def probe(self, url):
         self.probes.append(url)
         return self.code
+
+    def request(self, method, url, body, headers, max_bytes):
+        self.requests.append((method, url, body, headers))
+        out = self.answer(method, url) if callable(self.answer) else self.answer
+        if out is None:
+            return None
+        code, hdrs, data = out
+        return code, hdrs, data[:max_bytes + 1]  # like the real one: at most max_bytes + 1 bytes
 
     def logs(self, app_id):
         return self.logs_text

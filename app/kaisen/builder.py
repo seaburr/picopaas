@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config
-from . import buildsecrets, members, reviewing
+from . import buildsecrets, checks, httptool, members, reviewing
 from .llm import ModelError, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
 from .paths import ToolError, normalize_path
@@ -65,6 +65,63 @@ class Workspace:
         self.s.flush()
         return f"wrote {path} ({size} bytes)"
 
+    def edit(self, path, old_str, new_str) -> str:
+        """Replace the one occurrence of old_str. Goes through write(), so every size limit still applies."""
+        if not isinstance(old_str, str) or not old_str:
+            raise ToolError("'old_str' must be a non-empty string")
+        if not isinstance(new_str, str):
+            raise ToolError("'new_str' must be a string (empty to delete the text)")
+        path = normalize_path(path)
+        row = self._row(path)
+        if row is None:
+            raise ToolError("file not found")
+        n = row.content.count(old_str)
+        if n == 0:
+            raise ToolError("old_str not found")
+        if n > 1:
+            raise ToolError(f"old_str matches {n} times; add more context")
+        new = row.content.replace(old_str, new_str, 1)
+        self.write(path, new)
+        return f"edited {path} ({len(new.encode())} bytes)"
+
+    def search(self, pattern, regex: bool = False, path_prefix=None) -> str:
+        """`path:line: text` for each matching line (case-sensitive), capped; never executes anything."""
+        if not isinstance(pattern, str) or not pattern:
+            raise ToolError("'pattern' must be a non-empty string")
+        if len(pattern) > config.KAISEN_SEARCH_PATTERN_MAX:
+            raise ToolError(f"'pattern' is too long (max {config.KAISEN_SEARCH_PATTERN_MAX} characters)")
+        if path_prefix is not None and not isinstance(path_prefix, str):
+            raise ToolError("'path_prefix' must be a string")
+        if regex:
+            if (why := checks.regex_problem(pattern)):
+                raise ToolError(why)
+            try:
+                found = re.compile(pattern).search
+            except re.error as e:
+                raise ToolError(f"invalid regex: {e}") from None
+        else:
+            found = lambda line: pattern in line  # noqa: E731
+        hits, more, slow = [], 0, False
+        deadline = time.monotonic() + config.KAISEN_SEARCH_DEADLINE_SECONDS
+        for row in self.s.scalars(select(KaisenFile).where(KaisenFile.build_id == self.bid).order_by(KaisenFile.path)):
+            if slow:
+                break
+            if path_prefix and not row.path.startswith(path_prefix):
+                continue
+            for no, line in enumerate(row.content.splitlines(), 1):
+                if time.monotonic() > deadline:
+                    slow = True
+                    break
+                if found(line[:config.KAISEN_SEARCH_LINE_SCAN]):
+                    if len(hits) < config.KAISEN_SEARCH_MAX_HITS:
+                        hits.append(f"{row.path}:{no}: {line[:config.KAISEN_SEARCH_LINE_CLIP].rstrip()}")
+                    else:
+                        more += 1
+        tail = (["search stopped: too slow"] if slow else []) + ([f"... {more} more matches"] if more else [])
+        if not hits and not slow:
+            return "(no matches)"
+        return "\n".join(hits + tail)
+
     def delete(self, path) -> str:
         row = self._row(normalize_path(path))
         if not row:
@@ -91,7 +148,14 @@ def exec_tool(ws: Workspace, name: str, inp) -> str:
         _str_arg(inp, "path")
         if not isinstance(inp.get("content"), str):
             raise ToolError("'content' must be a string")
-        return ws.write(inp["path"], inp["content"])
+        return ws.write(inp["path"], inp["content"]) + checks.check(normalize_path(inp["path"]), inp["content"])
+    if name == "edit_file":
+        _str_arg(inp, "path")
+        out = ws.edit(inp["path"], inp.get("old_str"), inp.get("new_str"))
+        return out + checks.check(normalize_path(inp["path"]), ws.read(inp["path"]))
+    if name == "search_files":
+        _str_arg(inp, "pattern")
+        return ws.search(inp["pattern"], bool(inp.get("regex", False)), inp.get("path_prefix"))
     if name == "delete_file":
         return ws.delete(_str_arg(inp, "path"))
     raise ToolError(f"unknown tool {name}")
@@ -114,6 +178,60 @@ def seed_message(b: KaisenBuild, secret_note: str = "") -> dict:
     brief = b.brief.replace("</brief", "<\\/brief")
     return {"role": "user", "content": f"Project name: {b.name}\n\n<brief>\n{brief}\n</brief>\n\n"
             "Build this project. Use list_files first to see any existing work." + secret_note}
+
+
+def continue_message(s: Session, b: KaisenBuild, run: KaisenRun | None = None, reason: str = "auto") -> dict:
+    """First message of a fresh context inside a run (auto-continue after the turn limit, or Resume of a long
+    history). Carries what survives a reset: brief, PLAN.md, file list, the last thing the model said. The
+    `checkpoint` key marks where the model-facing history starts; model_view() strips it."""
+    ws = Workspace(s, b.id)
+    brief = b.brief.replace("</brief", "<\\/brief")
+    try:
+        plan = ws.read("PLAN.md")[:config.KAISEN_CONTINUE_PLAN_CHARS]
+    except ToolError:
+        plan = "(no PLAN.md yet: write one first)"
+    plan = plan.replace("</plan", "<\\/plan")
+    files = "\n".join(f"{p} ({n} bytes)" for p, n in ws.list()) or "(no files)"
+    last = ""
+    for m in reversed(list(run.messages) if run else []):
+        if m.get("role") == "assistant":
+            c = m.get("content")
+            last = c if isinstance(c, str) else " ".join(
+                str(x.get("text", "")) for x in c or [] if isinstance(x, dict) and x.get("type") == "text")
+            if last.strip():
+                break
+    last = last.strip()[:config.KAISEN_CONTINUE_PROGRESS_CHARS].replace("</progress", "<\\/progress") or "(none)"
+    return {"role": "user", "checkpoint": reason, "content": (
+        f"Project name: {b.name}\n\n<brief>\n{brief}\n</brief>\n\n"
+        f"Current PLAN.md (your notes; the files are the truth):\n<plan>\n{plan}\n</plan>\n\n"
+        f"Current files:\n{files}\n\n<progress>\n{last}\n</progress>\n\n"
+        "You are continuing a build in a fresh context. Read PLAN.md, pick the next unticked item, work through it, "
+        "verify with deploy_preview/http_request, tick it, and finish when everything is done."
+        + buildsecrets.prompt_note(s, b.id))}
+
+
+def model_view(messages: list) -> list:
+    """What the model sees: everything from the last checkpoint on, without the marker key."""
+    start = 0
+    for i, m in enumerate(messages):
+        if isinstance(m, dict) and m.get("checkpoint"):
+            start = i
+    return [{k: v for k, v in m.items() if k != "checkpoint"} for m in messages[start:]]
+
+
+def steps_in_run(messages: list) -> int:
+    """Steps this run has used: 1 + automatic checkpoints since the start (or since the last Resume checkpoint)."""
+    n = 0
+    for m in messages:
+        if isinstance(m, dict) and m.get("checkpoint") == "auto":
+            n += 1
+        elif isinstance(m, dict) and m.get("checkpoint"):
+            n = 0
+    return n + 1
+
+
+def context_resets(messages: list) -> int:
+    return sum(1 for m in messages if isinstance(m, dict) and m.get("checkpoint"))
 
 
 def latest_run(s: Session, build_id: int) -> KaisenRun | None:
@@ -169,7 +287,11 @@ def start_build(s: Session, b: KaisenBuild, user_id: int | None = None) -> tuple
         return None, limit
     if last and last.status in ("stopped", "error") and last.messages:
         # resume: the history is append-only and valid, so continue it in a fresh run with a fresh run cap
-        run = KaisenRun(build_id=b.id, kind="resume", status="queued", messages=list(last.messages), started_by=user_id)
+        msgs = list(last.messages)
+        if len(model_view(msgs)) > config.KAISEN_RESUME_FULL_MAX_MESSAGES:
+            # long history: keep it for the transcript but start the model fresh from PLAN.md
+            msgs.append(continue_message(s, b, last, "resume"))
+        run = KaisenRun(build_id=b.id, kind="resume", status="queued", messages=msgs, started_by=user_id)
         msg = "Run resumed."
     else:
         run = KaisenRun(build_id=b.id, kind="build", status="queued", started_by=user_id,
@@ -270,9 +392,10 @@ def _still_active(s: Session, run: KaisenRun) -> bool:
     return run.status in ("queued", "running") and b is not None and b.deleted_at is None
 
 
-def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None) -> str:
+def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None, requester=None) -> str:
     """Run one step (until ask_human, finish, a stop, or MAX_TURNS). Returns the outcome."""
     started, recent = clock(), []
+    http = httptool.Limited(requester, config.KAISEN_HTTP_MAX_PER_STEP) if requester else None
     with S() as s:
         run = s.get(KaisenRun, run_id)
         if run is None or run.status not in ("queued", "running"):
@@ -303,7 +426,7 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None)
                 return "stopped"
             if not lease.check():
                 return "lease_lost"
-            messages, model, effort = list(run.messages), rs.model, rs.effort
+            messages, model, effort = model_view(run.messages), rs.model, rs.effort
             want_review = rs.reviewer == "on" and not reviewing.reviewed(run.messages)
             # web tools only when the project turned them on AND the model supports them. A build with secrets
             # gets them only with an allow-list: injected page text could otherwise make the builder write code
@@ -333,23 +456,38 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None)
                 s.rollback()
                 stop_run(S, run_id, "error", "error", "Metering failed; run stopped.")
                 return "error"
-            outcome = _handle_response(s, run, resp, recent, deployer, review=want_review)
+            outcome = _handle_response(s, run, resp, recent, deployer, review=want_review, requester=http)
             s.commit()
             if outcome == "review":
-                outcome = _review_round(S, run_id, client, lease)
+                outcome = _review_round(S, run_id, client, lease, requester)
             if outcome != "continue":
                 return outcome
 
     with S() as s:
-        _stop(s, s.get(KaisenRun, run_id), "stopped", "budget", f"Step turn limit ({config.KAISEN_MAX_TURNS}) reached.")
+        run = s.get(KaisenRun, run_id)
+        if _still_active(s, run):
+            pid = s.get(KaisenBuild, run.build_id).project_id
+            rs = load_settings(s, pid)
+            capped = check_caps(s, run, pid, rs)
+            if capped:
+                _stop(s, run, "stopped", "budget", capped)
+                s.commit()
+                return "stopped"
+            if (steps_in_run(run.messages) < config.KAISEN_MAX_STEPS_PER_RUN and clock() - started <= config.KAISEN_STEP_SECONDS
+                    and rs.model in config.KAISEN_PRICES and rs.anthropic_api_key):
+                # keep the transcript, start the next step in a fresh context; the worker's next tick picks it up
+                run.messages = list(run.messages) + [continue_message(s, s.get(KaisenBuild, run.build_id), run)]
+                s.commit()
+                return "continued"
+        _stop(s, run, "stopped", "budget", f"Step turn limit ({config.KAISEN_MAX_TURNS}) reached.")
         s.commit()
     return "stopped"
 
 
-def _review_round(S, run_id: int, client, lease) -> str:
+def _review_round(S, run_id: int, client, lease, requester=None) -> str:
     """The builder has called finish and the project wants a review. Returns "done" (approved, or the review was
     skipped), "continue" (findings: the builder gets its one fix round), or a stop outcome."""
-    state, rv = reviewing.review(S, run_id, client, lease)
+    state, rv = reviewing.review(S, run_id, client, lease, requester)
     if state != "ok":
         return "stopped" if state == "stopped" else "lease_lost"
     with S() as s:
@@ -370,7 +508,8 @@ def _review_round(S, run_id: int, client, lease) -> str:
         return "done"
 
 
-def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=None, review: bool = False) -> str:
+def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=None, review: bool = False,
+                     requester=None) -> str:
     if resp.stop_reason == "refusal":
         _stop(s, run, "stopped", "refusal", "The model refused this request.")
         return "stopped"
@@ -417,6 +556,11 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
                                     "You may call finish without one.")
                 ok, text = deployer(s, run)
                 results.append(_result(tid, text, not ok))
+                continue
+            if name == "http_request":
+                if requester is None:
+                    raise ToolError("HTTP requests are not available here.")
+                results.append(_result(tid, requester(s, run, inp)))
                 continue
             results.append(_result(tid, exec_tool(ws, name, inp)))
         except ToolError as e:

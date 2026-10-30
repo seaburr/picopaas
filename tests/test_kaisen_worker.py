@@ -404,6 +404,7 @@ def test_unexpected_model_failure_and_no_text_nudge_and_turn_limit(env, monkeypa
     start(env)
     # a reply with no tool call is nudged; MAX_TURNS then stops the step
     monkeypatch.setattr(config, "KAISEN_MAX_TURNS", 2)
+    monkeypatch.setattr(config, "KAISEN_MAX_STEPS_PER_RUN", 1)  # no auto-continue here
     go(FakeModelClient([reply({"type": "text", "text": "hmm"}), reply({"type": "text", "text": "hmm"})]))
     assert detail(env)["status"] == "stopped"
 

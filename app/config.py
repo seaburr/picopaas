@@ -416,6 +416,10 @@ KAISEN_MAX_FILES = 300
 KAISEN_MAX_BUILD_BYTES = 5 * 1024 * 1024
 KAISEN_MAX_TURNS = 40  # model calls per step
 KAISEN_STEP_SECONDS = 15 * 60
+KAISEN_MAX_STEPS_PER_RUN = 4  # steps (each up to KAISEN_MAX_TURNS) a run chains on its own, each in a fresh context
+KAISEN_RESUME_FULL_MAX_MESSAGES = 30  # Resume copies the whole model-facing history up to this size, else starts fresh
+KAISEN_CONTINUE_PLAN_CHARS = 6000  # PLAN.md characters carried into a fresh context
+KAISEN_CONTINUE_PROGRESS_CHARS = 1500  # last assistant text carried into a fresh context
 KAISEN_BRIEF_MAX = 8000
 KAISEN_NAME_MAX = 60
 KAISEN_FEEDBACK_MAX = 4000
@@ -437,6 +441,22 @@ KAISEN_TEST_OUTPUT_LINES = 40
 KAISEN_TEST_COMMAND_MAX = 300  # characters in the kaisen.json "test" command
 KAISEN_TEST_TAIL_BYTES = 2000  # stored on the build and shown to the builder
 # Reviewer pass (F8e): a second, cheap model call after the builder finishes. Off by default (it adds a call per run).
+# Builder harness tools (design s15): search_files and http_request.
+KAISEN_SEARCH_MAX_HITS = 50
+KAISEN_SEARCH_PATTERN_MAX = 200  # characters in a search pattern
+KAISEN_SEARCH_LINE_SCAN = 1000  # characters of each line a pattern is run against (guards catastrophic regexes)
+KAISEN_SEARCH_DEADLINE_SECONDS = 2.0  # total time a search_files call may take
+KAISEN_SEARCH_LINE_CLIP = 200  # characters of a matching line shown
+KAISEN_HTTP_METHODS = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
+KAISEN_HTTP_MAX_PER_STEP = 30  # builder http_request calls in one step
+KAISEN_REVIEWER_HTTP_MAX = 10  # reviewer http_get calls in one review
+KAISEN_HTTP_TIMEOUT_SECONDS = 10
+KAISEN_HTTP_RESULT_BYTES = 4096  # response body shown to the model
+KAISEN_HTTP_PATH_MAX = 2000
+KAISEN_HTTP_BODY_MAX = 16 * 1024  # request body
+KAISEN_HTTP_HEADERS_MAX = 8
+KAISEN_HTTP_HEADER_VALUE_MAX = 1000
+
 KAISEN_REVIEWER_MODES = ("off", "on")
 KAISEN_REVIEWER_DEFAULT_MODEL = "claude-haiku-5-5"
 KAISEN_REVIEWER_EFFORT = "low"

@@ -261,6 +261,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
             "error": redact(r.error, sec) if r.error else None,
             "cost_usd": round(r.cost_usd or 0.0, 6),
             **_progress(r.messages),
+            "context_resets": builder.context_resets(r.messages or []),
             "review": reviewing.view(r, sec),
             "started_at": r.created_at.isoformat(),
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
