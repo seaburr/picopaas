@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import BuildOutputFields from '../components/BuildOutputFields.vue'
 import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import { ApiError } from '../api/client'
 import { createBuild, getKaisenSettings } from '../api/kaisen'
+import { outputPayload, outputFieldErrors, blankOutputForm } from '../composables/kaisen'
+import { useToastStore } from '../stores/toast'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
 
 const router = useRouter()
 const projects = useProjectsStore()
 const store = useKaisenStore()
+const toast = useToastStore()
 
 const MAX_BRIEF = 4000
 const EXAMPLES = ['A URL shortener with click counts', 'A markdown notes page that saves to a database']
@@ -22,6 +26,9 @@ const error = ref('')
 const nameError = ref('')
 const briefError = ref('')
 const noKey = ref(false)
+const outForm = reactive(blankOutputForm())
+const outErr = reactive<Record<string, string>>({})
+const outOpen = ref(false)
 
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
@@ -34,6 +41,7 @@ async function checkKey() {
     const s = await getKaisenSettings(projectId.value)
     store.settings = s
     noKey.value = !s.anthropic_key.set
+    if (!s.github_token.set && outForm.github_auth === 'project') outForm.github_auth = 'build'
   } catch {
     noKey.value = false // unknown: let the server decide
   }
@@ -45,8 +53,8 @@ const canEditKey = computed(() => !!store.settings?.can_edit)
 async function submit() {
   error.value = nameError.value = briefError.value = ''
   const n = name.value.trim()
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(n)) {
-    nameError.value = 'Use lowercase letters, numbers and dashes.'
+  if (!n) {
+    nameError.value = 'Give the build a name.'
     return
   }
   if (!brief.value.trim()) {
@@ -54,16 +62,27 @@ async function submit() {
     return
   }
   if (overLimit.value) return
+  for (const k of Object.keys(outErr)) delete outErr[k]
+  if (outForm.output_mode === 'github' && !outForm.github_repo.trim()) {
+    outErr.github_repo = 'Enter a GitHub repository URL.'
+    outOpen.value = true
+    return
+  }
   busy.value = true
   try {
-    const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim() })
+    const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm) })
     store.upsert(b)
+    if (b.start_error) toast.error(`Build created but not started: ${b.start_error}`)
     router.push(`/kaisen/${b.id}`)
   } catch (e) {
     if (e instanceof ApiError) {
       nameError.value = e.fieldErrors.name ?? ''
       briefError.value = e.fieldErrors.brief ?? ''
-      error.value = nameError.value || briefError.value ? '' : e.message
+      const oe = outputFieldErrors(e.fieldErrors)
+      outErr.github_repo = oe.github_repo ?? ''
+      outErr.github_token = oe.github_token ?? ''
+      if (outErr.github_repo || outErr.github_token) outOpen.value = true
+      error.value = nameError.value || briefError.value || outErr.github_repo || outErr.github_token ? '' : e.message
       if (e.status === 409 && !nameError.value) nameError.value = 'You already have an app with that name.'
     } else error.value = "Couldn't start the build."
   } finally {
@@ -77,7 +96,7 @@ async function submit() {
     <NavBar />
     <main id="main" tabindex="-1" class="mx-auto max-w-2xl px-4 py-4 sm:px-6">
       <nav class="meta mb-2" aria-label="Breadcrumb">
-        <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span><RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
+        <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
       </nav>
       <div class="mb-3">
         <div class="flex flex-wrap items-center gap-2"><h1 class="page-title">New build</h1><PreviewBadge /></div>
@@ -93,9 +112,9 @@ async function submit() {
       <form class="card card-pad space-y-4" novalidate @submit.prevent="submit">
         <div>
           <label for="kb-name" class="label">Name</label>
-          <input id="kb-name" v-model="name" class="input" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40" :aria-invalid="nameError ? 'true' : undefined" aria-describedby="kb-name-help" placeholder="todo-api" />
+          <input id="kb-name" v-model="name" class="input" autocomplete="off" maxlength="60" :aria-invalid="nameError ? 'true' : undefined" aria-describedby="kb-name-help" placeholder="Todo list" />
           <p v-if="nameError" class="field-error" role="alert">{{ nameError }}</p>
-          <p id="kb-name-help" class="help">Lowercase letters, numbers and dashes. This becomes the app's name and address.</p>
+          <p id="kb-name-help" class="help">Shown in Kaisen and as the app's name. Like any app, its address is generated for you.</p>
         </div>
         <div>
           <label for="kb-brief" class="label">What should it do?</label>
@@ -104,7 +123,7 @@ async function submit() {
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ MAX_BRIEF }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center">
             <span class="help mr-1">Examples:</span>
-            <button v-for="ex in EXAMPLES" :key="ex" type="button" class="btn-ghost btn-sm text-left" @click="brief = ex">{{ ex }}</button>
+            <button v-for="ex in EXAMPLES" :key="ex" type="button" class="btn-secondary btn-sm text-left" @click="brief = ex">{{ ex }}</button>
           </div>
         </div>
         <div v-if="projects.hasShared">
@@ -115,6 +134,14 @@ async function submit() {
           <p id="kb-project-help" class="help">Kaisen deploys into this project and spends from its Anthropic key.</p>
         </div>
         <p v-else class="help">Deploys to your personal apps.</p>
+
+        <details class="help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
+          <summary>Output (optional)</summary>
+          <div class="mt-2">
+            <p class="help mb-2">You can always download the code. Pick a GitHub repository for this app if you want it pushed too. You can change this later on the build.</p>
+            <BuildOutputFields v-model="outForm" id-prefix="kb-out" :project-token-set="!!store.settings?.github_token.set" :errors="outErr" />
+          </div>
+        </details>
 
         <div v-if="error" role="alert" class="alert-error whitespace-pre-wrap">{{ error }}</div>
         <div class="flex flex-col gap-2 sm:flex-row">

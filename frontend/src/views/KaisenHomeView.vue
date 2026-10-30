@@ -159,13 +159,13 @@ function askDelete(b: KaisenBuild) {
               <IconButton :icon="Trash2" label="Delete build" danger @click="askDelete(b)" />
             </div>
           </div>
-          <p v-if="b.status === 'waiting' || b.open_questions > 0" class="alert-info mt-2">Kaisen has a question. <RouterLink :to="`/kaisen/${b.id}`" class="link">Answer it</RouterLink></p>
+          <p v-if="b.status === 'waiting' || b.open_questions > 0" class="alert-info mt-2">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
           <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="alert-error mt-2 truncate" :title="b.last_error">{{ b.last_error }}</p>
         </li>
       </ul>
 
       <p v-if="!loading && !error && store.spend" class="help mt-3">
-        Kaisen is a Preview. Builds spend from this project's Anthropic key. This month: <span class="mono">{{ fmtUsd(store.spend.month_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
+        Kaisen is in preview. Builds spend from this project's Anthropic key. This month: <span class="mono">{{ fmtUsd(store.spend.month_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
       </p>
     </main>
 

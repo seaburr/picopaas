@@ -25,7 +25,7 @@ const error = ref('')
 const saveError = ref('')
 const saving = ref(false)
 const fieldErr = reactive<Record<string, string>>({})
-const testing = ref<'' | 'anthropic' | 'github'>('')
+const testing = ref<'' | 'anthropic'>('')
 const testResult = ref<{ ok: boolean; message: string } | null>(null)
 
 const form = reactive({
@@ -36,13 +36,8 @@ const form = reactive({
   cap_run: 0,
   cap_day: 0,
   cap_build: 0,
-  output_mode: 'download' as 'download' | 'github',
-  github_repo: '',
-  github_branch: '',
   github_token: '',
   clear_github_token: false,
-  push_on_finish: false,
-  open_pr: false,
 })
 
 const pid = computed(() => projects.current?.id ?? null)
@@ -53,8 +48,6 @@ function fill(v: KaisenSettings) {
   Object.assign(form, {
     anthropic_key: '', clear_anthropic_key: false, github_token: '', clear_github_token: false,
     model: v.model, effort: v.effort, cap_run: v.cap_run, cap_day: v.cap_day, cap_build: v.cap_build,
-    output_mode: v.output_mode, github_repo: v.github_repo, github_branch: v.github_branch,
-    push_on_finish: v.push_on_finish, open_pr: v.open_pr,
   })
 }
 const snapshot = () => JSON.stringify(form)
@@ -90,15 +83,9 @@ async function save() {
   if (!pid.value || readOnly.value) return
   saveError.value = ''
   for (const k of Object.keys(fieldErr)) delete fieldErr[k]
-  if (form.output_mode === 'github' && !form.github_repo.trim()) {
-    fieldErr.github_repo = 'Enter a GitHub repository URL.'
-    return
-  }
   const payload: KaisenSettingsPayload = {
     model: form.model, effort: form.effort,
     cap_run: Number(form.cap_run) || 0, cap_day: Number(form.cap_day) || 0, cap_build: Number(form.cap_build) || 0,
-    output_mode: form.output_mode, github_repo: form.github_repo.trim(), github_branch: form.github_branch.trim(),
-    push_on_finish: form.push_on_finish, open_pr: form.open_pr,
   }
   if (form.anthropic_key) payload.anthropic_key = form.anthropic_key
   if (form.clear_anthropic_key) payload.clear_anthropic_key = true
@@ -122,7 +109,7 @@ async function save() {
   }
 }
 
-async function test(which: 'anthropic' | 'github') {
+async function test(which: 'anthropic') {
   if (!pid.value) return
   testing.value = which
   testResult.value = null
@@ -152,14 +139,14 @@ async function test(which: 'anthropic' | 'github') {
         <IconButton :icon="RotateCw" label="Retry" @click="load" />
       </div>
 
-      <div v-else-if="loading || !s" class="max-w-2xl space-y-3" aria-busy="true" aria-label="Loading settings">
+      <div v-else-if="loading || !s" class="grid gap-3 lg:grid-cols-2" aria-busy="true" aria-label="Loading settings">
         <div class="card card-pad h-32 animate-pulse" />
         <div class="card card-pad h-24 animate-pulse" />
       </div>
 
-      <form v-else class="max-w-2xl space-y-3" novalidate @submit.prevent="save">
-        <p class="help">These settings belong to the project "{{ projects.current?.is_personal ? 'Personal' : projects.current?.name }}". Everyone who can run builds here spends from this key.</p>
-        <p v-if="readOnly" class="alert-info" role="status">Only project owners can change these settings. You can see what is set.</p>
+      <form v-else class="grid gap-3 lg:grid-cols-2 lg:items-start" novalidate @submit.prevent="save">
+        <p class="help lg:col-span-2">These settings belong to the project "{{ projects.current?.is_personal ? 'Personal' : projects.current?.name }}". Everyone who can run builds here spends from this key.</p>
+        <p v-if="readOnly" class="alert-info lg:col-span-2" role="status">Only project owners can change these settings. You can see what is set.</p>
 
         <section class="card card-pad space-y-3" aria-labelledby="ks-anthropic">
           <h2 id="ks-anthropic" class="section-title">Anthropic</h2>
@@ -195,50 +182,27 @@ async function test(which: 'anthropic' | 'github') {
         </section>
 
         <section class="card card-pad space-y-3" aria-labelledby="ks-output">
-          <h2 id="ks-output" class="section-title">Output</h2>
-          <p class="help">You can always download a build as a .tar.gz. Pushing to GitHub is optional.</p>
-          <fieldset :disabled="readOnly">
-            <legend class="label">Where does the code go?</legend>
-            <div class="flex flex-col gap-1">
-              <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.output_mode" type="radio" value="download" class="check" /> Download only</label>
-              <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.output_mode" type="radio" value="github" class="check" aria-controls="ks-github" /> Download and push to GitHub</label>
-            </div>
-          </fieldset>
-          <div v-if="form.output_mode === 'github'" id="ks-github" class="space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label for="ks-repo" class="label">Repository URL</label>
-                <input id="ks-repo" v-model="form.github_repo" class="input" placeholder="https://github.com/you/repo" autocomplete="off" :disabled="readOnly" :aria-invalid="fieldErr.github_repo ? 'true' : undefined" />
-                <p v-if="fieldErr.github_repo" class="field-error" role="alert">{{ fieldErr.github_repo }}</p>
-              </div>
-              <div>
-                <label for="ks-branch" class="label">Branch</label>
-                <input id="ks-branch" v-model="form.github_branch" class="input" placeholder="kaisen/<build>" autocomplete="off" :disabled="readOnly" />
-              </div>
-            </div>
-            <p v-if="readOnly" class="text-sm text-zinc-200">Access token: {{ s.github_token.set ? 'Set' : 'Not set' }}</p>
-            <template v-else>
-              <PasswordField v-model="form.github_token" label="Access token" autocomplete="off" :required="false" :help="s.github_token.set ? `Saved, ends in ...${s.github_token.last4 ?? ''}. Leave blank to keep the saved token.` : 'Not set'" />
-              <label v-if="s.github_token.set" class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.clear_github_token" type="checkbox" class="check" /> Clear stored token</label>
-              <KaisenKeyHelp kind="github" :open="!s.github_token.set" />
-            </template>
-            <div class="flex flex-col gap-1">
-              <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.push_on_finish" type="checkbox" class="check" :disabled="readOnly" /> Push automatically when a build finishes</label>
-              <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.open_pr" type="checkbox" class="check" :disabled="readOnly" /> Open a pull request after pushing</label>
-            </div>
-          </div>
+          <h2 id="ks-output" class="section-title">GitHub</h2>
+          <p class="help">A GitHub token every build in this project can use. Each build picks its own repository; it can use this token or its own. Anyone who can run builds here can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean.</p>
+          <p v-if="readOnly" class="text-sm text-zinc-200">Access token: {{ s.github_token.set ? 'Set' : 'Not set' }}</p>
+          <template v-else>
+            <PasswordField v-model="form.github_token" label="Access token" autocomplete="off" :required="false" :invalid="!!fieldErr.github_token" :help="s.github_token.set ? `Saved, ends in ...${s.github_token.last4 ?? ''}. Leave blank to keep the saved token.` : 'Not set'" />
+            <p v-if="fieldErr.github_token" class="field-error" role="alert">{{ fieldErr.github_token }}</p>
+            <label v-if="s.github_token.set" class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.clear_github_token" type="checkbox" class="check" /> Clear stored token</label>
+            <KaisenKeyHelp kind="github" :open="!s.github_token.set" />
+            <p class="help">To check the token, open a build and press Test on its Output card.</p>
+          </template>
         </section>
 
-        <div v-if="saveError" role="alert" class="alert-error whitespace-pre-wrap">{{ saveError }}</div>
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div v-if="saveError" role="alert" class="alert-error whitespace-pre-wrap lg:col-span-2">{{ saveError }}</div>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:col-span-2">
           <button v-if="!readOnly" type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save settings' }}</button>
           <div class="flex flex-col gap-2 sm:flex-row">
             <button type="button" class="btn-secondary" :disabled="testing !== '' || dirty" @click="test('anthropic')">{{ testing === 'anthropic' ? 'Testing…' : 'Test Anthropic' }}</button>
-            <button v-if="!readOnly && form.output_mode === 'github'" type="button" class="btn-secondary" :disabled="testing !== '' || dirty" @click="test('github')">{{ testing === 'github' ? 'Testing…' : 'Test GitHub' }}</button>
           </div>
         </div>
-        <p v-if="dirty && !readOnly" class="help">Save first, then test.</p>
-        <div role="status">
+        <p v-if="dirty && !readOnly" class="help lg:col-span-2">Save first, then test.</p>
+        <div role="status" class="lg:col-span-2">
           <p v-if="testResult" :class="testResult.ok ? 'alert-success' : 'alert-error'">{{ testResult.message }}</p>
         </div>
       </form>

@@ -23,7 +23,7 @@ defineProps<{ kind: 'anthropic' | 'github'; open?: boolean }>()
       <li><strong>Repository permissions:</strong> set <em>Contents</em> to <strong>Read and write</strong> and <em>Pull requests</em> to <strong>Read and write</strong>. <em>Metadata: Read-only</em> is added automatically. Leave everything else at <em>No access</em>.</li>
       <li>Press <strong>Generate token</strong>, copy it (it starts with <code class="mono">github_pat_</code>) and paste it above. GitHub shows it only once.</li>
       <li>If the repository belongs to an organization, an owner may need to approve the token under the organization's <em>Personal access tokens</em> settings.</li>
-      <li>Save, then press <strong>Test GitHub</strong> below.</li>
+      <li>Save it, then open a build and press <strong>Test</strong> on its Output card.</li>
     </ol>
     <p class="mt-2 text-sm text-zinc-300">Why only these permissions: Kaisen only needs to create commits and branches and open a pull request. Without Workflows or Administration permission it cannot change your Actions, settings or other repositories. The token is stored encrypted and never shown again.</p>
   </details>

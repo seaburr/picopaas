@@ -663,14 +663,54 @@ export interface KaisenInboxItem {
 
 export interface KaisenBuildDetail extends KaisenBuild {
   brief: string
+  // Only on POST /kaisen/builds: why the first run did not start (no key, cap, paused); null when it started.
+  start_error?: string | null
   project_id: number
   slug: string
   files: { path: string; size: number }[]
   runs: KaisenRun[]
   inbox: KaisenInboxItem[]
   spend: { build_usd: number; cap_build: number; month_usd: number; cap_month?: number }
-  output: { mode: 'download' | 'github'; repo: string | null; branch: string | null; can_push: boolean; pr_url?: string | null }
+  output: KaisenOutput
   can_run: boolean
+}
+
+export interface KaisenOutput {
+  mode: 'download' | 'github'
+  repo: string | null
+  branch: string | null
+  push_on_finish: boolean
+  open_pr: boolean
+  auth: 'project' | 'build'
+  token: KaisenSecretState
+  project_token_set: boolean
+  can_push: boolean
+  pr_url?: string | null
+}
+
+// Editable output fields (build page and New build); outputPayload() maps them to the wire body.
+export interface KaisenOutputForm {
+  output_mode: 'download' | 'github'
+  github_repo: string
+  github_branch: string
+  github_auth: 'project' | 'build'
+  github_token: string
+  clear_github_token: boolean
+  push_on_finish: boolean
+  open_pr: boolean
+}
+
+// Wire body of PUT /kaisen/builds/{id}/output and POST /kaisen/builds `output` (app/routers/kaisen.py OutputIn,
+// extra fields are rejected).
+export interface KaisenOutputPayload {
+  mode: 'download' | 'github'
+  repo: string
+  branch: string
+  auth: 'project' | 'build'
+  github_token?: string
+  clear_github_token?: boolean
+  push_on_finish: boolean
+  open_pr: boolean
 }
 
 export interface KaisenFile {
@@ -695,12 +735,7 @@ export interface KaisenSettings {
   cap_run: number
   cap_day: number
   cap_build: number
-  output_mode: 'download' | 'github'
-  github_repo: string
-  github_branch: string
   github_token: KaisenSecretState
-  push_on_finish: boolean
-  open_pr: boolean
   can_edit: boolean
   updated_at: string | null
 }
@@ -713,13 +748,8 @@ export interface KaisenSettingsPayload {
   cap_run: number
   cap_day: number
   cap_build: number
-  output_mode: 'download' | 'github'
-  github_repo: string
-  github_branch: string
   github_token?: string
   clear_github_token?: boolean
-  push_on_finish: boolean
-  open_pr: boolean
 }
 
 export interface KaisenSpend {

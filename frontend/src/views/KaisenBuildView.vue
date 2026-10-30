@@ -1,22 +1,24 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { RotateCw, Settings, Trash2 } from 'lucide-vue-next'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import BuildFiles from '../components/BuildFiles.vue'
+import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildInbox from '../components/BuildInbox.vue'
 import BuildRuns from '../components/BuildRuns.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
 import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { answerInbox, deployBuild, getBuild, pushBuild, runBuild, sendFeedback } from '../api/kaisen'
-import { getApp } from '../api/apps'
+import { answerInbox, deployBuild, getBuild, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
-import { fmtUsd, isActive } from '../composables/kaisen'
+import { blankOutputForm, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { useToastStore } from '../stores/toast'
@@ -58,6 +60,10 @@ const feedbackReason = computed(() => {
 })
 const firstRun = computed(() => !!build.value && build.value.runs.length === 0 && build.value.status === 'queued')
 const out = computed(() => build.value?.output)
+const outForm = reactive(blankOutputForm())
+const outErr = reactive<Record<string, string>>({})
+const outTest = ref<{ ok: boolean; message: string } | null>(null)
+const outDirty = ref(false)
 const githubReady = computed(() => out.value?.mode === 'github' && !!out.value.repo)
 
 async function loadApp(b: KaisenBuildDetail) {
@@ -74,6 +80,7 @@ async function loadApp(b: KaisenBuildDetail) {
 
 function apply(b: KaisenBuildDetail) {
   const prev = build.value?.status
+  if (!outDirty.value || !build.value) Object.assign(outForm, outputToForm(b.output))
   build.value = b
   store.upsert(b)
   if (prev && prev !== b.status) announce.value = `Build ${b.name} is now ${b.status}.`
@@ -139,6 +146,44 @@ async function answer(itemId: number, text: string) {
   await act('answer', () => answerInbox(buildId.value, itemId, text))
   answerBusy.value = null
 }
+watch(outForm, () => { outDirty.value = true; outTest.value = null }, { deep: true })
+async function saveOutput() {
+  actionError.value = ''
+  for (const k of Object.keys(outErr)) delete outErr[k]
+  if (outForm.output_mode === 'github' && !outForm.github_repo.trim()) {
+    outErr.github_repo = 'Enter a GitHub repository URL.'
+    return
+  }
+  busy.value = 'output'
+  try {
+    const o = await saveBuildOutput(buildId.value, outputPayload(outForm))
+    if (build.value) build.value = { ...build.value, output: o }
+    Object.assign(outForm, outputToForm(o))
+    await Promise.resolve()
+    outDirty.value = false
+    outTest.value = null
+    toast.success('Output saved.')
+  } catch (e) {
+    if (e instanceof ApiError) {
+      Object.assign(outErr, outputFieldErrors(e.fieldErrors))
+      actionError.value = Object.keys(e.fieldErrors).length ? '' : e.message
+      if (!Object.keys(e.fieldErrors).length) return
+    } else actionError.value = 'Something went wrong. Try again.'
+  } finally {
+    busy.value = ''
+  }
+}
+async function testOutput() {
+  busy.value = 'test'
+  outTest.value = null
+  try {
+    outTest.value = await testBuildOutput(buildId.value)
+  } catch (e) {
+    outTest.value = { ok: false, message: e instanceof ApiError ? e.message : 'The test could not run.' }
+  } finally {
+    busy.value = ''
+  }
+}
 const resume = () => act('resume', () => runBuild(buildId.value))
 const deployAgain = () => act('deploy', () => deployBuild(buildId.value))
 async function push() {
@@ -154,6 +199,24 @@ async function download() {
     actionError.value = e instanceof ApiError ? e.message : "Couldn't download the code."
   } finally {
     busy.value = ''
+  }
+}
+// "Take offline": delete the build's app but keep the build (files, conversation, runs); Deploy again brings it back.
+const confirmOffline = ref(false)
+const goingOffline = ref(false)
+async function takeOffline() {
+  if (!build.value?.app_id) return
+  goingOffline.value = true
+  try {
+    await deleteApp(build.value.app_id)
+    toast.success(`${build.value.name} is offline. The code and conversation stay in Kaisen.`)
+    app.value = null
+    await load(false)
+  } catch (e) {
+    toast.error(`Couldn't take the app offline: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  } finally {
+    goingOffline.value = false
+    confirmOffline.value = false
   }
 }
 async function doDelete() {
@@ -230,10 +293,12 @@ async function doDelete() {
               <div class="mt-3 flex flex-col gap-2 sm:flex-row">
                 <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary">App health</RouterLink>
                 <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary">App settings</RouterLink>
+                <button v-if="canRun" type="button" class="btn-secondary sm:ml-auto" :disabled="goingOffline || !app" @click="confirmOffline = true">Take offline</button>
               </div>
+              <p class="help mt-2">Taking it offline deletes the app (and its database, if it has one) but keeps this build. Deploy again any time; the app gets a new address.</p>
             </template>
-            <div v-else-if="(build.status === 'done' || build.status === 'error' || build.status === 'stopped') && build.files.length > 0" class="alert-warn flex flex-wrap items-center justify-between gap-2">
-              <span>The app was deleted.</span>
+            <div v-else-if="(build.status === 'done' || build.status === 'error' || build.status === 'stopped') && build.files.length > 0" class="alert-info flex flex-wrap items-center justify-between gap-2">
+              <span>Offline. The code and conversation are kept here.</span>
               <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
             </div>
             <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
@@ -258,13 +323,21 @@ async function doDelete() {
 
           <section class="card card-pad" aria-labelledby="h-output">
             <h2 id="h-output" class="section-title mb-2">Output</h2>
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <button type="button" class="btn-secondary" :disabled="busy === 'download'" @click="download">{{ busy === 'download' ? 'Preparing…' : 'Download .tar.gz' }}</button>
-              <button v-if="githubReady" type="button" class="btn-secondary" :disabled="busy === 'push' || !out?.can_push" @click="push">{{ busy === 'push' ? 'Pushing…' : 'Push to GitHub' }}</button>
-              <button v-else type="button" class="btn-secondary" disabled title="Set up GitHub in Kaisen settings">Push to GitHub</button>
+            <p class="help mb-2">You can always download the code. Pushing to GitHub is optional and uses this build's own repository.</p>
+            <form class="space-y-3" novalidate @submit.prevent="saveOutput">
+              <BuildOutputFields v-model="outForm" id-prefix="bo" :token-state="build.output.token" :project-token-set="build.output.project_token_set" :disabled="!canRun" :errors="outErr" />
+              <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <button type="submit" class="btn-primary" :disabled="!canRun || !outDirty || busy === 'output'">{{ busy === 'output' ? 'Saving…' : 'Save output' }}</button>
+                <button v-if="outForm.output_mode === 'github'" type="button" class="btn-secondary" :disabled="!canRun || outDirty || busy === 'test' || !githubReady" @click="testOutput">{{ busy === 'test' ? 'Testing…' : 'Test' }}</button>
+                <button v-if="githubReady" type="button" class="btn-secondary" :disabled="outDirty || busy === 'push' || !out?.can_push" @click="push">{{ busy === 'push' ? 'Pushing…' : 'Push now' }}</button>
+                <button type="button" class="btn-secondary" :disabled="busy === 'download'" @click="download">{{ busy === 'download' ? 'Preparing…' : 'Download .tar.gz' }}</button>
+              </div>
+              <p v-if="outDirty" class="help">Save first, then test or push.</p>
+            </form>
+            <div role="status">
+              <p v-if="outTest" :class="[outTest.ok ? 'alert-success' : 'alert-error', 'mt-2']">{{ outTest.message }}</p>
             </div>
-            <p v-if="githubReady" class="help">Pushes to {{ out?.repo }} on branch {{ out?.branch }}. Opens a pull request.</p>
-            <p v-else class="help">GitHub is optional. <RouterLink to="/kaisen/settings" class="link">Set it up in Kaisen settings</RouterLink></p>
+            <p v-if="githubReady && !outDirty" class="help">Pushes to {{ out?.repo }} on branch {{ out?.branch || 'kaisen/' + build.slug }}.{{ out?.open_pr ? ' Opens a pull request.' : '' }}</p>
             <p v-if="pushedUrl" class="alert-success mt-2" role="status">Pushed. <a :href="pushedUrl" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a></p>
           </section>
 
@@ -286,6 +359,7 @@ async function doDelete() {
       </template>
     </main>
 
+    <DeleteAppDialog v-if="confirmOffline" :app="app" :busy="goingOffline" @confirm="takeOffline" @cancel="confirmOffline = false" />
     <ConfirmDialog
       :open="confirmDelete"
       title="Delete build?"
