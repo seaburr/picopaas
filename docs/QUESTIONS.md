@@ -7,10 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Approve a bootstrap re-pin of the Kaisen runtime image? (2026-10-30)** This wave changed
-  `images/kaisen-runtime/boot.py` so a built app's own tests run in the preview pod at boot (kaisen.json `"test"`).
-  It's backward compatible; until the re-pin, Kaisen just reports "no test result yet". After the push I'd run
-  `bootstrap.yml` with the new `kaisen_runtime_image_digest` (KAISEN_OPS s3). No cost change. Reply "approved" here.
 - **Feedback wave 2026-10-30: calls I made, say if you disagree.** (1) Project names are unique **per owner**
   (case-insensitive), not platform-wide, so nobody learns another user's project names from a 409. (2) Building the
   starter-brief demos spends the Demo project's Anthropic key (Haiku, ~$0.05 each); I'll take demo apps offline between
@@ -32,6 +28,7 @@ background on each item if you want it.
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
 - [ ] 2026-10-30 (security review, K16): Kaisen web access + build secrets + auto-deploy lets a prompt-injected web page make the builder write code that reads the preview's env (the build secrets) and sends it out. Pick one: (a) turn the web tools off for any build that has secrets, (b) require a domain allow-list when a build has secrets, (c) accept and show a warning next to the web toggle. I recommend (a) or (b). Also: should build-secret set/delete be owner-only (K20)? See docs/PENTEST.md "Feedback wave 2026-10-30". **Manager call:** went with (b): builds with secrets get the web only with an allow-list; tell me if you want (a) stricter or (c) looser.
+- [security-reviewer 2026-10-30] Restore points storage (PENTEST K31): worst case about 1.2 GB of snapshot blobs per project in the shared MySQL (10 snapshots x 5 MB incompressible x 20 builds); typical 150-300 MB. Options: keep 5 snapshots per build, or a per-project byte budget that prunes oldest first. Which do you want, and how much DB disk headroom do we have? **Manager call:** went with 5 per build (KAISEN_SNAPSHOTS_KEPT; worst case ~600 MB/project, typical well under 150 MB). Say if you want a per-project byte budget instead. Last 5 is fine. If someone is building this much they really need GH wired up.
 
 ## To-dos (only you can do these)
 
@@ -47,6 +44,7 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-10-30: **Runtime re-pin approved** (Chas, in chat): run bootstrap.yml with the latest kaisen-runtime digest before the harness eval. Eval project: new project 'Kaisen eval' owned by the E2E test user, Anthropic key = ANT_API_KEY from ~/.picopaas-e2e.env (not Demo). First batch 3 Haiku + 1 Sonnet, report cost before the rest.
 
 - 2026-10-30: **Bootstrap run approved and done** (run 40982645814, success): KAISEN_RUNTIME_IMAGE pinned to picopaas-kaisen-runtime@sha256:b11f8beb...cf1db47ce; BACKUP_IMAGE re-pinned to the latest backup image (covers the 2026-10-28 MANIFEST change). Weather build deployed into Demo (app 184, 1 of 3 apps, preview 200).
 - 2026-10-29: **Kaisen configuration (answered: in-app).** Chas: the customer configures Kaisen in a web form once it is

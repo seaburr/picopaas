@@ -47,7 +47,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 3. **Runtime image changes** need a re-pin: after `kaisen-runtime-image` publishes, run `bootstrap.yml` with input
    `kaisen_runtime_image_digest=sha256:...` (it writes `KAISEN_RUNTIME_IMAGE` into `picopaas-env`). A bootstrap run
    **needs Chas's approval** (QUESTIONS.md). Leaving `backup_image_digest` empty re-pins the backup image to `:latest` too.
-   Current pin: `picopaas-kaisen-runtime@sha256:b11f8beb7f899c348b5044069db05c0f6006d338694550e44cbd223cf1db47ce`.
+   Current pin: `picopaas-kaisen-runtime@sha256:068f834b753f0aef9173971cbe171d2251bd0a90263d566c3ad775365f6f0c90`.
 4. Existing built apps pick up deploy-time changes (e.g. the bundle-URL-as-secret fix) only on their next deploy
    ("Deploy now" / `POST /kaisen/builds/{id}/deploy`; same hostname, ~1 min restart). Ask before redeploying Chas's apps.
 5. Security changes to Kaisen get a security-reviewer pass (docs/PENTEST.md has K1-K11 and the final pass). UI changes get
@@ -97,5 +97,18 @@ blog posts, user guide how-to with starter briefs, landing page section. Next: C
 export E2E_USER_TOKEN=...   # test-account API key, never echoed
 python scripts/kaisen_eval.py --project-id <id> --briefs "Habit tracker,Recipe scaler" --max-usd 0.50 --out /tmp/eval.md
 ```
+
+Data-collection run (what to use when the eval will not be repeated soon):
+
+```bash
+python scripts/kaisen_eval.py --project-id <id> --briefs "habit-tracker,recipe-scaler" --model <model> --effort <effort> \
+  --scratch-dir <scratch> --max-usd 2 --out <scratch>/eval.md
+```
+
+- `--briefs` takes a comma list of names or slugs, run in the order given.
+- `--model` / `--effort`: GETs then PUTs `/projects/{id}/kaisen`, remembers the previous values and restores them in a `finally` (a failed restore is logged and makes the exit code 1). The model is recorded in every row.
+- `--data-dir DIR` (default `<scratch-dir>/eval-data/<timestamp>`, `eval-data/` is gitignored): per brief `<slug>/detail.json` (final build detail with run transcripts, tests, review, spend, app), `code.tar.gz` (download route), `run-<id>-diff.json` (runs with `has_diff`; a 404 is tolerated), `checks.json` (request, status, body snippet up to 2 KB, pass/fail, attempts), `poll.jsonl` (t, status, step, last_tool, cost, context_resets per poll); top level `summary.json` and `summary.md`. Data is saved before the build is deleted; `--keep` skips the delete only.
+- Metrics come from the transcripts (`[call] name {json}` and `[result] ...` lines, paired in order) and the tarball: tool calls by name, write-check WARNINGs, deploy_preview NOT OK, http_request status spread, repeat-detector / max_tokens / turn-limit stops, context resets, time to first `deploy_preview` OK (poll resolution, so +-`POLL_SECONDS`), per-run durations, PLAN.md ticked/unticked, file count and bytes, tests/README, Dockerfile `USER`, `kaisen.json`. They appear in a second "Behaviour" table in the output and in `summary.json`.
+- The token is never written: only API response bodies are saved (never request headers) and any occurrence of the token in a file is replaced by `[redacted]`.
 
 The logic is unit-tested with `httpx.MockTransport` in `tests/test_kaisen_eval_script.py`.

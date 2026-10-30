@@ -786,6 +786,12 @@ Kaisen edits files in place (one exact piece of text at a time) and can search a
 
 Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. The run shows the verdict, findings and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
 
+### Restore points
+
+Kaisen saves a restore point of the files each time a run starts (a first build, a change request or a resume), as long as the files differ from the last restore point. The newest 5 per build are kept; older ones are dropped. The **Restore points** card lists them with the run they belong to, and each run can show **what changed** as a diff (secrets are hidden).
+
+**Restore** puts the files of a restore point back. It is allowed for any project member and only while no run is queued, running or waiting (stop the run first). It never deploys: the live app keeps running the old version until you press **Deploy**, and the build page then shows the preview as out of date. Restoring is undoable: just before replacing the files, Kaisen saves the current ones as a "before restore" point, and restoring that point brings them back. The next change request starts from the restored files.
+
 ### Offline, redeploy, delete
 
 **Take offline** on the build page deletes the app, and its database and data if it has one, but keeps the build, its files and its conversation. **Deploy again** brings the app back with a new address and an empty database. Deleting the app from its own pages does the same as taking it offline. Deleting the build asks whether to delete the app too.
