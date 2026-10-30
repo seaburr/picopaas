@@ -261,3 +261,43 @@ Agent kit (`~/source/kaisen`):
 4. Builder B4 + B5: PLAN.md checklist and pre-finish self-check in `builder.md` (prompt-only).
 5. Kit K1 + K2: AGENTS.md as the source, size caps on instruction files.
 6. Kit K3-K5: TASKS template, model-tier policy, reviewer-after-implementer gate.
+
+## 14. Demo scorecard (2026-10-30)
+
+Chas's F9 request. The five starter briefs from USER_GUIDE section 16 were built one at a time in project Demo (id 31)
+on the project's model (Claude Haiku 5.5, effort medium) by the qa-tester, then checked live with curl, the downloaded
+tarball and (for the node/static apps) `node --test`; each build and preview was deleted afterwards. Builds 1/2 and apps
+184/185 were not touched. The runtime image is not yet re-pinned, so no generated-test result was ever reported by the
+platform (every builder summary says "tests unverified"). Not browser-checked (no headless browser on this machine):
+UX scores come from reading the HTML/CSS/JS plus HTTP checks, so treat them as provisional.
+
+| Brief | Cost | Runs | Steps | Time | Deployed | Coverage | Works | Code | kaisen.json | UX |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Fancy Docs | $0.061 | 2 (1 error, 1 resume) | 11 | 11 min | yes | 5 | 4 | 4 | 5 | 4 |
+| Team standup board | $0.017 | 1 | 5 | 2.5 min | yes | 5 | 5 | 4 | 5 | 3 |
+| Link shortener | $0.017 | 1 | 8 | 2.7 min | yes | 5 | 5 | 4 | 5 | 3 |
+| Habit tracker | $0.016 | 1 | 4 | 1.9 min | yes | 5 | 4 | 4 | 5 | 3 |
+| Recipe scaler | $0.030 | 2 (1 stopped, 1 resume) | 10 | 4.5 min | yes | 3 | 4 | 3 | 4 | 4 |
+
+Total spend $0.141 (limit about $2). Scores 1-5. "Works" = live checks: Fancy Docs page create/nest/move/delete,
+image upload and fetch, escaped render; standup post/replace/history/validation; shortener custom and random codes,
+302 + click count, bad scheme and taken-code errors, 404; habit tracker 14/14 `node --test` pass, assets 200; recipe
+scaler logic via node (fractions, metric, unparseable lines unchanged).
+
+Failure notes:
+- **Fancy Docs, run 1:** "Model hit max_tokens; step stopped" before any file was written (the builder tried to emit the whole app in
+  one turn). Resume succeeded. Fix: prompt asks for at most about 4 files per turn.
+- **Recipe scaler, run 1 stopped by the repeat detector.** The brief said static, no server. `deploy_preview` answered
+  "TESTS: none declared. Add a small test suite..." for the static runtime, so the model rewrote the app as a Node server to get
+  tests run (against the brief). It then got "TESTS: no result in the log yet ... Call deploy_preview again" (image not yet
+  re-pinned) three times in a row and the repeat detector stopped it; a resume finished in 18 s. Its own generated test
+  was wrong (expected 355 ml for a doubled recipe; actual 710), and the summary admitted it could not run tests.
+  Fix: prompt tells the model that "none declared" is fine for static, to change something between retries, and to finish
+  after two empty tries. Open suggestion for code (not done, no code changes in this chunk): the "none declared" hint
+  should not be sent for `static` runtimes, and the "no result" hint should not say "call again" without the guard.
+- PLAN.md was left with unticked deploy/finish items in 4 of 5 builds. Fix: prompt says to tick everything before finish.
+- Every demo used ask_human zero times, built `kaisen.json` correctly (runtime, start, health, database, test) and used
+  the MySQL TLS recipe without errors; the first deploy with a database was healthy within the run.
+
+Edits made: `app/kaisen/prompts/builder.md` (3 small additions above; `tests/test_kaisen_units.py` and
+`tests/test_kaisen_request.py` pass, 39 tests) and `~/source/kaisen/LESSONS.md` (two lessons). Uncommitted.
