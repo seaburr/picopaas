@@ -1017,6 +1017,10 @@ def enqueue_restore(session: Session, source: models.BackupRun, target: models.A
                     now: Optional[datetime] = None) -> models.BackupRun:
     """Queue a restore of `source` (a succeeded db/bucket run) into `target`'s database or bucket. Never restores over
     the source app unless overwrite_source is set AND that app is suspended (nothing is writing to it)."""
+    target_project = session.get(models.Project, target.project_id) if target.project_id else None
+    if target_project is not None and target_project.status == "suspended":
+        raise RestoreRefused("The target app's project is suspended, so nothing can be restored into it. "
+                             "Unsuspend the project first.", 403)
     if source.trigger in ("purge", "restore") or source.kind not in RESTORABLE:
         raise RestoreRefused("Only database and blob storage backups can be restored.")
     if source.status != "succeeded" or not source.snapshot_id:
@@ -1051,6 +1055,9 @@ def _build_restore_env(session: Session, run: models.BackupRun, target: models.A
     src_cfg = session.get(models.AppBackupConfig, source.app_id) if source is not None else None
     if source is None or src_cfg is None or not source.snapshot_id or src_cfg.purged_at is not None:
         raise ValueError("the backup to restore is gone")
+    target_project = session.get(models.Project, target.project_id) if target.project_id else None
+    if target_project is not None and target_project.status == "suspended":
+        raise ValueError("the target app's project was suspended after this restore was queued")  # re-checked at start
     if source.app_id == target.id and target.status != "suspended":
         raise ValueError("the app is no longer suspended")
     env = _repo_env(session, source.app_id, source.kind, src_cfg)

@@ -96,6 +96,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
     user = _user_from_request(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="You're logged out. Log in again, or check that your API key (PICOPAAS_TOKEN) is valid and not revoked.")
+    db.info["user_id"] = user.id
+    db.info["http_method"] = request.method  # read by projects.forbid_if_suspended (writes to a suspended project: 403)
     # Read-only keys can authenticate anywhere but may only make non-mutating requests. Enforced at this single
     # choke point so it covers app, admin and spec routes alike (every authenticated route depends on this).
     # POST /apps/{id}/storage/presign is a POST that can be a pure read (GET presign); the route itself

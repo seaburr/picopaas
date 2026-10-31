@@ -168,7 +168,7 @@ def test_promote_demote_rules(admin, owner, make_client):
     assert owner.get("/admin/users").status_code == 403
     # last admin cannot be demoted, suspended or deleted
     assert admin.post(f"/admin/users/{aid}/demote").status_code == 409
-    assert admin.post(f"/admin/users/{aid}/suspend").status_code == 409
+    assert admin.post(f"/admin/users/{aid}/suspend", json={"reason": "not-the-reason"}).status_code == 409
     assert admin.delete(f"/admin/users/{aid}").status_code == 409
     assert admin.post(f"/admin/users/{oid}/demote").status_code == 409  # not an admin
     actions = [e["action"] for e in admin.get("/admin/audit").json()]
@@ -191,7 +191,7 @@ def test_promoted_admin_unlimited_apps(admin, owner):
 def test_demoted_admin_and_other_admin_suspend_protected(admin, owner):
     admin.post(f"/admin/users/{_uid(owner)}/promote")
     # with two admins the pre-existing protection still applies to admins (demote first)
-    assert admin.post(f"/admin/users/{_uid(owner)}/suspend").status_code == 400
+    assert admin.post(f"/admin/users/{_uid(owner)}/suspend", json={"reason": "not-the-reason"}).status_code == 400
 
 
 # --- manage CLI ---

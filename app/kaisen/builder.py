@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import config
+from app import models as app_models
 from . import buildsecrets, checks, httptool, members, reviewing, snapshots
 from .llm import ModelError, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
@@ -367,6 +368,28 @@ def check_caps(s: Session, run: KaisenRun, project_id: int, rs: RuntimeSettings)
     return members.check(s, project_id, run.build_id, run.started_by, mine=False)
 
 
+def stop_reason(s: Session, run: KaisenRun) -> str | None:
+    """Why this run must not go on (suspension), or None. Checked before every model turn and before any deploy or
+    push: the project must be active, and the person who started the run must be an active member of it."""
+    b = s.get(KaisenBuild, run.build_id)
+    if b is None:
+        return None
+    project = s.get(app_models.Project, b.project_id)
+    if project is not None and project.status == "suspended":
+        return "This project was suspended by an administrator."
+    uid = run.started_by or b.created_by
+    user = s.get(app_models.User, uid) if uid else None
+    if user is None or user.status == "deleted":
+        return "The person who started this run no longer has an account."
+    if user.status != "active":
+        return "The person who started this run was suspended."
+    member = s.scalar(select(app_models.ProjectMember.id).where(
+        app_models.ProjectMember.project_id == b.project_id, app_models.ProjectMember.user_id == uid))
+    if member is None:
+        return "The person who started this run is no longer a member of this project."
+    return None
+
+
 def _stop(s: Session, run: KaisenRun, status: str, kind: str, text: str) -> None:
     run.error = text
     set_status(s, run, status)
@@ -464,6 +487,11 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
             run = s.get(KaisenRun, run_id)
             if not _still_active(s, run):
                 return "stopped"  # build deleted (or run stopped) while we worked
+            gone = stop_reason(s, run)
+            if gone:  # suspended project / creator suspended or removed: stop before spending another model turn
+                _stop(s, run, "stopped", "error", gone)
+                s.commit()
+                return "stopped"
             pid = s.get(KaisenBuild, run.build_id).project_id
             rs = load_settings(s, pid)
             if clock() - started > config.KAISEN_STEP_SECONDS:
@@ -504,6 +532,11 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
                 return "stopped"  # deleted during the model call: discard the response, write nothing
             if not lease.check():
                 return "lease_lost"  # fenced: discard this response
+            gone = stop_reason(s, run)
+            if gone:  # suspended while the model was answering: discard the reply, run none of its tool calls
+                _stop(s, run, "stopped", "error", gone)
+                s.commit()
+                return "stopped"
             try:
                 record_usage(s, run, s.get(KaisenBuild, run.build_id).project_id, model, resp.usage)
             except Exception:  # fail closed: no metering, no run
@@ -638,6 +671,9 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
         except ToolError as e:
             results.append(_result(tid, f"Error: {e}", True))
 
+    if run.status not in ("queued", "running"):  # stopped mid-turn (a deploy found the project suspended): stay stopped
+        run.messages = msgs + [{"role": "user", "content": results}]
+        return "stopped"
     if finished is not None:
         run.messages = msgs + [{"role": "user", "content": results}]
         run.summary, run.suggestions = parse_suggestions(finished)

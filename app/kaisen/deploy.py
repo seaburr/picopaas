@@ -257,6 +257,8 @@ def deploy_build(db: Session, b: KaisenBuild, registry, *, force: bool = True) -
     project = db.get(models.Project, b.project_id)
     if project is None or project.deleted_at is not None:
         raise DeployError("The project this build belongs to was deleted.", final=True)
+    if project.status == "suspended":
+        raise DeployError("This project was suspended by an administrator, so nothing can be deployed.", final=True, status=403)
     projects.lock_project(db, project.id)  # serialise the name-clash check and the deploy with other creators
     existing = live_app(db, b)
     name = existing.name if existing is not None else b.name

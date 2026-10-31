@@ -33,11 +33,14 @@ def _resolve_project(db: Session, user: models.User, ref: Optional[str]) -> mode
     """`project:` value -> a project the caller belongs to. None/"personal" = their personal project; else the slug.
     Unknown slug and non-member look identical (404)."""
     if ref is None or ref == "personal":
-        return projects.get_personal_project(db, user)
+        project = projects.get_personal_project(db, user)
+        projects.forbid_if_suspended(db, project)
+        return project
     project = (db.query(models.Project)
                .filter(models.Project.slug == ref, models.Project.deleted_at.is_(None)).first())
     if project is None or projects.get_membership(db, project.id, user.id) is None:
         raise HTTPException(status_code=404, detail=f"We can't find a project with the slug {ref}. Check `picopaas projects`.")
+    projects.forbid_if_suspended(db, project)
     return project
 
 

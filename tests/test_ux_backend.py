@@ -106,7 +106,7 @@ def test_admin_conflict_copy(admin, user):
     assert r.status_code == 409 and r.json()["detail"] == "This user was already approved. Refresh the list."
     r = admin.post(f"/admin/users/{uid}/unsuspend")
     assert r.json()["detail"] == "This user isn't suspended. Refresh the list."
-    assert admin.post("/admin/users/1/suspend").status_code == 409  # the last active administrator
+    assert admin.post("/admin/users/1/suspend", json={"reason": "not-the-reason"}).status_code == 409  # the last active administrator
     assert "can't find that user" in admin.post("/admin/users/999/approve").json()["detail"]
 
 

@@ -230,7 +230,7 @@ def test_audit_export_requires_login(make_client):
 
 def test_promote_deleted_or_suspended_user(admin, owner):
     oid = _uid(owner)
-    admin.post(f"/admin/users/{oid}/suspend")
+    admin.post(f"/admin/users/{oid}/suspend", json={"reason": "not-the-reason"})
     assert admin.post(f"/admin/users/{oid}/promote").status_code == 409
     admin.post(f"/admin/users/{oid}/reactivate")
     admin.delete(f"/admin/users/{oid}")
@@ -253,7 +253,7 @@ def test_last_active_admin_counts_only_active(admin, owner, db_session):
     db_session.commit()
     assert admin.post(f"/admin/users/{aid}/demote").status_code == 409
     assert admin.delete(f"/admin/users/{aid}").status_code == 409
-    assert admin.post(f"/admin/users/{aid}/suspend").status_code == 409
+    assert admin.post(f"/admin/users/{aid}/suspend", json={"reason": "not-the-reason"}).status_code == 409
 
 
 def test_second_admin_allows_demoting_first(admin, owner):

@@ -1386,3 +1386,36 @@ def test_script_export_wrong_engine_and_missing_repo_fail_closed(tmp_path):
     (tmp_path / "bin" / "restic").write_text("#!/bin/sh\n[ \"$1\" = cat ] && exit 1\nexit 0\n")
     r = _run_script({**env, "KIND": "db", "EXPORT_KEY": "exports/1/2.sql.gz"}, tmp_path)
     assert r.returncode == 1 and "PICOPAAS_ERROR the backup repository could not be opened" in r.stdout
+
+
+# --- suspended projects (docs/design/suspensions.md) ---
+
+def test_restore_into_a_suspended_project_is_refused_with_403(pair, user, admin, db_session):
+    src, dst, rdb, _ = pair
+    pid = db_session.get(models.App, dst).project_id
+    assert admin.post(f"/admin/projects/{pid}/suspend", json={"reason": "abuse found"}).status_code == 200
+    r = _restore(admin, rdb, dst)
+    assert r.status_code == 403 and "suspended" in r.json()["detail"]
+    assert db_session.query(models.BackupRun).filter_by(trigger="restore").count() == 0
+    assert admin.post(f"/admin/projects/{pid}/unsuspend").status_code == 200
+    assert _restore(admin, rdb, dst).status_code == 202
+
+
+def test_backups_keep_running_for_a_suspended_project(on, user, admin, db_session, runner):
+    aid = _app_with_db(user, db_session)
+    pid = db_session.get(models.App, aid).project_id
+    assert admin.post(f"/admin/projects/{pid}/suspend", json={"reason": "abuse found"}).status_code == 200
+    assert db_session.get(models.App, aid).status == "suspended"
+    backups.tick(db_session, runner, NOW)
+    assert len(runner.started) == 1
+
+
+def test_restore_queued_before_the_project_was_suspended_is_refused_at_job_start(pair, admin, db_session, runner):
+    src, dst, rdb, _ = pair
+    assert _restore(admin, rdb, dst).status_code == 202
+    pid = db_session.get(models.App, dst).project_id
+    assert admin.post(f"/admin/projects/{pid}/suspend", json={"reason": "abuse found"}).status_code == 200
+    backups.tick(db_session, runner, NOW)
+    assert [s for s in runner.started if s.env["MODE"] == "restore"] == []
+    run = db_session.query(models.BackupRun).filter_by(trigger="restore").one()
+    assert run.status == "failed" and "suspended" in (run.error or "")

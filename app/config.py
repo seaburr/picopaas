@@ -141,6 +141,8 @@ MAX_APPS_PER_ADMIN = int(os.environ.get("MAX_APPS_PER_ADMIN", "10"))
 # Projects (team apps). A project's active-app limit defaults to PROJECT_DEFAULT_APP_LIMIT (an admin can set a
 # per-project value) and never exceeds the per-account ceiling MAX_APPS_PER_USER. Personal projects keep the user's own
 # app_limit semantics (resources.effective_app_limit).
+# Suspensions (docs/design/suspensions.md): longest reason an admin can give (users, projects, apps).
+SUSPEND_REASON_MAX = 500
 PROJECT_DEFAULT_APP_LIMIT = int(os.environ.get("PROJECT_DEFAULT_APP_LIMIT", "3"))
 MAX_PROJECTS_PER_USER = int(os.environ.get("MAX_PROJECTS_PER_USER", "5"))   # shared projects one user may have created and still own
 MAX_PROJECT_MEMBERS = int(os.environ.get("MAX_PROJECT_MEMBERS", "10"))

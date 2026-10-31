@@ -31,6 +31,10 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(default=False, server_default="0", nullable=False)
     # IANA timezone name for display; NULL = use the browser's timezone.
     timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Why/when/by whom an admin suspended the account (cleared on unsuspend); shown in the admin Suspensions list.
+    suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -82,6 +86,13 @@ class Project(Base):
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    # Suspension (docs/design/suspensions.md): 'active' | 'suspended'. Writes by members are refused while suspended.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", server_default="active")
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # admin user id
+    suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # True when the suspension came from suspending the owner of a personal project (user unsuspend lifts just that).
+    suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
 
     members: Mapped[List["ProjectMember"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
@@ -166,8 +177,12 @@ class App(Base):
     # sha256 of the last-applied flattened manifests (hash only; never the manifests). Lets the reconciler
     # re-apply running apps when the platform's rendering changes.
     rendered_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    # True only when the suspension came from suspending the owner (user unsuspend revives just these).
-    suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    # Why an app with status='suspended' is suspended: 'user' (its owner's account), 'project' (its project) or
+    # 'admin' (this app on its own). Unsuspending a user/project restores only the apps it suspended.
+    suspended_via: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # Reconciler retry/backoff for status='error' (see app/reconciler.py). Reset by success or any config change.
     error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

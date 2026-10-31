@@ -192,6 +192,7 @@ def get_build(db: Session, build_id: int, user: models.User, *, include_deleted:
     b = db.get(KaisenBuild, build_id)
     if b is None or (b.deleted_at is not None and not include_deleted) or projects.get_membership(db, b.project_id, user.id) is None:
         raise HTTPException(status_code=404, detail="We can't find that build.")
+    projects.forbid_if_suspended(db, db.get(models.Project, b.project_id))  # writes only; reads stay open
     return b
 
 
@@ -302,6 +303,7 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
                  user: models.User = Depends(get_active_user)):
     if payload.project_id is None:
         project = projects.get_personal_project(db, user)
+        projects.forbid_if_suspended(db, project)
     else:
         project, _ = projects.get_project_for_member(db, payload.project_id, user)
     projects.lock_project(db, project.id)

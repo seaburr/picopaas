@@ -448,7 +448,7 @@ def _export_out(db: Session, app: models.App, run: models.BackupRun, runner: Opt
 @router.post("/{app_id}/backups/{run_id}/download", response_model=BackupExportOut, status_code=202)
 def start_download(app_id: int, run_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     """Prepare a succeeded database or blob storage backup as a single file (3 per app per hour). 202 + poll the export."""
-    app = _get_app_or_404(db, app_id, user)
+    app = _get_app_or_404(db, app_id, user, allow_suspended=True)
     _require_usable()
     source = db.get(models.BackupRun, run_id)
     if source is None or source.app_id != app.id:
@@ -531,7 +531,7 @@ def start_set_download(app_id: int, set_id: int, db: Session = Depends(get_db), 
     """Prepare a whole backup as ONE .tar.gz package: `database.sql.gz` or `database.pgdump`, `blob-storage.tar.gz`, `volume.tar.gz`
     (only the parts that succeeded) and `MANIFEST.json`. 202 + poll GET .../exports/{export_id}, exactly like a single-run download.
     Counts as one of the 3 downloads per app per hour; 409 while a part is still running or another download is being prepared."""
-    app = _get_app_or_404(db, app_id, user)
+    app = _get_app_or_404(db, app_id, user, allow_suspended=True)
     _require_usable()
     st = _get_set_or_404(db, app, set_id)
     try:

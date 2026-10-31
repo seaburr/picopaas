@@ -50,6 +50,9 @@ class ProjectOut(BaseModel):
     app_limit: Optional[int]  # admin-set override (null = default)
     app_limit_effective: int
     created_at: datetime
+    status: str = "active"  # active | suspended (read-only, show the banner)
+    suspended_reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
 
 
 class MemberOut(BaseModel):
@@ -108,7 +111,9 @@ def _project_out(db: Session, project: models.Project, role: str) -> ProjectOut:
         id=project.id, name=project.name, slug=project.slug, is_personal=project.is_personal, role=role,
         member_count=db.query(models.ProjectMember).filter_by(project_id=project.id).count(),
         app_count=projects.live_app_count(db, project.id), app_limit=project.app_limit,
-        app_limit_effective=projects.effective_project_app_limit(db, project), created_at=project.created_at)
+        app_limit_effective=projects.effective_project_app_limit(db, project), created_at=project.created_at,
+        status=project.status, suspended_at=project.suspended_at,
+        suspended_reason=project.suspended_reason if role == "owner" else None)  # the reason is for owners only
 
 
 def _slug_for(db: Session, name: str) -> str:
@@ -252,7 +257,8 @@ def _remove(db: Session, actor: models.User, project_id: int, target: models.Pro
 def remove_member(project_id: int, user_id: int, db: Session = Depends(get_db),
                   user: models.User = Depends(require_session_user)):
     """An owner removes anyone; any member may remove themselves (leave)."""
-    project, _ = projects.get_project_for_member(db, project_id, user, owner=user_id != user.id)
+    project, _ = projects.get_project_for_member(db, project_id, user, owner=user_id != user.id,
+                                                 allow_suspended=user_id == user.id)  # leaving stays open
     _shared_only(project)
     _remove(db, user, project_id, _target_member(db, project_id, user_id), leaving=user_id == user.id)
     return None
@@ -260,7 +266,7 @@ def remove_member(project_id: int, user_id: int, db: Session = Depends(get_db),
 
 @router.post("/projects/{project_id}/leave", status_code=204)
 def leave_project(project_id: int, db: Session = Depends(get_db), user: models.User = Depends(require_session_user)):
-    project, member = projects.get_project_for_member(db, project_id, user)
+    project, member = projects.get_project_for_member(db, project_id, user, allow_suspended=True)
     _shared_only(project)
     _remove(db, user, project_id, member, leaving=True)
     return None
@@ -334,6 +340,7 @@ def accept_invite(token: str, request: Request, db: Session = Depends(get_db),
         raise HTTPException(status_code=410, detail=_DEAD)
     if inv.email and inv.email != user.email.lower():
         raise HTTPException(status_code=403, detail="This invite was sent to a different email address. Log in with that account.")
+    projects.forbid_if_suspended(db, project)
     projects.lock_project(db, project.id)
     if projects.get_membership(db, project.id, user.id) is not None:
         raise HTTPException(status_code=409, detail="You're already in this project.")

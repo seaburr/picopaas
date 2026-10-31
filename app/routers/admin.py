@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import secrets
+import unicodedata
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
@@ -41,6 +42,8 @@ class AdminUserOut(BaseModel):
     status: str
     created_at: datetime
     terms_accepted_at: Optional[datetime] = None
+    suspended_reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
 
 
 class AdminAppOut(BaseModel):
@@ -62,6 +65,9 @@ class AdminAppOut(BaseModel):
     platform_host: Optional[str] = None
     custom_domain: Optional[str] = None
     restarts_app: Optional[bool] = None  # only set on the PATCH /resources response
+    suspended_via: Optional[str] = None  # user | project | admin, while status == "suspended"
+    suspended_reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
 
 
 class AuditOut(BaseModel):
@@ -138,7 +144,8 @@ def _user_out(db: Session, user: models.User) -> dict:
     return dict(id=user.id, email=user.email, role=user.role, app_limit=user.app_limit, api_key_count=key_count,
                 app_limit_effective=resources.effective_app_limit(user),
                 app_count=count, status=user.status, created_at=user.created_at,
-                terms_accepted_at=user.terms_accepted_at)
+                terms_accepted_at=user.terms_accepted_at,
+                suspended_reason=user.suspended_reason, suspended_at=user.suspended_at)
 
 
 def _server_out(db: Session, s: models.DbServer) -> DbServerOut:
@@ -203,6 +210,44 @@ class AdminProjectOut(BaseModel):
     owner_emails: List[str]
     app_limit: Optional[int]
     app_limit_effective: int
+    status: str = "active"  # active | suspended
+    suspended_reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
+    suspended_by_email: Optional[str] = None
+
+
+def _clean_reason(v: str) -> str:
+    """One line of plain text: whitespace (including newlines) collapses to single spaces, and control or format
+    characters (terminal escapes, bidi overrides, zero-width) are refused. The reason goes into the audit log, the
+    owner banner, a 403 message and the CLI."""
+    v = " ".join(v.split())
+    if any(unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Co", "Zl", "Zp") for ch in v):
+        raise ValueError("The reason can only contain plain printable text.")
+    return v
+
+
+class SuspendIn(BaseModel):
+    """Reason is required (shown to the project's members and kept in the audit log)."""
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=1, max_length=config.SUSPEND_REASON_MAX)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = _clean_reason(v)
+        if not v:
+            raise ValueError("Give a reason.")
+        return v
+
+
+class OptionalSuspendIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: Optional[str] = Field(default=None, max_length=config.SUSPEND_REASON_MAX)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_reason(v or "") or None
 
 
 class AdminProjectPatch(BaseModel):
@@ -210,12 +255,18 @@ class AdminProjectPatch(BaseModel):
     app_limit: Optional[int] = Field(default=None, ge=0)  # null = back to the platform default
 
 
+def _email_of(db: Session, user_id: Optional[int]) -> Optional[str]:
+    u = db.get(models.User, user_id) if user_id else None
+    return u.email if u is not None else None
+
+
 def _admin_project_out(db: Session, p: models.Project) -> AdminProjectOut:
     return AdminProjectOut(
         id=p.id, name=p.name, slug=p.slug, is_personal=p.is_personal, app_count=projects.live_app_count(db, p.id),
         member_count=db.query(models.ProjectMember).filter_by(project_id=p.id).count(),
         owner_emails=projects.owner_emails_map(db, [p.id]).get(p.id, []), app_limit=p.app_limit,
-        app_limit_effective=projects.effective_project_app_limit(db, p))
+        app_limit_effective=projects.effective_project_app_limit(db, p), status=p.status,
+        suspended_reason=p.suspended_reason, suspended_at=p.suspended_at, suspended_by_email=_email_of(db, p.suspended_by))
 
 
 @router.get("/projects", response_model=List[AdminProjectOut], dependencies=[Depends(require_admin_session)])
@@ -243,6 +294,126 @@ def patch_project(project_id: int, payload: AdminProjectPatch, db: Session = Dep
     return _admin_project_out(db, project)
 
 
+def _project_or_404(db: Session, project_id: int) -> models.Project:
+    project = projects.live_project(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="We can't find that project.")
+    return project
+
+
+@router.post("/projects/{project_id}/suspend", response_model=AdminProjectOut)
+def suspend_project(project_id: int, payload: SuspendIn, db: Session = Depends(get_db),
+                    admin: models.User = Depends(require_platform_admin)):
+    """Suspend a project (shared or personal): every live app goes to 0 replicas with the 503 page, members keep
+    read access, writes return 403, Kaisen runs in it stop. Apps already suspended keep their own reason."""
+    project = _project_or_404(db, project_id)
+    if project.status == "suspended" and not project.suspended_by_user:
+        raise HTTPException(status_code=409, detail="This project is already suspended. Refresh the list.")
+    if project.status == "suspended":
+        # Suspended only because its owner was: take it over as a project suspension, so unsuspending the user
+        # no longer lifts it. Its apps (tagged 'user') become 'project' apps.
+        for a in projects.live_project_apps(db, project.id):
+            if a.status == "suspended" and a.suspended_via == "user":
+                a.suspended_via, a.suspended_reason = "project", payload.reason
+    n = projects.suspend_project(db, project, admin, payload.reason)
+    db.commit()
+    audit.record(db, admin, "project.suspend", "project", project.id,
+                 f"project={project.id} apps={n} reason={payload.reason}")
+    return _admin_project_out(db, project)
+
+
+@router.post("/projects/{project_id}/unsuspend", response_model=AdminProjectOut)
+def unsuspend_project(project_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+    """Lift the suspension and restore only the apps this project suspension put to sleep (via='project')."""
+    project = _project_or_404(db, project_id)
+    if project.status != "suspended":
+        raise HTTPException(status_code=409, detail="This project isn't suspended. Refresh the list.")
+    if project.suspended_by_user:
+        raise HTTPException(status_code=409, detail="This project is suspended because its owner's account is. Unsuspend the user instead.")
+    owner = db.get(models.User, project.created_by) if project.is_personal else None
+    if owner is not None and owner.status == "suspended":
+        # The account is still suspended (the project suspension took over, or came first): keep the user's hold on
+        # the personal project and its apps instead of restarting them under a suspended account.
+        project.suspended_by_user = True
+        project.suspended_reason = owner.suspended_reason
+        project.suspended_by = owner.suspended_by
+        project.suspended_at = owner.suspended_at
+        for a in projects.live_project_apps(db, project.id):
+            if a.status == "suspended" and a.suspended_via == "project":
+                a.suspended_via, a.suspended_reason = "user", owner.suspended_reason
+        db.commit()
+        audit.record(db, admin, "project.unsuspend", "project", project.id, f"project={project.id} apps=0 (owner still suspended)")
+        return _admin_project_out(db, project)
+    n = projects.unsuspend_project(db, project)
+    db.commit()
+    audit.record(db, admin, "project.unsuspend", "project", project.id, f"project={project.id} apps={n}")
+    return _admin_project_out(db, project)
+
+
+class SuspensionOut(BaseModel):
+    type: Literal["user", "project", "app"]
+    id: int
+    name: str  # user: email; project/app: its name
+    owner_email: Optional[str] = None  # project: first owner; app: the creator
+    project_id: Optional[int] = None  # app: the project it lives in
+    project_name: Optional[str] = None
+    reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
+    suspended_by_id: Optional[int] = None
+    suspended_by_email: Optional[str] = None
+    cause_type: Optional[Literal["user", "project"]] = None  # app: what suspended it (null when suspended on its own)
+    cause_id: Optional[int] = None  # app: id of that user / project, so the UI can nest apps under their cause
+    app_count: Optional[int] = None  # project: live apps in it
+    via: Optional[str] = None  # app: user | project | admin
+    is_personal: Optional[bool] = None  # project
+
+
+@router.get("/suspensions", response_model=List[SuspensionOut], dependencies=[Depends(require_admin_session)])
+def list_suspensions(db: Session = Depends(get_db)):
+    """Everything an admin has suspended: users, projects (a personal project suspended only because its owner is
+    appears as the user, not twice) and apps (all of them, with `via`), newest first."""
+    out: List[SuspensionOut] = []
+    emails: dict = {}
+
+    def email(uid):
+        if uid not in emails:
+            emails[uid] = _email_of(db, uid)
+        return emails[uid]
+
+    for u in db.query(models.User).filter(models.User.status == "suspended").all():
+        out.append(SuspensionOut(type="user", id=u.id, name=u.email, reason=u.suspended_reason,
+                                 suspended_at=u.suspended_at, suspended_by_id=u.suspended_by, suspended_by_email=email(u.suspended_by),
+                                 app_count=len(_live_apps(db, u.id))))
+    pq = db.query(models.Project).filter(models.Project.deleted_at.is_(None), models.Project.status == "suspended",
+                                         models.Project.suspended_by_user.is_(False))
+    for p in pq.all():
+        owners = projects.owner_emails_map(db, [p.id]).get(p.id, [])
+        out.append(SuspensionOut(type="project", id=p.id, name=p.name, owner_email=owners[0] if owners else None,
+                                 reason=p.suspended_reason, suspended_at=p.suspended_at,
+                                 suspended_by_id=p.suspended_by, suspended_by_email=email(p.suspended_by), app_count=projects.live_app_count(db, p.id),
+                                 is_personal=p.is_personal))
+    aq = (db.query(models.App).options(joinedload(models.App.owner))
+          .filter(models.App.deleted_at.is_(None), models.App.status == "suspended"))
+    names: dict = {}
+    for a in aq.all():
+        if a.project_id is not None and a.project_id not in names:
+            pr = db.get(models.Project, a.project_id)
+            names[a.project_id] = pr.name if pr is not None else None
+        cause_type = cause_id = None
+        if a.suspended_via == "project":
+            cause_type, cause_id = "project", a.project_id
+        elif a.suspended_via == "user":
+            pr = db.get(models.Project, a.project_id) if a.project_id else None
+            cause_type, cause_id = "user", (pr.created_by if pr is not None and pr.is_personal else a.owner_id)
+        out.append(SuspensionOut(type="app", id=a.id, name=a.name, owner_email=a.owner.email, project_id=a.project_id,
+                                 cause_type=cause_type, cause_id=cause_id, suspended_by_id=a.suspended_by,
+                                 project_name=names.get(a.project_id), reason=a.suspended_reason,
+                                 suspended_at=a.suspended_at, suspended_by_email=email(a.suspended_by),
+                                 via=a.suspended_via))
+    out.sort(key=lambda r: r.suspended_at or datetime.min, reverse=True)
+    return out
+
+
 @router.post("/users/{user_id}/approve", response_model=AdminUserOut)
 def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
@@ -259,32 +430,42 @@ def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 
 
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
-def suspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def suspend_user(user_id: int, payload: SuspendIn, db: Session = Depends(get_db),
+                 admin: models.User = Depends(require_platform_admin)):
+    """Block login, suspend the personal project (and so its apps) unless it is already suspended on its own, and
+    (via the Kaisen worker's checks) stop every Kaisen run this person started. Shared projects keep running."""
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
+    reason = payload.reason
     user.status = "suspended"
-    for a in _live_apps(db, user.id):
-        if a.status != "suspended":  # already admin-suspended apps stay individually suspended
-            a.status = "suspended"
-            a.suspended_by_user = True
-            a.status_detail = None
+    user.suspended_reason, user.suspended_at, user.suspended_by = reason, datetime.now(timezone.utc).replace(tzinfo=None), admin.id
+    personal = projects.get_personal_project(db, user)
+    if personal.status != "suspended":  # one already suspended on its own keeps its reason and stays after unsuspend
+        projects.suspend_project(db, personal, admin, reason, by_user=True)
+    for a in _live_apps(db, user.id):  # legacy apps without a project
+        if a.status != "suspended":  # already suspended apps stay individually suspended
+            projects.suspend_app_row(a, "user", admin, reason)
     db.commit()
-    audit.record(db, admin, "user.suspend", "user", user.id)
+    audit.record(db, admin, "user.suspend", "user", user.id, f"reason={reason}")
     return _user_out(db, user)
 
 
 @router.post("/users/{user_id}/unsuspend", response_model=AdminUserOut)
-def unsuspend_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def unsuspend_user(user_id: int, db: Session = Depends(get_db),
+                   admin: models.User = Depends(require_platform_admin)):
+    """Restore only what suspending the user did: apps tagged via='user', and the personal project when its
+    suspension came from the user's. A project or app an admin suspended on its own stays suspended."""
     user = _get_user_or_404(db, user_id)
     if user.status != "suspended":
         raise HTTPException(status_code=409, detail="This user isn't suspended. Refresh the list.")
     user.status = "active"
+    user.suspended_reason = user.suspended_at = user.suspended_by = None
+    personal = projects.get_personal_project(db, user)
+    if personal.status == "suspended" and personal.suspended_by_user:
+        projects.unsuspend_project(db, personal, vias=("user",))
     for a in _live_apps(db, user.id):
-        if a.status == "suspended" and a.suspended_by_user:
-            a.status = "pending"
-            a.suspended_by_user = False
-            a.status_detail = None
-            a.reset_retry()
+        if a.status == "suspended" and a.suspended_via == "user":
+            projects.restore_app_row(a)
     db.commit()
     audit.record(db, admin, "user.unsuspend", "user", user.id)
     return _user_out(db, user)
@@ -393,7 +574,10 @@ def _app_admin_out(a: models.App) -> AdminAppOut:
                        resources=resources.describe(a), replicas=a.replicas, volume=volumes.out(a), want_db=a.want_db,
                        want_storage=a.want_storage, db_engine=a.db_engine if a.want_db else None,
                        platform_host=f"{a.platform_subdomain}.{APP_DOMAIN}" if a.platform_subdomain else None,
-                       custom_domain=a.custom_domain)
+                       custom_domain=a.custom_domain,
+                       suspended_via=a.suspended_via if a.status == "suspended" else None,
+                       suspended_reason=a.suspended_reason if a.status == "suspended" else None,
+                       suspended_at=a.suspended_at if a.status == "suspended" else None)
 
 
 def _get_app_or_404(db: Session, app_id: int) -> models.App:
@@ -412,12 +596,24 @@ def list_all_apps(db: Session = Depends(get_db)):
     return [_app_admin_out(a) for a in apps]
 
 
+def _held_by(db: Session, a: models.App) -> Optional[str]:
+    """'project' / 'user' while the suspension that put this app to sleep (suspended_via) is still in force."""
+    if a.suspended_via == "project":
+        p = db.get(models.Project, a.project_id) if a.project_id else None
+        return "project" if p is not None and p.status == "suspended" else None
+    if a.suspended_via == "user":
+        p = db.get(models.Project, a.project_id) if a.project_id else None
+        owner = db.get(models.User, p.created_by if p is not None and p.is_personal else a.owner_id)
+        return "user" if owner is not None and owner.status == "suspended" else None
+    return None
+
+
 @router.post("/apps/{app_id}/suspend", response_model=AdminAppOut)
-def suspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def suspend_app(app_id: int, payload: Optional[OptionalSuspendIn] = None, db: Session = Depends(get_db),
+                admin: models.User = Depends(require_platform_admin)):
+    """Suspend one app on its own (via='admin'): only an app unsuspend brings it back. Prefer suspending the project."""
     a = _get_app_or_404(db, app_id)
-    a.status = "suspended"
-    a.suspended_by_user = False
-    a.status_detail = None
+    projects.suspend_app_row(a, "admin", admin, payload.reason if payload else None)
     db.commit()
     audit.record(db, admin, "app.suspend", "app", a.id)
     return _app_admin_out(a)
@@ -428,10 +624,10 @@ def unsuspend_app(app_id: int, db: Session = Depends(get_db), admin: models.User
     a = _get_app_or_404(db, app_id)
     if a.status != "suspended":
         raise HTTPException(status_code=409, detail="This app isn't suspended. Refresh the list.")
-    a.status = "pending"
-    a.suspended_by_user = False
-    a.status_detail = None
-    a.reset_retry()
+    held = _held_by(db, a)
+    if held:  # another suspension still holds it: lifting just this app would restart it under that suspension
+        raise HTTPException(status_code=409, detail=f"This app is stopped because its {held} is suspended. Unsuspend the {held} instead.")
+    projects.restore_app_row(a)
     db.commit()
     audit.record(db, admin, "app.unsuspend", "app", a.id)
     return _app_admin_out(a)

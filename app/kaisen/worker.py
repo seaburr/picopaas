@@ -124,6 +124,11 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
     """The builder's deploy_preview tool: (session, run) -> (ok, text). Raises ToolError."""
     def _deployer(s, run):
         s.commit()  # persist this turn's file writes: a deploy failure rolls the session back
+        gone = builder.stop_reason(s, run)
+        if gone:
+            builder._stop(s, run, "stopped", "error", gone)
+            s.commit()
+            raise ToolError(gone)
         b = s.get(KaisenBuild, run.build_id)
         rs = load_for_build(s, b)
         try:
@@ -158,6 +163,11 @@ def deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep=time.sl
         run = s.get(KaisenRun, run_id)
         b = s.get(KaisenBuild, run.build_id)
         rs = load_for_build(s, b)
+        gone = builder.stop_reason(s, run)
+        if gone:
+            s.add(KaisenInbox(build_id=b.id, run_id=run_id, kind="deploy", text=f"Preview not deployed: {gone}"))
+            s.commit()
+            return
         try:
             app, changed = deploy_mod.deploy_build(s, b, registry_factory(), force=False)
             res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, sleep=sleep,
@@ -176,7 +186,7 @@ def push_on_finish(S, run_id, gh_factory) -> None:
         b = s.get(KaisenBuild, run.build_id)
         rs = load_for_build(s, b)
         out = output_for(b, rs)
-        if not (out.push_enabled and out.push_on_finish):
+        if not (out.push_enabled and out.push_on_finish) or builder.stop_reason(s, run):
             return
         try:
             msg = pushing.push_build(s, b, out, gh_factory)

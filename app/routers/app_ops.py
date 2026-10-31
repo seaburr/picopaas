@@ -51,9 +51,11 @@ class LogsOut(BaseModel):
     uptime_seconds: Optional[int] = None  # Status card: longest uptime among current running pods (null when none is running)
 
 
-def _get_app_or_404(db: Session, app_id: int, user: models.User) -> models.App:
-    """Project member or administrator; anyone else gets 404 (no existence leak)."""
-    return projects.get_app_for_member(db, app_id, user, allow_admin=True, detail="App not found.")
+def _get_app_or_404(db: Session, app_id: int, user: models.User, *, allow_suspended: bool = False) -> models.App:
+    """Project member or administrator; anyone else gets 404 (no existence leak). `allow_suspended` keeps backup
+    downloads open for members of a suspended project."""
+    return projects.get_app_for_member(db, app_id, user, allow_admin=True, allow_suspended=allow_suspended,
+                                       detail="App not found.")
 
 
 def _uptime(info, now: datetime) -> Optional[int]:

@@ -157,7 +157,9 @@ def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool
 def _target_project(db: Session, user: models.User, project_id: Optional[int]) -> models.Project:
     """Where a new app goes: the given project (caller must be a member, else 404) or their personal project."""
     if project_id is None:
-        return projects.get_personal_project(db, user)
+        project = projects.get_personal_project(db, user)
+        projects.forbid_if_suspended(db, project)
+        return project
     project, _ = projects.get_project_for_member(db, project_id, user)
     return project
 

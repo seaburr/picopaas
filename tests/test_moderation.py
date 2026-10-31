@@ -44,7 +44,7 @@ def test_pending_blocked_with_api_key(make_client):
     admin.post(f"/admin/users/{uid}/approve")
     raw = user.post("/api/keys").json()["key"]
     # back to suspended: key must not work either
-    admin.post(f"/admin/users/{uid}/suspend")
+    admin.post(f"/admin/users/{uid}/suspend", json={"reason": "not-the-reason"})
     kc = _api_key_client(make_client, raw)
     r = kc.get("/apps")
     assert r.status_code == 403 and r.json()["detail"] .startswith("Your account is suspended")
@@ -57,7 +57,7 @@ def test_suspend_scales_apps_to_zero_and_unsuspend_redeploys(make_client, db_ses
     admin, user, uid = _setup(make_client)
     admin.post(f"/admin/users/{uid}/approve")
     app_id = user.post("/apps", json=APP).json()["id"]
-    admin.post(f"/admin/users/{uid}/suspend")
+    admin.post(f"/admin/users/{uid}/suspend", json={"reason": "not-the-reason"})
     row = db_session.get(models.App, app_id)
     assert row.status == "suspended"
     kube = FakeKubeProvider()
@@ -124,7 +124,7 @@ def test_admin_routes_forbidden_for_non_admin(make_client):
 def test_platform_admin_cannot_be_suspended_or_deleted(make_client):
     admin, _, _ = _setup(make_client)
     aid = next(u["id"] for u in admin.get("/admin/users").json() if u["role"] == "platform_admin")
-    assert admin.post(f"/admin/users/{aid}/suspend").status_code == 409  # last active admin
+    assert admin.post(f"/admin/users/{aid}/suspend", json={"reason": "not-the-reason"}).status_code == 409  # last active admin
     assert admin.delete(f"/admin/users/{aid}").status_code == 409
     assert admin.get("/auth/me").json()["status"] == "active"
 
@@ -137,7 +137,7 @@ def test_admin_apps_and_delete(make_client):
     assert rows[0]["owner_email"] == "user@example.com" and rows[0]["id"] == app_id
     assert set(rows[0]) == {"id", "name", "hostname", "status", "owner_id", "owner_email", "image", "created_at",
                            "resources", "exceeds_platform_caps", "replicas", "volume", "want_db", "want_storage", "db_engine",
-                            "platform_host", "custom_domain", "restarts_app"}
+                            "platform_host", "custom_domain", "restarts_app", "suspended_via", "suspended_reason", "suspended_at"}
     assert admin.delete(f"/admin/apps/{app_id}").status_code == 204
     assert admin.get("/admin/apps").json() == []
 
@@ -192,7 +192,7 @@ def test_user_unsuspend_keeps_individually_suspended_apps(make_client, db_sessio
     bad = user.post("/apps", json=APP).json()["id"]
     good = user.post("/apps", json=dict(APP, name="other")).json()["id"]
     admin.post(f"/admin/apps/{bad}/suspend")
-    admin.post(f"/admin/users/{uid}/suspend")
+    admin.post(f"/admin/users/{uid}/suspend", json={"reason": "not-the-reason"})
     admin.post(f"/admin/users/{uid}/unsuspend")
     db_session.expire_all()
     assert db_session.get(models.App, bad).status == "suspended"

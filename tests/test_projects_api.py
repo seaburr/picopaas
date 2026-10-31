@@ -469,7 +469,7 @@ def test_suspend_user_does_not_stop_team_apps(team):
     admin, a, b, c, p = team
     team_app = b.post("/apps", json={**_APP, "project_id": p["id"]}).json()["id"]
     personal = b.post("/apps", json={**_APP, "name": "mine"}).json()["id"]
-    assert admin.post(f"/admin/users/{_uid('b@example.com')}/suspend").status_code == 200
+    assert admin.post(f"/admin/users/{_uid('b@example.com')}/suspend", json={"reason": "not-the-reason"}).status_code == 200
     db = _db()
     db.expire_all()
     assert db.get(models.App, team_app).status != "suspended"

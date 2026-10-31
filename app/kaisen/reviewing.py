@@ -174,6 +174,10 @@ def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | N
             run = s.get(KaisenRun, run_id)
             if not builder._still_active(s, run):
                 return "stopped", None
+            if (gone := builder.stop_reason(s, run)):  # suspended: no reviewer turns either
+                builder._stop(s, run, "stopped", "error", gone)
+                s.commit()
+                return "stopped", None
             if (why := builder.check_caps(s, run, pid, rs)):
                 return "ok", _skipped(model, why)
             if not lease.check():
