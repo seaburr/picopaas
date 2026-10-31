@@ -35,6 +35,7 @@ class User(Base):
     suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     suspended_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    suspended_from: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # status before suspension
 
     apps: Mapped[List["App"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")

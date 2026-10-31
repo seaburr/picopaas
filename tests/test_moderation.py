@@ -263,3 +263,37 @@ def test_dbserver_ca_cert_validation(make_client, db_session):
     admin.patch(f"/admin/db-servers/{sid}", json={"ca_cert": pem})
     db_session.expire_all()
     assert db_session.get(models.DbServer, sid).ca_cert == pem
+
+
+def test_unsuspending_a_signup_suspended_before_approval_returns_it_to_pending(make_client, db_session):
+    # pentest K51: unsuspend used to set "active", so suspend + unsuspend skipped the approval gate
+    admin, user, uid = _setup(make_client)
+    status = lambda: next(u["status"] for u in admin.get("/admin/users").json() if u["id"] == uid)  # noqa: E731
+    assert status() == "pending"
+    assert admin.post(f"/admin/users/{uid}/suspend", json={"reason": "spam signup"}).status_code == 200
+    assert admin.post(f"/admin/users/{uid}/suspend", json={"reason": "updated reason"}).status_code == 200  # re-suspend
+    assert admin.post(f"/admin/users/{uid}/unsuspend").status_code == 200
+    assert status() == "pending"
+    assert admin.post(f"/admin/users/{uid}/approve").status_code == 200 and status() == "active"
+
+
+def test_unsuspending_an_approved_user_returns_them_to_active(make_client, db_session):
+    admin, user, uid = _setup(make_client)
+    admin.post(f"/admin/users/{uid}/approve")
+    admin.post(f"/admin/users/{uid}/suspend", json={"reason": "abuse"})
+    admin.post(f"/admin/users/{uid}/unsuspend")
+    db_session.expire_all()
+    u = db_session.get(models.User, uid)
+    assert u.status == "active" and u.suspended_from is None
+
+
+def test_legacy_suspension_without_a_recorded_status_unsuspends_to_active(make_client, db_session):
+    # users suspended before c5e7f9a1b3d2 have no suspended_from; keep the old behaviour for them
+    admin, user, uid = _setup(make_client)
+    admin.post(f"/admin/users/{uid}/approve")
+    admin.post(f"/admin/users/{uid}/suspend", json={"reason": "old"})
+    db_session.get(models.User, uid).suspended_from = None
+    db_session.commit()
+    admin.post(f"/admin/users/{uid}/unsuspend")
+    db_session.expire_all()
+    assert db_session.get(models.User, uid).status == "active"

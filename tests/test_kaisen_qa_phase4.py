@@ -345,7 +345,7 @@ def test_wave_migrations_up_down_restore_the_schema_exactly_and_keep_data(tmp_pa
         finally:
             con.close()
 
-    assert len(alembic("heads").strip().splitlines()) == 1 and "b9d4e6a2c8f1" in alembic("heads")
+    assert len(alembic("heads").strip().splitlines()) == 1 and "c5e7f9a1b3d2" in alembic("heads")
     alembic("upgrade", "e7a1c3d5b9f2")
     base = schema()
     con = sqlite3.connect(dbfile)

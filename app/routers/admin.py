@@ -437,6 +437,8 @@ def suspend_user(user_id: int, payload: SuspendIn, db: Session = Depends(get_db)
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
     reason = payload.reason
+    if user.status != "suspended":  # a re-suspend (new reason) keeps the status from before the first one
+        user.suspended_from = user.status
     user.status = "suspended"
     user.suspended_reason, user.suspended_at, user.suspended_by = reason, datetime.now(timezone.utc).replace(tzinfo=None), admin.id
     personal = projects.get_personal_project(db, user)
@@ -458,8 +460,9 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db),
     user = _get_user_or_404(db, user_id)
     if user.status != "suspended":
         raise HTTPException(status_code=409, detail="This user isn't suspended. Refresh the list.")
-    user.status = "active"
-    user.suspended_reason = user.suspended_at = user.suspended_by = None
+    # back to what they were: a signup suspended before approval returns to pending, never straight to active
+    user.status = user.suspended_from if user.suspended_from in ("pending", "active") else "active"
+    user.suspended_reason = user.suspended_at = user.suspended_by = user.suspended_from = None
     personal = projects.get_personal_project(db, user)
     if personal.status == "suspended" and personal.suspended_by_user:
         projects.unsuspend_project(db, personal, vias=("user",))
