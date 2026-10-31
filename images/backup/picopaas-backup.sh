@@ -1,4 +1,7 @@
 #!/bin/sh
+# shellcheck disable=SC3043  # `local` is supported by the image's busybox ash, which is the only shell this runs under
+# shellcheck disable=SC2086  # RESTIC, TAGARG, SSL, FLAGS and FILES are deliberately word-split option lists
+# shellcheck disable=SC2016  # single quotes are deliberate: the sed expression has literal backticks
 # Entry point of the backup image. One run = one app repo (KIND) = one Job.
 #   MODE=backup   KIND=db      dump the app's database into a restic repo, then `forget --prune` with the retention policy
 #   MODE=backup   KIND=bucket  copy the app's bucket objects to $WORK/bucket (s5cmd, the app's own key), restic that dir

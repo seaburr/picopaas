@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2016  # single quotes are deliberate: nginx/sed/PHP snippets carry literal $variables
 # PID 1 child of tini. Runs as UID 10001. Writes only to the WordPress root (volume, or the image dir) and /tmp.
 set -eu
 SEED=/usr/src/wordpress
@@ -101,6 +102,7 @@ if [ "${WORDPRESS_DB_TLS:-off}" = required ]; then
   if [ -n "${WORDPRESS_DB_CA_CERT:-}" ]; then printf '%s\n' "$WORDPRESS_DB_CA_CERT" > /tmp/db-ca.pem; DB_SSL_FLAGS="--ssl --ssl-ca=/tmp/db-ca.pem --ssl-verify-server-cert"
   else DB_SSL_FLAGS="--ssl --skip-ssl-verify-server-cert"; fi
 fi
+# shellcheck disable=SC2086  # DB_SSL_FLAGS holds several flags and must word-split
 db_sql() { # runs mysql with the app DB creds (password via env, never on the command line)
   MYSQL_PWD="$WORDPRESS_DB_PASSWORD" mariadb --host="${WORDPRESS_DB_HOST:-localhost}" --port="${WORDPRESS_DB_PORT:-3306}" \
     --user="$WORDPRESS_DB_USER" $DB_SSL_FLAGS \
@@ -253,7 +255,6 @@ install_flow() {
   install_flow
   nginx -e /dev/stderr -s reload 2>/dev/null || kill -HUP "$NGX" 2>/dev/null || true
 ) &
-INST=$!
 # Reload nginx whenever the state file changes (every set_state is followed by a reload poll below).
 (
   sleep 3   # let nginx install its signal handlers before the first HUP
