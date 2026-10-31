@@ -1,7 +1,7 @@
 """Admin reserved-subdomain API: API-key scopes, body validation, serializer fields, and routing of the new host."""
 import pytest
 
-from app import config, models
+from app import config
 from tests.conftest import register_and_login
 
 APP = {"name": "web", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}

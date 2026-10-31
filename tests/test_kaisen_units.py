@@ -127,7 +127,8 @@ class _RT:
 
 def test_check_outcomes():
     t = [0.0]
-    clock = lambda: t[0]
+    def clock():
+        return t[0]
     def sleep(n):
         t[0] += n
     r = deploy.check(_RT([("pending", ""), ("running", "h.x")], [404, 200]), 1, [], 60, clock, sleep)

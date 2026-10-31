@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-import pytest
 from sqlalchemy import create_engine, inspect
 
 from app import models, resources
@@ -67,7 +66,8 @@ def test_migration_round_trip(tmp_path):
         return subprocess.run([sys.executable, "-m", "alembic", *args], cwd=root, env=env, check=True,
                               capture_output=True, text=True).stdout
 
-    cols = lambda: {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
+    def cols():
+        return {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
     alembic("upgrade", "head")
     assert "egress_mbit" in cols()
     assert len(alembic("heads").strip().splitlines()) == 1

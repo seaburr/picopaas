@@ -1,5 +1,4 @@
 """Metrics endpoint, platform DB self-backup, MANIFEST image, admin ceiling follow, alert dismissal, uptime."""
-import datetime as dt
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -146,7 +145,8 @@ def test_package_env_carries_image(on, owner, db_session):
 # --- 4. admin ceiling follows ---
 
 def test_raising_user_ceiling_raises_admin_pair(db_session):
-    g = lambda k: platform_settings.get(db_session, k)
+    def g(k):
+        return platform_settings.get(db_session, k)
     assert g("max_apps_per_admin") == 10
     assert platform_settings.update(db_session, {"max_apps_per_user": 20}, "a@example.com") == []
     assert g("max_apps_per_admin") == 20 and g("admin_default_app_limit") == 20
@@ -198,7 +198,6 @@ def test_dismiss_and_undismiss_event_by_id(owner, kube, db_session):
 
 
 def test_dismiss_image_update_error(owner, kube, db_session):
-    from app import image_check
     aid = owner.post("/apps", json=APP).json()["id"]
     app = db_session.get(models.App, aid)
     app.image_update_error = "New image runs as root; still running the previous version."

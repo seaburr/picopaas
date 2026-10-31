@@ -5,7 +5,6 @@ import json
 import re
 from re import _constants as _c, _parser
 
-from app import config
 
 from . import deploy
 

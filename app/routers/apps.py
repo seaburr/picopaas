@@ -16,7 +16,6 @@ from app.env_refs import EnvValidationError, validate_env_value
 from app.naming import generate_unique_hostname
 from app.providers.base import (
     KubeProvider,
-    MySQLAdmin,
     MySQLAdminError,
     ObjectStore,
     ObjectStoreError,

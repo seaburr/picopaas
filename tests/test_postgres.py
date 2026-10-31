@@ -112,7 +112,8 @@ def _pg_quota_setup(db_session):
 def test_quota_calls_pg_admin_two_stage(db_session):
     app = _pg_quota_setup(db_session)
     admin, store = FakePostgresAdmin(), FakeObjectStore()
-    run = lambda: poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store, storage=False)
+    def run():
+        return poll_quotas(db_session, mysql_admin_factory=lambda s: admin, object_store=store, storage=False)
     admin.sizes[app.id] = DB_QUOTA_BYTES + 1
     run()
     assert app.database.over_quota and admin.hard_calls[-1] == (app.id, True, False)

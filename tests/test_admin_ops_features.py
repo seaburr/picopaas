@@ -91,7 +91,7 @@ def test_pod_events_download(owner, admin, kube):
     ]}
     r = owner.get(f"/apps/{aid}/pods/web-a/events")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
-    assert r.headers["content-disposition"] == f'attachment; filename="demo-web-a-events.txt"'
+    assert r.headers["content-disposition"] == 'attachment; filename="demo-web-a-events.txt"'
     lines = r.text.splitlines()
     assert "1 hour" in lines[0]
     assert lines[1] == "2026-01-01T00:00:00Z  Normal  Pulled  x1  pulled image"
@@ -141,7 +141,6 @@ def test_audit_export_admin_only(owner):
 
 def test_health_by_db_engine(admin, owner, kube):
     owner.post("/apps", json={**APP, "want_db": True})
-    owner2 = owner  # one app per user; add the rest straight to the DB
     from app.db import get_db
     db = next(fastapi_app.dependency_overrides[get_db]())
     u = db.query(models.User).filter_by(email="owner@example.com").one()

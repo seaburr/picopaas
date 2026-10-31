@@ -2,7 +2,6 @@
 import json
 from datetime import timedelta
 
-import pytest
 
 from app import backup_sweeper, backups, config, models
 from app.providers.backup import BackupJobSpec

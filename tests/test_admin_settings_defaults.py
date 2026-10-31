@@ -1,7 +1,7 @@
 """Admin settings: node-size caps, per-app defaults vs ceilings, session-only admin reads."""
 import pytest
 
-from app import k8s_manifests as k8s, models, platform_settings, resources
+from app import k8s_manifests as k8s, models, resources
 from tests.conftest import register_and_login
 
 APP = {"name": "web", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
@@ -131,5 +131,4 @@ def test_backup_override_ceiling(admin):
     assert _put(admin, backup_override_max_bytes_per_app=1024 * gib).status_code == 422  # above the platform total
     assert _put(admin, backup_max_bytes_per_app=3 * gib, backup_override_max_bytes_per_app=2 * gib).status_code == 422
     assert _put(admin, backup_max_bytes_per_app=gib, backup_override_max_bytes_per_app=2 * gib).status_code == 200
-    from app import backups
     from app.db import get_db  # noqa: F401

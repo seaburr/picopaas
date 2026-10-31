@@ -90,7 +90,6 @@ def test_list_apps_query_count_does_not_grow(client, db_session):
 
 
 def test_sweep_applies_connection_limit_once(session, monkeypatch):
-    from app import config
     _make_server(session)
     mysql = FakeMySQLAdmin()
     calls = []

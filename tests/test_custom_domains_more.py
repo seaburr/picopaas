@@ -1,6 +1,5 @@
 """Custom domains: DnsLookup (fake resolver, no network), host normalisation edges, verify() branches,
 and the owner endpoints' authz / state-transition / release-on-teardown behaviour."""
-import sys
 import types
 
 import pytest

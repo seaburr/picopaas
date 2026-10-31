@@ -7,7 +7,6 @@ from app import config
 from app.kaisen import builder, checks, httptool
 from app.kaisen import llm
 from app.kaisen.llm import FakeModelClient, reply, tool_use
-from app.kaisen.models import KaisenFile
 from app.kaisen.paths import ToolError
 from tests.kaisen_helpers import FakeRuntime, db
 from tests.test_kaisen_reviewer import _finish, _set, _verdict

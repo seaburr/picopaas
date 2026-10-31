@@ -2,7 +2,6 @@
 
 Everything 404s when Kaisen is off (KAISEN_ENABLED and the admin setting kaisen_enabled). Deploys go through the
 platform's own spec path as the build's creator (app/kaisen/deploy.py): no PicoPaaS API key is involved."""
-import hashlib
 import hmac
 from datetime import datetime, timezone
 from typing import Optional
@@ -132,7 +131,7 @@ def test_settings(what: str, project_id: int, db: Session = Depends(get_db),
         if what == "anthropic":
             if not rs.anthropic_api_key:
                 return {"ok": False, "message": "No Anthropic API key is saved for this project yet."}
-            got = model_factory(rs.anthropic_api_key).retrieve_model(rs.model)
+            model_factory(rs.anthropic_api_key).retrieve_model(rs.model)
             return {"ok": True, "message": "Key valid. Selected model available. " + ksettings.web_note(rs)}
         if what == "github":
             if not rs.github_token:

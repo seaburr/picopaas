@@ -1,9 +1,10 @@
 """A platform FERNET_KEY change must never break listings, rotation, PATCH, reconcile sweeps or deletes."""
 from __future__ import annotations
 
+import socket
 from datetime import datetime, timezone
 
-from app import crypto, models
+from app import crypto, k8s_manifests, models, reconciler
 from app.main import app as fastapi_app
 from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
 from app.reconciler import UNREADABLE_DETAIL, reconcile_all
@@ -123,10 +124,6 @@ def test_admin_delete_tears_down_without_decrypting(make_client, db_session):
 
 
 # --- storage private-IP egress policy ---
-
-import socket
-
-from app import k8s_manifests, reconciler
 
 
 def _gai(ips):

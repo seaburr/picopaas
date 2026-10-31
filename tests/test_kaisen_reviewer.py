@@ -252,7 +252,6 @@ def _build(env):
 def test_deploy_preview_reports_failed_tests_and_detail_exposes_them(env):
     start(env)
     manifest = json.dumps({"runtime": "python", "start": "python app.py", "test": "python -m unittest"})
-    sha = {}
 
     class Rt(FakeRuntime):
         def logs(self, app_id):
@@ -310,7 +309,6 @@ def test_tests_anonymous_and_other_user_cannot_see_build(env, make_client):
 
 
 def test_deploy_rejects_a_bad_test_field(env):
-    from tests.test_kaisen_api import _add_files
     start(env)
     model = FakeModelClient([reply(write("kaisen.json", json.dumps({"runtime": "python", "start": "x", "test": "t" * (config.KAISEN_TEST_COMMAND_MAX + 1)})),
                                    write("app.py", "1")), reply(tool_use("deploy_preview", {})), _finish()])

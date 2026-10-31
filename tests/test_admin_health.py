@@ -141,7 +141,8 @@ def test_platform_counts(make_client, kube, db_session):
     assert len(pend) == 20 and pend[0]["email"] == "p21@x.io" and pend[1]["email"] == "p20@x.io"
     assert set(pend[0]) == {"id", "email", "created_at"}
     owner = db_session.query(models.User).filter_by(email="admin@example.com").one().id
-    mk = lambda n, **kw: db_session.add(models.App(owner_id=owner, name=n, hostname=f"{n}.x.io", image="i", port=1, **kw))
+    def mk(n, **kw):
+        return db_session.add(models.App(owner_id=owner, name=n, hostname=f"{n}.x.io", image="i", port=1, **kw))
     mk("a", status="running", want_db=True)
     mk("b", status="running", want_storage=True)
     mk("c", status="error", want_db=True, want_storage=True)
@@ -190,7 +191,8 @@ def test_db_server_metrics_and_cache(make_client, kube):
     from app.providers.fake import FakeMySQLAdmin
     fake = FakeMySQLAdmin()
     calls = []
-    fake_factory = lambda s: (calls.append(s.id), fake)[1]
+    def fake_factory(s):
+        return (calls.append(s.id), fake)[1]
     from app.routers.apps import get_mysql_admin_factory
     app.dependency_overrides[get_mysql_admin_factory] = lambda: fake_factory
     admin = _admin(make_client)

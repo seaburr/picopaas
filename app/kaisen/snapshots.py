@@ -150,8 +150,8 @@ def diff(old: dict[str, str], new: dict[str, str], secrets=()) -> dict:
             truncated = True
             changed.append({"path": path, "diff": "... file has too many lines to diff here\n"})
             continue
-        text = "".join(l if l.endswith("\n") else l + "\n\\ No newline at end of file\n"
-                       for l in difflib.unified_diff(a, b, f"a/{path}", f"b/{path}"))
+        text = "".join(ln if ln.endswith("\n") else ln + "\n\\ No newline at end of file\n"
+                       for ln in difflib.unified_diff(a, b, f"a/{path}", f"b/{path}"))
         if len(text.encode()) > config.KAISEN_DIFF_FILE_MAX_BYTES:
             text = text.encode()[:config.KAISEN_DIFF_FILE_MAX_BYTES].decode(errors="ignore") + "\n... diff truncated\n"
         total += len(text.encode())

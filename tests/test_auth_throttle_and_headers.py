@@ -2,7 +2,7 @@
 import pytest
 
 from app import config, main, models, ratelimit
-from tests.conftest import DEFAULT_PASSWORD, approve_user_directly, register_and_login
+from tests.conftest import DEFAULT_PASSWORD, register_and_login
 
 BAD = {"password": "not-the-password"}
 

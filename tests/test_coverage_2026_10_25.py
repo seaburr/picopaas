@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import backups, config, models, platform_settings, resources
+from app import backups, models, platform_settings, resources
 from tests.test_backups import NOW, admin, on, other, runner, user  # noqa: F401
 from tests.test_backups_sets import _mk_set, api, app_ctx, rows, scoped, vols  # noqa: F401
 

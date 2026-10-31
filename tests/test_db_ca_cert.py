@@ -41,7 +41,8 @@ def test_migration_round_trip(tmp_path):
         subprocess.run([sys.executable, "-m", "alembic", *args], cwd=root, env=env, check=True,
                        capture_output=True)
 
-    cols = lambda: {c["name"] for c in inspect(create_engine(url)).get_columns("db_servers")}
+    def cols():
+        return {c["name"] for c in inspect(create_engine(url)).get_columns("db_servers")}
     alembic("upgrade", "head")
     assert "ca_cert" in cols()
     alembic("downgrade", "e5b2c8d1f3a7")

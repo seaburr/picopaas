@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from app import config, models
+from app import config
 from app.kaisen import deploy, testresults
-from app.kaisen.models import KaisenBuild, KaisenFile
+from app.kaisen.models import KaisenFile
 from tests.test_kaisen_units import _build
 
 BOOT = Path(__file__).resolve().parent.parent / "images" / "kaisen-runtime" / "boot.py"

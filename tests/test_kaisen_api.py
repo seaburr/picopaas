@@ -6,7 +6,6 @@ import tarfile
 import pytest
 
 from app import config, crypto, models
-from app.dependencies import get_registry
 from app.main import app as fastapi_app
 from app.providers.fake import FakeRegistry
 from app.routers.kaisen import get_github_factory, get_model_factory
@@ -766,7 +765,6 @@ def test_download_includes_conversation_but_bundle_and_push_do_not(team, fakes):
     app_id = _deploy(a, bid).json()["app"]["id"]
     path, _ = _bundle_url(a, app_id)
     from app.kaisen.models import KaisenBundle
-    import gzip
     assert "CONVERSATION.md" not in str(_tar(s.query(KaisenBundle).filter_by(build_id=bid).one().data))
     assert b.get(f"/kaisen/builds/{bid}/download").status_code == 200
     assert c.get(f"/kaisen/builds/{bid}/download").status_code == 404
@@ -925,7 +923,6 @@ def test_snapshot_keeps_old_row_when_kube_fails_and_notes_empty_pod(team):
 
 
 def test_reconcile_all_snapshots_preview_logs(team):
-    from types import SimpleNamespace
     from app.kaisen.models import KaisenPreviewLog
     from app.providers.fake import FakeMySQLAdmin, FakeObjectStore
     from app.reconciler import reconcile_all

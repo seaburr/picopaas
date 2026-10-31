@@ -1,6 +1,5 @@
 """Signup approval, suspension, admin user/app management, audit log."""
-from app import crypto, models
-from app.k8s_manifests import render_app_manifests
+from app import models
 from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
 from app.reconciler import reconcile_all
 from tests.conftest import DEFAULT_PASSWORD, register_and_login

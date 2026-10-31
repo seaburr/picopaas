@@ -78,7 +78,7 @@ def test_failure_recovered_not_still_failing(make_client, kube, db_session):
 
 
 def test_non_admin_403(make_client, kube):
-    admin = _admin(make_client)
+    _admin(make_client)
     c = make_client()
     register_and_login(c, "plain@example.com")
     for path in ("/admin/health/backups", "/admin/health/logs/pods",

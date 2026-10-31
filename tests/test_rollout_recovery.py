@@ -5,11 +5,8 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app import config, crypto, k8s_manifests, models
-from app.db import Base
 from app.dependencies import get_kube
 from app.main import app as fastapi_app
 from app.providers.base import PodLogs

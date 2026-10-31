@@ -2,9 +2,9 @@
 import pytest
 
 from app import config
-from app.kaisen import builder, snapshots
+from app.kaisen import snapshots
 from app.kaisen.models import KaisenBuild, KaisenFile, KaisenRun, KaisenSnapshot
-from tests.kaisen_helpers import KEY, db
+from tests.kaisen_helpers import db
 from tests.test_kaisen_api import _add_files, _audit, _join, _new_build, fakes, team  # noqa: F401 (fixtures)
 
 V1 = {"kaisen.json": '{"runtime": "static"}', "index.html": "<h1>one</h1>\n"}
@@ -346,8 +346,6 @@ def test_deleting_the_build_removes_its_snapshots(built):
 
 
 def test_snapshot_fk_cascades_on_build_row_delete():
-    from sqlalchemy import text
-    from app.db import Base
     fk = [c for c in KaisenSnapshot.__table__.foreign_keys if c.column.table.name == "kaisen_builds"]
     assert fk and fk[0].ondelete == "CASCADE"
 
@@ -399,7 +397,8 @@ def test_restore_enforces_size_and_count_limits(built, monkeypatch):
 
 
 def test_diff_is_bounded_on_pathological_line_counts(monkeypatch):
-    import random, time
+    import random
+    import time
     rnd = random.Random(1)
     old = {"big.txt": "".join(f"{rnd.randint(0, 150)}\n" for _ in range(100_000))}
     new = {"big.txt": "".join(f"{rnd.randint(0, 150)}\n" for _ in range(100_000))}

@@ -324,7 +324,7 @@ def test_project_app_limit_counts_per_project(team, monkeypatch):
 
 
 def test_personal_limit_keeps_user_semantics(make_client):
-    admin = _user(make_client, "admin@example.com")
+    _user(make_client, "admin@example.com")
     a = _user(make_client, "a@example.com")
     db = _db()
     db.query(models.User).filter_by(email="a@example.com").one().app_limit = 1
@@ -500,7 +500,6 @@ def test_delete_sole_owner_without_apps_removes_project(team):
 def test_owner_notifications_target_project_owners(team):
     admin, a, b, c, p = team
     b.post("/apps", json={**_APP, "project_id": p["id"]})  # created by b (member)
-    rows = admin.get("/admin/health").json() if False else None
     from app import projects
     emails = projects.owner_emails_map(_db(), [p["id"]])
     assert emails == {p["id"]: ["a@example.com"]}

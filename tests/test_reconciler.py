@@ -299,7 +299,8 @@ def test_sweep_reapplies_stale_running_app_once_and_skips_unchanged(session):
     assert app.status == "running" and app.rendered_hash
     ns = f"app-{app.id}"
     assert "s3cret-value-xyz" not in app.rendered_hash
-    import hashlib, json
+    import hashlib
+    import json
     plain = hashlib.sha256(json.dumps(kube.applied[ns], sort_keys=True, default=str).encode()).hexdigest()
     assert app.rendered_hash != plain
 

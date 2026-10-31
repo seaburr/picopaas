@@ -1,7 +1,7 @@
 """Audit rows for creating, deleting and downloading backups (actor, action, no secrets or URLs in the detail)."""
 from datetime import datetime, timedelta
 
-from app import backups, config, models
+from app import backups, models
 from tests.test_backups import (NOW, _finish_export, _ghost_like, _app_with_db, admin, dl, on, other, runner, user)  # noqa: F401
 
 

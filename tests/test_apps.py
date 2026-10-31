@@ -78,7 +78,7 @@ def test_patch_app_limit_clamped_to_hard_max(make_client):
 def test_me_exposes_max_and_effective_limit(make_client):
     from app import config
     admin = make_client()
-    body = register_and_login(admin, "admin-seed@example.com").json()
+    register_and_login(admin, "admin-seed@example.com")
     me = admin.get("/auth/me").json()
     assert me["max_apps"] == config.MAX_APPS_PER_ADMIN
     assert me["app_limit_effective"] == config.ADMIN_DEFAULT_APP_LIMIT  # admin: admin default, not stale app_limit=1

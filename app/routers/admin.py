@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, or_

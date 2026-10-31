@@ -80,8 +80,8 @@ def compute(text: str) -> dict[str, float | None]:
     # Several mounts may be reported; the data volume is the fullest one that matters, so take the max.
     pcts = [v for _, v in s.get("disk_used_percent", [])]
     if not pcts:
-        tot = {tuple(sorted(l.items())): v for l, v in s.get("disk_total", [])}
-        pcts = [100.0 * v / tot[k] for k, v in ((tuple(sorted(l.items())), v) for l, v in s.get("disk_used", []))
+        tot = {tuple(sorted(lbl.items())): v for lbl, v in s.get("disk_total", [])}
+        pcts = [100.0 * v / tot[k] for k, v in ((tuple(sorted(lbl.items())), v) for lbl, v in s.get("disk_used", []))
                 if tot.get(k)]
     if pcts:
         disk = max(pcts)

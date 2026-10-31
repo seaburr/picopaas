@@ -3,9 +3,9 @@ import pytest
 
 from app import config, crypto, models
 from app.kaisen import builder, deploy as deploy_mod, llm
-from app.kaisen.llm import FakeModelClient, reply, tool_use
+from app.kaisen.llm import FakeModelClient
 from app.kaisen.models import KaisenBuild, KaisenEvent, KaisenSecret
-from tests.kaisen_helpers import FakeRuntime, app_env, db
+from tests.kaisen_helpers import app_env, db
 from tests.test_kaisen_api import _add_files, _audit, _deploy, _new_build, _user, fakes, team  # noqa: F401 (fixtures)
 from tests.test_kaisen_worker import PER_CALL, _writes, go
 
@@ -225,7 +225,6 @@ def test_secret_value_redacted_in_transcript_file_and_logs(team):
     a.put(f"/kaisen/builds/{bid}/secrets/MY_KEY", json={"value": SECRET_VALUE})
     assert SECRET_VALUE not in a.get(f"/kaisen/builds/{bid}/files/NOTES.md").text
     s = db()
-    from app.kaisen.models import KaisenRun
     run = builder.latest_run(s, bid)
     run.messages = [{"role": "user", "content": f"my key is {SECRET_VALUE}"}]
     run.error = f"boom {SECRET_VALUE}"

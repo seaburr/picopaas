@@ -134,7 +134,8 @@ def test_migration_round_trip(tmp_path):
     def alembic(*args):
         subprocess.run([sys.executable, "-m", "alembic", *args], cwd=root, env=env, check=True, capture_output=True)
 
-    cols = lambda: {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
+    def cols():
+        return {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
     alembic("upgrade", "head")
     assert {"health_check_enabled", "health_check_path"} <= cols()
     alembic("downgrade", "f6c3d9e2a4b8")  # past health_check and rendered_hash

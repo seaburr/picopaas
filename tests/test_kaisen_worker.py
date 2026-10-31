@@ -12,7 +12,7 @@ import pytest
 from app import config, models
 from app.kaisen import builder, worker
 from app.kaisen.llm import FakeModelClient, ModelError, reply, tool_use
-from app.kaisen.models import KaisenBuild, KaisenEvent, KaisenInbox, KaisenRun
+from app.kaisen.models import KaisenBuild, KaisenEvent, KaisenRun
 from app.main import app as fastapi_app
 from app.providers.fake import FakeRegistry
 from app.routers.kaisen import get_github_factory, get_model_factory

@@ -219,7 +219,8 @@ def test_env_change_rolls_pod_via_checksum_annotation():
 
     a = deployment_manifest(1, "img:1", 8080, env_checksum=_env_checksum({"DB_PASSWORD": "old"}))
     b = deployment_manifest(1, "img:1", 8080, env_checksum=_env_checksum({"DB_PASSWORD": "new"}))
-    ann = lambda d: d["spec"]["template"]["metadata"]["annotations"]["picopaas.io/env-checksum"]
+    def ann(d):
+        return d["spec"]["template"]["metadata"]["annotations"]["picopaas.io/env-checksum"]
     assert ann(a) != ann(b)
     # The checksum must not reveal the values themselves.
     assert "old" not in ann(a) and "new" not in ann(b)

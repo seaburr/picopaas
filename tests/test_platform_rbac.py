@@ -123,7 +123,8 @@ def test_every_reconciler_apply_is_still_allowed(roles, docs, variant):
 
 def test_reconciler_reads_deletes_and_status_calls_are_allowed(roles, docs):
     b = {"app-7"}
-    ok = lambda *a, **kw: _allowed(roles, docs, *a, bound_namespaces=b, **kw)
+    def ok(*a, **kw):
+        return _allowed(roles, docs, *a, bound_namespaces=b, **kw)
     # delete_ingress (suspend / custom-domain detach), delete_namespace, list_app_namespaces
     assert ok("delete", "networking.k8s.io", "ingresses", "app-7")
     assert ok("delete", "", "namespaces") and ok("list", "", "namespaces") and ok("get", "", "namespaces")
@@ -170,7 +171,8 @@ def test_admission_policy_confines_rolebindings_to_app_namespaces(docs):
     assert expr == "request.namespace.startsWith('app-')"  # app-* ONLY (pentest N1): no picopaas-* allowance
     assert "picopaas-" not in expr and "||" not in expr and "&&" not in expr
     # Evaluate the rule the way CEL would: allowed in app-*, denied in the system / platform namespaces.
-    allows = lambda ns: ns.startswith("app-")
+    def allows(ns):
+        return ns.startswith("app-")
     assert allows("app-105") and allows("app-1")
     for ns in ("picopaas-data", "picopaas-system", "kube-system", "default", "cert-manager", "traefik"):
         assert not allows(ns), ns

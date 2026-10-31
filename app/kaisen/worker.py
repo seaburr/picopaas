@@ -4,7 +4,6 @@ Deployed as its own Deployment (same image, 1 replica) so a long model stream ca
 access only: no Kubernetes credentials. Leader election is a MySQL GET_LOCK (SQLite = always leader). It is never
 imported by app.main, so the API process starts no loops."""
 import logging
-import os
 import signal
 import threading
 import time
@@ -13,7 +12,7 @@ from pathlib import Path
 
 from sqlalchemy import delete, select, text, update
 
-from app import config, db as appdb, models
+from app import config, db as appdb
 from . import builder, deploy as deploy_mod, httptool, pushing, testresults
 from .github import GitHubError, RealGitHub
 from .llm import AnthropicClient, ModelError

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
-from app import crypto, db_host_metrics as hm, image_check, models, quota
+from app import db_host_metrics as hm, image_check, models, quota
 from app.providers import mysql as mysql_mod
 from app.providers import postgres as pg_mod
 from app.providers.base import ImageInfo, RegistryError
@@ -236,7 +236,6 @@ def test_postgres_helpers():
 # --- admin limit overrides: failure paths ---
 
 from app.main import app as fastapi_app  # noqa: E402
-from app.providers.fake import FakePostgresAdmin  # noqa: E402
 from app.routers.apps import get_mysql_admin_factory, get_object_store  # noqa: E402
 from app.spec import SpecError, parse_spec  # noqa: E402
 from tests.conftest import register_and_login  # noqa: E402

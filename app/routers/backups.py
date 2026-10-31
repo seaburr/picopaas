@@ -15,7 +15,7 @@ the backup bucket's exports/ prefix, swept after an hour); `GET /apps/{id}/backu
 Admin restore (`POST /admin/backups/{run_id}/restore`) queues a restore Job like a backup: it is admin-only, restores
 into ANOTHER app by default, and only over the source app when `overwrite_source` is set and that app is suspended.
 """
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import config, crypto, models
+from app import crypto, models
 from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
 from app.reconciler import DEPLOY_TIMEOUT, SUSPENDED_APPLIED, reconcile_all, reconcile_app
 

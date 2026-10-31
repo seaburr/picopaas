@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from app import k8s_manifests, reconciler
 from app.providers.base import PodInfo, PodSection, mark_current, select_log_pods
-from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
+from app.providers.fake import FakeKubeProvider
 from app.providers.kube import KubeClientProvider
 from tests import test_kube_provider as tk
 from tests.test_app_events import _ev, _events, _running_app, _sweep

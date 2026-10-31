@@ -3,19 +3,17 @@ gate, reviewer sees the builder's http_request calls."""
 import json
 from datetime import timedelta
 
-import pytest
 
 from app import config, k8s_manifests
 from app.kaisen import httptool, reviewing, testresults, worker
 from app.kaisen.llm import FakeModelClient, reply, tool_use
 from app.kaisen.logs import snapshot_preview_logs
 from app.kaisen.models import KaisenBuild, KaisenPreviewLog
-from app.kaisen.paths import ToolError
 from app.providers.base import PodLogs
 from app.providers.fake import FakeKubeProvider, FakeRegistry
 from tests.kaisen_helpers import FakeRuntime, Keep, db
-from tests.test_kaisen_harness import GOOD, STATIC, deployed, http_texts, results
-from tests.test_kaisen_reviewer import _finish, _set, _verdict
+from tests.test_kaisen_harness import deployed, http_texts, results
+from tests.test_kaisen_reviewer import _set, _verdict
 from tests.test_kaisen_worker import detail, env, go, start, write  # noqa: F401 (env is a fixture)
 
 MANIFEST = json.dumps({"runtime": "python", "start": "python app.py", "test": "true"})

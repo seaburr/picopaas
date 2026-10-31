@@ -9,17 +9,11 @@ from sqlalchemy.orm import Session
 from app import audit, models, projects, schemas
 from app import config, platform_settings, ratelimit, resources
 from app.config import (
-    DB_QUOTA_BYTES,
-    DEFAULT_CPU_LIMIT_M,
     DEFAULT_CPU_REQUEST_M,
-    DEFAULT_MEM_LIMIT_MI,
     DEFAULT_MEM_REQUEST_MI,
-    EPHEMERAL_LIMIT_MI,
     JWT_EXPIRE_DAYS,
-    MAX_IMAGE_SIZE_BYTES,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SECURE,
-    STORAGE_QUOTA_BYTES,
 )
 from app.db import get_db
 from app.dependencies import get_current_user

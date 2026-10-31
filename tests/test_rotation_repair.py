@@ -1,7 +1,6 @@
 """Docs claim: credential rotation repairs an app whose stored secrets are unreadable (USER_GUIDE section 9)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 
 from cryptography.fernet import Fernet
 

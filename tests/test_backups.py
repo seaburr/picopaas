@@ -1178,7 +1178,7 @@ def test_download_flow_db(dl, user, db_session, runner):
 
 def test_download_bucket_and_scratch(dl, user, db_session, runner):
     aid, _, run_bk = dl
-    ex = user.post(f"/apps/{aid}/backups/{run_bk}/download").json()
+    user.post(f"/apps/{aid}/backups/{run_bk}/download")
     backups.tick(db_session, runner, datetime.utcnow())
     spec = runner.started[-1]
     assert spec.env["KIND"] == "bucket" and spec.env["EXPORT_KEY"].endswith(".tar.gz")

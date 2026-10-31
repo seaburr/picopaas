@@ -2,7 +2,7 @@
 from app import config, models
 from app.db import get_db
 from app.kaisen.github import FakeGitHub
-from app.kaisen.llm import FakeModelClient, ModelError
+from app.kaisen.llm import ModelError
 from app.main import app as fastapi_app
 
 KEY = "not-the-anthropic-key"

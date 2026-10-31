@@ -6,7 +6,7 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, projects, resources, schemas, volumes
+from app import audit, crypto, models, projects, schemas, volumes
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname

@@ -390,7 +390,7 @@ class MySQLAdminClient(MySQLAdmin):
         return result
 
     def set_password(self, app_id: int, password: str) -> dict[str, Any]:
-        db_name = _validate_identifier(_db_name(app_id))
+        _validate_identifier(_db_name(app_id))
         db_user = _validate_identifier(_db_user(app_id))
         try:
             conn = self._connect()

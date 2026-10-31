@@ -3,7 +3,6 @@ exercised through the real HTTP endpoints with the registry dependency
 overridden to a FakeRegistry per test."""
 from app.dependencies import get_registry
 from app.main import app
-from app.providers.base import RegistryError
 from app.providers.fake import FakeRegistry
 from tests.conftest import register_and_login
 

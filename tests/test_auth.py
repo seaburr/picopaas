@@ -80,7 +80,6 @@ def test_terms_accepted_at_stored_and_listed_for_admin(make_client):
 
 
 def test_existing_users_have_null_terms(make_client, db_session):
-    from app import models
     from app.routers.auth import create_user
     admin = make_client()
     register_and_login(admin, "admin@example.com")

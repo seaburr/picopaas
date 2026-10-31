@@ -1,6 +1,10 @@
 """app/quota.py with fakes."""
 from __future__ import annotations
 
+import logging
+
+import pymysql
+
 from app import crypto, models
 from app.providers.fake import FakeMySQLAdmin, FakeObjectStore
 from app.quota import DB_QUOTA_BYTES, STORAGE_QUOTA_BYTES, capacity_summary, poll_quotas
@@ -123,10 +127,6 @@ def test_storage_swap_revoke_failure_is_retried_next_poll(db_session):
 
 
 # --- provider-level behaviour with a fake cursor / logging ---
-import logging
-
-import pymysql
-
 
 class _Cur:
     def __init__(self, fail_kill=False, fail_list=False):
