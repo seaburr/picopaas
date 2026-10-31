@@ -29,6 +29,9 @@ updates:
     directories:
       - "/"
       - "/images/backup"
+      # Kaisen preview runtime: a merged bump rebuilds the image, but live previews keep the digest pinned by
+      # bootstrap.yml (KAISEN_RUNTIME_IMAGE) until Chas approves a re-pin (docs/KAISEN_OPS.md).
+      - "/images/kaisen-runtime"
       - "/examples/ghost"
       - "/examples/status"
       - "/examples/wordpress"

@@ -48,6 +48,8 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
    `kaisen_runtime_image_digest=sha256:...` (it writes `KAISEN_RUNTIME_IMAGE` into `picopaas-env`). A bootstrap run
    **needs Chas's approval** (QUESTIONS.md). Leaving `backup_image_digest` empty re-pins the backup image to `:latest` too.
    Current pin: `picopaas-kaisen-runtime@sha256:068f834b753f0aef9173971cbe171d2251bd0a90263d566c3ad775365f6f0c90`.
+   Dependabot (Mondays) opens base-image PRs for `images/kaisen-runtime/`. A merged one publishes a new image but
+   changes nothing live until this re-pin, so batch them and ask Chas for one re-pin at a time.
 4. Existing built apps pick up deploy-time changes (e.g. the bundle-URL-as-secret fix) only on their next deploy
    ("Deploy now" / `POST /kaisen/builds/{id}/deploy`; same hostname, ~1 min restart). Ask before redeploying Chas's apps.
 5. Security changes to Kaisen get a security-reviewer pass (docs/PENTEST.md has K1-K11 and the final pass). UI changes get
