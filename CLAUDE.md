@@ -58,6 +58,7 @@ alembic revision --autogenerate -m "describe the change"
 
 # frontend (once frontend/ exists)
 cd frontend && npm run dev | npm run typecheck
+cd frontend && npm run build && npm run test:e2e   # Playwright smoke vs the real dev-mode app (needs: npx playwright install chromium)
 ```
 
 Required env vars outside `ENVIRONMENT=dev`: `SECRET_KEY` (JWT signing), `FERNET_KEY` (encrypts env var
