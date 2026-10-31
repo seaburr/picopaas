@@ -23,12 +23,61 @@
   },
   {
     "name": "Link shortener",
-    "brief": "Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.",
+    "version": 2,
+    "brief": "Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Also expose a JSON API: POST /api/links with JSON {\"url\": \"...\", \"code\": \"...\"} (code optional) returns 201 with {\"code\": \"...\", \"url\": \"...\"}, 400 for a URL that is not http or https, and 409 for a code that is already taken; GET /api/links returns a JSON list of links, each with code, url and clicks. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.",
     "checks": [
       {
         "method": "GET",
         "path": "/",
         "expect_status": 200
+      }
+    ],
+    "flow": [
+      {
+        "method": "POST",
+        "path": "/api/links",
+        "body": {
+          "url": "https://example.com/{user}"
+        },
+        "expect_status": 201,
+        "expect_contains": "example.com/{user}",
+        "capture": {
+          "code": "code"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/{code}",
+        "expect_status": [
+          301,
+          302,
+          303,
+          307,
+          308
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/links",
+        "expect_status": 200,
+        "expect_contains": "example.com/{user}"
+      },
+      {
+        "method": "POST",
+        "path": "/api/links",
+        "body": {
+          "url": "ftp://example.com/{user}"
+        },
+        "expect_status": 400
+      },
+      {
+        "method": "POST",
+        "path": "/api/links",
+        "body": {
+          "url": "https://example.com/other-{user}",
+          "code": "{code}"
+        },
+        "expect_status": 409
       }
     ]
   },

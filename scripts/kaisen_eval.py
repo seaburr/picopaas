@@ -32,6 +32,8 @@ import httpx
 
 DEFAULT_BASE_URL = "https://platform.picopaas.xyz"
 BRIEFS_FILE = Path(__file__).with_name("kaisen_eval_briefs.json")
+API_RETRIES = 4  # attempts for a platform GET/DELETE that hits a network error
+API_RETRY_SLEEP = 5.0  # seconds, times the attempt number
 POLL_SECONDS = 10
 TIMEOUT_SECONDS = 20 * 60
 ASSUMPTION_ANSWER = "Decide yourself and note the assumption."
@@ -428,7 +430,17 @@ class Evaluator:
 
     # -- API helpers
     def _req(self, method: str, path: str, **kw) -> httpx.Response:
-        r = self.api.request(method, path, **kw)
+        # Reads (and DELETE, which is idempotent) retry a transport blip; a POST/PUT is never repeated.
+        tries = API_RETRIES if method in ("GET", "HEAD", "DELETE") else 1
+        for attempt in range(tries):
+            try:
+                r = self.api.request(method, path, **kw)
+                break
+            except httpx.TransportError as e:
+                if attempt == tries - 1:
+                    raise
+                self.log(f"  {method} {path}: {type(e).__name__}, retrying")
+                self.sleep(API_RETRY_SLEEP * (attempt + 1))
         if r.status_code >= 400:
             try:
                 detail = r.json().get("detail", "")
@@ -520,6 +532,8 @@ class Evaluator:
                     row["notes"].append("no preview hostname")
         except EvalError as e:
             row["notes"].append(str(e))
+        except httpx.HTTPError as e:  # the platform stopped answering mid-brief: record it, clean up, go on
+            row["notes"].append(f"platform request failed: {type(e).__name__}")
         finally:
             try:
                 self._collect(row, build_id, final, check_records)

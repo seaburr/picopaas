@@ -760,3 +760,46 @@ def test_main_briefs_file_and_web_flags(monkeypatch, tmp_path):
     assert p.settings["web_access"] is False  # restored
     summ = json.loads((dd / "summary.json").read_text())
     assert [r["name"] for r in summ["rows"]] == ["Weather"] and summ["web"] == "on"
+
+
+class Flaky:
+    """Wraps a platform: the first `n` GETs of the build detail raise a connect timeout."""
+
+    def __init__(self, platform, n):
+        self.p, self.n = platform, n
+
+    def __call__(self, req):
+        if req.method == "GET" and req.url.path == "/kaisen/builds/7" and self.n > 0:
+            self.n -= 1
+            raise httpx.ConnectTimeout("timed out", request=req)
+        return self.p(req)
+
+    def names(self):
+        return self.p.names()
+
+
+def test_a_network_blip_while_polling_is_retried():
+    p = Platform([D("running"), D("done", app_hostname="p.picopaas.xyz")])
+    ev, _ = make_eval(Flaky(p, 2))
+    row = ev.run_brief(GOOD)
+    assert row["status"] == "done" and row["checks_passed"] == 1
+
+
+def test_a_platform_that_stays_down_fails_that_brief_only():
+    p = Platform([D("running")] * 50)
+    ev, _ = make_eval(Flaky(p, 10 ** 6))
+    rows, _ = ev.run_all([GOOD, dict(GOOD, name="y")])
+    assert [r["status"] for r in rows] == ["error", "error"]
+    assert any("platform request failed: ConnectTimeout" in n for n in rows[0]["notes"])
+    assert ("DELETE", "/kaisen/builds/7") in p.names()  # cleanup still ran
+
+
+def test_posts_are_never_retried():
+    seen = []
+
+    def boom(req):
+        seen.append(req.method)
+        raise httpx.ConnectTimeout("timed out", request=req)
+    ev, _ = make_eval(boom)
+    row = ev.run_brief(GOOD)
+    assert seen == ["POST"] and row["status"] == "error"
