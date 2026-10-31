@@ -6,13 +6,16 @@ on:
       sha:
         description: "Commit SHA (short or full) whose image to roll out; default = current ref"
         required: false
+  # Runs after the image build AND after CI; the "green CI" step below makes only the later of the two deploy, and only
+  # when both passed for the same commit. A manual workflow_dispatch skips that check (an explicit override).
   workflow_run:
-    workflows: [image]
+    workflows: [image, CI]
     types: [completed]
     branches: [main]
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy
@@ -45,8 +48,31 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Require green CI and image for this commit
+        if: steps.gate.outputs.run == 'true' && github.event_name == 'workflow_run'
+        id: green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          state() {  # conclusion of the newest push run of workflow $1 for this commit ("" while it is still running)
+            gh api "repos/${{ github.repository }}/actions/workflows/$1/runs?head_sha=$SHA&event=push&per_page=1" \
+              --jq '.workflow_runs[0] | if . == null then "missing" elif .status != "completed" then "" else .conclusion end'
+          }
+          ci=$(state ci.yml); img=$(state image.yml)
+          echo "CI: ${ci:-running}, image: ${img:-running}"
+          if [ "$ci" = "success" ] && [ "$img" = "success" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$ci" ] || [ -z "$img" ]; then
+            echo "::notice::waiting for the other workflow; its completion triggers the deploy"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::not deploying ${SHA:0:7}: CI=$ci image=$img"
+            exit 1
+          fi
+
       - name: Work out image tag
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
         id: tag
         env:
           INPUT_SHA: ${{ github.event.inputs.sha }}
@@ -60,23 +86,23 @@ jobs:
           echo "short=$(echo "$full" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
         with:
           token: ${{ secrets.DIGITALOCEAN_TOKEN }}
 
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
 
       - name: Save kubeconfig
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
         run: doctl kubernetes cluster kubeconfig save picopaas-nyc3
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
 
       # Apply the platform manifests too (not just the image), so changes like replicas/RBAC ship with every deploy.
       - name: Roll out image + platform manifests
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.green.outputs.ok != 'false'
         env:
           IMAGE: ghcr.io/seaburr/picopaas:${{ steps.tag.outputs.short }}
         run: |
