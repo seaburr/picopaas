@@ -60,6 +60,10 @@ Set `LOG_LEVEL=DEBUG` on the platform deployment for more detail (default `INFO`
 `WARNING` regardless, because they log every 15 s job run and every request URL. Admin > Health > Logs still redacts secrets
 before showing or downloading lines.
 
+## CI frontend lint
+
+The `frontend` CI job runs `npm run lint` (ESLint 9 flat config: eslint-plugin-vue, typescript-eslint, vuejs-accessibility; no formatting rules; lints `src`, `e2e`, `scripts`). Zero warnings allowed; inline `eslint-disable` needs a reason comment.
+
 ## CI coverage floor
 
 The `backend-tests` CI job runs pytest with `--cov=app` and fails below `fail_under` in `.coveragerc` (92%; measured 94.86% on 2026-10-30, rule: measured total rounded down, minus 2). To raise it, run `python -m pytest tests/ -q --cov=app --cov-report=term`, apply the same rule to the new total and edit `.coveragerc`. The `mysql-integration` subset runs without `--cov`, so the floor does not apply to it.

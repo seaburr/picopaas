@@ -89,7 +89,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 Shipped and live: Kaisen in PicoPaaS (per-build output, start on create, CONVERSATION.md, Take offline, inbox dismiss),
 final pentest (no HIGH/MEDIUM; open LOWs K9 accepted, P3 no per-user rate limit on Kaisen run/test/push), coverage 94%,
 blog posts, user guide how-to with starter briefs, landing page section. Next: Chas's testing feedback (expected
-2026-10-30), retire the standalone instance. Built 2026-10-30 (pending push and security review): logs in `deploy_preview`, web access, PostgreSQL/bucket/volume previews, build secrets, member limits, generated tests, reviewer. **Runtime image re-pin pending** (`boot.py` runs generated tests; needs `kaisen-runtime-image` to publish, then a bootstrap run with Chas's approval, s3). Until then the test result is "no result in the log yet" and existing previews are unaffected.
+2026-10-30), retire the standalone instance. Built 2026-10-30 (pending push and security review): logs in `deploy_preview`, web access, PostgreSQL/bucket/volume previews, build secrets, member limits, generated tests, reviewer. **Runtime image re-pin pending** (re-pin approved by Chas 2026-10-30; `boot.py` runs generated tests, now also for `static` projects with a `test` command, and logs `bundle sha=<12>` so the preview check can tell old pods from new; needs `kaisen-runtime-image` to publish, then a bootstrap run with Chas's approval, s3). Until then the test result is "no result in the log yet" and existing previews are unaffected.
 
 ## 7. Eval (manual, never in CI)
 

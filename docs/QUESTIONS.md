@@ -27,7 +27,6 @@ background on each item if you want it.
   the whole DigitalOcean account. For production: create a DO token scoped to only what bootstrap/the reconciler need, and a
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
-- [ ] 2026-10-30 (security review, K16): Kaisen web access + build secrets + auto-deploy lets a prompt-injected web page make the builder write code that reads the preview's env (the build secrets) and sends it out. Pick one: (a) turn the web tools off for any build that has secrets, (b) require a domain allow-list when a build has secrets, (c) accept and show a warning next to the web toggle. I recommend (a) or (b). Also: should build-secret set/delete be owner-only (K20)? See docs/PENTEST.md "Feedback wave 2026-10-30". **Manager call:** went with (b): builds with secrets get the web only with an allow-list; tell me if you want (a) stricter or (c) looser.
 
 ## To-dos (only you can do these)
 
@@ -43,6 +42,10 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-10-30: **K16 web + build secrets** (Chas, in chat): option (a), a build with secrets never gets the web tools, allow-list or not (builder.py; PENTEST K16 closed).
+- 2026-10-30: **K39 rollout status for all apps** (Chas, in chat): keep `deploying` until every pod runs the new version for ALL apps, so a release whose pod never gets ready fails after DEPLOY_TIMEOUT_MINUTES and rolls back instead of hiding behind the old pod.
+- 2026-10-30: **Deploy gated on CI + ruleset on main** (Chas, in chat, from the factory re-review): deploy.yml waits for green CI and image on the same commit; a ruleset on main blocks force-push and deletion. Also: Dependabot steward handles PicoPaaS #29/#31/#32 after this ship and closes #30 (Node 25).
+- 2026-10-30: **Runtime re-pin for static-site tests approved** (Chas, in chat): build static test support into images/kaisen-runtime (eval batch-2 finding P3) and re-pin via bootstrap.yml once green. Also: Dependabot alerts + security updates on both repos (Chas OK), lint wave (ruff, actionlint/shellcheck, ESLint) requested.
 - 2026-10-30: **Restore points kept (K31):** last 5 per build is fine (Chas: "If someone is building this much they really need GH wired up"). Card now says it keeps the last N and points to GitHub output (build detail `snapshots_kept`).
 - 2026-10-30: **Runtime re-pin approved** (Chas, in chat): run bootstrap.yml with the latest kaisen-runtime digest before the harness eval. Eval project: new project 'Kaisen eval' owned by the E2E test user, Anthropic key = ANT_API_KEY from ~/.picopaas-e2e.env (not Demo). First batch 3 Haiku + 1 Sonnet, report cost before the rest.
 
@@ -145,3 +148,4 @@ background on each item if you want it.
   suspend/delete for users and apps, audit log, SMTP egress blocked. `hostUsers: false` not adopted.
 - 2026-10-19: Terraform state in Terraform Cloud (org `seaburr`), like other projects.
 - [x] 2026-10-20: doadmin can't kill app sessions (MySQL 1095 'not owner of thread'); the pod-roll fallback cut a 300MB fill at ~88MB. Now the platform kills sessions as the app's own user first.
+

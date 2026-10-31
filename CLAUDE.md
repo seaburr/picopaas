@@ -58,6 +58,7 @@ alembic revision --autogenerate -m "describe the change"
 
 # frontend (once frontend/ exists)
 cd frontend && npm run dev | npm run typecheck
+cd frontend && npm run lint   # ESLint 9 (vue + typescript-eslint + a11y), --max-warnings 0; also a CI step
 cd frontend && npm run build && npm run test:e2e   # Playwright smoke vs the real dev-mode app (needs: npx playwright install chromium)
 ```
 

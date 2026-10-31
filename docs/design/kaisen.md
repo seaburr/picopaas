@@ -58,7 +58,7 @@ The worker records "deploy wanted" for a run; the platform deploys through `rout
 creator, into the build's project** (same limits, same 403/422 messages, audit `kaisen.deploy` + the usual app events).
 Spec: name = build name, image = pinned `KAISEN_RUNTIME_IMAGE`, port 8080, healthCheck off, env
 `KAISEN_BUNDLE_URL`/`KAISEN_BUNDLE_SHA256`, and, when `kaisen.json` says `"database": "mysql"`, `resources.db` + the
-`DB_*`/`DATABASE_URL` refs (`"database"` is `mysql` or `postgres`; `"bucket": true` adds a bucket and `S3_*` refs; `"volume": {"path"}` a persistent volume; build secrets are merged into the env as app secrets). The `deploy_preview` tool then polls the app status, probes the URL and returns the app's recent logs.
+`DB_*`/`DATABASE_URL` refs (`"database"` is `mysql` or `postgres`; `"bucket": true` adds a bucket and `S3_*` refs; `"volume": {"path"}` a persistent volume; build secrets are merged into the env as app secrets). The `deploy_preview` tool then polls the app status, probes the manifest's `health` path (default `/`; 2xx and 3xx count as answering, a redirect is shown as `302 -> /login`; 4xx/5xx and no answer do not; the log line `[kaisen-runtime] bundle sha=<12>` of a different bundle makes the result NOT YET so an old pod's answer is never reported OK; `kube.get_status` stays `deploying` while old pods remain in the rollout) and returns the app's recent logs.
 **Logs (built):** the worker makes no kube calls and has no service-account token (K6), so it never reads pods. Instead the
 reconciler (API pod, which already serves the user-facing logs view through `KubeProvider.pod_logs`) calls
 `app/kaisen/logs.py:snapshot_preview_logs` at the end of each sweep for every preview (status deploying/running/error) whose
@@ -116,7 +116,7 @@ spend the team's key (documented); audit events for settings changes, builds, de
 
 ## 9. Out of scope for this preview
 
-Billing, background workers/cron and email for built apps, CI for generated apps. Built since the first cut (2026-10-30): preview logs (s4), PostgreSQL/bucket/volume previews, build secrets, per-member spend limits (`kaisen_member_limits`; enforced next to the project caps, day resets 00:00 UTC), web access (s11), generated tests (`kaisen.json` `test`, run by `boot.py`, result parsed from the log snapshot by `app/kaisen/testresults.py`; shows only once the runtime image is re-pinned) and the reviewer step (`app/kaisen/reviewing.py`, off by default, one fix round).
+Billing, background workers/cron and email for built apps, CI for generated apps. Built since the first cut (2026-10-30): preview logs (s4), PostgreSQL/bucket/volume previews, build secrets, per-member spend limits (`kaisen_member_limits`; enforced next to the project caps, day resets 00:00 UTC), web access (s11), generated tests (`kaisen.json` `test`, run by `boot.py`, result parsed from the log snapshot by `app/kaisen/testresults.py`; shows only once the runtime image is re-pinned) and the reviewer step (`app/kaisen/reviewing.py`, off by default, one fix round; the builder's `finish` must carry `review_response` or change a file, refused once otherwise; the answer and a files-changed flag are stored in `kaisen_runs.review` JSON and shown on the build page).
 
 ## 10. Output is per build (Chas, 2026-10-29)
 

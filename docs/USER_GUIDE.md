@@ -733,7 +733,7 @@ Build a small standup board with Python and MySQL. Anyone can open the page, typ
 **Link shortener with click counts**
 
 ```
-Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.
+Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Also expose a JSON API: POST /api/links with JSON {"url": "...", "code": "..."} (code optional) returns 201 with {"code": "...", "url": "..."}, 400 for a URL that is not http or https, and 409 for a code that is already taken; GET /api/links returns a JSON list of links, each with code, url and clicks. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count.
 ```
 
 **Habit tracker with streaks**
@@ -761,7 +761,7 @@ To make a token: GitHub > Settings > Developer settings > Fine-grained tokens > 
 Off by default. In **Kaisen > Settings > Web access** an owner can let the builder search the web and read pages, for example to check a library's documentation or a link in your brief. It works with all three models.
 
 - **Allowed sites.** Leave the list empty to allow any site, or enter up to 20 domains, one per line, without `https://` (a path such as `github.com/owner` is allowed). The settings page says in words what is in force.
-- **Untrusted content.** A page can contain text that tries to steer the builder. Kaisen treats web content as data, and the builder has no secrets and can only touch its own build's files, but an allow-list is the safest setting. Page text is not shown in the transcript or `CONVERSATION.md`; they say only "searched for ..." or "read ...".
+- **Untrusted content.** A page can contain text that tries to steer the builder. Kaisen treats web content as data, and the builder has no secrets and can only touch its own build's files, but an allow-list is the safest setting. A build that has secrets never gets the web tools, with or without an allow-list, because injected page text could make the builder write code that sends the secrets out. Page text is not shown in the transcript or `CONVERSATION.md`; they say only "searched for ..." or "read ...".
 - **Builds with secrets.** A build that has [build secrets](#build-secrets) only uses the web when the allowed-sites list is set; with an empty list it runs without web tools, so a hostile page can't talk the builder into shipping code that sends your secrets elsewhere.
 - **Cost.** Each web search costs a flat $0.01 on top of the tokens it adds. Reading a page costs tokens only. Searches count toward every cap.
 
@@ -776,7 +776,7 @@ Kaisen sees the names only and is told to read them from the environment; values
 
 ### Generated tests
 
-Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`. The runtime runs that command after installing dependencies and before the app starts, with a time limit and without any platform credentials in the environment. The app starts whatever the result. The build page shows a **Tests** row (pass, fail, timed out, running) with the output tail, and Kaisen reads the result when it checks the preview, fixing failures before it finishes. Results appear once the runtime has run them; until then the row says there is no result yet.
+Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`. The runtime runs that command after installing dependencies and before the app starts (a static site has nothing to install, so its test runs just before the site is served; use `"test": "node --test tests/"`, since Node is in the runtime image), with a time limit and without any platform credentials in the environment. The app starts whatever the result. The build page shows a **Tests** row (pass, fail, timed out, running) with the output tail, and Kaisen reads the result when it checks the preview, fixing failures before it finishes. Results appear once the runtime has run them; until then the row says there is no result yet (static-site tests need the updated runtime image, which an administrator rolls out; before that the row stays at no result). When Kaisen checks the preview it requests the `health` path from `kaisen.json` (default `/`). Any 2xx or 3xx answer counts as the app answering, so a login-gated app that redirects to `/login` is fine; 4xx and 5xx do not. If the runtime log shows the new version has not started yet, the check says the answer may come from the previous version instead of reporting OK.
 
 ### What the builder can check
 
@@ -784,7 +784,7 @@ Kaisen edits files in place (one exact piece of text at a time) and can search a
 
 ### Reviewer step
 
-Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. The run shows the verdict, findings and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
+Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. In that fix round the builder must answer each finding ("fixed: ..." or "disagree: ..."); if it finishes without changing a file and without an answer it is sent back once. The run shows the verdict, findings, the builder's answer ("no files changed after review" when nothing but PLAN.md changed) and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
 
 ### Restore points
 
