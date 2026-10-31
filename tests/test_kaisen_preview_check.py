@@ -108,16 +108,16 @@ def test_health_path_reads_the_manifest(db_session):
 def test_static_with_test_command_is_allowed_and_without_gets_the_new_message(db_session):
     s = db_session
     b = _build(s)
-    s.add(KaisenFile(build_id=b.id, path="kaisen.json", content='{"runtime": "static", "test": "node --test tests/"}'))
+    s.add(KaisenFile(build_id=b.id, path="kaisen.json", content='{"runtime": "static", "test": "node --test"}'))
     s.flush()
     from app.kaisen import checks
-    assert checks.check("kaisen.json", '{"runtime": "static", "test": "node --test tests/"}') == ""
+    assert checks.check("kaisen.json", '{"runtime": "static", "test": "node --test"}') == ""
     assert "TESTS: none" not in testresults.tool_block(s, b)
     s.query(KaisenFile).filter_by(build_id=b.id).delete()
     s.add(KaisenFile(build_id=b.id, path="kaisen.json", content='{"runtime": "static"}'))
     s.flush()
     text = testresults.tool_block(s, b)
-    assert '"test": "node --test tests/"' in text and "That is fine" not in text
+    assert '"test": "node --test"' in text and "That is fine" not in text
 
 
 @pytest.fixture(scope="module")
@@ -171,7 +171,7 @@ def test_boot_static_without_test_runs_nothing(boot, tmp_path, monkeypatch, caps
 def test_old_image_without_result_takes_the_no_result_path(db_session):
     s = db_session
     b = _build(s)
-    s.add(KaisenFile(build_id=b.id, path="kaisen.json", content='{"runtime": "static", "test": "node --test tests/"}'))
+    s.add(KaisenFile(build_id=b.id, path="kaisen.json", content='{"runtime": "static", "test": "node --test"}'))
     s.flush()
     b.test_status = testresults.PENDING
     assert testresults.record(s, b, "serving static files") is None

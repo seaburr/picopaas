@@ -134,8 +134,8 @@ def tool_block(db: Session, b: KaisenBuild) -> str:
     if not declared:
         # A static site runs "test" with node (the runtime image has it); never nudge the builder into adding a server.
         if _manifest(db, b).get("runtime", "static") == "static":
-            return ('TESTS: none declared. Tests for a static site can be added with "test": "node --test tests/" in '
-                    'kaisen.json. Do not change the runtime or add a server to get tests run.\n')
+            return ('TESTS: none declared. Tests for a static site can be added with "test": "node --test" in '
+                    'kaisen.json (it runs every *.test.js file; "node --test tests/" fails on current Node). Do not change the runtime or add a server to get tests run.\n')
         return ("TESTS: none declared. Optional: add a small test suite and put its command in kaisen.json as "
                 '"test" (for example "python -m unittest" or "npm test"). Never change the runtime just to get tests run.\n')
     st = b.test_status

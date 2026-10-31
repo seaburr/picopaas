@@ -12,7 +12,7 @@ mkdir "$work/site"
 echo '<!doctype html><title>kaisen smoke</title><p>ok</p>' > "$work/site/index.html"
 # a static project with a node test: boot.py must run it before serving and print a passing result
 mkdir "$work/site/tests"
-echo '{"runtime":"static","test":"node --test tests/"}' > "$work/site/kaisen.json"
+echo '{"runtime":"static","test":"node --test"}' > "$work/site/kaisen.json"
 printf "const t=require('node:test');const a=require('node:assert');t('ok',()=>a.equal(1,1));\n" > "$work/site/tests/ok.test.js"
 tar -czf "$work/serve-b.tar.gz" -C "$work/site" index.html kaisen.json tests
 mkdir "$work/serve" && mv "$work/serve-b.tar.gz" "$work/serve/b.tar.gz"

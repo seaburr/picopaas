@@ -287,7 +287,7 @@ def test_static_site_without_tests_is_told_that_is_fine(env):
     model = FakeModelClient([reply(write("index.html", "<p>hi</p>")), reply(tool_use("deploy_preview", {})), _finish()])
     go(model)
     result = json.dumps(model.calls[2])
-    assert "node --test tests/" in result and "do not change the runtime" in result.lower()
+    assert "node --test" in result and "fails on current Node" in result and "do not change the runtime" in result.lower()
     assert detail(env)["tests"] is None
 
 

@@ -4,7 +4,7 @@ Env: KAISEN_BUNDLE_URL, KAISEN_BUNDLE_SHA256. Downloads the bundle, verifies it,
 /home/app/src, reads kaisen.json, installs dependencies and starts the app on $PORT (8080).
 Every phase logs a line prefixed [kaisen-runtime]; any failure exits non-zero.
 
-Optional kaisen.json "test": a shell command run after the install and before the app starts (all runtimes; a static site can use `node --test tests/`).
+Optional kaisen.json "test": a shell command run after the install and before the app starts (all runtimes; a static site can use `node --test`, which finds *.test.js files; a bare directory argument fails on Node 22+).
 Its output (capped) is framed by marker lines the platform parses from the log:
     KAISEN_TESTS_BEGIN
     ...output tail...
