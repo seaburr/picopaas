@@ -14,6 +14,8 @@ import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import type { KaisenBuild } from '../types'
 
 const store = useKaisenStore()
@@ -28,8 +30,9 @@ const limit = computed(() => projects.current?.app_limit_effective ?? auth.user?
 const atLimit = computed(() => limit.value > 0 && store.builds.filter((b) => b.app_id).length >= limit.value)
 const noKey = computed(() => !!store.settings && !store.settings.anthropic_key.set)
 const canEdit = computed(() => !!store.settings?.can_edit)
-const blocked = computed(() => noKey.value || atLimit.value)
-const blockedWhy = computed(() => (noKey.value ? 'Add an Anthropic key in Kaisen settings first' : 'App limit reached. Ask an administrator to raise it.'))
+const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => projects.current?.id)
+const blocked = computed(() => projSuspended.value || noKey.value || atLimit.value)
+const blockedWhy = computed(() => (projSuspended.value ? 'Project is suspended' : noKey.value ? 'Add an Anthropic key in Kaisen settings first' : 'App limit reached. Ask an administrator to raise it.'))
 
 let timer: ReturnType<typeof setInterval> | null = null
 function syncPolling() {
@@ -96,6 +99,7 @@ function askDelete(b: KaisenBuild) {
     <NavBar />
 
     <main id="main" tabindex="-1" class="page-main">
+      <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb">Kaisen</nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -128,7 +132,8 @@ function askDelete(b: KaisenBuild) {
       <div v-else-if="!error && store.builds.length === 0" class="card card-pad">
         <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
         <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in this project. You can download the code or push it to GitHub.</p>
-        <p v-if="noKey" class="alert-warn mt-3">
+        <p v-if="projSuspended" class="meta mt-3">{{ SUSPENDED_TITLE }}. New builds are paused.</p>
+        <p v-else-if="noKey" class="alert-warn mt-3">
           Kaisen needs an Anthropic API key for this project before it can build.
           <RouterLink v-if="canEdit" to="/kaisen/settings" class="link">Add it in Kaisen settings</RouterLink>
           <template v-else>Ask a project owner to add one.</template>

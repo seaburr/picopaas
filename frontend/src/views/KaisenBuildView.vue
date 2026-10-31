@@ -26,6 +26,8 @@ import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { useToastStore } from '../stores/toast'
 import type { App, KaisenBuildDetail, KaisenSettings } from '../types'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -50,11 +52,13 @@ const deleting = ref(false)
 
 const buildId = computed(() => Number(props.id))
 const active = computed(() => !!build.value && isActive(build.value.status))
-const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kaisen !== false)
+const { project: buildProject, suspended: projSuspended } = useProjectSuspension(() => build.value?.project_id)
+const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kaisen !== false && !projSuspended.value)
 const you = computed(() => build.value?.created_by.id === auth.user?.id)
 const inbox = computed(() => build.value?.inbox ?? [])
 const hasQuestion = computed(() => inbox.value.some((i) => i.kind === 'question' && i.status === 'open'))
 const feedbackReason = computed(() => {
+  if (projSuspended.value) return SUSPENDED_TITLE
   if (!canRun.value) return 'You can not send changes to this build.'
   if (active.value) return 'Kaisen is working. You can send more once this run finishes.'
   if (hasQuestion.value) return 'Answer Kaisen\'s question first.'
@@ -294,6 +298,7 @@ async function doDelete() {
       </div>
 
       <template v-else>
+        <SuspendedBanner :project="buildProject" kaisen />
         <nav class="meta mb-2" aria-label="Breadcrumb">
           <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
         </nav>

@@ -7,6 +7,7 @@ import NavBar from '../components/NavBar.vue'
 import IconButton from '../components/IconButton.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import CopyButton from '../components/CopyButton.vue'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
 import AppNotFound from '../components/AppNotFound.vue'
 import { ApiError } from '../api/client'
 import * as api from '../api/projects'
@@ -15,6 +16,7 @@ import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import type { Project, ProjectInvite, ProjectInviteCreated, ProjectMember, ProjectRole } from '../types'
 import { fullDate, humanDate } from '../utils/format'
+import { SUSPENDED_TITLE } from '../composables/projectSuspension'
 
 // /projects/new (no id) = create form; /projects/:id = members, invites, rename, delete.
 const props = defineProps<{ id?: string }>()
@@ -53,6 +55,8 @@ const loadError = ref('')
 const gone = ref(false)
 const isOwner = computed(() => project.value?.role === 'owner')
 const shared = computed(() => !!project.value && !project.value.is_personal)
+const susp = computed(() => project.value?.status === 'suspended')
+const suspTitle = computed(() => (susp.value ? SUSPENDED_TITLE : undefined))
 
 async function load() {
   if (pid.value === null) return
@@ -240,6 +244,7 @@ async function confirmDelete() {
           <IconButton :icon="RotateCw" label="Retry" @click="load" />
         </div>
         <template v-else-if="project">
+          <SuspendedBanner :project="project" />
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <h1 class="page-title break-all">{{ project.is_personal ? 'Personal project' : project.name }}</h1>
             <span class="meta">{{ project.app_count }} of {{ project.app_limit_effective }} apps · {{ project.member_count }} {{ project.member_count === 1 ? 'member' : 'members' }}</span>
@@ -252,8 +257,8 @@ async function confirmDelete() {
           <form v-if="shared && isOwner" class="card card-pad" @submit.prevent="onRename">
             <label for="p-rename" class="label">Name</label>
             <div class="flex gap-2">
-              <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" :aria-invalid="!!renameError" />
-              <IconButton :icon="Pencil" label="Rename project" :busy="renaming" @click="onRename" />
+              <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" :disabled="susp" :aria-invalid="!!renameError" />
+              <IconButton :icon="Pencil" :label="susp ? 'Rename project (project is suspended)' : 'Rename project'" :busy="renaming" :disabled="susp" @click="onRename" />
             </div>
             <p v-if="renameError" role="alert" class="field-error mt-1">{{ renameError }}</p>
           </form>
@@ -273,7 +278,7 @@ async function confirmDelete() {
                   <option v-if="inviteEmail.trim()" value="owner">Owner (email required)</option>
                 </select>
               </div>
-              <button type="submit" class="btn-secondary" :disabled="inviting" :aria-busy="inviting"><Plus :size="16" aria-hidden="true" /> {{ inviting ? 'Creating…' : 'Create invite' }}</button>
+              <button type="submit" class="btn-secondary" :disabled="inviting || susp" :title="suspTitle" :aria-busy="inviting"><Plus :size="16" aria-hidden="true" /> {{ inviting ? 'Creating…' : 'Create invite' }}</button>
             </form>
             <p v-if="inviteError" role="alert" class="field-error mt-2">{{ inviteError }}</p>
             <div v-if="created" class="alert-info mt-3" role="status">
@@ -291,7 +296,7 @@ async function confirmDelete() {
                   <span class="truncate text-white">{{ i.email ?? 'Anyone with the link' }}</span>
                   <span class="meta ml-2">{{ i.role }} · expires {{ humanDate(i.expires_at) }}</span>
                 </div>
-                <IconButton :icon="X" label="Revoke invite" danger sm @click="onRevoke(i)" />
+                <IconButton :icon="X" :label="susp ? 'Revoke invite (project is suspended)' : 'Revoke invite'" danger sm :disabled="susp" @click="onRevoke(i)" />
               </li>
             </ul>
             <p v-else class="meta mt-1">No pending invites.</p>
@@ -306,13 +311,13 @@ async function confirmDelete() {
                   <div class="meta" :title="fullDate(m.added_at)">Joined {{ humanDate(m.added_at) }}</div>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
-                  <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id" @change="onRole(m, $event)">
+                  <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id || susp" :title="suspTitle" @change="onRole(m, $event)">
                     <option value="owner">Owner</option>
                     <option value="member">Member</option>
                   </select>
                   <span v-else class="badge-info">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
-                  <IconButton v-if="isMe(m)" :icon="LogOut" label="Leave project" danger @click="leaving = true" />
-                  <IconButton v-else-if="isOwner" :icon="X" :label="`Remove ${m.email}`" danger @click="removing = m" />
+                  <IconButton v-if="isMe(m)" :icon="LogOut" :label="susp ? 'Leave project (project is suspended)' : 'Leave project'" danger :disabled="susp" @click="leaving = true" />
+                  <IconButton v-else-if="isOwner" :icon="X" :label="susp ? `Remove ${m.email} (project is suspended)` : `Remove ${m.email}`" danger :disabled="susp" @click="removing = m" />
                 </div>
               </li>
             </ul>
@@ -323,7 +328,7 @@ async function confirmDelete() {
             <h2 id="h-pdanger" class="section-title text-danger-light">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">Delete this project. It must have no apps; move or delete them first.</p>
-              <button type="button" class="btn-danger shrink-0" :disabled="project.app_count > 0" @click="deleteOpen = true">
+              <button type="button" class="btn-danger shrink-0" :disabled="project.app_count > 0 || susp" :title="suspTitle" @click="deleteOpen = true">
                 <Trash2 :size="16" aria-hidden="true" /> Delete project…
               </button>
             </div>

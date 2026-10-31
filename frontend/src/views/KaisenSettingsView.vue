@@ -13,6 +13,8 @@ import { fmtUsd } from '../composables/kaisen'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { useProjectSuspension } from '../composables/projectSuspension'
 import type { KaisenSettings, KaisenSettingsPayload } from '../types'
 
 const projects = useProjectsStore()
@@ -46,7 +48,8 @@ const form = reactive({
 })
 
 const pid = computed(() => projects.current?.id ?? null)
-const readOnly = computed(() => !!s.value && !s.value.can_edit)
+const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => projects.current?.id)
+const readOnly = computed(() => (!!s.value && !s.value.can_edit) || projSuspended.value)
 
 function fill(v: KaisenSettings) {
   s.value = v
@@ -137,6 +140,7 @@ async function test(which: 'anthropic') {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
     <main id="main" tabindex="-1" class="page-main">
+      <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb"><RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>Settings</nav>
       <div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 class="page-title">Kaisen settings</h1><PreviewBadge />
@@ -155,7 +159,7 @@ async function test(which: 'anthropic') {
 
       <form v-else class="grid gap-3 lg:grid-cols-2 lg:items-start" novalidate @submit.prevent="save">
         <p class="help lg:col-span-2">These settings belong to the project "{{ projects.current?.is_personal ? 'Personal' : projects.current?.name }}". Everyone who can run builds here spends from this key.</p>
-        <p v-if="readOnly" class="alert-info lg:col-span-2" role="status">Only project owners can change these settings. You can see what is set.</p>
+        <p v-if="readOnly && !projSuspended" class="alert-info lg:col-span-2" role="status">Only project owners can change these settings. You can see what is set.</p>
 
         <section class="card card-pad space-y-3" aria-labelledby="ks-anthropic">
           <h2 id="ks-anthropic" class="section-title">Anthropic</h2>

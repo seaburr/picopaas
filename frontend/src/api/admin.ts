@@ -16,12 +16,14 @@ export const patchDbServer = (id: number, payload: { status?: string; max_databa
 
 const post = (path: string) => apiFetch<void>(path, { method: 'POST' })
 export const approveUser = (id: number) => post(`/admin/users/${id}/approve`)
-export const suspendUser = (id: number) => post(`/admin/users/${id}/suspend`)
+const withReason = (path: string, reason?: string) =>
+  apiFetch<void>(path, { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) })
+export const suspendUser = (id: number, reason: string) => withReason(`/admin/users/${id}/suspend`, reason)
 export const unsuspendUser = (id: number) => post(`/admin/users/${id}/unsuspend`)
 export const deleteUser = (id: number) => apiFetch<void>(`/admin/users/${id}`, { method: 'DELETE' })
 
 export const listAllApps = () => apiFetch<AdminApp[]>('/admin/apps')
-export const suspendApp = (id: number) => post(`/admin/apps/${id}/suspend`)
+export const suspendApp = (id: number, reason?: string) => withReason(`/admin/apps/${id}/suspend`, reason)
 export const unsuspendApp = (id: number) => post(`/admin/apps/${id}/unsuspend`)
 export const deleteAdminApp = (id: number) => apiFetch<void>(`/admin/apps/${id}`, { method: 'DELETE' })
 
@@ -92,3 +94,9 @@ export const listAdminProjects = () => apiFetch<import('../types').AdminProject[
 
 export const setProjectAppLimit = (id: number, app_limit: number | null) =>
   apiFetch<import('../types').AdminProject>(`/admin/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ app_limit }) })
+
+export const suspendProject = (id: number, reason: string) =>
+  apiFetch<import('../types').AdminProject>(`/admin/projects/${id}/suspend`, { method: 'POST', body: JSON.stringify({ reason }) })
+export const unsuspendProject = (id: number) =>
+  apiFetch<import('../types').AdminProject>(`/admin/projects/${id}/unsuspend`, { method: 'POST' })
+export const listSuspensions = () => apiFetch<import('../types').Suspension[]>('/admin/suspensions')

@@ -15,7 +15,7 @@ import { useToastStore } from '../stores/toast'
 import type { App } from '../types'
 
 // Settings not in the YAML spec: custom domain, credentials, short address, delete.
-const props = defineProps<{ app: App }>()
+const props = defineProps<{ app: App; projectSuspended?: boolean }>()
 const emit = defineEmits<{ 'update:app': [app: App] }>()
 const router = useRouter()
 const store = useAppsStore()
@@ -220,7 +220,8 @@ async function confirmDelete() {
 }
 
 const hasAddons = computed(() => app.value.want_db || app.value.want_storage)
-const suspended = computed(() => app.value.status === 'suspended')
+const suspended = computed(() => app.value.status === 'suspended' || !!props.projectSuspended)
+const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended' : undefined))
 </script>
 
 <template>
@@ -236,8 +237,8 @@ const suspended = computed(() => app.value.status === 'suspended')
             <!-- None set -->
             <form v-if="!cdom" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="saveDomain">
               <label for="domain-input" class="sr-only">Custom domain</label>
-              <input id="domain-input" v-model="newDomain" placeholder="blog.example.com" class="input sm:max-w-xs" autocomplete="off" :disabled="suspended" />
-              <button type="submit" class="btn-secondary" :disabled="domainBusy || suspended || !newDomain.trim()">{{ domainBusy ? 'Adding…' : 'Add domain' }}</button>
+              <input id="domain-input" v-model="newDomain" placeholder="blog.example.com" class="input sm:max-w-xs" autocomplete="off" :disabled="suspended" :title="suspTitle" />
+              <button :title="suspTitle" type="submit" class="btn-secondary" :disabled="domainBusy || suspended || !newDomain.trim()">{{ domainBusy ? 'Adding…' : 'Add domain' }}</button>
             </form>
 
             <!-- Set -->
@@ -287,7 +288,7 @@ const suspended = computed(() => app.value.status === 'suspended')
               </div>
 
               <div class="flex flex-wrap gap-2">
-                <button v-if="cdom.status !== 'active'" type="button" class="btn-secondary" :disabled="verifyBusy || suspended" @click="verifyDomain()">{{ verifyBusy ? 'Checking…' : 'Verify DNS' }}</button>
+                <button v-if="cdom.status !== 'active'" :title="suspTitle" type="button" class="btn-secondary" :disabled="verifyBusy || suspended" @click="verifyDomain()">{{ verifyBusy ? 'Checking…' : 'Verify DNS' }}</button>
                 <span v-if="cdom.status !== 'active' && domainPolling" class="meta self-center" role="status">Re-checking every 20s…</span>
               </div>
             </div>
@@ -320,7 +321,7 @@ const suspended = computed(() => app.value.status === 'suspended')
                 <option :value="null" disabled>Move to…</option>
                 <option v-for="p in moveTargets" :key="p.id" :value="p.id">{{ p.is_personal ? 'Personal' : p.name }}</option>
               </select>
-              <button type="submit" class="btn-secondary" :disabled="moveTo === null || moving || suspended" :aria-busy="moving">{{ moving ? 'Moving…' : 'Move app' }}</button>
+              <button :title="suspTitle" type="submit" class="btn-secondary" :disabled="moveTo === null || moving || suspended" :aria-busy="moving">{{ moving ? 'Moving…' : 'Move app' }}</button>
             </form>
             <p v-if="moveError" role="alert" class="field-error mt-2 wrap-break-word">{{ moveError }}</p>
           </section>
@@ -334,22 +335,22 @@ const suspended = computed(() => app.value.status === 'suspended')
               <p class="text-sm text-zinc-300">
                 Delete this app{{ hasAddons ? ', its database and blob storage bucket' : '' }}. This can't be undone.
               </p>
-              <button type="button" class="btn-danger shrink-0" @click="deleteOpen = true">Delete app…</button>
+              <button type="button" class="btn-danger shrink-0" :disabled="!!projectSuspended" :title="suspTitle" @click="deleteOpen = true">Delete app…</button>
             </div>
             <div v-if="hasAddons" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="min-w-0 text-sm text-zinc-300">
                 Rotate credentials: new ones are generated and the old ones stop working immediately. The app restarts to pick them up, so expect a short interruption.
               </p>
               <div class="flex shrink-0 flex-wrap gap-2">
-                <button v-if="app.want_db" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'db'">Rotate database password</button>
-                <button v-if="app.want_storage" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate blob storage keys</button>
+                <button v-if="app.want_db" :title="suspTitle" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'db'">Rotate database password</button>
+                <button v-if="app.want_storage" :title="suspTitle" type="button" class="btn-secondary" :disabled="suspended" @click="rotating = 'storage'">Rotate blob storage keys</button>
               </div>
             </div>
             <div v-if="cdom" class="mt-3 flex flex-col gap-3 border-t border-pico-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="min-w-0 text-sm text-zinc-300">
                 Remove <span class="mono break-all">{{ cdom.host }}</span>. Its certificate is dropped and the app stays at {{ app.hostname }}.
               </p>
-              <button type="button" class="btn-danger shrink-0" :disabled="clearingDomain || suspended" @click="removeDomainOpen = true">Remove domain…</button>
+              <button :title="suspTitle" type="button" class="btn-danger shrink-0" :disabled="clearingDomain || suspended" @click="removeDomainOpen = true">Remove domain…</button>
             </div>
           </section>
 

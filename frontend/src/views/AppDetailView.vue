@@ -18,6 +18,8 @@ import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
 import { uptimeText, dbEngineLabel, eventNote, fullTime, parseTs, primaryHost, servedHosts, relTime, useNow } from '../composables/appUi'
 import { refLabel, refsIn } from '../composables/envKeys'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { useProjectSuspension } from '../composables/projectSuspension'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -319,7 +321,8 @@ async function dismiss(kind: string) {
     toast.error(e instanceof ApiError ? e.message : "Couldn't dismiss the alert.")
   }
 }
-const suspended = computed(() => app.value?.status === 'suspended')
+const { project: appProject, suspended: projSuspended } = useProjectSuspension(() => app.value?.project_id)
+const suspended = computed(() => app.value?.status === 'suspended' || projSuspended.value)
 
 // Which env vars reference add-on credentials (non-secret values only; secrets are never readable).
 const usedRefs = computed(() =>
@@ -346,6 +349,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
       </div>
 
       <template v-else>
+        <SuspendedBanner :project="appProject" />
         <nav class="meta mb-2" aria-label="Breadcrumb">
           <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>{{ app.name }}
         </nav>
@@ -368,7 +372,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <div class="flex items-center gap-2">
             <IconButton v-if="app.kaisen_build_id" :icon="Wand2" label="Open in Kaisen" :to="`/kaisen/${app.kaisen_build_id}`" />
             <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
-            <IconButton :icon="RotateCw" :label="suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
+            <IconButton :icon="RotateCw" :label="projSuspended ? 'Restart (project is suspended)' : suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
             <IconButton :icon="Settings" label="Settings" :to="`/apps/${app.id}/edit`" />
           </div>
         </header>
@@ -413,7 +417,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </p>
             <div v-if="app.quota?.storage?.over_quota" role="alert" class="alert-warn mt-3 flex flex-wrap items-center justify-between gap-2">
               <span>Blob storage bucket is over its {{ storageLimitMb }} MB cap and is read-only.</span>
-              <button type="button" class="btn-secondary btn-sm" :disabled="suspended" @click="freeOpen = true">Free up space</button>
+              <button type="button" class="btn-secondary btn-sm" :disabled="suspended" :title="projSuspended ? 'Project is suspended' : undefined" @click="freeOpen = true">Free up space</button>
             </div>
             <p class="help mt-2">Sizes refresh about every minute (database) and every five minutes (blob storage). To shrink a database, TRUNCATE or DROP TABLE; DELETE alone may not reduce the size.</p>
           </section>

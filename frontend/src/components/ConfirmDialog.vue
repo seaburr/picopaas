@@ -15,6 +15,7 @@ const props = defineProps<{
   requireText?: string
   busy?: boolean
   busyLabel?: string
+  confirmDisabled?: boolean // extra condition from the slot (e.g. a required reason is empty)
 }>()
 const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
@@ -24,7 +25,7 @@ const uid = useId()
 const titleId = `${uid}-title`
 const msgId = `${uid}-msg`
 const inputId = `${uid}-confirm`
-const ok = computed(() => !props.requireText || typed.value.trim() === props.requireText)
+const ok = computed(() => (!props.requireText || typed.value.trim() === props.requireText) && !props.confirmDisabled)
 watch(() => props.open, () => (typed.value = ''))
 
 // Danger confirms start on Cancel (safe default); typed confirms start in the input; others on Confirm.

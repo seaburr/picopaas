@@ -8,6 +8,8 @@ import { ApiError } from '../api/client'
 import { createBuild, getKaisenSettings } from '../api/kaisen'
 import { outputPayload, outputFieldErrors, blankOutputForm } from '../composables/kaisen'
 import { useToastStore } from '../stores/toast'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
 
@@ -40,6 +42,7 @@ function undoStarter() {
   undo.value = null
 }
 const projectId = ref<number | null>(null)
+const { project: curProject, suspended: projSuspended } = useProjectSuspension(projectId)
 const busy = ref(false)
 const error = ref('')
 const nameError = ref('')
@@ -115,6 +118,7 @@ async function submit() {
   <div class="min-h-screen bg-pico-bg">
     <NavBar />
     <main id="main" tabindex="-1" class="page-main">
+      <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
       </nav>
@@ -138,7 +142,7 @@ async function submit() {
         </div>
         <div>
           <label for="kb-brief" class="label">What should it do?</label>
-          <textarea id="kb-brief" v-model="brief" class="input min-h-32" autocomplete="off" :aria-invalid="briefError || overLimit ? 'true' : undefined" aria-describedby="kb-brief-help" />
+          <textarea id="kb-brief" v-model="brief" class="input min-h-32" autocomplete="off" :disabled="projSuspended" :placeholder="projSuspended ? 'Builds are paused while the project is suspended.' : undefined" :aria-invalid="briefError || overLimit ? 'true' : undefined" aria-describedby="kb-brief-help" />
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-wrap items-center gap-1">
@@ -166,7 +170,7 @@ async function submit() {
 
         <div v-if="error" role="alert" class="alert-error whitespace-pre-wrap">{{ error }}</div>
         <div class="flex flex-col gap-2 sm:flex-row">
-          <button type="submit" class="btn-primary" :disabled="busy || noKey || overLimit">{{ busy ? 'Starting…' : 'Start building' }}</button>
+          <button type="submit" class="btn-primary" :disabled="busy || noKey || overLimit || projSuspended" :title="projSuspended ? SUSPENDED_TITLE : undefined">{{ busy ? 'Starting…' : 'Start building' }}</button>
           <RouterLink to="/kaisen" class="btn-secondary">Cancel</RouterLink>
         </div>
       </form>

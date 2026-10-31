@@ -42,6 +42,12 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   })
 
+  await test.step('admin suspensions tab renders its empty state', async () => {
+    await page.goto('/admin?tab=suspensions')
+    await expect(page.getByRole('tab', { name: /Suspensions/ })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByText('Nothing is suspended.')).toBeVisible()
+  })
+
   await test.step('apps list renders (empty state)', async () => {
     await page.goto('/apps')
     await expect(page.getByRole('heading', { name: /apps/i, level: 1 })).toBeVisible()

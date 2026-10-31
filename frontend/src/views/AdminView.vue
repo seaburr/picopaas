@@ -11,16 +11,18 @@ import ResourcesDialog from '../components/ResourcesDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import BackupAdminDialog from '../components/BackupAdminDialog.vue'
 import AdminProjects from '../components/AdminProjects.vue'
+import AdminSuspensions from '../components/AdminSuspensions.vue'
+import SuspendDialog from '../components/SuspendDialog.vue'
 import {
-  approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
-  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendApp, suspendUser, unsuspendApp, unsuspendUser,
+  approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
+  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { dbEngineLabel } from '../composables/appUi'
 import { useModal } from '../composables/useModal'
 import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
-import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch } from '../types'
+import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch, Suspension } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
 import { Archive, Ban, Check, Copy, Download, Plus, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
@@ -44,18 +46,26 @@ async function refreshUsers() {
     users.value = (await listUsers()) ?? []
   } catch { /* count stays stale */ }
 }
+async function refreshSuspensions() {
+  try {
+    suspensions.value = (await listSuspensions()) ?? []
+  } catch { /* count stays stale */ }
+}
 const servers = ref<DbServer[]>([])
 const allApps = ref<AdminApp[]>([])
 const audit = ref<AuditEntry[]>([])
+const suspensions = ref<Suspension[]>([])
 const loaded = ref(false)
 const error = ref('')
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // Tabs live in ?tab= so they are linkable.
-const TABS = ['users', 'apps', 'projects', 'servers', 'settings', 'audit'] as const
+const TABS = ['users', 'apps', 'projects', 'suspensions', 'servers', 'settings', 'audit'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'users'))
-const q = ref('')
+// ?q= pre-fills the search (the Suspensions tab links to a user this way).
+const q = ref(typeof route.query.q === 'string' ? route.query.q : '')
+watch(() => route.query.q, (v) => { if (typeof v === 'string') q.value = v })
 function setTab(t: Tab) {
   q.value = ''
   router.replace({ path: '/admin', query: t === 'users' ? {} : { tab: t } })
@@ -78,12 +88,14 @@ const otherUsers = computed(() => users.value.filter((u) => u.status !== 'pendin
 const pendingCount = computed(() => users.value.filter((u) => u.status === 'pending').length)
 const filteredApps = computed(() => allApps.value.filter((a) => match(q.value, a.name, a.hostname, a.owner_email, a.image)))
 const filteredAudit = computed(() => audit.value.filter((a) => match(q.value, a.action, a.actor_email, a.target_type, String(a.target_id ?? ''), a.detail)))
+// Top-level suspensions: apps stopped by a project or user nest under it and are not counted.
+const suspensionCount = computed(() => suspensions.value.filter((r) => !(r.type === 'app' && r.cause_id !== null)).length)
 const warnServers = computed(() => servers.value.filter((s) => s.warn))
 
 async function load() {
   try {
-    ;[users.value, servers.value, allApps.value, audit.value] = await Promise.all([
-      listUsers(), listDbServers(), listAllApps(), listAudit(100),
+    ;[users.value, servers.value, allApps.value, audit.value, suspensions.value] = await Promise.all([
+      listUsers(), listDbServers(), listAllApps(), listAudit(100), listSuspensions(),
     ])
     for (const u of users.value) limits[u.id] = u.app_limit_effective
     error.value = ''
@@ -151,20 +163,40 @@ function askAdmin(u: AdminUser, promote: boolean) {
     : { title: `Remove admin from ${u.email}`, message: 'They become a regular user. Their apps are kept.', label: 'Remove admin', run: () => setAdmin(u, false) }
 }
 function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) {
-  if (kind === 'suspend')
-    confirm.value = { title: `Suspend ${u.email}`, message: "This stops all of their apps and blocks them from the platform. Their data is kept; unsuspend to restore.", label: 'Suspend user', run: () => act(() => suspendUser(u.id), `${u.email} suspended.`, "Couldn't suspend the user") }
-  else if (kind === 'reject')
+  if (kind === 'suspend') {
+    susError.value = ''
+    suspendTarget.value = u
+  } else if (kind === 'reject')
     confirm.value = { title: `Reject ${u.email}`, message: 'This removes their request. They can request access again.', label: 'Reject request', run: () => act(() => deleteUser(u.id), `${u.email} rejected.`, "Couldn't reject the request") }
   else if (kind === 'reset')
     confirm.value = { title: `Reset password for ${u.email}`, message: 'This generates a temporary password. Their current password stops working immediately. Give them the new one; they should change it right away.', label: 'Reset password', run: () => resetPassword(u) }
   else
     confirm.value = { title: `Delete ${u.email}`, message: 'This permanently deletes the user and all of their apps, databases and blob storage. This cannot be undone.', label: 'Delete user and data', require: u.email, run: () => act(() => deleteUser(u.id), `${u.email} deleted.`, "Couldn't delete the user") }
 }
-function askApp(kind: 'suspend' | 'delete', a: AdminApp) {
-  confirm.value =
-    kind === 'suspend'
-      ? { title: `Suspend ${a.name}`, message: "The app is stopped. Its owner can't edit or restart it until you unsuspend it.", label: 'Suspend app', run: () => act(() => suspendApp(a.id), `${a.name} suspended.`, "Couldn't suspend the app") }
-      : { title: `Delete ${a.name}`, message: `Permanently deletes ${a.name}, its database and its blob storage bucket. This cannot be undone.`, label: 'Delete app', require: a.name, run: () => act(() => deleteAdminApp(a.id), `${a.name} deleted.`, "Couldn't delete the app") }
+// Suspending a single app is no longer offered here (suspend its project or user); the API stays.
+function askDeleteApp(a: AdminApp) {
+  confirm.value = { title: `Delete ${a.name}`, message: `Permanently deletes ${a.name}, its database and its blob storage bucket. This cannot be undone.`, label: 'Delete app', require: a.name, run: () => act(() => deleteAdminApp(a.id), `${a.name} deleted.`, "Couldn't delete the app") }
+}
+
+// ---- suspend user (reason required) ----
+const suspendTarget = ref<AdminUser | null>(null)
+const susBusy = ref(false)
+const susError = ref('')
+async function confirmSuspendUser(reason: string) {
+  const u = suspendTarget.value
+  if (!u) return
+  susBusy.value = true
+  susError.value = ''
+  try {
+    await suspendUser(u.id, reason)
+    suspendTarget.value = null
+    toast.success(`${u.email} suspended.`)
+    await load()
+  } catch (e) {
+    susError.value = msg(e, "Couldn't suspend the user.")
+  } finally {
+    susBusy.value = false
+  }
 }
 
 // ---- approve ----
@@ -377,7 +409,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -- roving tabindex: the tab buttons inside are the focusable elements -->
       <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-1 border-b border-pico-border" @keydown="onTabKey">
         <button
-          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'suspensions', label: 'Suspensions', n: suspensionCount }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
           :key="t.id"
           type="button"
@@ -396,7 +428,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
 
       <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-3">
-        <div v-if="tab !== 'servers' && tab !== 'settings' && tab !== 'projects'">
+        <div v-if="tab !== 'servers' && tab !== 'settings' && tab !== 'projects' && tab !== 'suspensions'">
           <label :for="`${uid}-q`" class="sr-only">Search</label>
           <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
         </div>
@@ -497,9 +529,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
                 <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="appUrl(a)" />
                 <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="openLimits(a)" />
                 <IconButton :icon="Archive" :label="`Backups for ${a.name}`" sm @click="bkApp = a" />
-                <IconButton v-if="a.status === 'suspended'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
-                <IconButton v-else :icon="Ban" :label="`Suspend ${a.name}`" sm @click="askApp('suspend', a)" />
-                <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askApp('delete', a)" />
+                <IconButton v-if="a.status === 'suspended' && a.suspended_via !== 'project' && a.suspended_via !== 'user'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
+                <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askDeleteApp(a)" />
               </div>
             </li>
             <li v-if="loaded && filteredApps.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</li>
@@ -550,7 +581,8 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </template>
 
         <!-- SETTINGS -->
-        <AdminProjects v-else-if="tab === 'projects'" />
+        <AdminProjects v-else-if="tab === 'projects'" @changed="refreshSuspensions" />
+        <AdminSuspensions v-else-if="tab === 'suspensions'" :items="suspensions" :loaded="loaded" @changed="load" />
         <SettingsPanel v-else-if="tab === 'settings'" />
 
         <!-- AUDIT -->
@@ -679,6 +711,18 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       </div>
     </dialog>
 
+    <SuspendDialog
+      :open="suspendTarget !== null"
+      :title="`Suspend ${suspendTarget?.email ?? ''}`"
+      message="They can't sign in. Their personal project and its apps stop, and any Kaisen run they started stops. Their team projects keep running for the other members. Data is kept; unsuspend to restore."
+      confirm-label="Suspend user"
+      hint="Saved in the audit log and shown to admins in Suspensions."
+      placeholder="Why?"
+      :busy="susBusy"
+      :error="susError"
+      @confirm="confirmSuspendUser"
+      @cancel="suspendTarget = null"
+    />
     <UserKeysDialog :user="keysUser" @close="keysUser = null" @changed="refreshUsers" />
     <BackupAdminDialog :app="bkApp" @close="bkApp = null" />
     <ResourcesDialog :app="resApp" :error="resError" @save="saveResources" @cancel="resApp = null" />

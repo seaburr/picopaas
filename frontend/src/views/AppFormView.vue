@@ -12,6 +12,8 @@ import KaisenChooser from '../components/KaisenChooser.vue'
 import NavBar from '../components/NavBar.vue'
 import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import SuspendedBanner from '../components/SuspendedBanner.vue'
+import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import { ApiError } from '../api/client'
 import { listTemplates } from '../api/templates'
 import { SAMPLE_APP, primaryHost } from '../composables/appUi'
@@ -56,7 +58,10 @@ const env = ref<EnvVar[]>([])
 const originalImage = ref('')
 
 const tab = ref<'form' | 'yaml'>('form')
-const suspended = ref(false)
+const appSuspended = ref(false)
+const { project: appProject, suspended: projSuspended } = useProjectSuspension(() => loadedApp.value?.project_id)
+// Either the app itself or its whole project is suspended: the form is read-only.
+const suspended = computed(() => appSuspended.value || projSuspended.value)
 // Also true while a template loads: EnvVarEditor copies its rows once on mount, so it must mount after the prefill.
 const loading = ref(isEdit.value || typeof route.query.template === 'string')
 const saving = ref(false)
@@ -138,7 +143,7 @@ onMounted(async () => {
     try {
       const app = await store.fetchOne(appId.value)
       loadedApp.value = app
-      suspended.value = app.status === 'suspended'
+      appSuspended.value = app.status === 'suspended'
       form.name = app.name
       form.image = app.image
       originalImage.value = app.image
@@ -254,7 +259,7 @@ async function showError() {
 // Only loadedApp changes, so unsaved form fields are untouched.
 function onPanelUpdate(a: App) {
   loadedApp.value = a
-  suspended.value = a.status === 'suspended'
+  appSuspended.value = a.status === 'suspended'
 }
 
 const busyLabel = computed(() => (!isEdit.value || form.image !== originalImage.value ? 'Checking image…' : 'Saving…'))
@@ -346,6 +351,7 @@ async function onSubmit() {
     <NavBar />
 
     <main id="main" tabindex="-1" class="page-main">
+      <SuspendedBanner v-if="isEdit" :project="appProject" />
       <nav v-if="isEdit && !gone" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
@@ -412,7 +418,7 @@ async function onSubmit() {
       <template v-else>
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
       <form class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
-        <div v-if="suspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
+        <div v-if="appSuspended && !projSuspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
         <fieldset :disabled="suspended" :class="'space-y-4'">
           <div>
             <label for="f-name" class="label">Name</label>
@@ -621,7 +627,7 @@ async function onSubmit() {
           <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
           <div class="flex w-full gap-2 sm:w-auto">
             <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>
-            <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="saving || suspended" :aria-busy="saving">
+            <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="saving || suspended" :title="projSuspended ? SUSPENDED_TITLE : undefined" :aria-busy="saving">
               {{ saving ? busyLabel : isEdit ? 'Save changes' : 'Create app' }}
             </button>
           </div>
@@ -630,7 +636,7 @@ async function onSubmit() {
 
       <section v-if="isEdit && loadedApp" class="mt-4" aria-labelledby="h-other">
         <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
-        <AppSettingsPanel :app="loadedApp" @update:app="onPanelUpdate">
+        <AppSettingsPanel :app="loadedApp" :project-suspended="projSuspended" @update:app="onPanelUpdate">
           <BackupSettings :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
         </AppSettingsPanel>
       </section>

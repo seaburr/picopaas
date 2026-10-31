@@ -256,6 +256,8 @@ export interface AdminUser {
   app_count: number
   api_key_count?: number // active (unrevoked) keys
   status: UserStatus
+  suspended_reason?: string | null
+  suspended_at?: string | null
   created_at: string
 }
 
@@ -310,6 +312,9 @@ export interface AdminApp {
   volume?: AppVolume | null
   custom_domain: string | null // host only (not the CustomDomain object the app endpoints return)
   resources: AppResources
+  suspended_via?: 'user' | 'project' | 'admin' | null
+  suspended_reason?: string | null
+  suspended_at?: string | null
 }
 
 export interface AuditEntry {
@@ -583,6 +588,9 @@ export interface Project {
   app_limit: number | null
   app_limit_effective: number
   created_at: string
+  status?: 'active' | 'suspended'
+  suspended_at?: string | null
+  suspended_reason?: string | null // owners only; null for other members
 }
 
 export interface ProjectMember {
@@ -615,6 +623,29 @@ export interface AdminProject {
   owner_emails: string[]
   app_limit: number | null
   app_limit_effective: number
+  status: 'active' | 'suspended'
+  suspended_reason: string | null
+  suspended_at: string | null
+  suspended_by_email: string | null
+}
+
+// GET /admin/suspensions: flat list, newest first. Apps stopped by a project/user carry cause_type + cause_id.
+export interface Suspension {
+  type: 'user' | 'project' | 'app'
+  id: number
+  name: string
+  owner_email: string | null
+  project_id: number | null
+  project_name: string | null
+  reason: string | null
+  suspended_at: string | null
+  suspended_by_id: number | null
+  suspended_by_email: string | null
+  cause_type: 'user' | 'project' | null
+  cause_id: number | null
+  app_count: number | null
+  via: string | null
+  is_personal: boolean | null
 }
 
 // ---- Kaisen (Preview). Shapes per docs/design/kaisen-ui.md section 9; align with app/kaisen schemas. ----
