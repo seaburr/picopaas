@@ -7,7 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Project suspension: two calls for you (security review 2026-10-31, PENTEST K50).** (1) Restoring a backup over the
   source app (`overwrite_source`) needs that app suspended, but an app stopped by a project or user suspension now sits in a
   suspended project and every restore into it is refused (your rule). So that recovery path only works for an app suspended
   on its own in an active project. Options: (a) leave it (unsuspend the project, suspend the app on its own, restore);
@@ -49,6 +48,7 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-10-31: **K50 restore-over-source and bucket file fetch in suspended projects** (Chas, in chat): leave both as they are (restore over the source only for an app suspended on its own in an active project; members of a suspended project can't fetch bucket files, backup downloads still work).
 - 2026-10-30: **K16 web + build secrets** (Chas, in chat): option (a), a build with secrets never gets the web tools, allow-list or not (builder.py; PENTEST K16 closed).
 - 2026-10-30: **K39 rollout status for all apps** (Chas, in chat): keep `deploying` until every pod runs the new version for ALL apps, so a release whose pod never gets ready fails after DEPLOY_TIMEOUT_MINUTES and rolls back instead of hiding behind the old pod.
 - 2026-10-30: **Deploy gated on CI + ruleset on main** (Chas, in chat, from the factory re-review): deploy.yml waits for green CI and image on the same commit; a ruleset on main blocks force-push and deletion. Also: Dependabot steward handles PicoPaaS #29/#31/#32 after this ship and closes #30 (Node 25).
