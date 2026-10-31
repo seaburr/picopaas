@@ -374,6 +374,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </ol>
       </section>
 
+      <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -- roving tabindex: the tab buttons inside are the focusable elements -->
       <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-1 border-b border-pico-border" @keydown="onTabKey">
         <button
           v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"

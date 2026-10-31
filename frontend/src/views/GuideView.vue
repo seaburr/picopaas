@@ -190,6 +190,7 @@ function onClick(e: MouseEvent) {
           <IconButton :icon="RotateCw" label="Retry" class="mt-2" @click="loadAdmin" />
         </div>
       </div>
+      <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vue/no-v-html -- delegated click for in-doc links (keyboard activates the real <a>); html is DOMPurify-sanitized -->
       <article v-else class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
     </div>
   </div>

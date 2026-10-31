@@ -39,6 +39,7 @@ async function onSubmit() {
 <template>
   <div class="flex min-h-[calc(100vh-2rem)] items-center justify-center px-4 py-8">
     <div class="w-full max-w-sm">
+      <!-- eslint-disable-next-line vuejs-accessibility/heading-has-content -- BrandMark renders the visible "PicoPaaS" text; the rule cannot see into components -->
       <h1 class="mb-1 flex justify-center"><BrandMark :size="40" /></h1>
       <p class="mb-5 text-center text-sm text-zinc-300">Tiny hosting for throwaway projects.</p>
 

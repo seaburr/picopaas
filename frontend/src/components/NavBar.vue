@@ -48,6 +48,7 @@ function skip(e: Event) {
 </script>
 
 <template>
+  <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -- Escape closes the open menu anywhere in the header; the menu button stays the keyboard control -->
   <header class="relative border-b border-pico-border bg-pico-panel" @keydown.esc="closeMenu">
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-pico-card focus:px-3 focus:py-2 focus:text-sm focus:text-white" @click="skip">
       Skip to content

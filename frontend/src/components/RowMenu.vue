@@ -40,6 +40,7 @@ onBeforeUnmount(() => {
     >
       <MoreHorizontal :size="16" aria-hidden="true" />
     </button>
+    <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/interactive-supports-focus -- click on a bubbled item button closes the menu; items are real buttons, Escape handled by the parent -->
     <div
       v-if="open"
       role="menu"

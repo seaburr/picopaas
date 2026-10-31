@@ -8,6 +8,7 @@
     "build": "vite build",
     "typecheck": "vue-tsc --noEmit && tsc -p e2e/tsconfig.json",
     "check:layout": "node scripts/check-page-width.mjs",
+    "lint": "eslint . --max-warnings 0",
     "preview": "vite preview",
     "test:e2e": "playwright test"
   },
@@ -20,13 +21,19 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.5",
     "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^6.0.10",
+    "eslint": "9.39.5",
+    "eslint-plugin-vue": "10.12.0",
+    "eslint-plugin-vuejs-accessibility": "2.6.3",
+    "globals": "17.13.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.3",
+    "typescript-eslint": "8.72.1",
     "vite": "^8.3.5",
     "vue-tsc": "^3.3.13"
   }
