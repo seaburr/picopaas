@@ -63,7 +63,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
       # MYSQL_ADMIN_URL is unset here, so tests/test_mysql_admin.py
       # (@pytest.mark.mysql) self-skips at module level — see mysql-integration below.
       # Coverage floor (fail_under in .coveragerc) is enforced here only.
