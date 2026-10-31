@@ -73,3 +73,29 @@ def test_status_errors():
         assert KubeClientProvider(_dyn(pods=[_pod(r)])).get_status("n") == f"error: {code}"
     s = KubeClientProvider(_dyn(pods=[_pod("CreateContainerConfigError", "container has runAsNonRoot")])).get_status("n")
     assert s == "error: root_image"
+
+
+def test_status_old_pod_still_in_rollout_is_deploying():
+    # new pod ready, old one not yet gone: replicas 2 > updated 1
+    mid = {"metadata": {"generation": 3}, "spec": {"replicas": 1},
+           "status": {"readyReplicas": 2, "replicas": 2, "updatedReplicas": 1, "observedGeneration": 3}}
+    assert KubeClientProvider(_dyn(deployments=[mid])).get_status("n") == "deploying"
+
+
+def _dep(spec_replicas=1, **status):
+    return {"metadata": {"generation": 3}, "spec": {"replicas": spec_replicas},
+            "status": {"observedGeneration": 3, **status}}
+
+
+def test_status_rollout_edge_cases():
+    # settled: running
+    assert KubeClientProvider(_dyn(deployments=[_dep(readyReplicas=1, replicas=1, updatedReplicas=1)])).get_status("n") == "running"
+    # replicas=None in status (older clusters / not yet reported) with a ready pod: not stuck "deploying" via the new check
+    assert KubeClientProvider(_dyn(deployments=[_dep(readyReplicas=1, updatedReplicas=1)])).get_status("n") == "running"
+    # suspended (scaled to 0): status.replicas absent/0 never triggers the new check
+    assert KubeClientProvider(_dyn(deployments=[_dep(0)])).get_status("n") == "deploying"
+    # new pod never ready while the old one serves: now deploying (the reconciler times it out), was "running"
+    stuck = _dep(readyReplicas=1, replicas=2, updatedReplicas=1)
+    assert KubeClientProvider(_dyn(deployments=[stuck])).get_status("n") == "deploying"
+    # an error state still wins over the rollout check
+    assert KubeClientProvider(_dyn(pods=[_pod("ImagePullBackOff")], deployments=[stuck])).get_status("n") == "error: image_pull"

@@ -136,7 +136,8 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
             suffix = " Code changes cannot fix this; call finish and tell the human." if e.final else ""
             raise ToolError(msg + suffix) from None
         s.commit()  # do not hold a transaction open while waiting
-        res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, clock, sleep)
+        res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, clock, sleep,
+                               health=deploy_mod.health_path(s, b), sha=testresults.current_sha(s, b))
         s.refresh(b)
         testresults.record(s, b, res.logs)
         if res.ok:
@@ -160,7 +161,8 @@ def deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep=time.sl
         rs = load_for_build(s, b)
         try:
             app, changed = deploy_mod.deploy_build(s, b, registry_factory(), force=False)
-            res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, sleep=sleep)
+            res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, sleep=sleep,
+                                   health=deploy_mod.health_path(s, b), sha=testresults.current_sha(s, b))
             testresults.record(s, b, res.logs)
             text_ = ("Preview deployed: " if res.ok else "Preview deployed but not healthy yet: ") + res.text
         except deploy_mod.DeployError as e:

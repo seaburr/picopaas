@@ -4,7 +4,7 @@ Env: KAISEN_BUNDLE_URL, KAISEN_BUNDLE_SHA256. Downloads the bundle, verifies it,
 /home/app/src, reads kaisen.json, installs dependencies and starts the app on $PORT (8080).
 Every phase logs a line prefixed [kaisen-runtime]; any failure exits non-zero.
 
-Optional kaisen.json "test": a shell command run after the install and before the app starts (python and node only).
+Optional kaisen.json "test": a shell command run after the install and before the app starts (all runtimes; a static site can use `node --test tests/`).
 Its output (capped) is framed by marker lines the platform parses from the log:
     KAISEN_TESTS_BEGIN
     ...output tail...
@@ -232,6 +232,10 @@ def run_tests(command: str, cwd: str, env: dict, timeout: int | None = None, max
         reader.start()
         try:
             code = p.wait(timeout=timeout)
+            try:
+                os.killpg(p.pid, 9)  # a test that left a background process must not outlive the run (or hold the pipe)
+            except OSError:
+                pass
             reader.join(5)
             status = "pass" if code == 0 else "fail"
         except subprocess.TimeoutExpired:
@@ -280,6 +284,7 @@ def main() -> int:
     n = safe_extract(archive, SRC)
     root = project_root(SRC)
     log(f"extracted {n} files")
+    log(f"bundle sha={want.strip().lower()[:12]}")  # lets the platform tell this pod's logs from a previous pod's
 
     mf_path = os.path.join(root, "kaisen.json")
     manifest = parse_manifest(open(mf_path).read() if os.path.isfile(mf_path) else None)
@@ -290,6 +295,9 @@ def main() -> int:
     env = dict(os.environ, PORT="8080")
     if manifest["runtime"] == "static":
         log("phase 3/4: nothing to install")
+        if manifest.get("test"):
+            log("running the project's tests (the site is served afterwards whatever the result)")
+            run_tests(manifest["test"], root, env)
         log("phase 4/4: starting")
         serve_static(root, port)
         return 0

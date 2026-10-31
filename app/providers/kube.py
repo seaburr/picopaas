@@ -270,6 +270,9 @@ class KubeClientProvider(KubeProvider):
             return "deploying"
         if (st.get("updatedReplicas") or 0) < want:
             return "deploying"
+        # old pods still counted: the new pod is not the only one serving yet
+        if (st.get("replicas") or 0) > (st.get("updatedReplicas") or 0):
+            return "deploying"
         return "running" if ready >= 1 else "deploying"
 
     def get_used_limits(self, namespace: str) -> dict[str, int] | None:

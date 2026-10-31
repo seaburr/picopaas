@@ -446,6 +446,7 @@ KAISEN_TEST_TIMEOUT_SECONDS = 120
 KAISEN_TEST_OUTPUT_BYTES = 4096  # tail of the test output boot.py prints
 KAISEN_TEST_OUTPUT_LINES = 40
 KAISEN_TEST_COMMAND_MAX = 300  # characters in the kaisen.json "test" command
+KAISEN_HEALTH_PATH_MAX = 120  # characters of the kaisen.json "health" path / of a redirect path shown to the model
 KAISEN_TEST_TAIL_BYTES = 2000  # stored on the build and shown to the builder
 KAISEN_TEST_WATCH_SECONDS = 600  # after a deploy, keep snapshotting logs this long for the test result (even after a run ends)
 KAISEN_TEST_WAIT_SECONDS = 45  # deploy_preview waits up to this long after HTTP 2xx for a declared test's result
