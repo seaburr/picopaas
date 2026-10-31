@@ -374,7 +374,7 @@ KAISEN_PRICES = {
     "claude-sonnet-5-5": {"in": 2.00, "out": 10.00, "cache_read": 0.20, "cache_write": 2.50},
     "claude-haiku-5-5": {"in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
 }
-KAISEN_DEFAULT_MODEL = "claude-sonnet-5-5"
+KAISEN_DEFAULT_MODEL = "claude-haiku-5-5"  # Chas 2026-10-31: Haiku matched Sonnet on every eval brief at ~1/5 the cost; new projects only
 KAISEN_EFFORTS = ("low", "medium", "high")
 # Request shaping (cost): old tool results are replaced by stubs in the OUTGOING request only (stored messages untouched).
 # The boundary moves in steps of KAISEN_ELIDE_STRIDE assistant turns so the cached prefix stays stable between jumps.

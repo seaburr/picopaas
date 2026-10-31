@@ -62,7 +62,7 @@ def test_stops_after_max_steps_per_run(env, monkeypatch):
 
 def test_budget_cap_stops_instead_of_continuing(env, monkeypatch):
     monkeypatch.setattr(config, "KAISEN_MAX_TURNS", 2)
-    env.a.put(f"/projects/{env.pid}/kaisen", json={"cap_run": PER_CALL * 2 - 0.001})
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"cap_run": PER_CALL * 1.5})  # between one and two calls, at any default-model price
     start(env)
     model = FakeModelClient([_text() for _ in range(6)])
     go(model)

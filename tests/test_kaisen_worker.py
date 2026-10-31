@@ -167,7 +167,7 @@ def _writes(n):
 
 
 def test_run_cap_stops_then_resume_continues(env):
-    env.a.put(f"/projects/{env.pid}/kaisen", json={"cap_run": PER_CALL * 2 - 0.001})
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"cap_run": PER_CALL * 1.5})  # between one and two calls, at any default-model price
     start(env)
     model = FakeModelClient(_writes(5))
     go(model)
