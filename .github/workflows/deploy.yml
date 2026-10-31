@@ -59,6 +59,15 @@ jobs:
             gh api "repos/${{ github.repository }}/actions/workflows/$1/runs?head_sha=$SHA&event=push&per_page=1" \
               --jq '.workflow_runs[0] | if . == null then "missing" elif .status != "completed" then "" else .conclusion end'
           }
+          # Only main's tip deploys: an older commit whose CI finishes late must not roll prod back (the tip's own
+          # runs deploy it). Note the run list shows main's tip as every workflow_run deploy's head_sha; SHA here is
+          # the commit that triggered this run.
+          tip=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          if [ "$tip" != "$SHA" ]; then
+            echo "::notice::not deploying ${SHA:0:7}: main is now at ${tip:0:7}, whose own runs will deploy it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           ci=$(state ci.yml); img=$(state image.yml)
           echo "CI: ${ci:-running}, image: ${img:-running}"
           if [ "$ci" = "success" ] && [ "$img" = "success" ]; then
