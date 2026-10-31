@@ -41,7 +41,9 @@ jobs:
       - name: actionlint (download script pinned by commit SHA, release pinned by version)
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint -color .github/workflows/*.yml
+          # -shellcheck= : the runner has shellcheck, so actionlint would also lint every inline run: script
+          # (out of scope here; the .sh files are checked in the next step)
+          ./actionlint -color -shellcheck= .github/workflows/*.yml
       - name: shellcheck (preinstalled on ubuntu-latest)
         run: |
           shellcheck --version
