@@ -1,4 +1,5 @@
 """Kaisen worker and builder: scripted model runs against the real API, fake model / GitHub / runtime."""
+import json
 import os
 import subprocess
 import sys
@@ -205,12 +206,25 @@ def test_repeat_detector_stops_identical_calls(env):
     assert d["status"] == "stopped" and len(model.calls) == 3 and "same call" in d["last_error"]
 
 
-@pytest.mark.parametrize("stop,kind,status", [("refusal", "refusal", "stopped"), ("max_tokens", "error", "error")])
-def test_refusal_and_max_tokens(env, stop, kind, status):
+@pytest.mark.parametrize("stop,kind,status,n", [("refusal", "refusal", "stopped", 1), ("max_tokens", "error", "error", 2)])
+def test_refusal_and_max_tokens(env, stop, kind, status, n):
     start(env)
-    go(FakeModelClient([reply(stop_reason=stop)]))
+    model = FakeModelClient([reply(stop_reason=stop) for _ in range(n)])
+    go(model)
     d = detail(env)
-    assert d["status"] == status and d["inbox"][0]["kind"] == kind
+    assert d["status"] == status and d["inbox"][0]["kind"] == kind and len(model.calls) == n
+
+
+def test_a_cut_off_reply_is_retried_once_with_smaller_pieces_advice(env):
+    # eval 2026-10-31: Haiku wrote a whole CRM in one reply, hit max_tokens twice in a row and the build died
+    start(env)
+    model = FakeModelClient([reply(write("app.py", "x" * 10), stop_reason="max_tokens"),
+                             reply(write("app.py", "print(1)")), reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    assert detail(env)["status"] == "done"
+    retry = json.dumps(model.calls[1])
+    assert "cut off at the output limit" in retry and "edit_file" in retry
+    assert '"x"' not in retry and "xxxxxxxxxx" not in retry  # the truncated reply itself is never sent back
 
 
 def test_model_error_becomes_plain_error(env):

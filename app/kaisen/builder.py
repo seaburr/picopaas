@@ -405,6 +405,33 @@ def plan_gate(ws: Workspace, messages) -> str | None:
             "(in PLAN.md and your summary), then call finish again.")
 
 
+CUTOFF_MARK = "Your previous reply was cut off at the output limit and was lost."
+
+
+def _cutoff_noted(messages) -> bool:
+    """True when this run already got the cut-off note. Only Kaisen writes user text blocks (tool results, which can
+    carry app output, are never searched), so the marker can't be forged."""
+    for m in messages or []:
+        c = m.get("content")
+        for blk in c if m.get("role") == "user" and isinstance(c, list) else []:
+            if blk.get("type") == "text" and str(blk.get("text", "")).startswith(CUTOFF_MARK):
+                return True
+    return False
+
+
+def _with_cutoff_note(messages) -> list:
+    """Append the cut-off note to the last (user) message, so the next request asks again with that advice."""
+    msgs = list(messages or [])
+    note = {"type": "text", "text": f"{CUTOFF_MARK} Nothing from it was saved. Write at most one or two files per reply. "
+            "For a long file, write a first part with write_file, then add the rest with edit_file in later replies."}
+    if not msgs or msgs[-1].get("role") != "user":
+        return msgs + [{"role": "user", "content": [note]}]
+    last = dict(msgs[-1])
+    c = last.get("content")
+    last["content"] = ([{"type": "text", "text": c}] if isinstance(c, str) else list(c or [])) + [note]
+    return msgs[:-1] + [last]
+
+
 def _result(tu_id, text, error=False):
     r = {"type": "tool_result", "tool_use_id": tu_id, "content": text}
     if error:
@@ -541,7 +568,12 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
         _stop(s, run, "stopped", "refusal", "The model refused this request.")
         return "stopped"
     if resp.stop_reason == "max_tokens":
-        _stop(s, run, "error", "error", "Model hit max_tokens; step stopped. Resume to retry.")
+        # The reply was cut off at the output limit (usually: a whole app in one turn). Its tool calls are incomplete,
+        # so it is dropped. The first time in a run, retry with a note to write smaller pieces; a second cut-off stops.
+        if not _cutoff_noted(run.messages):
+            run.messages = _with_cutoff_note(run.messages)
+            return "continue"
+        _stop(s, run, "error", "error", "Model hit max_tokens twice; step stopped. Resume to retry.")
         return "error"
     msgs = list(run.messages) + [{"role": "assistant", "content": resp.content}]
     if resp.stop_reason == "pause_turn":  # a server-side tool loop (web search/fetch) paused: send it back to continue
