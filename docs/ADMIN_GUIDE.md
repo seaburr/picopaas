@@ -226,9 +226,41 @@ Every admin action is also an HTTP route under `/admin`; see [API.md](API.md).
 Apps belong to a project (personal per user, or shared). Project owners are the contacts shown for an app in Health and Backups reports, not
 the app's creator. Raise or lower a shared project's app limit with `PATCH /admin/projects/{id}` (`{"app_limit": n}`, null resets;
 capped at `max_apps_per_user`); `GET /admin/projects` lists shared projects. Personal projects follow the user's own `app_limit`.
-Suspending or deleting a user touches only their personal-project apps. Deleting a user who is the only owner of a project with apps is refused (409):
+Deleting a user touches only their personal-project apps. Deleting a user who is the only owner of a project with apps is refused (409):
 promote another member or move the apps first. Audit actions: `project.create`, `project.invite`, `project.invite_revoke`, `project.join`,
 `project.remove` (also leave), `project.role_change`, `project.update`, `project.delete`, `app.move`; `detail` holds `project=<id>`.
+
+## Suspensions
+
+Suspend what is misbehaving at the right level. Every suspension records who, when and why; the reason is shown to the
+project's owners (other members see only that it is suspended). Design: `docs/design/suspensions.md`.
+
+In the UI, **Admin > Suspensions** (`/admin?tab=suspensions`) lists everything that is suspended and unsuspends it; apps stopped by a project or user nest under it. Suspend a project from the **Projects** tab; every suspend dialog requires a reason.
+
+| Action | Effect |
+|---|---|
+| **Suspend a project** (`POST /admin/projects/{id}/suspend`, body `{"reason": "..."}` required, 1 to `SUSPEND_REASON_MAX` characters) | Every live app in it scales to 0 with the 503 page. Members can still read the project (banner; the reason is shown to owners only); every write returns 403 (the message includes the reason for owners), owners included. Members can still download existing backups. Kaisen in the project refuses new builds, runs, deploys, settings, secrets and restores, and runs in progress stop. Backups keep running; restoring a backup into the project is refused (403). |
+| **Unsuspend a project** (`POST /admin/projects/{id}/unsuspend`) | Restores only the apps that project suspension put to sleep (they go to `pending`). An app you suspended on its own stays suspended. |
+| **Suspend a user** (`POST /admin/users/{id}/suspend`, `{"reason": "..."}` required, same limits) | Login blocked. Their personal project is suspended (unless it is already suspended on its own). Every Kaisen run they started, in any project, stops at its next step. Their team projects keep running for the other members. |
+| **Unsuspend a user** | Restores their personal project and its apps only if the user suspension did that. A personal project you suspended directly stays suspended. |
+| **Suspend an app** (`POST /admin/apps/{id}/suspend`, optional `{"reason"}`) | One app on its own (`suspended_via: admin`). Meant for a single runaway app; prefer suspending the project. |
+
+Each app records why it is suspended (`suspended_via`: `user`, `project` or `admin`), so an unsuspend never brings back
+something a different suspension stopped. An app that is already suspended keeps its own reason when its project is
+suspended. Suspending a project that is suspended only because its owner is takes it over: unsuspending the user then
+leaves it suspended. A project suspended because of its owner's account (personal projects) is unsuspended by
+unsuspending the user (409 on the project route).
+
+`GET /admin/suspensions` lists every suspended user, project (a personal project suspended only because its owner is
+appears as the user) and app: `type, id, name, owner_email, project_id, project_name, reason, suspended_at,
+suspended_by_id, suspended_by_email, app_count` (users and projects), `via` (apps), `cause_type`/`cause_id` (apps: the user or project whose suspension stopped it, so the UI can nest apps under it), `is_personal` (projects). `GET /admin/projects` also
+returns `status`, `suspended_reason`, `suspended_at` and `suspended_by_email`.
+
+In the Kaisen worker, before each model turn and before any deploy or push, a run stops with a plain reason when the
+project is suspended ("This project was suspended by an administrator."), when the person who started it was suspended
+("The person who started this run was suspended.") or when they left the project. Audit actions: `project.suspend`
+(`detail` has the app count and reason), `project.unsuspend`, `user.suspend` (with the reason), `user.unsuspend`,
+`app.suspend`, `app.unsuspend`.
 
 ## Admins and recovery
 

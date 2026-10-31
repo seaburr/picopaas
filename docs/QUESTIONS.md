@@ -7,6 +7,13 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Project suspension: two calls for you (security review 2026-10-31, PENTEST K50).** (1) Restoring a backup over the
+  source app (`overwrite_source`) needs that app suspended, but an app stopped by a project or user suspension now sits in a
+  suspended project and every restore into it is refused (your rule). So that recovery path only works for an app suspended
+  on its own in an active project. Options: (a) leave it (unsuspend the project, suspend the app on its own, restore);
+  (b) let the admin restore route skip the project check. I recommend (a): it is rare, admin-only and explicit. (2) Members
+  of a suspended project cannot get a file from their bucket: the presigned-download call is a POST, so it counts as a
+  write. Backup downloads stay open. Allow GET presigns too, or leave it? I recommend leave it for now.
 - **Feedback wave 2026-10-30: calls I made, say if you disagree.** (1) Project names are unique **per owner**
   (case-insensitive), not platform-wide, so nobody learns another user's project names from a 409. (2) Building the
   starter-brief demos spends the Demo project's Anthropic key (Haiku, ~$0.05 each); I'll take demo apps offline between

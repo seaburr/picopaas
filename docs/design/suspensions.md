@@ -1,6 +1,6 @@
 # Suspensions: users, projects, apps (design, 2026-10-31)
 
-Status: agreed with Chas 2026-10-31, queued after the eval batch-2 follow-ups. Not built.
+Status: agreed with Chas 2026-10-31; backend built 2026-10-31 (frontend pending the mockup).
 
 ## Why
 Today a platform admin can suspend a **user** (their personal-project apps scale to 0) or a single **app**. Two gaps:
@@ -47,3 +47,12 @@ Unit: each rule above, including the "restore only what this suspension did" cas
 creator suspended; project suspended mid-run; deploy refused). Live e2e (`tests/e2e/test_live.py`): suspend a test
 project and the test user on throwaway apps, poll until every app stops serving, unsuspend, poll until they serve
 again. Security review of the authz changes.
+
+## Decisions (Chas, 2026-10-31, on the mockup `docs/design/suspensions-mockup.html`)
+- Suspend project: a required reason, no type-the-name step (it's reversible).
+- User suspend: the reason is **required** too.
+- Members of a suspended project can still download backups; restore is refused.
+- The banner shows the admin's reason to project **owners only**; other members see "Ask a project owner or the platform admin why".
+- Suspensions tab: users, projects and individually suspended apps are rows; apps stopped via a project or user sit
+  under their cause with an "Unsuspend the project/user" link, not their own unsuspend button.
+

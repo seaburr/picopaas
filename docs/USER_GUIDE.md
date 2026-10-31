@@ -565,7 +565,7 @@ The UI and CLI show friendly names. The API uses the raw value in the second col
 | Deploying | `deploying` | Applied to the cluster. The new pod isn't ready yet, or a rollout is still in progress. |
 | Running | `running` | At least one ready pod is serving the current version. |
 | Failed | `error` | Something went wrong. Read the message on the app page (`status_detail` in the API). Typical causes: image pull failures, crash loops, a port that doesn't answer, no free database capacity. The platform retries on its own after 1, 5, 15, then every 60 minutes. The message says when the next retry happens, or that it won't retry until you change something. Saving the app or clicking **Restart** retries right away. |
-| Suspended | `suspended` | Stopped (scaled to zero) by an administrator, or because your account was suspended. You can't edit, rotate or delete it. |
+| Suspended | `suspended` | Stopped (scaled to zero) by an administrator: the app itself, its project, or your account. You can't edit, rotate or delete it. |
 | Deleted | `deleted` | Torn down. Deleted apps normally disappear from your list. |
 
 Deleting an app removes its namespace, database and blob storage bucket. The UI asks you to type the app's name before it deletes.
@@ -636,6 +636,12 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 - **CLI and YAML.** `picopaas apply --project my-team-ab12 -f app.yaml`, `PICOPAAS_PROJECT=my-team-ab12`, or `project: my-team-ab12` in the spec. `picopaas projects` shows the slugs.
 - Databases and buckets stay with their app. Suspending a member's account does not stop the team's apps. Project owners (not the app's creator) are the contacts administrators see for a team app.
 - API keys act as you, but cannot invite, remove or change roles. Do that in the browser.
+- **Suspended projects.** If an administrator suspends a project (for example after an abuse report), all its apps stop and the project becomes
+  read-only for everyone in it, owners included. You can still open the project, its apps and Kaisen builds and read the logs and settings,
+  and a banner says it is suspended (owners also see the reason). Anything that changes something (deploy, edit, delete, invite, Kaisen builds and runs)
+  returns `403` (owners get the reason in the message). Existing backups can still be downloaded. Leaving the project stays possible. Kaisen runs in the project stop. If one of your team's
+  members is suspended, the project keeps running for everyone else, but runs that member started stop. Contact an administrator to get a
+  project restored; only the apps that suspension stopped come back.
 
 
 ### Invite someone to a project

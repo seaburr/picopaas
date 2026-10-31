@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Suspensions mockup</title>
+<style>
+:root{
+  --bg:#0d0d14;--panel:#16161f;--card:#1c1c28;--border:#2c2c3c;--muted:#4a4a5e;
+  --accent-light:#7aa0d4;--accent:#4a78c2;--primary:#3a6bd0;--primary-hover:#2f5fc4;
+  --danger:#d95555;--danger-dark:#9e2424;--danger-light:#e87070;
+  --z200:#e4e4e7;--z300:#d4d4d8;--z400:#a1a1aa;--z500:#8b8b96;
+  --amber:#fcd34d;--amber-300:#fcd34d;--emerald:#6ee7b7;
+}
+*{box-sizing:border-box;border-color:var(--border)}
+html{background:var(--bg);color:#fff;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;padding:16px;max-width:1240px;margin-inline:auto;overflow-wrap:anywhere}
+h1.doc{font-size:22px;margin:0 0 4px}
+h2.doc{font-size:17px;margin:40px 0 4px;padding-top:16px;border-top:1px solid var(--border)}
+p.doc{color:var(--z300);margin:4px 0 10px;max-width:80ch}
+.notes{margin:8px 0 14px;padding:10px 14px;border-left:3px solid var(--accent);background:var(--panel);border-radius:0 6px 6px 0;color:var(--z300);font-size:13px;max-width:100ch}
+.notes b{color:#fff}.notes ul{margin:4px 0 0;padding-left:18px}
+.pair{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;margin:10px 0}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--z400);margin:0 0 4px}
+.desk{flex:1 1 100%;min-width:0}
+.phone{flex:0 0 390px;width:390px;max-width:100%}
+.frame{container-type:inline-size;border:1px solid var(--border);border-radius:8px;background:var(--bg);overflow:hidden;position:relative}
+.nav{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--panel);flex-wrap:wrap}
+.brand{font-weight:700;margin-right:8px}
+.navl{padding:3px 10px;border-radius:6px;color:var(--z400);font-size:14px}
+.navl.on{background:var(--muted);color:#fff;font-weight:500;box-shadow:inset 0 0 0 1px rgba(161,161,170,.6)}
+.main{padding:16px}
+@container (min-width:640px){.main{padding:16px 24px}}
+.main>*+*{margin-top:12px}
+/* tokens */
+.page-title{font-size:18px;font-weight:600;margin:0}
+.section-title{font-size:14px;font-weight:600;margin:0}
+.meta{font-size:12px;color:var(--z400)}
+.help{font-size:12px;color:var(--z400);margin-top:4px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.link{color:var(--accent-light);text-decoration:none}.link:hover{text-decoration:underline}
+.card{border:1px solid var(--border);background:var(--panel);border-radius:8px}
+.card-pad{padding:12px}
+.table-th{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--z400);text-align:left}
+.badge{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;border-radius:999px;border:1px solid;padding:1px 8px;font-size:12px;font-weight:500}
+.badge-error{border-color:rgba(217,85,85,.4);background:rgba(217,85,85,.1);color:var(--danger-light)}
+.badge-warn{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.1);color:var(--amber)}
+.badge-neutral{border-color:rgba(139,139,150,.4);background:rgba(139,139,150,.1);color:var(--z300)}
+.badge-info{border-color:rgba(74,120,194,.4);background:rgba(74,120,194,.1);color:var(--accent-light)}
+.btn{display:inline-flex;min-height:32px;align-items:center;justify-content:center;gap:6px;white-space:nowrap;border-radius:6px;border:1px solid transparent;padding:4px 12px;font:500 14px/1.2 inherit;font-family:inherit;cursor:pointer;color:#fff;background:none;text-decoration:none}
+.btn-sm{min-height:28px;padding:2px 8px;font-size:12px}
+.btn-primary{background:var(--primary)}.btn-primary:hover{background:var(--primary-hover)}
+.btn-secondary{border-color:var(--z500);color:var(--z200)}.btn-secondary:hover{background:var(--card);color:#fff}
+.btn-danger-solid{background:var(--danger-dark)}
+.btn:disabled,.btn[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,.icon:focus-visible,.link:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px}
+.icon{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:6px;color:var(--z400);border:1px solid transparent;background:none}
+.icon:hover{background:var(--card);color:#fff}
+.icon.danger:hover{background:rgba(217,85,85,.1);color:var(--danger-light)}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.label{display:block;margin-bottom:4px;font-size:12px;font-weight:500;color:var(--z200)}
+.input{display:block;width:100%;min-height:32px;border-radius:6px;border:1px solid var(--z500);background:var(--card);padding:4px 10px;font:14px inherit;font-family:inherit;color:#fff}
+textarea.input{min-height:72px;resize:vertical}
+.input::placeholder{color:var(--z500)}
+.alert-error,.alert-warn,.alert-info{border-radius:6px;border:1px solid;padding:8px 12px;font-size:14px}
+.alert-info{border-color:rgba(74,120,194,.4);background:rgba(74,120,194,.1);color:var(--accent-light)}
+.alert-warn{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:var(--amber)}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--border)}
+.tab{margin-bottom:-1px;display:inline-flex;min-height:36px;align-items:center;gap:6px;white-space:nowrap;border-bottom:2px solid transparent;padding:0 12px;color:var(--z300);font-size:14px}
+.tab.on{border-color:var(--accent-light);color:#fff;font-weight:500}
+.tab.new{outline:1px dashed var(--accent-light);outline-offset:-3px;border-radius:4px}
+.search{max-width:20rem}
+/* list rows */
+.rows{list-style:none;margin:0;padding:0}
+.rows>li{border-top:1px solid var(--border)}.rows>li:first-child{border-top:0}
+.row{display:flex;flex-direction:column;gap:6px;padding:10px 12px}
+.row .cell-k{display:inline;color:var(--z400);font-size:12px}
+.sus-head{display:none}
+.child{background:rgba(255,255,255,.02);padding-left:28px;position:relative}
+.child::before{content:"";position:absolute;left:16px;top:0;bottom:50%;width:8px;border-left:1px solid var(--muted);border-bottom:1px solid var(--muted);border-radius:0 0 0 4px}
+.reason{color:var(--z200)}
+.dim{color:var(--z400)}
+.toggle{background:none;border:0;color:var(--accent-light);font:12px inherit;font-family:inherit;padding:2px 0;cursor:pointer;text-align:left}
+@container (min-width:768px){
+  .sus-head,.sus-row{display:grid;grid-template-columns:72px minmax(0,1.2fr) minmax(0,1.1fr) minmax(0,2fr) minmax(0,1.2fr) 150px;gap:12px;align-items:start;padding:8px 16px}
+  .sus-head{border-bottom:1px solid var(--border)}
+  .sus-row.row{flex-direction:row}
+  .sus-row .cell-k{display:none}
+  .sus-row .act{text-align:right}
+  .proj-row{flex-direction:row!important;align-items:center;justify-content:space-between;padding:8px 16px}
+  .child{padding-left:32px}
+  .child::before{left:20px}
+}
+.act{display:flex;align-items:center;gap:2px}
+@container (min-width:768px){.act{justify-content:flex-end}}
+.proj-row{display:flex;flex-direction:column;gap:8px;padding:10px 12px}
+.proj-r{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.proj-r .input{width:9rem}
+/* dialog */
+.dlg-wrap{background:rgba(0,0,0,.7);padding:24px 16px;border-radius:8px;display:flex;justify-content:center}
+.dlg{width:100%;max-width:384px;border:1px solid var(--border);background:var(--panel);border-radius:8px;box-shadow:0 20px 40px rgba(0,0,0,.5);padding:16px}
+.dlg p.msg{margin:8px 0 0;font-size:14px;color:var(--z300)}
+.dlg ul{margin:8px 0 0;padding-left:18px;font-size:14px;color:var(--z300)}
+.dlg .field{margin-top:12px}
+.dlg .btns{display:flex;flex-direction:column-reverse;gap:8px;margin-top:20px}
+@media (min-width:480px){.dlg .btns{flex-direction:row;justify-content:flex-end}}
+.dlgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
+/* banner */
+.sus-banner{border-radius:6px;border:1px solid rgba(245,158,11,.4);border-left:4px solid var(--amber);background:rgba(245,158,11,.1);padding:10px 12px;color:var(--z200);font-size:14px}
+.sus-banner .t{display:flex;gap:8px;align-items:flex-start;color:var(--amber);font-weight:600}
+.sus-banner dl{margin:8px 0 0;display:grid;grid-template-columns:1fr;gap:6px 12px}
+@container (min-width:640px){.sus-banner dl{grid-template-columns:auto 1fr}.sus-banner dt{padding-top:0}}
+.sus-banner dt{color:#fff;font-weight:500;font-size:13px}.sus-banner dd{margin:0;color:var(--z300);font-size:13px}
+.sus-banner .why{margin-top:8px;padding-top:8px;border-top:1px solid rgba(245,158,11,.25);font-size:13px}
+.hd{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.st-sus{color:var(--z400)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7a7a8c;margin-right:6px}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px}
+.tip{font-size:11px;color:var(--z400);margin-top:4px}
+.empty{padding:20px 16px;text-align:center;color:var(--z400);font-size:14px}
+.ann{font-size:12px;color:var(--accent-light)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+ <symbol id="play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+ <symbol id="warn" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+</svg>
+
+<h1 class="doc">Suspensions: UI mockup</h1>
+<p class="doc">Static mockup for <span class="mono">docs/design/suspensions.md</span>. Same tokens, card, row, badge, alert and dialog patterns as the shipped admin page. Each screen is shown at desktop (about 1100px) and phone (390px) width. Dashed outlines and blue notes are mockup annotations, not UI.</p>
+
+<!-- ============ 1. SUSPENSIONS TAB ============ -->
+<h2 class="doc">1. Admin: Suspensions tab</h2>
+<div class="notes"><b>Decisions</b>
+<ul>
+<li>New tab sits after Projects, with a count of suspended items (like Users and Apps). Link: <span class="mono">/admin?tab=suspensions</span>.</li>
+<li>One list, newest first. Rows are users, projects and individually suspended apps. Apps stopped <i>because</i> a project or user is suspended are not top-level rows (a big project would flood the list). They sit under their cause behind an "N apps stopped" toggle.</li>
+<li>Those child rows have no Unsuspend button. The action cell says "Unsuspend the project" (or user) and jumps to the parent row.</li>
+<li>A suspended user's personal project is not a separate row; the user row notes it is included.</li>
+<li>Name links: project to <span class="mono">/projects/:id</span>, app to <span class="mono">/apps/:id</span>, user to the Users tab filtered by email.</li>
+<li>Unsuspend is a visible text button here (the one job of this tab); icon-only is used on the other tabs. It opens the Unsuspend dialog (section 3).</li>
+</ul></div>
+<div class="pair">
+<div class="desk"><p class="lbl">Desktop</p>
+<div class="frame">
+ <div class="nav"><span class="brand">PicoPaaS</span><span class="navl">Apps</span><span class="navl">Projects</span><span class="navl on">Admin</span></div>
+ <div class="main">
+  <h1 class="page-title">Admin</h1>
+  <div class="tabs" role="tablist"><span class="tab">Users <span class="meta">14</span></span><span class="tab">Apps <span class="meta">31</span></span><span class="tab">Projects</span><span class="tab on new">Suspensions <span class="meta">3</span></span><span class="tab">Database servers <span class="meta">1</span></span><span class="tab">Settings</span><span class="tab">Audit</span></div>
+  <p class="help" style="margin-top:0">Everything that is stopped on purpose. Unsuspending restores only what that suspension stopped.</p>
+  <div class="card" style="overflow:hidden">
+   <div class="sus-head table-th"><span>Type</span><span>Name</span><span>Owner / project</span><span>Reason</span><span>Suspended</span><span style="text-align:right">Action</span></div>
+   <ul class="rows">
+    <!-- project -->
+    <li><div class="row sus-row">
+      <div><span class="badge badge-info">Project</span></div>
+      <div><a class="link" href="#">crypto-miner-lab</a><div><button class="toggle" aria-expanded="true">&#9662; 3 apps stopped</button></div></div>
+      <div class="meta">owner mallory@example.com</div>
+      <div class="reason">Mining software found in two apps. Reported by abuse@.</div>
+      <div><span title="2026-10-28 14:02">3 days ago</span><div class="meta">by chas@picopaas.xyz</div></div>
+      <div class="act"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+    <li class="child"><div class="row sus-row">
+      <div><span class="badge badge-neutral">App</span></div>
+      <div><a class="link" href="#">miner-web</a></div>
+      <div class="meta">crypto-miner-lab</div>
+      <div><span class="badge badge-warn">Via project</span> <span class="meta">same reason</span></div>
+      <div class="meta">with the project</div>
+      <div class="act"><a class="link" href="#" style="font-size:12px">Unsuspend the project</a></div>
+    </div></li>
+    <li class="child"><div class="row sus-row">
+      <div><span class="badge badge-neutral">App</span></div>
+      <div><a class="link" href="#">miner-api</a></div>
+      <div class="meta">crypto-miner-lab</div>
+      <div><span class="badge badge-warn">Via project</span> <span class="meta">same reason</span></div>
+      <div class="meta">with the project</div>
+      <div class="act"><a class="link" href="#" style="font-size:12px">Unsuspend the project</a></div>
+    </div></li>
+    <!-- user -->
+    <li><div class="row sus-row">
+      <div><span class="badge badge-info">User</span></div>
+      <div><a class="link" href="#">spammer@example.com</a><div><button class="toggle" aria-expanded="false">&#9656; 2 apps stopped</button></div></div>
+      <div class="meta">personal project included</div>
+      <div class="reason">Phishing page on a free subdomain.</div>
+      <div><span title="2026-10-30 09:41">yesterday</span><div class="meta">by chas@picopaas.xyz</div></div>
+      <div class="act"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+    <!-- app on its own -->
+    <li><div class="row sus-row">
+      <div><span class="badge badge-neutral">App</span></div>
+      <div><a class="link" href="#">loadtest-3</a></div>
+      <div class="meta">Personal project of dana@example.com</div>
+      <div class="dim">No reason recorded <span class="meta">(suspended before reasons existed)</span></div>
+      <div><span title="2026-10-12 18:20">19 days ago</span><div class="meta">by chas@picopaas.xyz</div></div>
+      <div class="act"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+   </ul>
+  </div>
+ </div>
+</div></div>
+
+<div class="phone"><p class="lbl">Phone 390px</p>
+<div class="frame">
+ <div class="nav"><span class="brand">PicoPaaS</span><span class="navl">Apps</span><span class="navl on">Admin</span></div>
+ <div class="main">
+  <h1 class="page-title">Admin</h1>
+  <div class="tabs"><span class="tab">Users <span class="meta">14</span></span><span class="tab">Apps <span class="meta">31</span></span><span class="tab">Projects</span><span class="tab on new">Suspensions <span class="meta">3</span></span><span class="tab">Database servers <span class="meta">1</span></span><span class="tab">Settings</span><span class="tab">Audit</span></div>
+  <p class="help" style="margin-top:0">Everything that is stopped on purpose. Unsuspending restores only what that suspension stopped.</p>
+  <div class="card" style="overflow:hidden">
+   <ul class="rows">
+    <li><div class="row sus-row">
+      <div class="proj-r"><span class="badge badge-info">Project</span><a class="link" href="#">crypto-miner-lab</a></div>
+      <div class="meta">owner mallory@example.com</div>
+      <div class="reason">Mining software found in two apps. Reported by abuse@.</div>
+      <div class="meta"><span title="2026-10-28 14:02">3 days ago</span> by chas@picopaas.xyz</div>
+      <div><button class="toggle" aria-expanded="true">&#9662; 3 apps stopped</button></div>
+      <div class="act" style="justify-content:flex-start"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+    <li class="child"><div class="row sus-row">
+      <div class="proj-r"><span class="badge badge-neutral">App</span><a class="link" href="#">miner-web</a><span class="badge badge-warn">Via project</span></div>
+      <div class="act"><a class="link" href="#" style="font-size:12px">Unsuspend the project</a></div>
+    </div></li>
+    <li class="child"><div class="row sus-row">
+      <div class="proj-r"><span class="badge badge-neutral">App</span><a class="link" href="#">miner-api</a><span class="badge badge-warn">Via project</span></div>
+      <div class="act"><a class="link" href="#" style="font-size:12px">Unsuspend the project</a></div>
+    </div></li>
+    <li><div class="row sus-row">
+      <div class="proj-r"><span class="badge badge-info">User</span><a class="link" href="#">spammer@example.com</a></div>
+      <div class="meta">personal project included</div>
+      <div class="reason">Phishing page on a free subdomain.</div>
+      <div class="meta">yesterday by chas@picopaas.xyz</div>
+      <div><button class="toggle" aria-expanded="false">&#9656; 2 apps stopped</button></div>
+      <div class="act" style="justify-content:flex-start"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+    <li><div class="row sus-row">
+      <div class="proj-r"><span class="badge badge-neutral">App</span><a class="link" href="#">loadtest-3</a></div>
+      <div class="meta">Personal project of dana@example.com</div>
+      <div class="dim">No reason recorded</div>
+      <div class="meta">19 days ago by chas@picopaas.xyz</div>
+      <div class="act" style="justify-content:flex-start"><button class="btn btn-secondary btn-sm"><svg class="i"><use href="#play"/></svg>Unsuspend</button></div>
+    </div></li>
+   </ul>
+  </div>
+ </div>
+</div></div>
+</div>
+
+<p class="lbl" style="margin-top:20px">Empty state (both widths)</p>
+<div class="pair">
+ <div class="desk"><div class="frame"><div class="main">
+  <div class="tabs"><span class="tab">Users</span><span class="tab">Apps</span><span class="tab">Projects</span><span class="tab on">Suspensions <span class="meta">0</span></span><span class="tab">Settings</span></div>
+  <div class="card empty">Nothing is suspended. To suspend a project, use the Projects tab; for a user, the Users tab.</div>
+ </div></div></div>
+ <div class="phone"><div class="frame"><div class="main">
+  <div class="tabs"><span class="tab">Projects</span><span class="tab on">Suspensions <span class="meta">0</span></span></div>
+  <div class="card empty">Nothing is suspended. To suspend a project, use the Projects tab; for a user, the Users tab.</div>
+ </div></div></div>
+</div>
+
+<!-- ============ 2. PROJECTS TAB ============ -->
+<h2 class="doc">2. Admin: Projects tab gains "Suspend project"</h2>
+<div class="notes"><b>Decisions</b>
+<ul>
+<li>A Ban icon button at the end of each row, same icon, position and label pattern as Users ("Suspend &lt;name&gt;"). Suspended rows get the red "Suspended" badge, a one-line reason, and a Play (Unsuspend) icon instead.</li>
+<li>On phone the icon moves under the app-limit field, in the same row.</li>
+<li>Personal projects are not listed here (they follow the user), as today.</li>
+</ul></div>
+<div class="pair">
+<div class="desk"><p class="lbl">Desktop</p><div class="frame"><div class="main">
+ <div class="tabs"><span class="tab">Users</span><span class="tab">Apps</span><span class="tab on">Projects</span><span class="tab">Suspensions <span class="meta">3</span></span><span class="tab">Settings</span></div>
+ <p class="help" style="margin-top:0">App limit is the most apps a project may hold. Leave it blank to use the default from settings (5 apps).</p>
+ <ul class="card rows">
+  <li class="proj-row"><div style="min-width:0"><div style="font-weight:500">team-roster</div><div class="meta">4 of 5 apps &middot; 3 members &middot; owner dana@example.com</div></div>
+   <div class="proj-r"><label class="meta" for="x1">App limit <span style="color:var(--z500)">(effective 5)</span></label><input id="x1" class="input mono" placeholder="blank = default"><button class="icon danger" title="Suspend team-roster" aria-label="Suspend team-roster"><svg class="i"><use href="#ban"/></svg></button></div></li>
+  <li class="proj-row"><div style="min-width:0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-weight:500">crypto-miner-lab <span class="badge badge-error">Suspended</span></div><div class="meta">3 of 5 apps &middot; 2 members &middot; owner mallory@example.com</div><div class="meta" style="color:var(--z300)">3 days ago: Mining software found in two apps.</div></div>
+   <div class="proj-r"><label class="meta" for="x2">App limit</label><input id="x2" class="input mono" placeholder="blank = default"><button class="icon" title="Unsuspend crypto-miner-lab" aria-label="Unsuspend crypto-miner-lab"><svg class="i"><use href="#play"/></svg></button></div></li>
+ </ul>
+</div></div></div>
+<div class="phone"><p class="lbl">Phone 390px</p><div class="frame"><div class="main">
+ <div class="tabs"><span class="tab">Projects</span><span class="tab">Suspensions <span class="meta">3</span></span></div>
+ <ul class="card rows">
+  <li class="proj-row"><div style="min-width:0"><div style="font-weight:500">team-roster</div><div class="meta">4 of 5 apps &middot; 3 members &middot; owner dana@example.com</div></div>
+   <div class="proj-r"><label class="meta" for="y1">App limit</label><input id="y1" class="input mono" placeholder="blank = default"><button class="icon danger" aria-label="Suspend team-roster"><svg class="i"><use href="#ban"/></svg></button></div></li>
+  <li class="proj-row"><div style="min-width:0"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-weight:500">crypto-miner-lab <span class="badge badge-error">Suspended</span></div><div class="meta">3 of 5 apps &middot; owner mallory@example.com</div><div class="meta" style="color:var(--z300)">3 days ago: Mining software found in two apps.</div></div>
+   <div class="proj-r"><label class="meta" for="y2">App limit</label><input id="y2" class="input mono" placeholder="blank = default"><button class="icon" aria-label="Unsuspend crypto-miner-lab"><svg class="i"><use href="#play"/></svg></button></div></li>
+ </ul>
+</div></div></div>
+</div>
+
+<!-- ============ 3. DIALOGS ============ -->
+<h2 class="doc">3. Dialogs (ConfirmDialog, max-w-sm, content in its slot)</h2>
+<div class="notes"><b>Decisions</b>
+<ul>
+<li><b>Suspend project:</b> danger-solid button, reason textarea required (button disabled until filled). No type-the-name: the house style reserves that for irreversible deletes, and suspend is fully reversible (same as suspend user and suspend app today). Open question 1 asks whether you want it for projects anyway.</li>
+<li>The dialog names the app count and the Kaisen effect up front, then what still works for members, so the admin knows the blast radius.</li>
+<li><b>Unsuspend project:</b> primary (not danger) button, no reason field. It says apps that were suspended on their own stay suspended.</li>
+<li><b>Suspend user:</b> same textarea, marked optional (as you asked), help text says where it shows. Message keeps today's wording plus the Kaisen line. If the design stays "reason required for every suspension", drop "(optional)" and disable the button.</li>
+</ul></div>
+<div class="dlgs">
+ <div><p class="lbl">Suspend project (desktop and phone: same width cap)</p><div class="dlg-wrap"><div class="dlg" role="dialog" aria-label="Suspend crypto-miner-lab">
+  <h3 class="section-title">Suspend crypto-miner-lab</h3>
+  <p class="msg">3 apps will stop and show a 503 page. Kaisen builds in this project stop too, and no new ones can start. Members can still view the project and download backups. Nothing is deleted.</p>
+  <div class="field"><label class="label" for="r1">Reason (required)</label><textarea id="r1" class="input" placeholder="What happened? Project owners see this."></textarea><p class="help">Saved in the audit log and shown to the project's owners.</p></div>
+  <div class="btns"><button class="btn btn-secondary">Cancel</button><button class="btn btn-danger-solid" disabled>Suspend project</button></div>
+ </div></div></div>
+ <div><p class="lbl">Unsuspend project</p><div class="dlg-wrap"><div class="dlg" role="dialog" aria-label="Unsuspend crypto-miner-lab">
+  <h3 class="section-title">Unsuspend crypto-miner-lab</h3>
+  <p class="msg">3 apps start again. Apps suspended on their own stay suspended. Kaisen builds that were stopped do not resume; members can start new ones.</p>
+  <div class="btns"><button class="btn btn-secondary">Cancel</button><button class="btn btn-primary">Unsuspend project</button></div>
+ </div></div></div>
+ <div><p class="lbl">Suspend user (gains reason)</p><div class="dlg-wrap"><div class="dlg" role="dialog" aria-label="Suspend spammer@example.com">
+  <h3 class="section-title">Suspend spammer@example.com</h3>
+  <p class="msg">They can't sign in. Their personal project and its 2 apps stop, and any Kaisen run they started stops. Their team projects keep running for the other members. Data is kept; unsuspend to restore.</p>
+  <div class="field"><label class="label" for="r3">Reason (optional)</label><textarea id="r3" class="input" placeholder="Why? Shown to admins in Suspensions."></textarea><p class="help">Saved in the audit log.</p></div>
+  <div class="btns"><button class="btn btn-secondary">Cancel</button><button class="btn btn-danger-solid">Suspend user</button></div>
+ </div></div></div>
+</div>
+<p class="lbl" style="margin-top:20px">Suspend project at 390px, with a reason typed</p>
+<div class="phone"><div class="frame" style="background:#000"><div class="dlg-wrap" style="padding:16px"><div class="dlg" style="padding:16px">
+  <h3 class="section-title">Suspend crypto-miner-lab</h3>
+  <p class="msg">3 apps will stop and show a 503 page. Kaisen builds in this project stop too, and no new ones can start. Members can still view the project and download backups. Nothing is deleted.</p>
+  <div class="field"><label class="label" for="r4">Reason (required)</label><textarea id="r4" class="input">Mining software found in two apps. Reported by abuse@.</textarea></div>
+  <div class="btns"><button class="btn btn-secondary">Cancel</button><button class="btn btn-danger-solid">Suspend project</button></div>
+</div></div></div></div>
+
+<!-- ============ 4. BANNER ============ -->
+<h2 class="doc">4. Banner members see in a suspended project</h2>
+<div class="notes"><b>Decisions</b>
+<ul>
+<li>Amber (the existing warn tone) with a thicker left edge, not red: it is a state, not an error the member caused. It sits first in <span class="mono">&lt;main&gt;</span>, above the page title, and is the same component on the project page, every app page of the project (health and settings) and the Kaisen pages.</li>
+<li>Two short rows: <b>Blocked</b> and <b>Still works</b>, then the admin's reason. The reason is shown to project owners only (per the design); other members see "Ask a project owner or the platform admin."</li>
+<li>Write buttons stay visible but disabled (<span class="mono">disabled</span> plus a "Project is suspended" tooltip and a reason in the banner), so people see what they can't do instead of hunting for it. Danger zone (delete) is disabled too; the 403 from the API is the real guard.</li>
+<li>Status badge on apps reads "Suspended" (existing StatusBadge). "Still works" lists downloading backups on the assumption that reads are allowed (design: reads allowed, restores refused). Open question 2.</li>
+</ul></div>
+
+<p class="lbl">Project page (owner view)</p>
+<div class="pair">
+<div class="desk"><p class="lbl">Desktop</p><div class="frame">
+ <div class="nav"><span class="brand">PicoPaaS</span><span class="navl">Apps</span><span class="navl on">Projects</span></div>
+ <div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Changing settings or members, deploying, restarting, restoring backups, and Kaisen builds. Apps are stopped.</dd>
+   <dt>Still works</dt><dd>Viewing the project, apps, logs and backups; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@. <span class="dim">Suspended 3 days ago.</span></div>
+  </div>
+  <div class="hd"><h1 class="page-title">crypto-miner-lab</h1><span class="meta">3 of 5 apps &middot; 2 members</span></div>
+  <div class="card card-pad"><div class="hd"><h2 class="section-title">Members</h2><button class="btn btn-secondary btn-sm" disabled title="Project is suspended">Invite member</button></div>
+   <p class="meta" style="margin-top:6px">mallory@example.com (owner) &middot; trent@example.com</p></div>
+  <div class="card"><ul class="rows"><li class="row" style="flex-direction:row;align-items:center;justify-content:space-between"><span><a class="link" href="#">miner-web</a> <span class="badge badge-neutral" style="margin-left:6px"><span class="dot" style="margin:0"></span>Suspended</span></span><button class="btn btn-secondary btn-sm" disabled title="Project is suspended">New app</button></li></ul></div>
+ </div></div></div>
+
+<div class="phone"><p class="lbl">Phone 390px</p><div class="frame">
+ <div class="nav"><span class="brand">PicoPaaS</span><span class="navl">Apps</span><span class="navl on">Projects</span></div>
+ <div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Changing settings or members, deploying, restarting, restoring backups, and Kaisen builds. Apps are stopped.</dd>
+   <dt>Still works</dt><dd>Viewing the project, apps, logs and backups; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@. <span class="dim">Suspended 3 days ago.</span></div>
+  </div>
+  <div class="hd"><h1 class="page-title">crypto-miner-lab</h1><span class="meta">3 of 5 apps &middot; 2 members</span></div>
+  <div class="card card-pad"><div class="hd"><h2 class="section-title">Members</h2><button class="btn btn-secondary btn-sm" disabled>Invite member</button></div></div>
+ </div></div></div>
+</div>
+
+<p class="lbl" style="margin-top:20px">Non-owner member sees the same banner without the reason</p>
+<div class="phone"><div class="frame"><div class="main">
+ <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Changing settings or members, deploying, restarting, restoring backups, and Kaisen builds. Apps are stopped.</dd>
+   <dt>Still works</dt><dd>Viewing the project, apps, logs and backups; downloading backups.</dd></dl>
+   <div class="why dim">Ask a project owner or the platform admin why.</div>
+ </div></div></div></div>
+
+<p class="lbl" style="margin-top:24px">App page (App health) in a suspended project: banner plus disabled write buttons</p>
+<div class="pair">
+<div class="desk"><p class="lbl">Desktop</p><div class="frame"><div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Changing settings or members, deploying, restarting, restoring backups, and Kaisen builds. Apps are stopped.</dd>
+   <dt>Still works</dt><dd>Viewing the project, apps, logs and backups; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@.</div>
+  </div>
+  <div class="hd"><h1 class="page-title" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">miner-web <span class="badge badge-neutral"><span class="dot" style="margin:0"></span>Suspended</span></h1>
+   <div class="btnrow"><button class="btn btn-secondary btn-sm" disabled title="Project is suspended">Restart</button><button class="btn btn-secondary btn-sm" disabled title="Project is suspended">Deploy</button><a class="btn btn-secondary btn-sm" href="#" aria-disabled="true">Settings</a></div></div>
+  <p class="tip" style="margin-top:-6px">Disabled buttons say "Project is suspended" on hover and focus. Settings stays a link so members can still read the config; its Save and Danger zone buttons are disabled.</p>
+  <div class="card card-pad"><h2 class="section-title">Backups</h2><p class="meta" style="margin:6px 0 8px">Latest: 2 hours ago (kept running for evidence).</p><div class="btnrow"><button class="btn btn-secondary btn-sm">Download</button><button class="btn btn-secondary btn-sm" disabled title="Project is suspended">Restore</button></div></div>
+</div></div></div>
+<div class="phone"><p class="lbl">Phone 390px</p><div class="frame"><div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Changing settings or members, deploying, restarting, restoring backups, and Kaisen builds. Apps are stopped.</dd>
+   <dt>Still works</dt><dd>Viewing the project, apps, logs and backups; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@.</div>
+  </div>
+  <h1 class="page-title" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">miner-web <span class="badge badge-neutral"><span class="dot" style="margin:0"></span>Suspended</span></h1>
+  <div class="btnrow"><button class="btn btn-secondary btn-sm" disabled>Restart</button><button class="btn btn-secondary btn-sm" disabled>Deploy</button><a class="btn btn-secondary btn-sm" href="#">Settings</a></div>
+  <div class="card card-pad"><h2 class="section-title">Backups</h2><div class="btnrow" style="margin-top:8px"><button class="btn btn-secondary btn-sm">Download</button><button class="btn btn-secondary btn-sm" disabled>Restore</button></div></div>
+</div></div></div>
+</div>
+
+<p class="lbl" style="margin-top:24px">Kaisen page: same banner, builds blocked</p>
+<div class="pair">
+<div class="desk"><p class="lbl">Desktop</p><div class="frame"><div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Kaisen builds and deploys; any run in progress was stopped. Changing settings or members, restarting, restoring backups.</dd>
+   <dt>Still works</dt><dd>Viewing past builds, their files and diffs; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@.</div>
+  </div>
+  <div class="hd"><h1 class="page-title">Kaisen</h1><span class="meta">crypto-miner-lab</span></div>
+  <div class="card card-pad"><label class="label" for="k1">Describe what to build</label><textarea id="k1" class="input" disabled placeholder="Builds are paused while the project is suspended."></textarea><div class="btnrow" style="margin-top:8px"><button class="btn btn-primary" disabled title="Project is suspended">Start build</button></div></div>
+  <div class="card card-pad"><div class="hd"><span class="section-title">Build 12 &middot; miner-web</span><span class="badge badge-warn">Stopped: project suspended</span></div><p class="meta" style="margin-top:6px">Stopped after turn 4. Files so far are kept.</p></div>
+</div></div></div>
+<div class="phone"><p class="lbl">Phone 390px</p><div class="frame"><div class="main">
+  <div class="sus-banner" role="status">
+   <div class="t"><svg class="i" style="margin-top:2px"><use href="#warn"/></svg>This project is suspended by a platform admin.</div>
+   <dl><dt>Blocked</dt><dd>Kaisen builds and deploys; any run in progress was stopped. Changing settings or members, restarting, restoring backups.</dd>
+   <dt>Still works</dt><dd>Viewing past builds, their files and diffs; downloading backups.</dd></dl>
+   <div class="why"><b style="color:#fff">Reason:</b> Mining software found in two apps. Reported by abuse@.</div>
+  </div>
+  <h1 class="page-title">Kaisen</h1>
+  <div class="card card-pad"><label class="label" for="k2">Describe what to build</label><textarea id="k2" class="input" disabled placeholder="Builds are paused while the project is suspended."></textarea><div class="btnrow" style="margin-top:8px"><button class="btn btn-primary" disabled>Start build</button></div></div>
+  <div class="card card-pad"><div class="hd"><span class="section-title">Build 12</span><span class="badge badge-warn">Stopped: project suspended</span></div></div>
+</div></div></div>
+</div>
+
+<h2 class="doc">Open questions</h2>
+<div class="notes"><ul>
+<li>1. Type-the-name on Suspend project? Mockup says no (reversible, like user/app suspend). Adding it is one prop.</li>
+<li>2. May suspended-project members download backups? Mockup says yes (read). Easy to remove from the banner and disable the button if not.</li>
+<li>3. Reason on user suspend: you said optional, the design doc says every suspension takes a required reason. Mockup shows optional.</li>
+<li>4. Should the reason be visible to all members or owners only? Mockup follows the design (owners only).</li>
+<li>5. Old suspended apps have no reason; mockup shows "No reason recorded" and still offers Unsuspend.</li>
+</ul></div>
+</body></html>

@@ -50,6 +50,8 @@ everywhere a user is accepted except where marked "session only".
 | POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote` | admin |
 | DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
 | POST | `/admin/apps/{app_id}/suspend`, `/unsuspend` | admin |
+| POST | `/admin/projects/{project_id}/suspend`, `/unsuspend` | admin |
+| GET | `/admin/suspensions` | admin (browser session only) |
 | PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin |
 | PUT | `/admin/apps/{app_id}/replicas` | admin |
 | PATCH | `/admin/apps/{app_id}/resources` | admin |
@@ -338,26 +340,36 @@ Admins can also read and operate on any app through the `/apps/{app_id}/...` rou
 | GET | `/admin/users` | none | List of `AdminUser` (not deleted), by id. |
 | PATCH | `/admin/users/{user_id}` | `{"app_limit": int >= 0}` | `AdminUser`. 422 above the target's ceiling (`max_apps_per_admin` if the target is a platform admin, else `max_apps_per_user`). An admin's effective limit is at least `admin_default_app_limit`. |
 | POST | `/admin/users/{user_id}/approve` | none | `AdminUser`. 409 unless the user is `pending`. |
-| POST | `/admin/users/{user_id}/suspend` | none | `AdminUser`. Suspends their apps too. 400 for the main administrator. |
-| POST | `/admin/users/{user_id}/unsuspend` | none | `AdminUser`. 409 unless suspended; apps suspended with the account come back. |
+| POST | `/admin/users/{user_id}/suspend` | `{"reason": str, 1..SUSPEND_REASON_MAX, required}` | `AdminUser` (with `suspended_reason`, `suspended_at`). Suspends the personal project and its apps (unless the project is already suspended on its own) and stops the Kaisen runs they started. 400 for the main administrator. Audited with the reason. |
+| POST | `/admin/users/{user_id}/unsuspend` | none | `AdminUser`. 409 unless suspended; restores only what the user suspension did (a personal project or app suspended on its own stays suspended). |
 | POST | `/admin/users/{user_id}/reset-password` | none | `{temporary_password}`, shown once; sets `must_change_password`. |
 | POST | `/admin/users/{user_id}/promote` | none | `AdminUser` with `role: platform_admin`. 409 unless the user is `active`, or if they are already an administrator. Audited as `user.promote`. |
 | POST | `/admin/users/{user_id}/demote` | none | `AdminUser` with `role: user`. 409 if they aren't an administrator, or if it would leave zero active administrators. Demoting yourself works only when another active administrator exists. Audited as `user.demote`. |
 | DELETE | `/admin/users/{user_id}` | none | 204. Revokes their API keys and deletes their apps. 400 for any administrator (demote first); 409 for the last active administrator. |
 
 All user routes return 404 for an unknown or deleted user. Each action is audited.
-Suspending or deleting a user only affects their personal-project apps; apps in shared projects keep running. Deleting a user
+Suspending or deleting a user only affects their personal-project apps; apps in shared projects keep running (Kaisen runs the user started still stop). Deleting a user
 is refused (409) while they are the only owner of a shared project that still has apps. If they are the only owner of an empty project, the project is deleted.
 
-`AdminProject`: `id, name, slug, is_personal, app_count, member_count, owner_emails, app_limit, app_limit_effective`.
+`AdminProject`: `id, name, slug, is_personal, app_count, member_count, owner_emails, app_limit, app_limit_effective, status` (`active`|`suspended`), `suspended_reason, suspended_at, suspended_by_email`.
 `GET /admin/projects` lists shared projects; `PATCH /admin/projects/{id}` `{"app_limit": int >= 0 | null}` sets the limit (422 above `max_apps_per_user`, null = default; 409 for personal projects, which follow the user's limit). Audit `project.update`.
+
+| Method | Path | Body | Response / notes |
+|---|---|---|---|
+| POST | `/admin/projects/{project_id}/suspend` | `{"reason": str, 1..SUSPEND_REASON_MAX, required}` | `AdminProject`. Suspends every live app in it (`suspended_via: project`; apps already suspended keep their reason). 409 if already suspended (a personal project suspended only via its owner is taken over). 404 unknown. Audit `project.suspend`. |
+| POST | `/admin/projects/{project_id}/unsuspend` | none | `AdminProject`. Restores (to `pending`) only the apps with `suspended_via: project`. 409 if not suspended, or if it is suspended because of its owner's account (unsuspend the user). Audit `project.unsuspend`. |
+| GET | `/admin/suspensions` | none | List of `{type: user|project|app, id, name, owner_email, project_id, project_name, reason, suspended_at, suspended_by_id, suspended_by_email, app_count, via, cause_type, cause_id, is_personal}`, newest first. `via` is user|project|admin for apps; `cause_type`/`cause_id` (user|project, id) let the UI nest an app under what suspended it. |
+
+While a project is suspended, member routes keep working for reads (GET) and return 403 for everything else, with a message that
+includes the reason for project owners only. Backup downloads stay open. `ProjectOut` (`GET /projects`, `/projects/{id}`) carries `status`, `suspended_at` and, for owners only, `suspended_reason`.
+`AdminAppOut` carries `suspended_via`, `suspended_reason`, `suspended_at`.
 
 ### Apps
 
 | Method | Path | Body | Response / notes |
 |---|---|---|---|
 | GET | `/admin/apps` | none | List of `AdminAppOut` for every live app. |
-| POST | `/admin/apps/{app_id}/suspend` | none | `AdminAppOut`. |
+| POST | `/admin/apps/{app_id}/suspend` | optional `{"reason"}` | `AdminAppOut` (`suspended_via: admin`). |
 | POST | `/admin/apps/{app_id}/unsuspend` | none | `AdminAppOut`; status goes to `pending`. 409 unless suspended. |
 | DELETE | `/admin/apps/{app_id}` | none | 204. Works on suspended apps too. |
 | PUT | `/admin/apps/{app_id}/platform-host` | `{"subdomain": "blog"}` | `App`. Adds a fixed `blog.<domain>` host (1 to 63 chars, normalised; 422 if invalid or reserved; 409 if another app uses it as a platform host or generated address). The app requeues. |
