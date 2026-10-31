@@ -334,6 +334,19 @@ def test_platform_admin_can_still_act_through_admin_routes(team):
     assert team.admin.delete(f"/admin/apps/{team.apps[1]}").status_code in (200, 204)
 
 
+def test_app_suspended_on_its_own_cannot_restart_inside_a_suspended_project(team):
+    # live e2e 2026-10-31: app suspended first (via=admin), then the project; the app unsuspend used to return 200
+    one = team.apps[0]
+    assert team.admin.post(f"/admin/apps/{one}/suspend", json={"reason": "noisy"}).status_code == 200
+    _suspend(team)
+    r = team.admin.post(f"/admin/apps/{one}/unsuspend")
+    assert r.status_code == 409 and _row(one).status == "suspended"
+    assert team.admin.post(f"/admin/projects/{team.pid}/unsuspend").status_code == 200
+    assert _row(one).status == "suspended"  # its own suspension still stands
+    assert team.admin.post(f"/admin/apps/{one}/unsuspend").status_code == 200
+    assert _row(one).status == "pending"
+
+
 def test_unsuspended_project_accepts_writes_again(team):
     _suspend(team)
     team.admin.post(f"/admin/projects/{team.pid}/unsuspend")

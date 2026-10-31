@@ -597,15 +597,15 @@ def list_all_apps(db: Session = Depends(get_db)):
 
 
 def _held_by(db: Session, a: models.App) -> Optional[str]:
-    """'project' / 'user' while the suspension that put this app to sleep (suspended_via) is still in force."""
-    if a.suspended_via == "project":
-        p = db.get(models.Project, a.project_id) if a.project_id else None
-        return "project" if p is not None and p.status == "suspended" else None
-    if a.suspended_via == "user":
-        p = db.get(models.Project, a.project_id) if a.project_id else None
-        owner = db.get(models.User, p.created_by if p is not None and p.is_personal else a.owner_id)
-        return "user" if owner is not None and owner.status == "suspended" else None
-    return None
+    """'project' / 'user' while a wider suspension still covers this app, whatever put the app itself to sleep: an app
+    suspended on its own and then caught in a project or owner suspension must not restart inside it (live e2e
+    2026-10-31). Unsuspend the project or user first; the app's own suspension is then lifted separately."""
+    p = db.get(models.Project, a.project_id) if a.project_id else None
+    if p is not None and p.status == "suspended":
+        return "user" if p.suspended_by_user else "project"
+    owner = db.get(models.User, p.created_by if p is not None and p.is_personal else a.owner_id) if (
+        p is None or p.is_personal) else None
+    return "user" if owner is not None and owner.status == "suspended" else None
 
 
 @router.post("/apps/{app_id}/suspend", response_model=AdminAppOut)
