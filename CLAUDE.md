@@ -50,6 +50,7 @@ uvicorn app.main:app --reload
 # tests (SQLite in-memory, real register/login flow, no auth mocks)
 source .venv/bin/activate
 python -m pytest tests/ -v
+ruff check .   # lint (config ruff.toml; also runs in CI with actionlint and shellcheck)
 
 # migrations (DATABASE_URL / SECRET_KEY / FERNET_KEY come from the environment, see app/config.py)
 source .venv/bin/activate

@@ -60,6 +60,10 @@ Set `LOG_LEVEL=DEBUG` on the platform deployment for more detail (default `INFO`
 `WARNING` regardless, because they log every 15 s job run and every request URL. Admin > Health > Logs still redacts secrets
 before showing or downloading lines.
 
+## CI lint
+
+The `lint` CI job runs `ruff check .` (ruff pinned in `requirements-dev.txt`, config `ruff.toml`: defaults E4/E7/E9/F, no E501, F811 off in `tests/`; no `ruff format`), `actionlint` on `.github/workflows/*.yml` (release pinned in the job) and `shellcheck` on every tracked `*.sh` plus `.githooks/pre-commit`. Intentional exceptions carry a `# shellcheck disable=` or `# noqa` line with a reason. Run locally: `ruff check .`.
+
 ## CI frontend lint
 
 The `frontend` CI job runs `npm run lint` (ESLint 9 flat config: eslint-plugin-vue, typescript-eslint, vuejs-accessibility; no formatting rules; lints `src`, `e2e`, `scripts`). Zero warnings allowed; inline `eslint-disable` needs a reason comment.

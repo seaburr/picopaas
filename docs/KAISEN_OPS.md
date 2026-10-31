@@ -42,12 +42,13 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
    suite (about 1909 tests, ~6.5 min) plus `cd frontend && npm run typecheck && npm run build`.
 2. scm-security commits (gitleaks on every staged chunk; **never** allowlist: change fixture values instead, e.g.
    `not-the-anthropic-key`; `fixture-anthropic-key-1234` tripped `generic-api-key`), pushes, and watches **CI, image,
-   deploy** (and `kaisen-runtime-image` when `images/kaisen-runtime/` changed). Note: `deploy` starts on push and is not
-   gated on CI.
+   deploy** (and `kaisen-runtime-image` when `images/kaisen-runtime/` changed). `deploy` runs after both `image` and `CI`
+   and rolls out only when both are green for main's current tip (an older commit never deploys over a newer one), so a
+   push reaches prod about 20 minutes later. A manual `deploy` dispatch skips that check.
 3. **Runtime image changes** need a re-pin: after `kaisen-runtime-image` publishes, run `bootstrap.yml` with input
    `kaisen_runtime_image_digest=sha256:...` (it writes `KAISEN_RUNTIME_IMAGE` into `picopaas-env`). A bootstrap run
    **needs Chas's approval** (QUESTIONS.md). Leaving `backup_image_digest` empty re-pins the backup image to `:latest` too.
-   Current pin: `picopaas-kaisen-runtime@sha256:068f834b753f0aef9173971cbe171d2251bd0a90263d566c3ad775365f6f0c90`.
+   Current pin (2026-10-31, run 41192942142): `picopaas-kaisen-runtime@sha256:0b06ce362c897448c7d4c7e2acd2e75d61c01aa4321cc606c849b0c8fecb77a7` (static tests, bundle sha marker). Previous: `sha256:068f834b753f0aef9173971cbe171d2251bd0a90263d566c3ad775365f6f0c90`. Backup image pinned at `sha256:bc6ebfca524f2b7a149e3c160b8b63d5b9030f1a7e75bb90eb6587fe36bfd694`.
    Dependabot (Mondays) opens base-image PRs for `images/kaisen-runtime/`. A merged one publishes a new image but
    changes nothing live until this re-pin, so batch them and ask Chas for one re-pin at a time.
 4. Existing built apps pick up deploy-time changes (e.g. the bundle-URL-as-secret fix) only on their next deploy
