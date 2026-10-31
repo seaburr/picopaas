@@ -5,6 +5,7 @@ Skipped unless E2E_USER_TOKEN and E2E_ADMIN_TOKEN are set. Tests share two modul
 """
 import os
 import secrets
+import time
 
 import pytest
 
@@ -317,3 +318,113 @@ def test_10_scratch_disk_raise_lets_the_app_write_more(admin, user, quota_probe)
     user.wait_rollout(app["id"])
     r = poll(lambda: get_json(app_url(app, "/disk/fill?mb=100")), 300, 10, desc="100 MB scratch write after raise")
     assert r["written_mb"] == 100
+
+
+# 11 project and user suspension (throwaway team project + apps; fast, no builds) -----------------
+def _serving(app) -> bool:
+    r = http_get(app_url(app), timeout=10)
+    return r is not None and r.status_code == 200
+
+
+def _all_down(*apps):
+    return lambda: all(not _serving(a) for a in apps)
+
+
+def _all_up(*apps):
+    return lambda: all(_serving(a) for a in apps)
+
+
+@pytest.fixture(scope="module")
+def team(user, admin):
+    """A throwaway team project with two hello apps, removed (apps, then project) even on failure."""
+    proj = user.ok("POST", "/projects", json={"name": f"e2e suspend {int(time.time())}"})
+    apps = []
+    try:
+        for _ in range(2):
+            r = user.req("POST", "/apps", json={"name": rand_name(), "image": IMG["hello"], "port": APP_PORT,
+                                                "project_id": proj["id"]})
+            assert r.status_code == 201, r.text
+            apps.append(r.json())
+        for a in apps:
+            user.wait_status(a["id"])
+        poll(_all_up(*apps), 120, desc="both team apps serving")
+        yield proj, apps
+    finally:
+        admin.req("POST", f"/admin/projects/{proj['id']}/unsuspend")  # 409 when not suspended: fine
+        for a in apps:
+            admin.delete_app(a["id"])
+        if user.req("DELETE", f"/projects/{proj['id']}").status_code != 204:
+            time.sleep(10)
+            user.req("DELETE", f"/projects/{proj['id']}")
+
+
+def _project(user, pid):
+    return next(p for p in user.ok("GET", "/projects") if p["id"] == pid)
+
+
+def test_11_project_suspend_stops_apps_blocks_writes_and_restores(user, admin, team):
+    proj, (a1, a2) = team
+    reason = "e2e abuse check"
+    t0 = time.time()
+    admin.ok("POST", f"/admin/projects/{proj['id']}/suspend", json={"reason": reason})
+    try:
+        poll(_all_down(a1, a2), 180, 3, desc="both suspended-project apps to stop serving")
+        print(f"\n[timing] project suspend: apps down after {time.time() - t0:.0f}s")
+        p = _project(user, proj["id"])
+        assert p["status"] == "suspended" and reason in (p["suspended_reason"] or "")
+        r = user.req("PATCH", f"/apps/{a1['id']}", json={"port": APP_PORT})
+        assert r.status_code == 403 and reason in r.text, r.text
+        r = user.req("POST", "/apps", json={"name": rand_name(), "image": IMG["hello"], "port": APP_PORT,
+                                            "project_id": proj["id"]})
+        assert r.status_code == 403, r.text
+        assert user.req("GET", f"/apps/{a1['id']}").status_code == 200  # reads stay open
+        r = user.req("POST", "/kaisen/builds", json={"name": "e2e", "brief": "x", "project_id": proj["id"]})
+        assert r.status_code == 403, r.text
+    finally:
+        t1 = time.time()
+        admin.req("POST", f"/admin/projects/{proj['id']}/unsuspend")
+    poll(_all_up(a1, a2), 240, 3, desc="both apps serving again after project unsuspend")
+    print(f"\n[timing] project unsuspend: apps up after {time.time() - t1:.0f}s")
+    assert _project(user, proj["id"])["status"] == "active"
+
+
+def test_11_project_suspend_is_precise(user, admin, team):
+    """An app suspended on its own stays suspended through a project suspend + unsuspend (K46)."""
+    proj, (a1, a2) = team
+    admin.ok("POST", f"/admin/apps/{a1['id']}/suspend")
+    try:
+        poll(_all_down(a1), 180, 3, desc="app 1 to stop")
+        admin.ok("POST", f"/admin/projects/{proj['id']}/suspend", json={"reason": "e2e precision"})
+        poll(_all_down(a2), 180, 3, desc="app 2 to stop")
+        # K46: no app restarts on its own while its project is suspended: neither the one the project put to sleep
+        # (app 2) nor the one suspended on its own first (app 1; this was a 200 until the fix found by this test).
+        for a in (a2, a1):
+            r = admin.req("POST", f"/admin/apps/{a['id']}/unsuspend")
+            assert r.status_code == 409, r.text
+        admin.ok("POST", f"/admin/projects/{proj['id']}/unsuspend")
+        poll(_all_up(a2), 240, 3, desc="app 2 back after project unsuspend")
+        assert not _serving(a1), "individually suspended app must stay suspended"
+        assert user.get_app(a1["id"])["status"] == "suspended"
+    finally:
+        admin.req("POST", f"/admin/projects/{proj['id']}/unsuspend")
+        admin.req("POST", f"/admin/apps/{a1['id']}/unsuspend")
+    poll(_all_up(a1, a2), 240, 3, desc="app 1 back after its own unsuspend")
+
+
+def test_11_user_suspend_stops_personal_apps_only(user, admin, team, hello):
+    proj, (a1, a2) = team
+    uid = user.me["id"]
+    t0 = time.time()
+    admin.ok("POST", f"/admin/users/{uid}/suspend", json={"reason": "e2e user suspend"})
+    try:
+        poll(_all_down(hello), 180, 3, desc="personal app to stop serving")
+        print(f"\n[timing] user suspend: personal app down after {time.time() - t0:.0f}s")
+        # /auth/me stays readable for a suspended account (by design); the gated routes refuse it
+        assert user.req("GET", "/apps").status_code in (401, 403)
+        assert _serving(a1) and _serving(a2), "the team project must keep running"
+    finally:
+        t1 = time.time()
+        admin.req("POST", f"/admin/users/{uid}/unsuspend")  # always lift it, a stuck test user breaks the suite
+    poll(_all_up(hello), 240, 3, desc="personal app serving after user unsuspend")
+    print(f"\n[timing] user unsuspend: personal app up after {time.time() - t1:.0f}s")
+    assert user.req("GET", "/apps").status_code == 200
