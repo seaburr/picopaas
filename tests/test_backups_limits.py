@@ -174,6 +174,8 @@ def test_global_ceiling_skips_scheduled_and_surfaces_in_health(admin, db_session
     backups.tick(db_session, runner, NOW)
     run = db_session.query(models.BackupRun).filter_by(app_id=aid, trigger="scheduled").first()
     assert run.status == "failed" and "platform is full" in run.error or "for the platform is full" in run.error
+    run.created_at = datetime.utcnow()  # the health view lists failures from the last N days of the REAL clock, not NOW
+    db_session.commit()
     h = admin.get("/admin/health/backups").json()
     assert h["storage"]["over_cap"] is True and "AT the platform cap" in h["storage"]["warning"]
     assert any(f["app_id"] == aid and "platform is full" in f["error"] for f in h["failures"])
