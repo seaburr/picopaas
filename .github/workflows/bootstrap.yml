@@ -321,7 +321,7 @@ jobs:
           done
           [ -z "$FERNET_KEYS_PREVIOUS" ] || echo "FERNET_KEY changed or previous keys present: keeping $n previous key(s)"
           PLATFORM_DB_PASSWORD=$(get PLATFORM_DB_PASSWORD); [ -n "$PLATFORM_DB_PASSWORD" ] || PLATFORM_DB_PASSWORD=$(openssl rand -hex 24)
-          for v in "$PLATFORM_DB_PASSWORD"; do echo "::add-mask::$v"; done
+          echo "::add-mask::$PLATFORM_DB_PASSWORD"
 
           # Idempotently create database `picopaas` + user `picopaas` on the managed cluster. The runner is
           # not in the DB firewall (only the k8s cluster is), so run the SQL from a throwaway in-cluster pod.
@@ -422,7 +422,7 @@ jobs:
             # Prove the key works for what the platform does (list + restic/s5cmd/sweep need list, get, put, delete on this
             # bucket) BEFORE it replaces anything. New keys can take a few seconds to propagate.
             ok=no
-            for i in 1 2 3 4 5 6 7 8; do
+            for _ in 1 2 3 4 5 6 7 8; do
               if AWS_ACCESS_KEY_ID="$BACKUP_KEY_ID" AWS_SECRET_ACCESS_KEY="$BACKUP_KEY_SECRET" \
                   aws s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --max-items 1 --endpoint-url "$BACKUP_ENDPOINT" --region "$SPACES_REGION" >/dev/null 2>&1; then
                 ok=yes; break; fi
@@ -561,6 +561,7 @@ jobs:
             page=$((page+1))
           done
           rm -rf "$KD"
+          # shellcheck disable=SC2086,SC2116 # intentional: unquoted echo splits and re-joins $ids with single spaces
           case " $(echo $ids) " in *" $cur "*) ;; *) echo "::warning::the stored backup key was not found among Spaces keys; revoking nothing"; exit 0;; esac
           for id in $ids; do
             echo "::add-mask::$id"

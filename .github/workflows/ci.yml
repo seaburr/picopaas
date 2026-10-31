@@ -41,9 +41,8 @@ jobs:
       - name: actionlint (download script pinned by commit SHA, release pinned by version)
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) 1.7.12
-          # -shellcheck= : the runner has shellcheck, so actionlint would also lint every inline run: script
-          # (out of scope here; the .sh files are checked in the next step)
-          ./actionlint -color -shellcheck= .github/workflows/*.yml
+          # the runner has shellcheck, so actionlint also lints every inline run: script
+          ./actionlint -color .github/workflows/*.yml
       - name: shellcheck (preinstalled on ubuntu-latest)
         run: |
           shellcheck --version
@@ -130,23 +129,25 @@ jobs:
           test -s /tmp/10-users.sh
           bash /tmp/10-users.sh
           mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW GRANTS FOR 'picopaas_admin'@'%';"
-          A="mysql -upicopaas_admin -p$MYSQL_ADMIN_PASSWORD"
+          A() { mysql -upicopaas_admin -p"$MYSQL_ADMIN_PASSWORD" "$@"; }
+          # deny SQL: the admin must be refused (a bare `! cmd` would not fail the step under bash -e)
+          deny() { if A -e "$1" 2>/dev/null; then echo "::error::picopaas_admin was allowed: $1"; exit 1; fi; }
           # The admin holds only EXECUTE on picopaas_ops: it can provision app_* via procedures...
-          $A -e "CALL picopaas_ops.provision_app(99001, 'ci-probe-password-0123456789'); CALL picopaas_ops.drop_app(99001);"
+          A -e "CALL picopaas_ops.provision_app(99001, 'ci-probe-password-0123456789'); CALL picopaas_ops.drop_app(99001);"
           # ...and nothing else.
-          ! $A -e "CREATE DATABASE app_ci_probe;" 2>/dev/null
-          ! $A -e "CREATE DATABASE notapp_probe;" 2>/dev/null
-          ! $A -e "SELECT * FROM mysql.user LIMIT 1;" 2>/dev/null
-          ! $A -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
-          ! $A -e "ALTER USER 'root'@'%' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
-          ! $A -e "ALTER USER 'picopaas_backup'@'%' IDENTIFIED BY 'pwned-pwned-pwned';" 2>/dev/null
-          ! $A -e "DROP USER 'picopaas_backup'@'%';" 2>/dev/null
-          ! $A -e "DROP DATABASE picopaas_ops;" 2>/dev/null
-          ! $A -e "CALL picopaas_ops._exec('SELECT 1');" 2>/dev/null
+          deny "CREATE DATABASE app_ci_probe;"
+          deny "CREATE DATABASE notapp_probe;"
+          deny "SELECT * FROM mysql.user LIMIT 1;"
+          deny "ALTER USER 'root'@'localhost' IDENTIFIED BY 'pwned-pwned-pwned';"
+          deny "ALTER USER 'root'@'%' IDENTIFIED BY 'pwned-pwned-pwned';"
+          deny "ALTER USER 'picopaas_backup'@'%' IDENTIFIED BY 'pwned-pwned-pwned';"
+          deny "DROP USER 'picopaas_backup'@'%';"
+          deny "DROP DATABASE picopaas_ops;"
+          deny "CALL picopaas_ops._exec('SELECT 1');"
           # Procedures reject anything that is not a plain positive integer id.
-          ! $A -e "CALL picopaas_ops.provision_app(0, 'ci-probe-password-0123456789');" 2>/dev/null
-          ! $A -e "CALL picopaas_ops.drop_app(-1);" 2>/dev/null
-          ! $A -e "CALL picopaas_ops.drop_app('1; DROP USER root');" 2>/dev/null
+          deny "CALL picopaas_ops.provision_app(0, 'ci-probe-password-0123456789');"
+          deny "CALL picopaas_ops.drop_app(-1);"
+          deny "CALL picopaas_ops.drop_app('1; DROP USER root');"
           # Root and backup still work (admin changes above did not take effect).
           mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SELECT 1" >/dev/null
           mysql -upicopaas_backup -p"$MYSQL_BACKUP_PASSWORD" -e "SELECT 1" >/dev/null

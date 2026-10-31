@@ -72,8 +72,8 @@ jobs:
         run: |
           tok=$(uuidgen); echo "::stop-commands::$tok"
           trap 'echo "::$tok::"' EXIT
-          sel=${SELECTOR:+-l $SELECTOR}
-          for p in $(kubectl -n "$NS" get pods $sel -o jsonpath='{.items[*].metadata.name}'); do
+          sel=(); [ -z "${SELECTOR:-}" ] || sel=(-l "$SELECTOR")
+          for p in $(kubectl -n "$NS" get pods "${sel[@]}" -o jsonpath='{.items[*].metadata.name}'); do
             echo "=== $p (current)"; kubectl -n "$NS" logs "$p" --all-containers --tail="$TAIL" 2>&1 || true
             echo "=== $p (previous)"; kubectl -n "$NS" logs "$p" --all-containers --previous --tail="$TAIL" 2>&1 || true
           done
