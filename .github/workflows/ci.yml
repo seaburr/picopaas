@@ -66,7 +66,8 @@ jobs:
       - run: pip install -r requirements.txt
       # MYSQL_ADMIN_URL is unset here, so tests/test_mysql_admin.py
       # (@pytest.mark.mysql) self-skips at module level — see mysql-integration below.
-      - run: python -m pytest tests/ -q
+      # Coverage floor (fail_under in .coveragerc) is enforced here only.
+      - run: python -m pytest tests/ -q --cov=app --cov-report=term-missing:skip-covered
 
   mysql-integration:
     runs-on: ubuntu-latest

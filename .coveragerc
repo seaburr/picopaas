@@ -1,0 +1,13 @@
+# Single home for coverage config (pytest-cov reads it automatically).
+# Measured 2026-10-30: 94.86% total (12383 stmts, 636 missed; 2305 tests).
+# Rule: fail_under = measured total rounded DOWN, minus 2 => 92. Only enforced when pytest runs
+# with --cov (backend-tests job); the mysql-integration subset does not pass --cov, so it never
+# hits the floor. Raise it by re-measuring and applying the same rule; never lower it to pass.
+[run]
+source = app
+
+[report]
+fail_under = 92
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
