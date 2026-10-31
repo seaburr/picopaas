@@ -684,7 +684,7 @@ Kaisen uses your project's own Anthropic API key, so model cost is billed to you
 
 Also in settings:
 
-- **Model.** `claude-sonnet-5-5` (default, right for most builds), `claude-opus-5-5` or `claude-haiku-5-5`. Haiku is the cheapest and fine for small apps. Existing projects keep the model they saved.
+- **Model.** `claude-haiku-5-5` (default: in our evals it built every starter brief, including a login-gated CRM, at about a fifth of Sonnet's cost), `claude-sonnet-5-5` (fewer steps, faster on bigger builds) or `claude-opus-5-5`. Existing projects keep the model they saved.
 - **Effort.** Low, medium (default) or high.
 - **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
 - **Member limits.** Owners can cap what each person spends. See "Kaisen limits".

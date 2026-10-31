@@ -118,3 +118,10 @@ python scripts/kaisen_eval.py --project-id <id> --briefs "habit-tracker,recipe-s
 - The token is never written: only API response bodies are saved (never request headers) and any occurrence of the token in a file is replaced by `[redacted]`.
 
 The logic is unit-tested with `httpx.MockTransport` in `tests/test_kaisen_eval_script.py`.
+
+## Evals (manual, run sparingly)
+`scripts/kaisen_eval.py` builds real apps on a metered Anthropic key (the eval project 37 uses the test user's key).
+Chas (2026-10-31): run it **only after big harness changes or a new model release**, never per change and never in
+CI. A full run on Haiku costs about $0.20-0.30; Sonnet several times that. Keep dated data in `eval-data/` (gitignored)
+and summarise findings in the ledger and devlog. Default model for new projects is Haiku (Chas, 2026-10-31).
+
