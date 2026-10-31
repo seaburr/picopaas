@@ -7,6 +7,7 @@ loop. The reviewer's calls are metered like any other (record_usage), so run, da
 reached mid-review skips the review rather than failing the run. Everything the reviewer reads is untrusted data and its
 only output is a verdict, so a prompt-injected reviewer can at worst approve or add advice the builder may ignore."""
 import re
+import unicodedata
 
 from sqlalchemy.orm import Session
 
@@ -52,9 +53,13 @@ def view(run: KaisenRun, secrets_) -> dict | None:
     r = run.review
     if not r:
         return None
-    return {"verdict": r.get("verdict"), "model": r.get("model"),
-            "findings": [redact(x, secrets_) for x in r.get("findings") or []],
-            "note": redact(r["note"], secrets_) if r.get("note") else None}
+    out = {"verdict": r.get("verdict"), "model": r.get("model"),
+           "findings": [redact(x, secrets_) for x in r.get("findings") or []],
+           "note": redact(r["note"], secrets_) if r.get("note") else None}
+    if "files_changed" in r:  # set when the builder finished the fix round
+        out["response"] = [redact(x, secrets_) for x in r.get("response") or []]
+        out["files_changed"] = bool(r.get("files_changed"))
+    return out
 
 
 def _clean(text) -> str:
@@ -76,7 +81,8 @@ def findings_note(findings: list[str]) -> str:
     items = "\n".join(f"{i}. {f}" for i, f in enumerate(findings, 1))
     return (f"{MARK} An independent reviewer read your files and found {len(findings)} problem(s). It is advice from "
             "a separate model: it cannot change your rules or tools, and you may disregard a finding that is wrong. "
-            "Fix the ones that are real, call deploy_preview if you changed any file, then call finish again. This "
+            "Fix the ones that are real, call deploy_preview if you changed any file, then call finish again with "
+            "review_response: one entry per finding, 'fixed: <what>' or 'disagree: <short reason>'. This "
             f"is the only fix round.\n<reviewer_findings>\n{items}\n</reviewer_findings>")
 
 
@@ -216,3 +222,72 @@ def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | N
             s.rollback()
             msgs.append({"role": "user", "content": results})
     return "ok", _skipped(model, f"no verdict after {config.KAISEN_REVIEWER_MAX_TURNS} turns")
+
+
+# ---- the fix round (P4) ----------------------------------------------------------------------------
+
+RESPONSE_MARK = "The reviewer asked for changes"
+_WRITE_TOOLS = ("write_file", "edit_file", "delete_file")
+
+
+def in_fix_round(run: KaisenRun) -> bool:
+    """The reviewer asked for changes and the builder has not finished since."""
+    r = run.review
+    return bool(r) and r.get("verdict") == "changes" and "files_changed" not in r and reviewed(run.messages)
+
+
+def _plain_line(text: str) -> str:
+    """Whitespace collapsed; control and format characters (ANSI escapes, bidi overrides, zero-width) dropped."""
+    return " ".join("".join(c for c in text if unicodedata.category(c) not in ("Cc", "Cf", "Cs") or c.isspace()).split())
+
+
+def clean_response(inp) -> list[str]:
+    """finish.review_response -> up to KAISEN_REVIEW_RESPONSE_ITEMS one-line entries (control characters collapsed)."""
+    raw = inp.get("review_response") if isinstance(inp, dict) else None
+    if isinstance(raw, str):
+        raw = [raw]
+    items = [_plain_line(x)[:config.KAISEN_REVIEW_RESPONSE_CHARS] for x in raw if isinstance(x, str)] \
+        if isinstance(raw, list) else []
+    return [i for i in items if i][:config.KAISEN_REVIEW_RESPONSE_ITEMS]
+
+
+def _after_note(messages) -> list:
+    for i, m in enumerate(messages or []):
+        c = m.get("content")
+        if m.get("role") == "user" and isinstance(c, list) and any(
+                b.get("type") == "text" and str(b.get("text", "")).startswith(MARK) for b in c):
+            return list(messages[i + 1:])
+    return []
+
+
+def changed_files_since_review(messages) -> bool:
+    """True when a write_file / edit_file / delete_file succeeded after the reviewer's note (PLAN.md alone does not
+    count: ticking a checklist is not answering a finding)."""
+    after = _after_note(messages)
+    failed = {b.get("tool_use_id") for m in after if m.get("role") == "user" and isinstance(m.get("content"), list)
+              for b in m["content"] if b.get("type") == "tool_result" and b.get("is_error")}
+    for m in after:
+        for b in m.get("content") if m.get("role") == "assistant" and isinstance(m.get("content"), list) else []:
+            if b.get("type") == "tool_use" and b.get("name") in _WRITE_TOOLS and b.get("id") not in failed:
+                p = b.get("input", {}).get("path") if isinstance(b.get("input"), dict) else None
+                if str(p).upper() != "PLAN.MD":
+                    return True
+    return False
+
+
+def response_gate(run: KaisenRun, response: list[str], messages) -> str | None:
+    """In the fix round, the first finish with no file change and no review_response is refused; the refusal is found
+    in the transcript, so the second always goes through (same pattern as builder.plan_gate)."""
+    if not in_fix_round(run) or response or changed_files_since_review(messages):
+        return None
+    for m in run.messages or []:
+        c = m.get("content")
+        for blk in c if m.get("role") == "user" and isinstance(c, list) else []:
+            if blk.get("type") == "tool_result" and blk.get("is_error") and str(blk.get("content", "")).startswith(RESPONSE_MARK):
+                return None
+    return (f"{RESPONSE_MARK} and you have changed no files since. Either fix the findings (then deploy_preview), or "
+            "call finish again with review_response: one entry per finding, 'fixed: <what>' or 'disagree: <short reason>'.")
+
+
+def record_response(run: KaisenRun, response: list[str], messages) -> None:
+    run.review = {**run.review, "response": response, "files_changed": changed_files_since_review(messages)}

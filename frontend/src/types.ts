@@ -662,6 +662,8 @@ export interface KaisenReview {
   model: string | null
   findings: string[]
   note: string | null
+  response?: string[] // the builder's answer to the findings (fix round); present once it finished
+  files_changed?: boolean // any file other than PLAN.md changed after the review
 }
 
 export interface KaisenTests {

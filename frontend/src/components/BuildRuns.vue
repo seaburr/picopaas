@@ -48,6 +48,10 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
           <div v-if="r.review" class="text-sm">
             <p class="flex flex-wrap items-center gap-2"><span :class="['badge', VERDICT[r.review.verdict]?.cls ?? 'badge-neutral']">{{ VERDICT[r.review.verdict]?.label ?? r.review.verdict }}</span><span v-if="r.review.model" class="meta mono">{{ r.review.model }}</span></p>
             <p v-if="r.review.note" class="help mt-1">{{ r.review.note }}</p>
+            <div v-if="r.review.files_changed !== undefined" class="mt-1">
+              <p class="help">Reviewer asked for changes; builder answered{{ r.review.files_changed ? '' : ' (no files changed after review)' }}{{ r.review.response && r.review.response.length ? ':' : ' without a response.' }}</p>
+              <ul v-if="r.review.response && r.review.response.length" class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(x, k) in r.review.response" :key="k" class="whitespace-pre-wrap break-words">{{ x }}</li></ul>
+            </div>
             <details v-if="r.review.findings && r.review.findings.length" class="mt-1">
               <summary class="cursor-pointer">Findings ({{ r.review.findings.length }})</summary>
               <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(f, k) in r.review.findings" :key="k" class="whitespace-pre-wrap break-words">{{ f }}</li></ul>

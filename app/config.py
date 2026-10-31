@@ -478,6 +478,9 @@ KAISEN_REVIEWER_EFFORT = "low"
 KAISEN_REVIEWER_MAX_TURNS = 8  # model calls in one review
 KAISEN_REVIEWER_MAX_FINDINGS = 5
 KAISEN_REVIEWER_FINDING_CHARS = 400
+KAISEN_REVIEW_RESPONSE_ITEMS = 8  # review_response entries kept from the builder's finish in the fix round
+KAISEN_REVIEW_RESPONSE_CHARS = 300  # per entry
+KAISEN_STALE_IGNORE_PREFIXES = ("PLAN.MD", "README", "CONVERSATION")  # root files (upper-cased) that do not make a deploy stale
 KAISEN_REVIEWER_CONTEXT_CHARS = 6000  # of the brief / change request shown to the reviewer
 # Retention (scheduler-free: the worker trims on its own cadence).
 KAISEN_TRANSCRIPT_DAYS = 14

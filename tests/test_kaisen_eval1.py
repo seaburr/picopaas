@@ -326,7 +326,8 @@ def test_gate_is_once_per_run_even_with_a_reviewer_fix_round(env):
     model = FakeModelClient([reply(write("PLAN.md", "- [ ] todo\n")), reply(tool_use("finish", {"summary": "one"})),
                              reply(tool_use("finish", {"summary": "two"})),
                              _verdict("changes", ["fix x"]),
-                             reply(write("PLAN.md", "- [ ] again\n")), reply(tool_use("finish", {"summary": "three"}))])
+                             reply(write("PLAN.md", "- [ ] again\n")),
+                             reply(tool_use("finish", {"summary": "three", "review_response": ["disagree: not real"]}))])
     go(model)
     assert detail(env)["runs"][0]["status"] == "done"
     assert model.roles == ["builder", "builder", "builder", "reviewer", "builder", "builder"]

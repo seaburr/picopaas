@@ -108,6 +108,66 @@ def test_findings_give_exactly_one_fix_round_then_finish(env):
     assert any("handle empty input" in t["text"] for t in run["transcript"])
 
 
+def _fix_round(env, second, *, response_in=None):
+    _set(env, reviewer="on")
+    start(env)
+    model = FakeModelClient([
+        reply(write("app.py", "print(1)")), _finish("first"),
+        _verdict("changes", ["app.py: handle empty input"]),
+        *second,
+    ])
+    go(model)
+    return model, detail(env)["runs"][0]
+
+
+def test_fix_round_finish_without_edits_or_response_is_refused_once_then_accepted(env):
+    model, run = _fix_round(env, [_finish("second"), _finish("third")])
+    assert model.roles == ["builder", "builder", "reviewer", "builder", "builder"]
+    refusal = model.calls[4][-1]["content"][0]
+    assert refusal["is_error"] and refusal["content"].startswith(reviewing.RESPONSE_MARK)
+    assert run["status"] == "done" and run["summary"] == "third"
+    assert run["review"]["response"] == [] and run["review"]["files_changed"] is False
+
+
+def test_fix_round_finish_with_response_is_accepted_and_exposed(env):
+    resp = ["fixed: n/a", "disagree: input is validated upstream", "  multi\nline  "]
+    model, run = _fix_round(env, [reply(tool_use("finish", {"summary": "second", "review_response": resp}))])
+    assert run["status"] == "done" and run["summary"] == "second" and model.roles.count("builder") == 3
+    assert run["review"]["verdict"] == "changes"
+    assert run["review"]["response"] == ["fixed: n/a", "disagree: input is validated upstream", "multi line"]
+    assert run["review"]["files_changed"] is False
+
+
+def test_fix_round_finish_after_an_edit_needs_no_response_and_flags_files_changed(env):
+    model, run = _fix_round(env, [reply(write("app.py", "print(2)")), _finish("second")])
+    assert run["status"] == "done" and run["review"]["response"] == [] and run["review"]["files_changed"] is True
+
+
+def test_fix_round_plan_only_edit_does_not_count_as_a_change(env):
+    model, run = _fix_round(env, [reply(write("PLAN.md", "- [x] a\n")), _finish("second"), _finish("third")])
+    assert model.calls[5][-1]["content"][0]["is_error"] and run["summary"] == "third"
+    assert run["review"]["files_changed"] is False
+
+
+def test_review_response_is_capped_and_ignores_junk():
+    n, c = config.KAISEN_REVIEW_RESPONSE_ITEMS, config.KAISEN_REVIEW_RESPONSE_CHARS
+    out = reviewing.clean_response({"review_response": ["x" * (c + 50)] * (n + 5) + [3, "", None]})
+    assert len(out) == n and all(len(x) == c for x in out)
+    assert reviewing.clean_response({"review_response": 5}) == [] and reviewing.clean_response(None) == []
+
+
+def test_response_is_masked_in_the_view(env):
+    secret = "not-the-password-value"
+    run = type("R", (), {"review": {"verdict": "changes", "model": "m", "findings": [], "note": None,
+                                    "response": [f"fixed: used {secret}"], "files_changed": True}})()
+    assert secret not in json.dumps(reviewing.view(run, [secret]))
+
+
+def test_review_view_without_a_fix_round_has_no_response_fields(env):
+    run = type("R", (), {"review": {"verdict": "approve", "model": "m", "findings": [], "note": None}})()
+    assert "response" not in reviewing.view(run, [])
+
+
 def test_findings_are_capped_and_empty_changes_count_as_approve(env):
     verdict, findings = reviewing.parse_verdict({"verdict": "changes", "findings": [f"f{i}" for i in range(20)]})
     assert verdict == "changes" and len(findings) == config.KAISEN_REVIEWER_MAX_FINDINGS
@@ -227,7 +287,7 @@ def test_static_site_without_tests_is_told_that_is_fine(env):
     model = FakeModelClient([reply(write("index.html", "<p>hi</p>")), reply(tool_use("deploy_preview", {})), _finish()])
     go(model)
     result = json.dumps(model.calls[2])
-    assert "none (static site)" in result and "do not change the runtime" in result
+    assert "node --test tests/" in result and "do not change the runtime" in result.lower()
     assert detail(env)["tests"] is None
 
 
@@ -345,3 +405,8 @@ def test_boot_noisy_output_is_streamed_bounded_and_fast(boot, tmp_path, capsys):
     assert "final-line" in out and len(out.encode()) < 1000
     assert time.time() - t0 < 30
     assert grown < 30 * 1024 * 1024  # far below the 50MB emitted
+
+
+def test_review_response_drops_control_and_format_characters():
+    out = reviewing.clean_response({"review_response": ["fixed:\x1b[31m red‮ evil​\x07 ok\n\tnext"]})
+    assert out == ["fixed:[31m red evil ok next"]

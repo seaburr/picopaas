@@ -579,6 +579,14 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
                 if gate:
                     results.append(_result(tid, gate, True))
                     continue
+                response = reviewing.clean_response(inp)
+                so_far = msgs + [{"role": "user", "content": results}]  # this turn's writes count as changes
+                gate = reviewing.response_gate(run, response, so_far)
+                if gate:
+                    results.append(_result(tid, gate, True))
+                    continue
+                if reviewing.in_fix_round(run):
+                    reviewing.record_response(run, response, so_far)
                 finished = summary
                 results.append(_result(tid, "ok"))
                 continue

@@ -124,7 +124,11 @@ TOOLS = [
     {"name": "ask_human", "description": "Ask the human one question and wait for the answer.",
      "input_schema": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}},
     {"name": "finish", "description": "Declare the project complete, with a short summary.",
-     "input_schema": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}},
+     "input_schema": {"type": "object", "properties": {
+         "summary": {"type": "string"},
+         "review_response": {"type": "array", "items": {"type": "string"}, "description":
+             "Only after the reviewer asked for changes: one entry per finding, 'fixed: <what>' or 'disagree: <why>'."}},
+         "required": ["summary"]}},
 ]
 
 

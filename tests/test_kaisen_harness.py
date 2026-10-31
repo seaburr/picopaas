@@ -410,6 +410,33 @@ def test_http_request_notes_files_changed_since_deploy(env):
     assert "files changed since the last deploy_preview; this hit the previous version" in http_texts(model)[1]
 
 
+@pytest.mark.parametrize("path", ["PLAN.md", "README.md", "README", "CONVERSATION.md"])
+def test_http_request_stale_note_ignores_notes_files(env, path):
+    rt = FakeRuntime()
+    model = deployed(env, rt, write(path, "notes"), tool_use("http_request", GOOD))
+    assert "files changed since" not in http_texts(model)[1]
+
+
+def test_http_request_stale_note_still_fires_for_nested_readme_named_code(env):
+    rt = FakeRuntime()
+    model = deployed(env, rt, write("src/README.py", "x = 1"), tool_use("http_request", GOOD))
+    assert "files changed since the last deploy_preview" in http_texts(model)[1]
+
+
+@pytest.mark.parametrize("path", ["README.py", "readme.js", "CONVERSATION_handler.py", "plan.mdx.py"])
+def test_http_request_stale_note_fires_for_root_code_named_like_notes(env, path):
+    rt = FakeRuntime()
+    model = deployed(env, rt, write(path, "x = 1"), tool_use("http_request", GOOD))
+    assert "files changed since the last deploy_preview" in http_texts(model)[1]
+
+
+def test_absolute_path_error_says_what_to_use():
+    from app.kaisen.paths import normalize_path
+    with pytest.raises(ToolError) as e:
+        normalize_path("/app/app.py")
+    assert "relative to the project root" in str(e.value) and '"app.py"' in str(e.value)
+
+
 def test_http_request_per_step_cap(env, monkeypatch):
     monkeypatch.setattr(config, "KAISEN_HTTP_MAX_PER_STEP", 2)
     rt = FakeRuntime()

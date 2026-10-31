@@ -12,7 +12,8 @@ def normalize_path(p) -> str:
     if "\x00" in p or "\\" in p or len(p) > 200:
         raise ToolError("invalid path")
     if p.startswith("/"):
-        raise ToolError("absolute paths are not allowed")
+        raise ToolError("absolute paths are not allowed: use a path relative to the project root, "
+                        'for example "app.py" instead of "/app/app.py"')
     if any(seg == ".." for seg in p.split("/")):
         raise ToolError("'..' is not allowed in paths")
     n = posixpath.normpath(p)

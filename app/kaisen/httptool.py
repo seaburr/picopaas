@@ -149,11 +149,19 @@ def files_changed(s: Session, b: KaisenBuild) -> bool:
     if newest is None:
         return False
     deployed = {}
+
+    def counts(path: str) -> bool:  # notes, plan and README edits do not change what runs
+        name = path.upper()
+        notes = "/" not in path and any(
+            name == p or (name.startswith(p) and name.endswith((".MD", ".TXT", ".RST"))) for p in config.KAISEN_STALE_IGNORE_PREFIXES)
+        return not notes  # README.py / CONVERSATION_x.js at the root are code and still count
     with tarfile.open(fileobj=io.BytesIO(newest.data), mode="r:gz") as tar:
         for m in tar.getmembers():
             if m.isfile():
                 deployed[m.name.split("/", 1)[-1]] = tar.extractfile(m).read()
-    current = {r.path: r.content.encode() for r in s.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))}
+    deployed = {k: v for k, v in deployed.items() if counts(k)}
+    current = {r.path: r.content.encode() for r in s.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))
+               if counts(r.path)}
     return deployed != current
 
 
