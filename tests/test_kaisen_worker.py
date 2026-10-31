@@ -548,15 +548,23 @@ def test_web_tools_omitted_for_a_model_without_support(env, monkeypatch):
     assert model.webs == [None]
 
 
-@pytest.mark.parametrize("domains,expect", [([], None), (["docs.example.com"], {"allowed_domains": ["docs.example.com"]})])
-def test_build_with_secrets_gets_web_only_with_an_allow_list(env, domains, expect):
-    # pentest K16: injected page text + build secrets + auto-deploy is an exfiltration chain
+@pytest.mark.parametrize("domains", [[], ["docs.example.com"]])
+def test_build_with_secrets_never_gets_web_tools(env, domains):
+    # pentest K16: injected page text + build secrets + auto-deploy is an exfiltration chain; an allow-list doesn't help
     env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True, "web_allowed_domains": domains})
     assert env.a.put(f"/kaisen/builds/{env.bid}/secrets/WEATHER_TOKEN", json={"value": "not-the-weather-token"}).status_code == 200
     start(env)
     model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
     go(model)
-    assert model.webs == [expect]
+    assert model.webs == [None]
+
+
+def test_build_without_secrets_keeps_the_allow_list(env):
+    env.a.put(f"/projects/{env.pid}/kaisen", json={"web_access": True, "web_allowed_domains": ["docs.example.com"]})
+    start(env)
+    model = FakeModelClient([reply(tool_use("finish", {"summary": "ok"}))])
+    go(model)
+    assert model.webs == [{"allowed_domains": ["docs.example.com"]}]
 
 
 def test_pause_turn_resends_the_paused_message_and_the_run_continues(env):

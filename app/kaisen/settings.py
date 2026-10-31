@@ -104,9 +104,9 @@ def web_note(rs: RuntimeSettings) -> str:
         return f"Web access is on, but {rs.model} does not support the web tools, so Kaisen will run without them."
     if rs.web_allowed_domains:
         return (f"Web access is on (limited to {', '.join(rs.web_allowed_domains)}). "
-                f"Searches cost about ${config.KAISEN_WEB_SEARCH_USD:.2f} each.")
+                f"Searches cost about ${config.KAISEN_WEB_SEARCH_USD:.2f} each. Builds that have secrets run without the web.")
     return (f"Web access is on (any domain). Searches cost about ${config.KAISEN_WEB_SEARCH_USD:.2f} each. "
-            "Builds that have secrets run without the web until you add an allow-list.")
+            "Builds that have secrets run without the web.")
 
 
 def _build_token(b: KaisenBuild) -> str:

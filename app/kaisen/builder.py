@@ -456,11 +456,10 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
                 return "lease_lost"
             messages, model, effort = model_view(run.messages), rs.model, rs.effort
             want_review = rs.reviewer == "on" and not reviewing.reviewed(run.messages)
-            # web tools only when the project turned them on AND the model supports them. A build with secrets
-            # gets them only with an allow-list: injected page text could otherwise make the builder write code
-            # that sends the preview's env out, and the deploy runs it (pentest K16).
-            web_ok = rs.web_access and web_supported(rs.model) and (
-                bool(rs.web_allowed_domains) or not buildsecrets.names(s, run.build_id))
+            # web tools only when the project turned them on AND the model supports them, and never for a build
+            # with secrets: injected page text could otherwise make the builder write code that sends the
+            # preview's env out, and the deploy runs it (pentest K16; Chas chose "off" over an allow-list).
+            web_ok = rs.web_access and web_supported(rs.model) and not buildsecrets.names(s, run.build_id)
             web = {"allowed_domains": list(rs.web_allowed_domains)} if web_ok else None
 
         try:
