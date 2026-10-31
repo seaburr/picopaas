@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Weather lookup",
+    "brief": "Build a small weather app in Python that uses the free Open-Meteo APIs (no API key). Look up their documentation at open-meteo.com to find the right endpoints and parameters; don't guess them. The home page has a form to type a city name. Find the city with Open-Meteo's geocoding API (use the first match), then get the current temperature, wind speed and weather code from the forecast API, and show the city name, country, temperature in Celsius, wind in km/h and a plain-words description of the weather code. Also offer the same data as JSON at GET /api/weather?city=<name>, returning {\"city\", \"country\", \"latitude\", \"longitude\", \"temperature_c\", \"wind_kmh\", \"description\"}. If no city matches, the page shows a clear message and the API returns 404 with {\"error\": \"...\"}. If Open-Meteo can't be reached, show an error and return 502 instead of crashing. Tests must not call the real API: fake it. Out of scope: accounts, saving searches, forecasts beyond the current weather, maps.",
+    "checks": [
+      {"method": "GET", "path": "/", "expect_status": 200},
+      {"method": "GET", "path": "/api/weather?city=Paris", "expect_status": 200, "expect_contains": "temperature_c"},
+      {"method": "GET", "path": "/api/weather?city=Zzqxvbnmlkj", "expect_status": 404}
+    ]
+  }
+]

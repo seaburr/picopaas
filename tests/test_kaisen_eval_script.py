@@ -724,3 +724,39 @@ def test_feature_verification_and_plan_gate_metrics():
 def test_settle_seconds_cli_flag():
     assert ke.parse_args(["--project-id", "1"]).settle_seconds == 300
     assert ke.parse_args(["--project-id", "1", "--settle-seconds", "5"]).settle_seconds == 5
+
+
+def test_web_settings_applied_and_restored():
+    p = DataPlatform([D("done")])
+    p.settings.update(web_access=False, web_allowed_domains=[])
+    ev, _ = make_eval(p, web=True, web_domains=["open-meteo.com"])
+    ev.apply_settings()
+    assert p.settings["web_access"] is True and p.settings["web_allowed_domains"] == ["open-meteo.com"]
+    assert p.settings["model"] == "old-model"  # untouched without --model
+    assert ev.restore_settings()
+    assert p.settings["web_access"] is False and p.settings["web_allowed_domains"] == []
+
+
+def test_web_lookups_counted():
+    runs = [{"id": 1, "transcript": [{"text": "[web] searched for open-meteo forecast api"},
+                                     {"text": "[web] read https://open-meteo.com/en/docs"},
+                                     {"text": "[web] read https://open-meteo.com/en/docs/geocoding-api"}]}]
+    m = ke.analyze_transcripts(runs)
+    assert m["web_searches"] == 1 and m["web_fetches"] == 2
+
+
+def test_main_briefs_file_and_web_flags(monkeypatch, tmp_path):
+    monkeypatch.setenv("MY_TOK", "not-the-token-value")
+    p = DataPlatform([D("done", app_hostname="h")])
+    p.settings.update(web_access=False, web_allowed_domains=[])
+    real = httpx.Client
+    monkeypatch.setattr(ke.httpx, "Client", lambda *a, **kw: real(*a, **dict(kw, transport=httpx.MockTransport(p))))
+    bf = tmp_path / "briefs.json"
+    bf.write_text(json.dumps([{"name": "Weather", "brief": "Show the weather.", "checks": [{"method": "GET", "path": "/", "expect_status": 200}]}]))
+    dd = tmp_path / "data"
+    ke.main(["--project-id", "5", "--briefs-file", str(bf), "--token-env", "MY_TOK", "--web", "on",
+             "--web-domains", "open-meteo.com, api.open-meteo.com", "--data-dir", str(dd)])
+    assert {"web_access": True, "web_allowed_domains": ["open-meteo.com", "api.open-meteo.com"]} in p.puts
+    assert p.settings["web_access"] is False  # restored
+    summ = json.loads((dd / "summary.json").read_text())
+    assert [r["name"] for r in summ["rows"]] == ["Weather"] and summ["web"] == "on"

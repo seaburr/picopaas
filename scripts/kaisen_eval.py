@@ -137,7 +137,8 @@ def analyze_transcripts(runs: list[dict]) -> dict:
          "context_resets": 0, "transcripts_missing": 0,
          # feature verification: distinct http_request paths per method, requests that carried a session
          # (Cookie/Authorization header, or any request after a response that set a cookie), and PLAN finish-gate hits
-         "http_paths": {}, "http_authed": 0, "set_cookie_seen": 0, "plan_gate": 0}
+         "http_paths": {}, "http_authed": 0, "set_cookie_seen": 0, "plan_gate": 0,
+         "web_searches": 0, "web_fetches": 0}
     paths: dict[str, set] = {}
     for r in sorted(runs or [], key=lambda x: x.get("id") or 0):
         m["context_resets"] += int(r.get("context_resets") or 0)
@@ -153,6 +154,10 @@ def analyze_transcripts(runs: list[dict]) -> dict:
                 continue
             text = str(ln.get("text") or "")
             m["plan_gate"] += text.count("PLAN.md still has")
+            if text.startswith("[web] searched for"):
+                m["web_searches"] += 1
+            elif text.startswith("[web] read"):
+                m["web_fetches"] += 1
             c = _CALL.match(text)
             if c:
                 name = c.group(1)
@@ -339,7 +344,8 @@ class Evaluator:
                  keep: bool = False, sleep=time.sleep, clock=time.monotonic,
                  poll_seconds: float = POLL_SECONDS, timeout_seconds: float = TIMEOUT_SECONDS, log=None,
                  data_dir: Path | str | None = None, model: str | None = None, effort: str | None = None,
-                 scrub: list[str] | None = None, settle_seconds: float = SETTLE_SECONDS):
+                 scrub: list[str] | None = None, settle_seconds: float = SETTLE_SECONDS,
+                 web: bool | None = None, web_domains: list[str] | None = None):
         self.api, self.check_client = api, check_client
         self.project_id, self.max_usd, self.keep = project_id, max_usd, keep
         self.sleep, self.clock = sleep, clock
@@ -347,6 +353,7 @@ class Evaluator:
         self.log = log or (lambda m: print(m, file=sys.stderr))
         self.data_dir = Path(data_dir) if data_dir else None
         self.want_model, self.want_effort = model, effort
+        self.want_web, self.want_web_domains = web, web_domains
         self.scrub = [x for x in (scrub or []) if x]
         self.settle_seconds = settle_seconds
         self._tar: bytes | None = None
@@ -382,14 +389,22 @@ class Evaluator:
         try:
             cur = self._req("GET", f"/projects/{self.project_id}/kaisen").json()
         except (EvalError, httpx.HTTPError):
-            if self.want_model or self.want_effort:
+            if self.want_model or self.want_effort or self.want_web is not None or self.want_web_domains is not None:
                 raise
             return  # only reading for the record; not fatal
         self.model_used = self.want_model or cur.get("model", "")
-        if not (self.want_model or self.want_effort):
+        wants = {}
+        if self.want_web is not None:
+            wants["web_access"] = self.want_web
+        if self.want_web_domains is not None:
+            wants["web_allowed_domains"] = self.want_web_domains
+        if not (self.want_model or self.want_effort or wants):
             return
         body = {}
         self.previous = {}
+        for k, v in wants.items():
+            self.previous[k] = cur.get(k)
+            body[k] = v
         if self.want_model:
             self.previous["model"] = cur.get("model")
             body["model"] = self.want_model
@@ -397,7 +412,7 @@ class Evaluator:
             self.previous["effort"] = cur.get("effort")
             body["effort"] = self.want_effort
         self._req("PUT", f"/projects/{self.project_id}/kaisen", json=body)
-        self.log(f"project {self.project_id}: model/effort set to {body} (was {self.previous})")
+        self.log(f"project {self.project_id}: settings set to {body} (was {self.previous})")
 
     def restore_settings(self) -> bool:
         if not self.previous:
@@ -710,7 +725,10 @@ def render_table(rows: list[dict], *, date: str = "", model_note: str = "") -> s
             tools = " ".join(f"{k}:{v}" for k, v in m["tool_calls"].items() if v) or "-"
             if m.get("other_tool_calls"):
                 tools += f" other:{m['other_tool_calls']}"
-            fd = r.get("first_deploy_ok_min")
+            for k in ("web_searches", "web_fetches"):
+                if m.get(k):
+                    tools += f" {k}:{m[k]}"
+            fd =r.get("first_deploy_ok_min")
             plan = "-" if c.get("plan_ticked") is None else f"{c['plan_ticked']}/{c['plan_unticked']}"
             kj = c.get("kaisen_json")
             kjs = "-" if kj is None else json.dumps(kj, separators=(",", ":"))[:60]
@@ -742,6 +760,9 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="after done, wait up to this long for the app to run and the test result to be final")
     p.add_argument("--model", help="set the project's Kaisen model for this run; restored afterwards")
     p.add_argument("--effort", help="set the project's Kaisen effort for this run; restored afterwards")
+    p.add_argument("--briefs-file", default=str(BRIEFS_FILE), help="JSON list of briefs (default: the starter briefs)")
+    p.add_argument("--web", choices=("on", "off"), help="turn the project's Kaisen web access on/off for this run; restored afterwards")
+    p.add_argument("--web-domains", help="comma-separated web allow-list for this run (empty string = any domain); restored afterwards")
     return p.parse_args(argv)
 
 
@@ -753,7 +774,7 @@ def main(argv=None) -> int:
         return 2
     names = None if a.briefs.strip().lower() == "all" else [n.strip() for n in a.briefs.split(",") if n.strip()]
     try:
-        briefs = load_briefs(BRIEFS_FILE, names)
+        briefs = load_briefs(Path(a.briefs_file), names)
     except EvalError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -763,6 +784,8 @@ def main(argv=None) -> int:
             httpx.Client(timeout=20, follow_redirects=False) as chk:
         ev = Evaluator(api, chk, project_id=a.project_id, max_usd=a.max_usd, keep=a.keep, data_dir=data_dir,
                        model=a.model, effort=a.effort, scrub=[token],
+                       web=None if a.web is None else a.web == "on",
+                       web_domains=None if a.web_domains is None else [d.strip() for d in a.web_domains.split(",") if d.strip()],
                        settle_seconds=a.settle_seconds)
         t0 = time.monotonic()
         try:
@@ -776,7 +799,7 @@ def main(argv=None) -> int:
         wall = round(time.monotonic() - t0, 1)
     date = time.strftime("%Y-%m-%d")
     table = render_table(rows, date=date, model_note=f"(project {a.project_id}, model {ev.model_used or '?'})")
-    summary = {"date": date, "project_id": a.project_id, "model": ev.model_used, "effort": a.effort,
+    summary = {"date": date, "project_id": a.project_id, "model": ev.model_used, "effort": a.effort, "web": a.web,
                "wall_seconds": wall, "settings_restored": restored, "rows": rows}
     ev._write_json("summary.json", summary)
     ev._write("summary.md", table)
