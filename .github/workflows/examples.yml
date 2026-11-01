@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [status, wordpress]
+        app: [status, wordpress, memos, vaultwarden]
         include:
           # Ghost 5 was retired after both blogs moved to Ghost 6. Dir examples/ghost publishes as ...-ghost6.
           - app: ghost

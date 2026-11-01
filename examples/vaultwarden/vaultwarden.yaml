@@ -1,0 +1,21 @@
+apiVersion: picopaas/v1
+name: vaultwarden
+# examples/vaultwarden/Dockerfile: the official alpine image with USER 10001 and ROCKET_PORT=8080.
+image: ghcr.io/seaburr/picopaas-example-vaultwarden:latest
+port: 8080
+healthCheck:
+  enabled: true
+  path: /alive
+resources:
+  # SQLite database, attachments and the RSA signing key all live in /data.
+  volume: { sizeGi: 1, mountPath: /data }
+env:
+  DOMAIN: "${{ app.url }}"
+  ROCKET_PORT: "8080"
+  # Create your account first, then set this to "false" and save.
+  SIGNUPS_ALLOWED: "true"
+  # No email: SMTP is blocked, so invitations and email 2FA can't work. Use an authenticator app.
+  INVITATIONS_ALLOWED: "false"
+  SHOW_PASSWORD_HINT: "false"
+# No secrets needed. The /admin page stays off unless you add an ADMIN_TOKEN secret holding an Argon2 PHC hash
+# (generate it with `vaultwarden hash`), never a plain password.

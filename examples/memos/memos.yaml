@@ -1,0 +1,17 @@
+apiVersion: picopaas/v1
+name: memos
+# examples/memos/Dockerfile: the official image with USER 10001 (built by examples.yml).
+image: ghcr.io/seaburr/picopaas-example-memos:latest
+port: 5230
+healthCheck:
+  enabled: true
+  path: /healthz
+resources:
+  db: true
+  db_engine: pg
+env:
+  MEMOS_PORT: "5230"
+  MEMOS_DRIVER: "postgres"
+  # postgres:// URL with sslmode=require (encrypted, not CA-verified).
+  MEMOS_DSN: "${{ db.url }}"
+  MEMOS_INSTANCE_URL: "${{ app.url }}"
