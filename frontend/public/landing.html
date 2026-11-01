@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0d0d14">
 <title>PicoPaaS: tiny hosting for throwaway projects</title>
-<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, an S3-compatible bucket, and nightly backups, plus Kaisen (in preview) to build small apps from a description. A small, approval-only platform for hobby and throwaway projects.">
+<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, an S3-compatible bucket, and scheduled backups, plus Kaisen (in preview) to build small apps from a description. A small, approval-only platform for hobby and throwaway projects.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -43,7 +43,7 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <section class="hero">
 <p class="eyebrow">container hosting for hobby projects</p>
 <h1>Ship a container. Get a URL, a database, a bucket, and backups.</h1>
-<p>Point PicoPaaS at a public Docker image and a port. You get an HTTPS address within about a minute, and can add a managed PostgreSQL or MySQL database and an S3-compatible bucket with a checkbox each. Nightly backups cover them. Made for demos, experiments, and class projects.</p>
+<p>Point PicoPaaS at a public Docker image and a port. You get an HTTPS address within about a minute, and can add a managed PostgreSQL or MySQL database and an S3-compatible bucket with a checkbox each. Scheduled backups cover them. Or start from a one-click template. Made for demos, experiments, and class projects.</p>
 <div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a><a class="btn s" href="https://platform.picopaas.xyz/login">Log in</a></div>
 <p class="sub">Images must be public and run as non-root. Access is approved manually.</p>
 </section>
@@ -51,17 +51,18 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <h2>What it is</h2>
 <div class="grid grid-4">
 <div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets from the dashboard, CLI or API.</p></div>
-<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database (50 MB), and can add an S3-compatible bucket (100 MB). Credentials arrive as env vars.</p></div>
+<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database (50 MB), and can add an S3-compatible bucket (100 MB). Credentials arrive as env vars, and the database connection is TLS-verified: the CA is mounted as a file, and env values can build a connection string from parts.</p></div>
 <div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate. Bring your own domain if you prefer.</p></div>
-<div class="card"><h3>Nightly backups</h3><p>Your database, bucket and volume are backed up each night, encrypted and stored outside the cluster. Back up now or download a backup any time. Restores go through an admin for now.</p></div>
+<div class="card"><h3>Backups</h3><p>Turn on daily or weekly backups of your database, bucket and volume, encrypted and stored outside the cluster. Back up now or download a backup any time. Restores go through an admin for now.</p></div>
 </div>
 <p class="pre">Backups are bounded and capped per app, and don&rsquo;t count against your quotas. <a href="https://platform.picopaas.xyz/guide/user">Details in the guide</a>.</p>
 <h3 style="margin:28px 0 8px;font-size:16px">Also included</h3>
 <ul class="inc">
-<li><strong>Templates and recipes.</strong> One-click starters for Ghost, WordPress, Directus, Grafana, n8n, Shlink, Gatus and an nginx static site.</li>
+<li><strong>Templates and recipes.</strong> 14 one-click starters: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL), n8n, Shlink, Miniflux, Forgejo, Wiki.js, Memos, Vaultwarden, Gatus and an nginx static site.</li>
 <li><strong>Safe deploys.</strong> Roll back with one click; a new image that fails to start is reverted automatically.</li>
 <li><strong>Kaisen (in preview).</strong> Describe an app and have Claude build and deploy it for you.</li>
-<li><strong>Teams.</strong> Share apps with others in a project.</li>
+<li><strong>Persistent volumes.</strong> Opt in to a 1 GB volume for apps that keep files, such as Forgejo or Vaultwarden.</li>
+<li><strong>Projects.</strong> Share apps with others in a project.</li>
 <li><strong>Your tools.</strong> A CLI, API keys, your own domain with automatic TLS, and an audit log.</li>
 <li><strong>Visibility.</strong> Live status, logs, restarts, and recent CPU and memory history.</li>
 <li><strong>Isolation.</strong> Apps are walled off from each other and from the platform.</li>
@@ -105,6 +106,7 @@ https://&lt;generated-name&gt;.picopaas.xyz</pre>
 <tr><td>Database (PostgreSQL or MySQL)</td><td>50 MB</td></tr>
 <tr><td>Blob storage (S3-compatible bucket)</td><td>100 MB</td></tr>
 <tr><td>Persistent volume (opt-in)</td><td>1 GB</td></tr>
+<tr><td>Outbound bandwidth per app</td><td>20 Mbit/s</td></tr>
 <tr><td>Backup storage per app</td><td>2 GB</td></tr>
 </table>
 <div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
