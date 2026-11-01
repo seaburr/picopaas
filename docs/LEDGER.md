@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-01 [scm-security] DONE: pushed 6c43258 (feat landing benefits-first rewrite), c2446f5 (ledger), 3ddcf1f (copy landing Kaisen card: idea + API key). Copy only, pushed without security review. Pre-push: frontend build ok, gitleaks clean per commit. c2446f5: CI 41337743934, image 41337743915, deploy 41339439891 (41337802313 was a no-op wait) success; 3ddcf1f: CI 41339555966, image 41339555997, deploy 41341377158 success. picopaas.xyz serves 'Put a small project on the internet today' and 'Bring your idea and an Anthropic API key'
 - 2026-11-01 [marketing-writer] DONE: landing.html rewritten benefits-first. Order: hero, two equal-weight paths (container / Kaisen Preview), benefits, template chips, Kaisen section, how it works, limits, FAQ. Kaisen gets a hero-level card plus its own section because it is the newest and most differentiating story, but not the lead since most visitors still arrive with a container. Stale Kaisen caveats removed; unverifiable approval time and 5-cent figure dropped; title/meta updated. Not browser-checked. Uncommitted.
 - 2026-11-01 [marketing-writer] START: landing page benefits-first rewrite from landing-facts.md (landing.html only).
 - 2026-11-01 [manager] START: landing page deep polish (benefits-first rewrite). Engineering fact sheet, then marketing rewrite, then accuracy + browser check, then push for Chas review.
