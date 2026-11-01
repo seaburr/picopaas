@@ -6,8 +6,8 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0d0d14">
-<title>PicoPaaS: tiny hosting for throwaway projects</title>
-<meta name="description" content="Run a public Docker image on the web with an HTTPS URL, an optional managed PostgreSQL or MySQL database, an S3-compatible bucket, and scheduled backups, plus Kaisen (in preview) to build small apps from a description. A small, approval-only platform for hobby and throwaway projects.">
+<title>PicoPaaS: put a small project on the internet today</title>
+<meta name="description" content="Bring a container or describe an app and let Kaisen (in preview) build it. Get an HTTPS address, an optional PostgreSQL or MySQL database, file storage and backups. A small, approval-only platform for demos, side projects and class work.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -34,6 +34,10 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:var(--pane
 .note{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-top:24px;color:var(--muted)}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 .inc{margin:0;padding-left:20px;color:var(--muted);font-size:15px}.inc li{margin:6px 0;overflow-wrap:anywhere}.inc strong{color:#fff}.inc code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d4d4d8}
+.tag{display:inline-block;margin-left:8px;padding:1px 8px;border:1px solid var(--accent-light);border-radius:999px;color:var(--accent-light);font-size:12px;font-weight:600;vertical-align:middle;letter-spacing:0}
+.paths .card{padding:24px}.paths h2{margin:0 0 8px;padding:0;border:0;font-size:20px}.paths p+p{margin-top:12px}.paths a.go{display:inline-block;margin-top:14px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}.chips li{padding:5px 12px;border:1px solid var(--border);border-radius:999px;background:var(--panel);color:#d4d4d8;font-size:14px}
+details{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-top:10px}summary{cursor:pointer;color:#fff;font-weight:600}details p{margin:10px 0 0;color:var(--muted);font-size:15px}
 </style>
 </head>
 <body>
@@ -41,75 +45,78 @@ h1,h2,h3,td,.card p{overflow-wrap:anywhere}
 <header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.picopaas.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.picopaas.xyz/login">Log in</a></nav></div></header>
 <main class="w" id="main">
 <section class="hero">
-<p class="eyebrow">container hosting for hobby projects</p>
-<h1>Ship a container. Get a URL, a database, a bucket, and backups.</h1>
-<p>Point PicoPaaS at a public Docker image and a port. You get an HTTPS address within about a minute, and can add a managed PostgreSQL or MySQL database and an S3-compatible bucket with a checkbox each. Scheduled backups cover them. Or start from a one-click template. Made for demos, experiments, and class projects.</p>
+<p class="eyebrow">small hosting for small projects</p>
+<h1>Put a small project on the internet today.</h1>
+<p>Bring a container, or just describe the app you want and let Kaisen build it. Either way it goes live on its own HTTPS address, with a database, file storage and backups when you want them.</p>
 <div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a><a class="btn s" href="https://platform.picopaas.xyz/login">Log in</a></div>
-<p class="sub">Images must be public and run as non-root. Access is approved manually.</p>
+<p class="sub">Access is approved by hand, so there is a short wait.</p>
+</section>
+<section class="paths">
+<div class="grid grid-4">
+<div class="card"><h2>Bring a container</h2><p>Got an image on a public registry? Give us the image and a port. You get a live HTTPS address in about a minute. Change a setting and it redeploys. If an update won&rsquo;t start, we roll it back for you.</p><p>Prefer not to write anything? Start from a template and fill in a few fields.</p><a class="go" href="https://platform.picopaas.xyz/guide/user">Quick start</a></div>
+<div class="card"><h2>Describe an app<span class="tag">Preview</span></h2><p>Tell Kaisen what you want in plain words. It writes the app, tests it, and deploys it as a normal app. Ask for a change and it ships again.</p><p>You use your own Anthropic key and set the spending limits. A small app usually costs cents.</p><a class="go" href="#kaisen">More about Kaisen</a></div>
+</div>
 </section>
 <section>
-<h2>What it is</h2>
+<h2>What you get</h2>
 <div class="grid grid-4">
-<div class="card"><h3>One container, your way</h3><p>Any public image that runs as non-root, plus its port. Set env vars and encrypted secrets from the dashboard, CLI or API.</p></div>
-<div class="card"><h3>PostgreSQL or MySQL</h3><p>Pick either engine per app. Each app gets its own database (50 MB), and can add an S3-compatible bucket (100 MB). Credentials arrive as env vars, and the database connection is TLS-verified: the CA is mounted as a file, and env values can build a connection string from parts.</p></div>
-<div class="card"><h3>HTTPS included</h3><p>Every app gets a generated subdomain with an automatic Let&rsquo;s Encrypt certificate. Bring your own domain if you prefer.</p></div>
-<div class="card"><h3>Backups</h3><p>Turn on daily or weekly backups of your database, bucket and volume, encrypted and stored outside the cluster. Back up now or download a backup any time. Restores go through an admin for now.</p></div>
+<div class="card"><h3>A real database</h3><p>PostgreSQL or MySQL, your pick. One checkbox and it&rsquo;s created, connected and ready. No server to babysit.</p></div>
+<div class="card"><h3>Somewhere to put files</h3><p>An S3-compatible bucket for uploads, or a small persistent volume for apps that keep files on disk.</p></div>
+<div class="card"><h3>Backups that just happen</h3><p>Turn them on once. Daily or weekly copies of your data are kept off-site, and you can download one whenever you like.</p></div>
+<div class="card"><h3>Your own address</h3><p>Every app gets a secure URL automatically. Point your own domain at it when you&rsquo;re ready.</p></div>
+<div class="card"><h3>Room to experiment</h3><p>Deploys are one click to undo. Apps are walled off from each other. Logs, status and recent CPU and memory are one page away.</p></div>
+<div class="card"><h3>Work with others</h3><p>Share apps in a team project. Use the CLI or an API key if you&rsquo;d rather script it.</p></div>
 </div>
-<p class="pre">Backups are bounded and capped per app, and don&rsquo;t count against your quotas. <a href="https://platform.picopaas.xyz/guide/user">Details in the guide</a>.</p>
-<h3 style="margin:28px 0 8px;font-size:16px">Also included</h3>
-<ul class="inc">
-<li><strong>Templates and recipes.</strong> 14 one-click starters: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL), n8n, Shlink, Miniflux, Forgejo, Wiki.js, Memos, Vaultwarden, Gatus and an nginx static site.</li>
-<li><strong>Safe deploys.</strong> Roll back with one click; a new image that fails to start is reverted automatically.</li>
-<li><strong>Kaisen (in preview).</strong> Describe an app and have Claude build and deploy it for you.</li>
-<li><strong>Persistent volumes.</strong> Opt in to a 1 GB volume for apps that keep files, such as Forgejo or Vaultwarden.</li>
-<li><strong>Projects.</strong> Share apps with others in a project.</li>
-<li><strong>Your tools.</strong> A CLI, API keys, your own domain with automatic TLS, and an audit log.</li>
-<li><strong>Visibility.</strong> Live status, logs, restarts, and recent CPU and memory history.</li>
-<li><strong>Isolation.</strong> Apps are walled off from each other and from the platform.</li>
+</section>
+<section>
+<h2>Start from a template</h2>
+<ul class="chips" aria-label="Templates">
+<li>Ghost</li><li>WordPress</li><li>Directus</li><li>Grafana</li><li>n8n</li><li>Shlink</li><li>Miniflux</li><li>Forgejo</li><li>Memos</li><li>Vaultwarden</li><li>Wiki.js</li><li>Gatus status page</li><li>Static website</li>
 </ul>
 </section>
-<section>
-<h2>Build with Kaisen (in preview)</h2>
-<p class="pre" style="margin-top:0">Describe a small app in plain words. Kaisen (Claude) writes it, deploys it into your project as a normal app, and changes it when you tell it what to change. For example, it built a Markdown notes app with a nested page tree, MySQL storage, image uploads and dark mode in one run, for about five US cents on Claude Haiku 5.5.</p>
+<section id="kaisen">
+<h2>Kaisen: describe it, then use it<span class="tag">Preview</span></h2>
+<p class="pre" style="margin-top:0">Kaisen is an AI builder that lives inside PicoPaaS. You describe a small app, it builds and runs it, and you keep steering in plain language. What it makes is an ordinary PicoPaaS app, with the same address, database and backups as any other.</p>
 <div class="grid grid-4" style="margin-top:16px">
-<div class="card"><h3>Your key, your caps</h3><p>Bring your own Anthropic API key and set spend caps per project.</p></div>
-<div class="card"><h3>A normal app</h3><p>It lands in your personal or team project with a &ldquo;Built with Kaisen &middot; Preview&rdquo; pill, and counts against the project&rsquo;s app limit. Add an optional MySQL database.</p></div>
-<div class="card"><h3>Iterate by typing</h3><p>Tell it what to change and it redeploys. Take an app offline and deploy it again later.</p></div>
-<div class="card"><h3>Your code stays yours</h3><p>Download the code plus the full conversation (CONVERSATION.md), or push each build to its own GitHub repo.</p></div>
+<div class="card"><h3>Built, tested, live</h3><p>Kaisen writes tests for what it builds and runs them before your app starts. You see the results with each build.</p></div>
+<div class="card"><h3>Data when you need it</h3><p>Ask for a PostgreSQL or MySQL database, a bucket or a volume and it&rsquo;s wired in for you.</p></div>
+<div class="card"><h3>You hold the reins</h3><p>Use your own Anthropic key and cap what a run, a day or a build can spend. Web access is off until you turn it on.</p></div>
+<div class="card"><h3>The code is yours</h3><p>Download it any time, or have each build pushed to GitHub. Roll back to an earlier version if a change goes sideways.</p></div>
 </div>
-<p class="pre">Kaisen is in preview and meant for small apps. It doesn&rsquo;t run its generated tests yet, has no web access yet, and previews have no blob storage, secrets or email. <a href="https://platform.picopaas.xyz/guide/user">How to use Kaisen</a>.</p>
+<p class="pre">Best for small web apps. Email, background workers and scheduled jobs aren&rsquo;t supported yet. <a href="https://platform.picopaas.xyz/guide/user">How Kaisen works</a></p>
 </section>
 <section>
 <h2>How it works</h2>
 <div class="grid">
-<div class="card"><span class="n">1</span><h3>Request access</h3><p>Sign up with your email. If approved, a platform admin will reach out, usually within a day.</p></div>
-<div class="card"><span class="n">2</span><h3>Create an app</h3><p>Image, port, env vars, and a PostgreSQL or MySQL database or bucket if you need one.</p></div>
-<div class="card"><span class="n">3</span><h3>Open your URL</h3><p>Live in about a minute over HTTPS. Edit the config to redeploy.</p></div>
+<div class="card"><span class="n">1</span><h3>Ask for access</h3><p>Sign up with your email. A platform admin reviews each request and gets in touch if it&rsquo;s approved.</p></div>
+<div class="card"><span class="n">2</span><h3>Make an app</h3><p>Point at an image, pick a template, or describe what you want to Kaisen.</p></div>
+<div class="card"><span class="n">3</span><h3>Open the link</h3><p>It&rsquo;s live over HTTPS in about a minute. Edit anything and it redeploys.</p></div>
 </div>
-<p class="pre"><strong style="color:#fff">You&rsquo;ll need</strong> a public Docker image that doesn&rsquo;t run as root.</p>
-<pre aria-label="Example"><span class="c"># 1. push an image to any public registry</span>
-docker push ghcr.io/you/app:1.0
-<span class="c"># 2. create an app: image ghcr.io/you/app:1.0, port 8080</span>
-<span class="c"># 3. open the URL we generate</span>
-https://&lt;generated-name&gt;.picopaas.xyz</pre>
-<p class="pre"><a href="https://platform.picopaas.xyz/guide/user">Read the quick start guide</a></p>
+<p class="pre"><strong style="color:#fff">Bringing your own image?</strong> It needs to be public and must not run as root.</p>
 </section>
 <section>
 <h2>Limits</h2>
 <table>
 <caption class="sr">Per-app limits</caption>
-<tr><td>Apps per account</td><td>1 by default</td></tr>
-<tr><td>CPU per app</td><td>0.2 core (shared)</td></tr>
-<tr><td>Memory per app</td><td>384 MB</td></tr>
-<tr><td>Scratch disk per app</td><td>250 MB</td></tr>
+<tr><td>Apps per account</td><td>1 (more on request)</td></tr>
+<tr><td>CPU</td><td>0.2 core, shared</td></tr>
+<tr><td>Memory</td><td>384 MB</td></tr>
+<tr><td>Temporary disk</td><td>250 MB</td></tr>
 <tr><td>Image size</td><td>512 MB</td></tr>
-<tr><td>Database (PostgreSQL or MySQL)</td><td>50 MB</td></tr>
-<tr><td>Blob storage (S3-compatible bucket)</td><td>100 MB</td></tr>
+<tr><td>Database</td><td>50 MB</td></tr>
+<tr><td>Bucket</td><td>100 MB</td></tr>
 <tr><td>Persistent volume (opt-in)</td><td>1 GB</td></tr>
-<tr><td>Outbound bandwidth per app</td><td>20 Mbit/s</td></tr>
-<tr><td>Backup storage per app</td><td>2 GB</td></tr>
+<tr><td>Outbound bandwidth</td><td>20 Mbit/s</td></tr>
+<tr><td>Backup storage</td><td>2 GB</td></tr>
 </table>
-<div class="note"><strong style="color:#fff">Hobby platform.</strong> Built for throwaway projects, not for anything you depend on. Signups are approved by a platform admin.</div>
+<p class="pre">These are small on purpose. PicoPaaS is for things you can afford to lose, not for anything you depend on.</p>
+</section>
+<section>
+<h2>Good to know</h2>
+<details><summary>Can I run a production service here?</summary><p>No. This is a dev and test platform with no uptime guarantee. Please don&rsquo;t store personal data.</p></details>
+<details><summary>Which databases are supported?</summary><p>PostgreSQL and MySQL. Choose one per app when you add a database. Once added, a database can&rsquo;t be switched or removed.</p></details>
+<details><summary>Can my app send email?</summary><p>Not over SMTP; outbound mail ports are blocked. Use a mail provider&rsquo;s HTTPS API instead.</p></details>
+<details><summary>Who restores a backup?</summary><p>For now an admin does it for you. You can download any backup yourself.</p></details>
 </section>
 <section class="hero" style="padding-bottom:0;background:none"><div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a></div></section>
 </main>
