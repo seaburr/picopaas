@@ -7,6 +7,12 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Cloud portability: AWS and GCP first (2026-11-01).** Plan: [PORTABILITY_PLAN.md](PORTABILITY_PLAN.md) (Azure deferred,
+  no S3 API). Please answer: (1) AWS per-app bucket credentials: IAM user per app (recommended) or shared prefix-scoped
+  keys? (2) GCP: one service account + HMAC key per app (recommended; 100-SA default quota)? (3) whose AWS/GCP accounts
+  host throwaway test envs, and the per-run spend cap? (4) AWS before GCP (recommended)? (5) Helm as the self-host
+  install format (recommended)? Phases P1-P3 need no new spend and can start once the plan is approved.
+
 - **Wiki.js recipe and the Postgres connection budget (2026-11-01).** Wiki.js 2 only works with an admin override of
   `db_max_connections` = 10 (its pool is config-file only; at 5, saving pages fails). The 1 GB PG node has about 22 usable
   connections in all, so two Wiki.js apps could use most of them. Options: (a) keep it as a template with the admin step
