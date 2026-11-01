@@ -184,6 +184,7 @@ def test_render_app_manifests_includes_everything():
         "network_policies",
         "secret",
         "pvc",
+        "db_ca_secret",
         "deployment",
         "service",
         "ingress",

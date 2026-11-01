@@ -133,6 +133,12 @@ class FakeKubeProvider(KubeProvider):
             if not (m.get("kind") == "NetworkPolicy" and m["metadata"]["name"] == name)
         ]
 
+    def delete_secret(self, namespace: str, name: str) -> None:
+        self.applied[namespace] = [
+            m for m in self.applied.get(namespace, [])
+            if not (m.get("kind") == "Secret" and m["metadata"]["name"] == name)
+        ]
+
     def list_app_namespaces(self) -> set[str]:
         self.list_ns_calls += 1
         return {ns for ns in self.applied if ns.startswith("app-")}

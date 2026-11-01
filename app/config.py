@@ -211,6 +211,10 @@ if VOLUME_MAX_GI > OVERRIDE_VOLUME_MAX_GI:  # the user ceiling can never exceed 
 # DOKS attaches at most 15 volumes per node; cap the platform-wide count (live apps with a volume) below that.
 VOLUMES_MAX_TOTAL = int(os.environ.get("VOLUMES_MAX_TOTAL", 10))
 VOLUME_DEFAULT_MOUNT_PATH = "/data"
+DB_CA_MOUNT_DIR = "/etc/picopaas"  # the DB CA Secret is mounted here (read-only directory mount, so rotation propagates)
+DB_CA_FILE_NAME = "db-ca.pem"
+DB_CA_FILE = f"{DB_CA_MOUNT_DIR}/{DB_CA_FILE_NAME}"  # what `${{ db.ca_file }}` resolves to when the DB server has a CA
+ENV_MAX_REFS_PER_VALUE = 16  # at most this many `${{ ref }}` occurrences in one env value
 VOLUME_FS_GROUP = 10001  # pod fsGroup so the non-root UID can write a fresh volume
 
 SESSION_COOKIE_NAME = "session"

@@ -134,6 +134,10 @@ class KubeProvider(ABC):
         """Delete one NetworkPolicy (no error if absent). Targeted prune only (allow-same-namespace on scale-down)."""
         return None
 
+    def delete_secret(self, namespace: str, name: str) -> None:
+        """Delete one Secret (no error if absent). Used to prune the per-app DB CA Secret when the server has no CA."""
+        return None
+
     def volume_phase(self, namespace: str, name: str) -> Optional[str]:
         """Phase of the app's PersistentVolumeClaim ('Pending' | 'Bound' | 'Lost'), None if it doesn't exist. Read-only:
         the platform never deletes a PVC (it goes with the namespace)."""

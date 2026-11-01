@@ -217,6 +217,15 @@ class KubeClientProvider(KubeProvider):
         except NotFoundError:
             pass
 
+    def delete_secret(self, namespace: str, name: str) -> None:
+        from kubernetes.dynamic.exceptions import NotFoundError
+
+        resource = self.dyn.resources.get(api_version="v1", kind="Secret")
+        try:
+            resource.delete(name=name, namespace=namespace)
+        except NotFoundError:
+            pass
+
     def volume_phase(self, namespace: str, name: str) -> str | None:
         from kubernetes.dynamic.exceptions import NotFoundError
 

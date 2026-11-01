@@ -15,6 +15,7 @@ import hashlib
 import json
 from typing import Any
 
+from app import config
 from app.config import (
     APP_DOMAIN,
     CUSTOM_DOMAIN_ISSUER,
@@ -92,6 +93,10 @@ def _resource_name(app_id: int) -> str:
 
 def _secret_name(app_id: int) -> str:
     return f"app-{app_id}-env"
+
+
+def db_ca_secret_name(app_id: int) -> str:
+    return f"app-{app_id}-dbca"
 
 
 def pvc_name(app_id: int) -> str:
@@ -562,6 +567,18 @@ def secret_manifest(app_id: int, env: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def db_ca_secret_manifest(app_id: int, ca_pem: str) -> dict[str, Any]:
+    """The database CA certificate (public, not a secret value) as a file Secret, mounted by the Deployment."""
+    return {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {"name": db_ca_secret_name(app_id), "namespace": namespace_name(app_id),
+                     "labels": {"app": _resource_name(app_id)}},
+        "type": "Opaque",
+        "stringData": {config.DB_CA_FILE_NAME: ca_pem},
+    }
+
+
 def deployment_manifest(
     app_id: int,
     image: str,
@@ -577,6 +594,7 @@ def deployment_manifest(
     image_ref: str | None = None,
     health_check_timeout_seconds: int | None = None,
     volume: dict[str, Any] | None = None,
+    db_ca: bool = False,
 ) -> dict[str, Any]:
     e = _res(resources)
     name = _resource_name(app_id)
@@ -623,6 +641,14 @@ def deployment_manifest(
     port_env: dict[str, Any] = (
         {} if "PORT" in (user_env or {}) else {"env": [{"name": "PORT", "value": str(port)}]}
     )
+    pod_volumes: list[dict[str, Any]] = []
+    volume_mounts: list[dict[str, Any]] = []
+    if volume:
+        pod_volumes.append({"name": "data", "persistentVolumeClaim": {"claimName": pvc_name(app_id)}})
+        volume_mounts.append({"name": "data", "mountPath": volume["mount_path"]})
+    if db_ca:  # directory mount (no subPath) so a rotated CA propagates into running pods
+        pod_volumes.append({"name": "db-ca", "secret": {"secretName": db_ca_secret_name(app_id), "defaultMode": 0o444}})
+        volume_mounts.append({"name": "db-ca", "mountPath": config.DB_CA_MOUNT_DIR, "readOnly": True})
     return {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -657,10 +683,7 @@ def deployment_manifest(
                         # Lets the non-root UID write a fresh volume; OnRootMismatch skips the slow recursive chown on reattach.
                         **({"fsGroup": VOLUME_FS_GROUP, "fsGroupChangePolicy": "OnRootMismatch"} if volume else {}),
                     },
-                    **(
-                        {"volumes": [{"name": "data", "persistentVolumeClaim": {"claimName": pvc_name(app_id)}}]}
-                        if volume else {}
-                    ),
+                    **({"volumes": pod_volumes} if pod_volumes else {}),
                     "containers": [
                         {
                             "name": "app",
@@ -684,10 +707,7 @@ def deployment_manifest(
                                     else {}
                                 ),
                             },
-                            **(
-                                {"volumeMounts": [{"name": "data", "mountPath": volume["mount_path"]}]}
-                                if volume else {}
-                            ),
+                            **({"volumeMounts": volume_mounts} if volume_mounts else {}),
                             **port_env,
                             **probes,
                         }
@@ -829,6 +849,7 @@ def render_app_manifests(
     health_check_timeout_seconds: int | None = None,
     volume: dict[str, Any] | None = None,
     volume_backup: dict[str, Any] | None = None,
+    db_ca_pem: str | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
@@ -849,7 +870,8 @@ def render_app_manifests(
                                        resources=resources, run_as_uid=run_as_uid,
                                        restart_nonce=restart_nonce, image_ref=image_ref,
                                        health_check_timeout_seconds=health_check_timeout_seconds,
-                                       volume=volume),
+                                       volume=volume, db_ca=bool(db_ca_pem)),
+        "db_ca_secret": db_ca_secret_manifest(app_id, db_ca_pem) if db_ca_pem else None,
         "pvc": pvc_manifest(app_id, volume) if volume else None,
         "service": service_manifest(app_id, port),
         "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain) if include_ingress else None,
@@ -870,6 +892,8 @@ def flatten_manifests(rendered: dict[str, Any]) -> list[dict[str, Any]]:
         *rendered["network_policies"],
         rendered["secret"],
     ]
+    if rendered.get("db_ca_secret") is not None:
+        flat.append(rendered["db_ca_secret"])
     if rendered.get("pvc") is not None:
         flat.append(rendered["pvc"])  # after the quota (so a grow fits), before the Deployment that mounts it
     flat += [

@@ -16,6 +16,7 @@ export const SUGGESTED_KEYS: Record<string, string> = {
   'db.password': 'DB_PASSWORD',
   'db.ca_cert': 'DB_CA_CERT',
   'db.ca_cert_body': 'DB_SSL_CA',
+  'db.ca_file': 'DB_CA_FILE',
   'db.tls': 'DB_TLS',
   'storage.endpoint': 'S3_ENDPOINT',
   'storage.region': 'S3_REGION',
@@ -28,6 +29,7 @@ export const REF_TIPS: Record<string, string> = {
   'db.url': 'Full connection string',
   'db.ca_cert': 'CA certificate for the TLS connection',
   'db.ca_cert_body': 'CA certificate as one base64 line, no BEGIN/END lines (Wiki.js)',
+  'db.ca_file': 'Path to the CA certificate file',
   'db.tls': 'Whether TLS is required',
 }
 
@@ -35,5 +37,5 @@ export const refLabel = (ref: string) => '${{ ' + ref + ' }}'
 
 // Every ${{ x.y }} reference used in a value.
 export function refsIn(value: string): string[] {
-  return [...value.matchAll(/\$\{\{\s*([a-z_.]+)\s*\}\}/g)].map((m) => m[1])
+  return [...value.matchAll(/\$\{\{\s*([a-z0-9_.]+)\s*\}\}/g)].map((m) => m[1])
 }

@@ -29,6 +29,8 @@ def validate_mount_path(path: str) -> str:
     norm = posixpath.normpath("/" + p.lstrip("/"))
     if norm == "/":
         raise ValueError("Mount path can't be the root directory.")
+    if norm == config.DB_CA_MOUNT_DIR or norm.startswith(config.DB_CA_MOUNT_DIR + "/"):
+        raise ValueError(f"Mount path can't be {config.DB_CA_MOUNT_DIR} or inside it: the platform mounts the database CA there.")
     for pre in FORBIDDEN_PREFIXES:
         if norm == pre or norm.startswith(pre + "/"):
             raise ValueError(f"Mount path can't be {pre} or inside it. Pick an app directory such as /data.")

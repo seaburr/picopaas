@@ -6,12 +6,17 @@ paths mirror that section exactly.
 """
 import re
 
+from app import config
+
 ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*\Z")  # \Z, not $: "$" also matches before a trailing newline
 REF_RE = re.compile(r"^\$\{\{\s*([a-z0-9_]+(?:\.[a-z0-9_]+)?)\s*\}\}$")
 
+# One reference anywhere inside a value (no anchors). `resolve` and `validate_env_value` scan with this.
+REF_ANY_RE = re.compile(r"\$\{\{\s*([a-z0-9_]+(?:\.[a-z0-9_]+)?)\s*\}\}")
+
 ALLOWED_REFS = {
     "db.host", "db.port", "db.name", "db.user", "db.password", "db.url",
-    "db.ca_cert", "db.ca_cert_body", "db.tls",
+    "db.ca_cert", "db.ca_cert_body", "db.ca_file", "db.tls",
     "storage.endpoint", "storage.region", "storage.bucket",
     "storage.access_key", "storage.secret_key",
     "app.url",
@@ -56,51 +61,64 @@ def resolve_ref(value: str) -> str | None:
 
 
 def resolve(env_vars: dict[str, str], refs: dict[str, str]) -> dict[str, str]:
-    """Substitute `${{ x.y }}`-style reference values with real values.
+    """Substitute every `${{ x.y }}` reference in each value with its real value.
 
-    `env_vars` is a mapping of env var name -> raw value, where a value is either
-    a literal or a `${{ ref }}` placeholder (see ALLOWED_REFS). `refs` maps a
-    resolved dotted ref path (e.g. "db.url") to its real value for this app
-    (typically built from a provider's `create_db_user`/`create_bucket_and_key`
-    creds — see app/providers/).
+    `env_vars` maps env var name -> raw value: a literal, a `${{ ref }}` placeholder, or literal text with any number of
+    refs mixed in (see ALLOWED_REFS). `refs` maps a dotted ref path (e.g. "db.url") to its real value for this app
+    (built in the reconciler from the provider creds, see app/providers/).
 
-    Used at deploy time, after `validate_env_value` has already confirmed the
-    ref is syntactically valid and available (want_db/want_storage). Raises
-    EnvValidationError if a value looks like a ref but `refs` has no entry for
-    it — e.g. the provider call that should have populated it hasn't run yet.
+    Single pass over the ORIGINAL value: a resolved value is inserted as is (no encoding) and never re-scanned, so a
+    resolved text that happens to contain `${{` is not expanded again. Used at deploy time, after `validate_env_value`
+    has confirmed every ref is valid and available. Raises EnvValidationError if a ref has no entry in `refs`, e.g. the
+    provider call that should have populated it hasn't run yet.
     """
+    def _sub(m: re.Match) -> str:
+        ref = m.group(1)
+        if ref not in refs:
+            raise EnvValidationError(f"unknown reference {m.group(0)!r}: no resolved value for {ref!r}")
+        return refs[ref]
+
     resolved: dict[str, str] = {}
     for key, value in env_vars.items():
-        ref = resolve_ref(value)
-        if ref is None:
-            resolved[key] = value
-            continue
-        if ref not in refs:
-            raise EnvValidationError(f"unknown reference {value!r}: no resolved value for {ref!r}")
-        resolved[key] = refs[ref]
+        whole = resolve_ref(value)
+        if whole is not None:  # a whole-value reference (surrounding whitespace ignored), as before
+            if whole not in refs:
+                raise EnvValidationError(f"unknown reference {value!r}: no resolved value for {whole!r}")
+            resolved[key] = refs[whole]
+        else:
+            resolved[key] = REF_ANY_RE.sub(_sub, value) if "${{" in value else value
     return resolved
 
 
 def validate_env_value(value: str, want_db: bool, want_storage: bool) -> None:
-    """Raise EnvValidationError unless value is a plain literal or exactly one valid, available ref.
+    """Raise EnvValidationError unless every `${{` in value starts a valid, allowed, available reference.
 
-    Any value containing `${{` must be exactly one allowed reference (whitespace inside the
-    braces is fine); look-alikes, wrong case, and mid-string use are rejected to avoid confusion.
+    A value is literal text with any number of `${{ ref }}` references (whitespace inside the braces is fine, at most
+    ENV_MAX_REFS_PER_VALUE of them). Look-alikes, wrong case, unknown refs, stray or unclosed `${{` are rejected to
+    avoid confusion; write a literal `${{` is therefore not possible.
     """
     if "${{" not in value:
         return
-    ref = resolve_ref(value)
     allowed = ", ".join("${{ %s }}" % r for r in sorted(ALLOWED_REFS))
-    if ref is None or ref not in ALLOWED_REFS:
+    found = list(REF_ANY_RE.finditer(value))
+    if len(found) != value.count("${{"):
         raise EnvValidationError(
-            f"A value containing '${{{{' must be exactly one reference and nothing else. Allowed: {allowed}"
+            "A value containing '${{' may only contain complete references like ${{ db.url }} (lowercase, "
+            f"closed with '}}}}') mixed with plain text. Allowed: {allowed}"
         )
-    domain = ref.split(".", 1)[0]
-    if domain == "db" and not want_db:
+    if len(found) > config.ENV_MAX_REFS_PER_VALUE:
         raise EnvValidationError(
-            f"${{{{ {ref} }}}} needs a database, but this app doesn't have one. Turn on the database "
-            "option for this app, or remove the reference.")
-    if domain == "storage" and not want_storage:
-        raise EnvValidationError(
-            f"${{{{ {ref} }}}} needs a storage bucket, but this app doesn't have one. Turn on the storage bucket "
-            "option for this app, or remove the reference.")
+            f"A value can contain at most {config.ENV_MAX_REFS_PER_VALUE} references, this one has {len(found)}.")
+    for m in found:
+        ref = m.group(1)
+        if ref not in ALLOWED_REFS:
+            raise EnvValidationError(f"Unknown reference ${{{{ {ref} }}}}. Allowed: {allowed}")
+        domain = ref.split(".", 1)[0]
+        if domain == "db" and not want_db:
+            raise EnvValidationError(
+                f"${{{{ {ref} }}}} needs a database, but this app doesn't have one. Turn on the database "
+                "option for this app, or remove the reference.")
+        if domain == "storage" and not want_storage:
+            raise EnvValidationError(
+                f"${{{{ {ref} }}}} needs a storage bucket, but this app doesn't have one. Turn on the storage bucket "
+                "option for this app, or remove the reference.")

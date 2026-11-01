@@ -35,7 +35,8 @@ from tests.conftest import register_and_login  # noqa: E402
 
 BAD_VALUES = [
     "${{ app-33.db.url }}", "${{ db.URL }}", "${{ DB.url }}", "${{ nope }}", "${{}}",
-    "prefix ${{ db.url }}", "${{ db.url }} suffix", "x${{",
+    "x${{", "${{ db.url }", "${{ db.url", "${{ ${{ db.url }}", "${{{ db.url }}}", "a ${{ db.url }} ${{ nope }}",
+    "${{ db.url }} ${{ DB.url }}", "a ${{ db.url }} and ${{",
 ]
 
 
@@ -57,7 +58,11 @@ def test_lookalike_refs_rejected_on_create_and_patch(client, value):
     assert r.status_code == 422
 
 
-@pytest.mark.parametrize("value", ["${{db.url}}", "${{ db.url }}", "${{  storage.bucket  }}", "plain"])
+@pytest.mark.parametrize("value", [
+    "${{db.url}}", "${{ db.url }}", "${{  storage.bucket  }}", "plain", "prefix ${{ db.url }}", "${{ db.url }} suffix",
+    "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslrootcert=${{ db.ca_file }}",
+    "${{ db.host }}${{ db.port }}",
+])
 def test_valid_refs_accepted(client, value):
     register_and_login(client, "refs2@example.com")
     assert client.post("/apps", json=_body(value)).status_code == 201
@@ -105,3 +110,59 @@ def test_app_url_prefers_reserved_subdomain_then_active_custom_domain():
     assert _app_url(models.App(**base, platform_subdomain="blog",
                                custom_domain="www.example.com", custom_domain_status="active")) \
         == "https://www.example.com"
+
+
+# --- interpolation: refs inside a longer value ---
+
+from app import config, env_refs  # noqa: E402
+
+DSN = "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslrootcert=${{ db.ca_file }}"
+REFS = {"db.user": "u1", "db.password": "pw1", "db.host": "h.internal", "db.port": "25060", "db.name": "d1",
+        "db.ca_file": "/etc/picopaas/db-ca.pem"}
+
+
+def test_resolve_mixed_value_with_several_refs():
+    out = resolve({"DSN": DSN, "WHOLE": "  ${{ db.port }}  ", "HOSTPORT": "${{db.host}}:${{ db.port }}"}, REFS)
+    assert out["DSN"] == "postgres://u1:pw1@h.internal:25060/d1?sslrootcert=/etc/picopaas/db-ca.pem"
+    assert out["WHOLE"] == "25060"  # a whole-value ref behaves as before (surrounding whitespace ignored)
+    assert out["HOSTPORT"] == "h.internal:25060"
+
+
+def test_resolve_is_single_pass_never_recursive():
+    refs = {"db.password": "${{ db.user }}", "db.user": "SHOULD-NOT-APPEAR"}
+    assert resolve({"X": "a-${{ db.password }}-b"}, refs) == {"X": "a-${{ db.user }}-b"}
+    assert resolve({"X": "${{ db.password }}"}, refs) == {"X": "${{ db.user }}"}
+
+
+def test_resolve_unknown_ref_inside_longer_value_raises():
+    with pytest.raises(EnvValidationError):
+        resolve({"X": "a ${{ db.url }} b"}, refs={})
+
+
+def test_validate_mixed_value_availability_rules():
+    env_refs.validate_env_value(DSN, True, False)
+    with pytest.raises(EnvValidationError, match="needs a database"):
+        env_refs.validate_env_value("x ${{ db.url }}", False, True)
+    with pytest.raises(EnvValidationError, match="needs a storage bucket"):
+        env_refs.validate_env_value("x ${{ app.url }} y ${{ storage.bucket }}", True, False)
+    with pytest.raises(EnvValidationError, match="Unknown reference"):
+        env_refs.validate_env_value("ok ${{ db.nope }}", True, True)
+
+
+def test_validate_ref_count_cap():
+    ok = "${{ app.url }}" * config.ENV_MAX_REFS_PER_VALUE
+    env_refs.validate_env_value(ok, False, False)
+    with pytest.raises(EnvValidationError, match=str(config.ENV_MAX_REFS_PER_VALUE)):
+        env_refs.validate_env_value(ok + "${{ app.url }}", False, False)
+
+
+def test_mixed_value_stored_as_ref_text_and_422_through_api(client):
+    register_and_login(client, "refs5@example.com")
+    r = client.post("/apps", json=_body("x ${{ db.url }} y ${{ db.nope }}"))
+    assert r.status_code == 422 and "Unknown reference" in r.text
+    r = client.post("/apps", json=_body("jdbc:${{ db.host }}/${{ db.name }}", want_db=False))
+    assert r.status_code == 422 and "needs a database" in r.text
+    r = client.post("/apps", json=_body("jdbc:${{ db.host }}/${{ db.name }}"))
+    assert r.status_code == 201
+    env = client.get(f"/apps/{r.json()['id']}").json()["env"]
+    assert [e["value"] for e in env if e["key"] == "X"] == ["jdbc:${{ db.host }}/${{ db.name }}"]

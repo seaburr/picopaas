@@ -71,6 +71,7 @@ def _db_refs(app: models.App) -> dict[str, str]:
                          tls=bool(server.ca_cert)),
         "db.ca_cert": server.ca_cert or "",
         "db.ca_cert_body": pem_body(server.ca_cert),
+        "db.ca_file": config.DB_CA_FILE if server.ca_cert else "",
         "db.tls": "required" if server.ca_cert else "off",
     }
 
@@ -496,6 +497,7 @@ def reconcile_app(
         platform_subdomain=app.platform_subdomain,
         custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
         volume=_volume_of(app),
+        db_ca_pem=(app.database.server.ca_cert or None) if app.want_db and app.database is not None else None,
     )
     render_kwargs["volume_backup"] = _volume_backup_of(app, render_kwargs["resources"])
 
@@ -555,6 +557,8 @@ def reconcile_app(
             kube.delete_ingress(namespace, k8s_manifests.custom_ingress_name(app.id))
         # Targeted prune (not general GC): the same-namespace policy is only rendered for replicas > 1, so
         # scaling back down must remove it explicitly (idempotent).
+        if not render_kwargs["db_ca_pem"]:  # no CA (any more): prune the file Secret (the Deployment no longer mounts it)
+            kube.delete_secret(namespace, k8s_manifests.db_ca_secret_name(app.id))
         if render_kwargs["replicas"] <= 1:
             kube.delete_network_policy(namespace, k8s_manifests.SAME_NAMESPACE_POLICY)
         status = kube.get_status(namespace)
