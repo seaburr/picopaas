@@ -7,6 +7,7 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Cap env var values at 32 KiB? (2026-11-01, PENTEST K56)** There is no length limit today, so a huge value can push the app's Secret past Kubernetes' 1 MiB limit and put that one app in error (no effect on others). I recommend the 32 KiB cap. (K55, a user volume at /etc/picopaas, is moot: no app on prod has a volume.)
 - **Wiki.js recipe and the Postgres connection budget (2026-11-01).** Wiki.js 2 only works with an admin override of
   `db_max_connections` = 10 (its pool is config-file only; at 5, saving pages fails). The 1 GB PG node has about 22 usable
   connections in all, so two Wiki.js apps could use most of them. Options: (a) keep it as a template with the admin step
@@ -160,4 +161,5 @@ background on each item if you want it.
   suspend/delete for users and apps, audit log, SMTP egress blocked. `hostUsers: false` not adopted.
 - 2026-10-19: Terraform state in Terraform Cloud (org `seaburr`), like other projects.
 - [x] 2026-10-20: doadmin can't kill app sessions (MySQL 1095 'not owner of thread'); the pod-roll fallback cut a 300MB fill at ~88MB. Now the platform kills sessions as the app's own user first.
+
 

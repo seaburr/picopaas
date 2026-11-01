@@ -201,7 +201,7 @@ refuses and changes nothing.
 ## Database access
 
 The CLI does not connect to your database server. Your database is reachable only from your own running app: put
-`DATABASE_URL: ${{ db.url }}` (or `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.ca_cert`) under `env:`
+`DATABASE_URL: ${{ db.url }}` (or `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.ca_cert`, `db.ca_file`; a value may mix text and several refs) under `env:`
 in the spec and read it in your code. To change data or schema, do it from the app (for example a migration at
 startup). To check size, use `usage`; if the database is over its cap, delete rows or drop tables from the app, and
 writes return once it's under the limit. Connection settings and TLS examples per engine are in

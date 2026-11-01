@@ -192,9 +192,13 @@ Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
 Your env vars (plain or secret) reach your container as environment variables. Changing them redeploys (restarts)
 the app.
 
-A value that is **exactly** `${{ ref }}` (the whole value, optional spaces inside the braces) is replaced at deploy
-time. You can't put a reference inside a longer string. An unknown or embedded reference gives `422` ("A value
-containing '${{' must be exactly one reference and nothing else. Allowed: ..."). A `db.*` reference needs
+A value can be a `${{ ref }}` on its own, or plain text with up to 16 references mixed in (optional spaces inside
+the braces), for example `postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}`.
+References are replaced at deploy time in a single pass: the inserted value is used as is (no URL or shell encoding)
+and is never scanned for further references. Generated database passwords use only letters and digits, so they are safe
+in a URL. Every `${{` in a value must start a complete, known reference (lowercase, closed with `}}`); a misspelled,
+unknown, unclosed or stray one gives `422` ("A value containing '${{' may only contain complete references like
+${{ db.url }}..." or "Unknown reference ..."), and so does more than 16. A `db.*` reference needs
 `resources.db: true` (API: `want_db`), and a `storage.*` reference needs `resources.storage: true` (`want_storage`).
 Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't have one...").
 
@@ -208,6 +212,7 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 | `${{ db.url }}` | `mysql://user:password@host:port/name` for MySQL, or `postgres://user:password@host:port/name` (with `?sslmode=require` when the server has TLS) for PostgreSQL |
 | `${{ db.ca_cert }}` | CA certificate PEM text; empty string if the server has none |
 | `${{ db.ca_cert_body }}` | The same certificate as one base64 line, without the `BEGIN`/`END` lines (for apps such as Wiki.js that add them); empty string if none |
+| `${{ db.ca_file }}` | Path of the CA certificate as a file inside your container, `/etc/picopaas/db-ca.pem`; empty string if the server has no CA (see "Database TLS: the CA as a file" in section 6) |
 | `${{ db.tls }}` | `required` if the server has a CA cert, else `off` |
 | `${{ storage.endpoint }}` | Full URL, for example `https://atl1.digitaloceanspaces.com` |
 | `${{ storage.region }}` | For example `atl1` |
@@ -297,6 +302,22 @@ conn = psycopg.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"
                        dbname=os.environ["DB_NAME"],
                        sslmode="verify-full", sslrootcert="/tmp/db-ca.pem")
 ```
+
+**Database TLS: the CA as a file.** For an app with a database whose server has a CA, the platform mounts the CA
+certificate read-only in your container at `/etc/picopaas/db-ca.pem` (the directory `/etc/picopaas` is reserved: a
+volume can't be mounted there). Many clients want a file path instead of the PEM text, and `${{ db.ca_file }}` gives
+you that path. A PostgreSQL DSN that verifies the server certificate:
+
+```yaml
+env:
+  DATABASE_URL: postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}
+```
+
+The values are inserted as is, with no encoding (the generated user, password and database name are letters and digits).
+For MySQL, point your client's CA option at the same path, for example `ssl-ca=/etc/picopaas/db-ca.pem` (mysql CLI,
+`--ssl-ca`) or `ssl: { ca: fs.readFileSync(process.env.DB_CA_FILE) }` (mysql2) with `DB_CA_FILE: ${{ db.ca_file }}`.
+The file is updated in place if the platform rotates the CA, so re-read it on a new connection rather than caching
+it for the life of the process. Servers without a CA have no file and `${{ db.ca_file }}` is an empty string.
 
 **Connection limit (PostgreSQL).** Your app's database role is capped at 5 simultaneous connections (`CONNECTION LIMIT 5`). Keep your pool's maximum size at or below this.
 
@@ -598,7 +619,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | `422` "Image is N MB; the limit is 512 MB..." | Slim the image down: use a `-slim` or alpine base, or a multi-stage build. |
 | `403` "You've reached your limit of N apps..." | Delete an existing app or ask an administrator to raise your limit. The limit is checked before the image and env checks, so a new app at the limit gets this `403` even if the spec has other problems. |
 | `422` "... needs a database, but this app doesn't have one" | Add `resources: { db: true }` (or `storage: true`), or remove the reference. |
-| `422` "A value containing '${{' must be exactly one reference..." | Use one `${{ db.x }}` or `${{ storage.x }}` from the table in section 5, as the whole value. |
+| `422` "A value containing '${{' may only contain complete references..." or "Unknown reference ..." | Every `${{` must start a reference from the table in section 5, written exactly like `${{ db.url }}` (lowercase, closed with `}}`), at most 16 per value. |
 | `422` "Missing values for these secrets" | Pass `--secret NAME=value` (CLI), the `secrets` object (API), or fill in **Secret values** (UI). |
 | `422` "... isn't a valid env var name" | Env names use capital letters, digits and underscores, and don't start with a digit. |
 | 502 or 503 from your hostname | The app isn't ready yet, the `port` is wrong, or the app isn't listening on all interfaces. Bind to `0.0.0.0`. |

@@ -742,6 +742,10 @@ GraphQL login, page create and render, pages kept across a restart; 143 MiB peak
   `${{ db.password }}`, `${{ db.ca_cert }}`, `${{ storage.endpoint }}`, `${{ storage.region }}`,
   `${{ storage.bucket }}`, `${{ storage.access_key }}`, `${{ storage.secret_key }}`. See the
   [User guide](USER_GUIDE.md) and [API](API.md) for the full set.
+- **Build connection strings from parts.** A value can mix text and several refs, so a DSN such as
+  `postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}`
+  works (values are inserted as is, no encoding; generated passwords are letters and digits). For a client that wants
+  the CA as a file, the platform mounts it at `/etc/picopaas/db-ca.pem` (`${{ db.ca_file }}`): no entrypoint needed.
 - **No persistent filesystem.** The 250 MB scratch disk is wiped on restart. Keep state in the MySQL database and
   uploads in the blob storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
 - **No outbound SMTP.** Disable features that send email, or they will error.

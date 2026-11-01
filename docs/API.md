@@ -221,9 +221,10 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 `want_db`, `db_engine` and `want_storage` cannot be changed (and `replicas` is admin-only). `env`, when sent, replaces the whole list; send a secret back with
 value `********` to keep it.
 
-`EnvVar` (input): `{key, value, is_secret=false}`. `key` matches `^[A-Z_][A-Z0-9_]*$`. A `value` that is exactly
-`${{ ref }}` is a reference; allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
-db.ca_cert_body, db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public URL — an active custom domain or reserved subdomain if set, otherwise `https://<hostname>.<domain>`). `db.*` needs
+`EnvVar` (input): `{key, value, is_secret=false}`. `key` matches `^[A-Z_][A-Z0-9_]*$`. A `value` may mix plain text
+with up to 16 `${{ ref }}` references (single-pass substitution, values inserted as is without encoding, never
+re-scanned; every `${{` must start a valid, available ref, else 422); allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
+db.ca_cert_body, db.ca_file, db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public URL — an active custom domain or reserved subdomain if set, otherwise `https://<hostname>.<domain>`). `db.ca_file` is `/etc/picopaas/db-ca.pem` (the platform mounts the DB server's CA there) or an empty string when the server has no CA. `db.*` needs
 `want_db`, `storage.*` needs `want_storage`.
 
 Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 "Couldn't find that image, or it's private..."), the USER must be non-root (422; a named user runs as UID 10001), and the summed compressed layers at most the app's image limit (512 MB by default, `limits.image_mb`; an administrator can
