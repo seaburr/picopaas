@@ -33,6 +33,51 @@ def validate_cloud_provider(value: str) -> str:
 CLOUD_PROVIDER = validate_cloud_provider(os.environ.get("CLOUD_PROVIDER", "digitalocean"))
 
 
+# CIDRs the tenant "internet" egress rule ALWAYS excludes (docs/PORTABILITY_PLAN.md, isolation). The defaults are the
+# RFC1918 + link-local ranges (169.254.0.0/16 covers cloud metadata); on DOKS the pod/service CIDRs 10.244/16 and
+# 10.245/16 sit inside 10.0.0.0/8. TENANT_EXTRA_PRIVATE_CIDRS / TENANT_EXTRA_RESERVED_CIDRS (comma-separated IPv4)
+# can only ADD ranges (e.g. an AWS/GCP VPC outside RFC1918); they can never remove a default.
+DEFAULT_TENANT_PRIVATE_CIDRS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
+# Non-routable / special-use ranges that never hold a legitimate public destination (kept separate from the private
+# list because the reconciler uses the private list to detect VPC-private storage IPs).
+DEFAULT_TENANT_RESERVED_CIDRS = ("0.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "192.0.0.0/24", "198.18.0.0/15",
+                                 "224.0.0.0/4", "240.0.0.0/4")
+
+
+def parse_extra_cidrs(name: str, raw: str | None) -> list[str]:
+    """Comma-separated IPv4 networks from env var `name`; unset/blank = none. Invalid = ValueError at startup.
+
+    IPv4 only and never /0: the egress rule is `0.0.0.0/0 except [...]`, and Kubernetes rejects an `except` that is not
+    inside the base block.
+    """
+    import ipaddress
+
+    out: list[str] = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            net = ipaddress.ip_network(part)
+        except ValueError as exc:
+            raise ValueError(f"{name} has an invalid network {part!r}: {exc}") from exc
+        if net.version != 4 or net.prefixlen == 0:
+            raise ValueError(f"{name} has an invalid network {part!r}: must be IPv4 and not /0")
+        out.append(part)
+    return out
+
+
+def merge_cidrs(defaults: tuple[str, ...], extra: list[str]) -> list[str]:
+    """Defaults first (always present), then extras not already listed."""
+    return list(defaults) + [c for c in dict.fromkeys(extra) if c not in defaults]
+
+
+TENANT_PRIVATE_CIDRS = merge_cidrs(DEFAULT_TENANT_PRIVATE_CIDRS, parse_extra_cidrs(
+    "TENANT_EXTRA_PRIVATE_CIDRS", os.environ.get("TENANT_EXTRA_PRIVATE_CIDRS")))
+TENANT_RESERVED_CIDRS = merge_cidrs(DEFAULT_TENANT_RESERVED_CIDRS, parse_extra_cidrs(
+    "TENANT_EXTRA_RESERVED_CIDRS", os.environ.get("TENANT_EXTRA_RESERVED_CIDRS")))
+
+
 def object_store_access_key_id() -> str:
     """OBJECT_STORE_ACCESS_KEY_ID, falling back to the original SPACES_ACCESS_KEY_ID. Read at call time."""
     return os.environ.get("OBJECT_STORE_ACCESS_KEY_ID") or os.environ.get("SPACES_ACCESS_KEY_ID", "")

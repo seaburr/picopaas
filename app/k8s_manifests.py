@@ -55,25 +55,12 @@ DNS_PORT = 53
 
 # RFC1918 + link-local ranges excluded from the "internet" egress allowance,
 # so apps can reach the public internet but not other private cluster/VPC IPs.
-PRIVATE_CIDRS = [
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "169.254.0.0/16",  # link-local, incl. cloud metadata 169.254.169.254
-]
+PRIVATE_CIDRS = list(config.TENANT_PRIVATE_CIDRS)  # default 10/8, 172.16/12, 192.168/16, 169.254/16
 
 # Non-routable / special-use ranges that never hold a legitimate public destination. Excluded from the internet
 # egress allowance too (defence in depth: DOKS pod/service CIDRs 10.244/16 + 10.245/16 are already inside 10/8).
 # Kept separate from PRIVATE_CIDRS because the reconciler uses that list to detect VPC-private storage IPs.
-RESERVED_CIDRS = [
-    "0.0.0.0/8",       # "this network"
-    "100.64.0.0/10",   # CGNAT / shared address space (some clouds/overlays route internal services here)
-    "127.0.0.0/8",     # loopback
-    "192.0.0.0/24",    # IETF protocol assignments
-    "198.18.0.0/15",   # benchmarking
-    "224.0.0.0/4",     # multicast
-    "240.0.0.0/4",     # reserved (incl. 255.255.255.255 broadcast)
-]
+RESERVED_CIDRS = list(config.TENANT_RESERVED_CIDRS)
 EGRESS_EXCEPT_CIDRS = PRIVATE_CIDRS + RESERVED_CIDRS
 
 MYSQL_PORT = 3306

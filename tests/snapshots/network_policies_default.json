@@ -1,0 +1,1495 @@
+{
+ "consts": {
+  "EGRESS_EXCEPT_CIDRS": [
+   "10.0.0.0/8",
+   "172.16.0.0/12",
+   "192.168.0.0/16",
+   "169.254.0.0/16",
+   "0.0.0.0/8",
+   "100.64.0.0/10",
+   "127.0.0.0/8",
+   "192.0.0.0/24",
+   "198.18.0.0/15",
+   "224.0.0.0/4",
+   "240.0.0.0/4"
+  ],
+  "PRIVATE_CIDRS": [
+   "10.0.0.0/8",
+   "172.16.0.0/12",
+   "192.168.0.0/16",
+   "169.254.0.0/16"
+  ],
+  "RESERVED_CIDRS": [
+   "0.0.0.0/8",
+   "100.64.0.0/10",
+   "127.0.0.0/8",
+   "192.0.0.0/24",
+   "198.18.0.0/15",
+   "224.0.0.0/4",
+   "240.0.0.0/4"
+  ]
+ },
+ "full": [
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "default-deny",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [],
+    "ingress": [],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress",
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-ingress-controller",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "ingress": [
+     {
+      "from": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        }
+       }
+      ],
+      "ports": [
+       {
+        "port": 8080,
+        "protocol": "TCP"
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Ingress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-dns",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 53,
+        "protocol": "UDP"
+       },
+       {
+        "port": 53,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "kube-system"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-internet",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 22,
+        "port": 20,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 24,
+        "port": 24,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 134,
+        "port": 26,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 444,
+        "port": 140,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 464,
+        "port": 446,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 586,
+        "port": 466,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 3388,
+        "port": 588,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6659,
+        "port": 3390,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6696,
+        "port": 6670,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 65535,
+        "port": 6698,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 110,
+        "port": 20,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 134,
+        "port": 112,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 160,
+        "port": 140,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 388,
+        "port": 162,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 444,
+        "port": 390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 1899,
+        "port": 446,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 3388,
+        "port": 1901,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 11210,
+        "port": 3390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 65535,
+        "port": 11212,
+        "protocol": "UDP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "0.0.0.0/0",
+         "except": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "0.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "192.0.0.0/24",
+          "198.18.0.0/15",
+          "224.0.0.0/4",
+          "240.0.0.0/4"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-mysql",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 3306,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "10.9.0.0/24"
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-ingress",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 8000,
+        "protocol": "TCP"
+       },
+       {
+        "port": 8443,
+        "protocol": "TCP"
+       },
+       {
+        "port": 80,
+        "protocol": "TCP"
+       },
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        },
+        "podSelector": {
+         "matchLabels": {
+          "app.kubernetes.io/name": "traefik"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-acme-solver",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "ingress": [
+     {
+      "from": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        }
+       }
+      ],
+      "ports": [
+       {
+        "port": 8089,
+        "protocol": "TCP"
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchLabels": {
+      "acme.cert-manager.io/http01-solver": "true"
+     }
+    },
+    "policyTypes": [
+     "Ingress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-same-namespace",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "to": [
+       {
+        "podSelector": {}
+       }
+      ]
+     }
+    ],
+    "ingress": [
+     {
+      "from": [
+       {
+        "podSelector": {}
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Ingress",
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-storage",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "10.1.1.1/32"
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchExpressions": [
+      {
+       "key": "picopaas.io/backup",
+       "operator": "DoesNotExist"
+      }
+     ]
+    },
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-backup",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "0.0.0.0/0",
+         "except": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "0.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "192.0.0.0/24",
+          "198.18.0.0/15",
+          "224.0.0.0/4",
+          "240.0.0.0/4"
+         ]
+        }
+       },
+       {
+        "ipBlock": {
+         "cidr": "10.2.2.2/32"
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {
+     "matchLabels": {
+      "picopaas.io/backup": "1"
+     }
+    },
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  }
+ ],
+ "mysql": [
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "default-deny",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [],
+    "ingress": [],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress",
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-ingress-controller",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "ingress": [
+     {
+      "from": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        }
+       }
+      ],
+      "ports": [
+       {
+        "port": 8080,
+        "protocol": "TCP"
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-dns",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 53,
+        "protocol": "UDP"
+       },
+       {
+        "port": 53,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "kube-system"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-internet",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 22,
+        "port": 20,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 24,
+        "port": 24,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 134,
+        "port": 26,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 444,
+        "port": 140,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 464,
+        "port": 446,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 586,
+        "port": 466,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 3388,
+        "port": 588,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6659,
+        "port": 3390,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6696,
+        "port": 6670,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 65535,
+        "port": 6698,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 110,
+        "port": 20,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 134,
+        "port": 112,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 160,
+        "port": 140,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 388,
+        "port": 162,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 444,
+        "port": 390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 1899,
+        "port": 446,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 3388,
+        "port": 1901,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 11210,
+        "port": 3390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 65535,
+        "port": 11212,
+        "protocol": "UDP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "0.0.0.0/0",
+         "except": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "0.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "192.0.0.0/24",
+          "198.18.0.0/15",
+          "224.0.0.0/4",
+          "240.0.0.0/4"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-mysql",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 3306,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "10.0.0.0/24"
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-ingress",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 8000,
+        "protocol": "TCP"
+       },
+       {
+        "port": 8443,
+        "protocol": "TCP"
+       },
+       {
+        "port": 80,
+        "protocol": "TCP"
+       },
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        },
+        "podSelector": {
+         "matchLabels": {
+          "app.kubernetes.io/name": "traefik"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  }
+ ],
+ "pg": [
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "default-deny",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [],
+    "ingress": [],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress",
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-ingress-controller",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "ingress": [
+     {
+      "from": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        }
+       }
+      ],
+      "ports": [
+       {
+        "port": 8080,
+        "protocol": "TCP"
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-dns",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 53,
+        "protocol": "UDP"
+       },
+       {
+        "port": 53,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "kube-system"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-internet",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 22,
+        "port": 20,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 24,
+        "port": 24,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 134,
+        "port": 26,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 444,
+        "port": 140,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 464,
+        "port": 446,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 586,
+        "port": 466,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 3388,
+        "port": 588,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6659,
+        "port": 3390,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6696,
+        "port": 6670,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 65535,
+        "port": 6698,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 110,
+        "port": 20,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 134,
+        "port": 112,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 160,
+        "port": 140,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 388,
+        "port": 162,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 444,
+        "port": 390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 1899,
+        "port": 446,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 3388,
+        "port": 1901,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 11210,
+        "port": 3390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 65535,
+        "port": 11212,
+        "protocol": "UDP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "0.0.0.0/0",
+         "except": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "0.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "192.0.0.0/24",
+          "198.18.0.0/15",
+          "224.0.0.0/4",
+          "240.0.0.0/4"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-mysql",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 25060,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "10.11.0.0/20"
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-ingress",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 8000,
+        "protocol": "TCP"
+       },
+       {
+        "port": 8443,
+        "protocol": "TCP"
+       },
+       {
+        "port": 80,
+        "protocol": "TCP"
+       },
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        },
+        "podSelector": {
+         "matchLabels": {
+          "app.kubernetes.io/name": "traefik"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  }
+ ],
+ "plain": [
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "default-deny",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [],
+    "ingress": [],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress",
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-ingress-controller",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "ingress": [
+     {
+      "from": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        }
+       }
+      ],
+      "ports": [
+       {
+        "port": 8080,
+        "protocol": "TCP"
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Ingress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-dns",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 53,
+        "protocol": "UDP"
+       },
+       {
+        "port": 53,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "kube-system"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-internet",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 22,
+        "port": 20,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 24,
+        "port": 24,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 134,
+        "port": 26,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 444,
+        "port": 140,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 464,
+        "port": 446,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 586,
+        "port": 466,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 3388,
+        "port": 588,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6659,
+        "port": 3390,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 6696,
+        "port": 6670,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 65535,
+        "port": 6698,
+        "protocol": "TCP"
+       },
+       {
+        "endPort": 18,
+        "port": 1,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 110,
+        "port": 20,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 134,
+        "port": 112,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 160,
+        "port": 140,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 388,
+        "port": 162,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 444,
+        "port": 390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 1899,
+        "port": 446,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 3388,
+        "port": 1901,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 11210,
+        "port": 3390,
+        "protocol": "UDP"
+       },
+       {
+        "endPort": 65535,
+        "port": 11212,
+        "protocol": "UDP"
+       }
+      ],
+      "to": [
+       {
+        "ipBlock": {
+         "cidr": "0.0.0.0/0",
+         "except": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "0.0.0.0/8",
+          "100.64.0.0/10",
+          "127.0.0.0/8",
+          "192.0.0.0/24",
+          "198.18.0.0/15",
+          "224.0.0.0/4",
+          "240.0.0.0/4"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-mysql",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 3306,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "picopaas-data"
+         }
+        },
+        "podSelector": {
+         "matchLabels": {
+          "app": "mysql"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  },
+  {
+   "apiVersion": "networking.k8s.io/v1",
+   "kind": "NetworkPolicy",
+   "metadata": {
+    "name": "allow-egress-ingress",
+    "namespace": "app-7"
+   },
+   "spec": {
+    "egress": [
+     {
+      "ports": [
+       {
+        "port": 8000,
+        "protocol": "TCP"
+       },
+       {
+        "port": 8443,
+        "protocol": "TCP"
+       },
+       {
+        "port": 80,
+        "protocol": "TCP"
+       },
+       {
+        "port": 443,
+        "protocol": "TCP"
+       }
+      ],
+      "to": [
+       {
+        "namespaceSelector": {
+         "matchLabels": {
+          "kubernetes.io/metadata.name": "traefik"
+         }
+        },
+        "podSelector": {
+         "matchLabels": {
+          "app.kubernetes.io/name": "traefik"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "podSelector": {},
+    "policyTypes": [
+     "Egress"
+    ]
+   }
+  }
+ ]
+}
