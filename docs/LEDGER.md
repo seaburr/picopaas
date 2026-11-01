@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-01 [scm-security] DONE: pushed 051a935 (feat env: refs inside env values + db.ca_file, CA at /etc/picopaas) and eaa8a0a (docs, PENTEST K52-K56). Security-reviewed by security-reviewer (no HIGH/MED). Pre-push: ruff clean, 85 targeted tests passed, frontend typecheck+lint clean, gitleaks clean per commit. CI 41313093655 success (incl. mysql-integration), image 41313093717 success, deploy 41314854527 real rollout success (41313140895 was a gated skip); /healthz 200.
 - 2026-11-01 [scm-security] START: pushing env interpolation + db.ca_file (051a935) and docs.
 - 2026-11-01 [manager] DONE (Chas): blog X/Facebook links removed: Ghost settings facebook/twitter were the defaults (ghost/@ghost), set to null via Admin API; home and a post page show no x.com/twitter/facebook links.
 - 2026-11-01 [manager] QUEUED (Chas) after the interpolation/CA-file work ships: (1) docs sweep (tech-writer); (2) devlog post on today's platform changes + new recipes (release-blogger); (3) landing page pass (marketing-writer); (4) remove X and Facebook links from the blog (manager, now).
