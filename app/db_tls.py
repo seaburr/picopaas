@@ -4,14 +4,17 @@ import ssl
 from sqlalchemy.engine import URL, make_url
 
 
-def mysql_ssl_context(cafile: str) -> ssl.SSLContext:
+def mysql_ssl_context(cafile: str, clear_strict_x509: bool = True) -> ssl.SSLContext:
     """Verify the server cert chain against `cafile` and check the hostname.
 
     Python 3.13 turned on VERIFY_X509_STRICT by default, and DO managed MySQL's CA fails it ("Basic Constraints of CA
     cert not marked critical"). Clear only that flag; chain and hostname verification stay on.
+    `clear_strict_x509` comes from the server's DbFlavor (app/providers/db_flavor.py); True (do-managed) is the default,
+    which is also what the platform metadata DB connection uses.
     """
     ctx = ssl.create_default_context(cafile=cafile)
-    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    if clear_strict_x509:
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
     ctx.check_hostname = True
     ctx.verify_mode = ssl.CERT_REQUIRED
     return ctx

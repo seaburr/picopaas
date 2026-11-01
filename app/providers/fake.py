@@ -461,10 +461,10 @@ class FakeDbServerChecker:
         self.error = error
         self.calls: list[dict] = []
 
-    def check(self, *, engine, host, port, user, password, ca_cert) -> None:
+    def check(self, *, engine, host, port, user, password, ca_cert, flavor="do-managed") -> None:
         from app.providers.dbcheck import DbServerCheckError
 
-        self.calls.append(dict(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert))
+        self.calls.append(dict(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert, flavor=flavor))
         if self.error:
             raise DbServerCheckError(f"Couldn't connect to {host}:{port} as {user}: {self.error}")
 

@@ -31,6 +31,7 @@ import pymysql.cursors
 from app import config
 from app.crypto import decrypt
 from app.db_tls import mysql_ssl_context
+from app.providers.db_flavor import flavor_for
 from app.providers.base import MySQLAdmin, MySQLAdminError
 
 log = logging.getLogger(__name__)
@@ -79,12 +80,13 @@ class MySQLAdminClient(MySQLAdmin):
         self._admin_password = decrypt(server.admin_password_encrypted)
         self._use_procs = config.MYSQL_ADMIN_USE_PROCEDURES
         self._ssl_ca = config.MYSQL_SSL_CA
+        self._clear_strict_x509 = flavor_for(server).mysql_clear_strict_x509
 
     def _connect(self) -> pymysql.connections.Connection:
         kwargs: dict[str, Any] = {}
         if self._ssl_ca:
             # Managed MySQL requires TLS: verify the server cert against the CA and hostname.
-            kwargs.update(ssl=mysql_ssl_context(self._ssl_ca))
+            kwargs.update(ssl=mysql_ssl_context(self._ssl_ca, self._clear_strict_x509))
         try:
             return pymysql.connect(
                 **kwargs,
@@ -295,7 +297,7 @@ class MySQLAdminClient(MySQLAdmin):
             return None
         kwargs: dict[str, Any] = {}
         if self._ssl_ca:
-            kwargs.update(ssl=mysql_ssl_context(self._ssl_ca))
+            kwargs.update(ssl=mysql_ssl_context(self._ssl_ca, self._clear_strict_x509))
         try:
             conn = pymysql.connect(
                 **kwargs,

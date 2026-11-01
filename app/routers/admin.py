@@ -19,6 +19,7 @@ from app import audit, backups, config, crypto, health, models, naming, platform
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_admin_session, require_platform_admin
+from app.providers.db_flavor import DEFAULT_FLAVOR, FLAVOR_NAMES
 from app.providers.dbcheck import DbServerCheckError
 from app.schemas import ResourcesOut
 from app.routers.apps import get_mysql_admin_factory, get_object_store
@@ -94,6 +95,7 @@ class DbServerOut(BaseModel):
     port: int
     status: str
     engine: str = "mysql"
+    flavor: str = "do-managed"  # read-only here; set on create/update
     max_databases: int
     used: int
     pct: float
@@ -116,6 +118,7 @@ class DbServerCreate(BaseModel):
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(default=3306, gt=0, le=65535)
     engine: Literal["mysql", "pg"] = "mysql"
+    flavor: Literal[FLAVOR_NAMES] = DEFAULT_FLAVOR
     admin_user: str = Field(min_length=1, max_length=255)
     admin_password: str = Field(min_length=1)
     max_databases: int = Field(gt=0)
@@ -127,6 +130,7 @@ class DbServerCreate(BaseModel):
 class DbServerPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     status: Optional[Literal["active", "draining", "full"]] = None
+    flavor: Optional[Literal[FLAVOR_NAMES]] = None
     max_databases: Optional[int] = Field(default=None, gt=0)
     ca_cert: Optional[str] = Field(default=None, max_length=20000)  # "" clears it
     admin_password: Optional[str] = Field(default=None, min_length=1)  # write-only; verified before it is stored
@@ -151,7 +155,7 @@ def _user_out(db: Session, user: models.User) -> dict:
 def _server_out(db: Session, s: models.DbServer) -> DbServerOut:
     used = db.query(func.count(models.AppDatabase.id)).filter(models.AppDatabase.db_server_id == s.id).scalar()
     pct = round(used * 100.0 / s.max_databases, 1) if s.max_databases else 100.0
-    return DbServerOut(id=s.id, name=s.name, host=s.host, port=s.port, status=s.status, engine=s.engine,
+    return DbServerOut(id=s.id, name=s.name, host=s.host, port=s.port, status=s.status, engine=s.engine, flavor=s.flavor,
                        max_databases=s.max_databases, used=used, pct=pct, warn=pct >= WARN_PCT)
 
 
@@ -948,9 +952,10 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube),
             "backups": backups.health_summary(db)}
 
 
-def _check_connection(checker, *, engine, host, port, user, password, ca_cert) -> None:
+def _check_connection(checker, *, engine, host, port, user, password, ca_cert, flavor=DEFAULT_FLAVOR) -> None:
     try:
-        checker.check(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert)
+        checker.check(engine=engine, host=host, port=port, user=user, password=password, ca_cert=ca_cert,
+                      flavor=flavor)
     except DbServerCheckError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -960,11 +965,13 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
                      admin: models.User = Depends(require_platform_admin),
                      checker=Depends(get_db_server_checker)):
     _check_connection(checker, engine=payload.engine, host=payload.host, port=payload.port,
-                      user=payload.admin_user, password=payload.admin_password, ca_cert=payload.ca_cert)
+                      user=payload.admin_user, password=payload.admin_password, ca_cert=payload.ca_cert,
+                      flavor=payload.flavor)
     server = models.DbServer(
         name=payload.name, host=payload.host, port=payload.port, admin_user=payload.admin_user,
         admin_password_encrypted=crypto.encrypt(payload.admin_password),
         max_databases=payload.max_databases, status="active", ca_cert=payload.ca_cert, engine=payload.engine,
+        flavor=payload.flavor,
     )
     db.add(server)
     try:
@@ -974,7 +981,7 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail=f"A database server named \"{payload.name}\" already exists. Pick another name.")
     db.refresh(server)
     audit.record(db, admin, "dbserver.create", "db_server", server.id,
-                 f"name={server.name} max_databases={server.max_databases} ca_cert={'set' if server.ca_cert else 'none'}")
+                 f"name={server.name} flavor={server.flavor} max_databases={server.max_databases} ca_cert={'set' if server.ca_cert else 'none'}")
     return _server_out(db, server)
 
 
@@ -992,11 +999,13 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
         # Verify first; nothing is saved (old password and CA stay) unless the server accepts the new settings.
         _check_connection(checker, engine=server.engine, host=server.host, port=server.port, user=server.admin_user,
                           password=new_pw if new_pw is not None else crypto.decrypt(server.admin_password_encrypted),
-                          ca_cert=new_ca or None)
+                          ca_cert=new_ca or None, flavor=payload.flavor or server.flavor)
     if new_pw is not None:
         server.admin_password_encrypted = crypto.encrypt(new_pw)
     if payload.status is not None:
         server.status = payload.status
+    if payload.flavor is not None:
+        server.flavor = payload.flavor
     if payload.max_databases is not None:
         server.max_databases = payload.max_databases
     if "ca_cert" in payload.model_fields_set:
@@ -1008,5 +1017,6 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
     changed = sorted(payload.model_fields_set)
     audit.record(db, admin, "dbserver.update", "db_server", server.id,
                  "fields=" + ",".join(changed) + (f" status={payload.status}" if payload.status else "")
+                 + (f" flavor={payload.flavor}" if payload.flavor else "")
                  + (" admin_password=changed" if new_pw is not None else ""))
     return _server_out(db, server)

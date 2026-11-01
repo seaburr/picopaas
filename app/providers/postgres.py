@@ -40,11 +40,12 @@ from psycopg import sql
 from app import config
 from app.crypto import decrypt
 from app.env_refs import db_url
+from app.providers.db_flavor import DEFAULT_FLAVOR, FLAVORS, flavor_for
 from app.providers.base import DbAdmin, DbAdminError, generate_password
 
 log = logging.getLogger(__name__)
 
-ADMIN_DB = "defaultdb"
+ADMIN_DB = DEFAULT_FLAVOR_ADMIN_DB = FLAVORS[DEFAULT_FLAVOR].pg_admin_db  # alias: the do-managed value, "defaultdb"
 _IDENT_RE = re.compile(r"^app_[0-9]+$")
 _ca_files: dict[str, str] = {}
 
@@ -76,14 +77,17 @@ class PostgresAdmin(DbAdmin):
         self._admin_user = server.admin_user
         self._admin_password = decrypt(server.admin_password_encrypted)
         self._ca_cert = getattr(server, "ca_cert", None)
+        self._flavor = flavor_for(server)
+        self._admin_db = self._flavor.pg_admin_db
 
     # -- connection -------------------------------------------------------------------------------------------
-    def _connect(self, dbname: str = ADMIN_DB) -> psycopg.Connection:
+    def _connect(self, dbname: str | None = None) -> psycopg.Connection:
+        dbname = dbname or self._admin_db
         kwargs: dict[str, Any] = {}
         if self._ca_cert:
-            kwargs.update(sslmode="verify-ca", sslrootcert=_ca_path(self._ca_cert))
+            kwargs.update(sslmode=self._flavor.pg_tls_mode_with_ca, sslrootcert=_ca_path(self._ca_cert))
         else:
-            kwargs.update(sslmode="require")
+            kwargs.update(sslmode=self._flavor.pg_tls_mode)
         try:
             return psycopg.connect(
                 host=self._host, port=self._port, user=self._admin_user, password=self._admin_password,
@@ -104,7 +108,7 @@ class PostgresAdmin(DbAdmin):
         """One-time (idempotent) per-server hardening: keep app roles out of defaultdb."""
         try:
             with self._connect() as conn:
-                conn.execute(sql.SQL("REVOKE CONNECT, TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(ADMIN_DB)))
+                conn.execute(sql.SQL("REVOKE CONNECT, TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(self._admin_db)))
         except psycopg.Error as exc:
             raise DbAdminError(f"init_server failed: {type(exc).__name__}") from exc
 
@@ -117,7 +121,7 @@ class PostgresAdmin(DbAdmin):
         try:
             with self._connect() as conn:
                 try:
-                    self._exec_init(conn)
+                    self._exec_init(conn, self._admin_db)
                 except psycopg.Error:
                     log.warning("pg: defaultdb PUBLIC revoke failed (continuing)")
                 # Idempotent against a half-finished earlier attempt.
@@ -143,8 +147,8 @@ class PostgresAdmin(DbAdmin):
         return self._creds(app_id, password)
 
     @staticmethod
-    def _exec_init(conn: psycopg.Connection) -> None:
-        conn.execute(sql.SQL("REVOKE CONNECT, TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(ADMIN_DB)))
+    def _exec_init(conn: psycopg.Connection, admin_db: str = ADMIN_DB) -> None:
+        conn.execute(sql.SQL("REVOKE CONNECT, TEMP ON DATABASE {} FROM PUBLIC").format(sql.Identifier(admin_db)))
 
     def drop(self, app_id: int) -> None:
         ident = sql.Identifier(_ident(app_id))
