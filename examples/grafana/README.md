@@ -20,15 +20,15 @@ the API, never in the file.
 
 Key choices (see `../../docs/RECIPES.md` for the full write-up):
 
-- `GF_DATABASE_URL: ${{ db.url }}` — PicoPaaS accepts a `${{ ... }}` value only when it's exactly one
-  reference, so use the single `db.url` ref (a full `mysql://...` or `postgres://...` DSN), not host/port vars glued together.
+- `GF_DATABASE_URL: ${{ db.url }}` — the single `db.url` ref is a full `mysql://...` or `postgres://...` DSN. (A value may
+  now mix text and refs, so host and port could be glued together; the tested spec uses `db.url`.)
 - PostgreSQL variant (`grafana-postgres.yaml`): `resources.db_engine: pg`, `GF_DATABASE_TYPE=postgres`, and
   `GF_DATABASE_SSL_MODE=require` (Grafana reads the TLS mode from this variable, not the URL). `db.url` is then a
   `postgres://...?sslmode=require` DSN. The MySQL CA-file workaround below does not apply.
 - MySQL: `GF_DATABASE_SSL_MODE=skip-verify` + `GF_DATABASE_CA_CERT_PATH=/etc/ssl/certs/ca-certificates.crt` — managed
   MySQL requires TLS, and Grafana's driver insists on reading a CA file even for skip-verify, so point it at
-  the CA bundle already in the image. Encrypted but unverified; CA-verified TLS would need a PEM mount the
-  platform doesn't offer.
+  the CA bundle already in the image. Encrypted but unverified. The platform now mounts the CA at
+  `${{ db.ca_file }}`, which should allow CA-verified TLS; not tested with Grafana yet.
 - `GF_DATABASE_MAX_OPEN_CONN=8` / `GF_DATABASE_MAX_IDLE_CONN=2` — keep the pool under the 10-connection cap per
   DB user.
 - `healthCheck: { enabled: true, path: /api/health }` — Grafana's real health endpoint; the app goes ready

@@ -144,7 +144,7 @@ own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
 - `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`, `db.ca_cert`, `db.ca_cert_body`, `db.ca_file`, `db.tls`
 - `storage.endpoint`, `storage.region`, `storage.bucket`, `storage.access_key`, `storage.secret_key` (`storage.endpoint` is a full URL, e.g. `https://atl1.digitaloceanspaces.com`)
 
-A value may be literal text with up to `ENV_MAX_REFS_PER_VALUE` (16) refs mixed in; `env_refs.resolve` substitutes in one pass
+A value may be literal text with up to `ENV_MAX_REFS_PER_VALUE` (16) refs mixed in and is at most `ENV_VALUE_MAX_BYTES` (8192 bytes, 422 above); `env_refs.resolve` substitutes in one pass
 over the original value and never re-scans inserted text. For an app with a database whose `DbServer.ca_cert` is set,
 the reconciler renders a second Secret `app-<id>-dbca` (key `db-ca.pem`) and the Deployment mounts it read-only as a
 directory at `/etc/picopaas` (no `subPath`, so a rotated CA propagates; `defaultMode` 0444); `db.ca_file` resolves to

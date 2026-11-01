@@ -182,9 +182,9 @@ can't break your app.
 Request a database (`db: true`), no bucket, and pick the engine with `resources.db_engine` (`mysql` or `pg`). The
 engine is fixed once the app is created. Either way Grafana gets its connection from one variable:
 
-- `GF_DATABASE_URL=${{ db.url }}` — one ref, the whole value. PicoPaaS only accepts a `${{ ... }}` value that
-  is **exactly one** reference, so you can't build `GF_DATABASE_HOST` (`host:port`) from `${{ db.host }}`,
-  `${{ db.port }}` and text. `db.url` hands Grafana host, port, name, user and password in a single string.
+- `GF_DATABASE_URL=${{ db.url }}` — one ref, the whole value. `db.url` hands Grafana host, port, name, user and
+  password in a single string. (Since 2026-11-01 a value may also mix text and refs, so `GF_DATABASE_HOST` could be
+  `${{ db.host }}:${{ db.port }}`. Not tested with Grafana; the recipe below is the verified one.)
 
 | Engine | `resources.db_engine` | `GF_DATABASE_TYPE` | `db.url` resolves to | TLS variables |
 |---|---|---|---|---|
@@ -193,8 +193,9 @@ engine is fixed once the app is created. Either way Grafana gets its connection 
 
 Everything else in the spec is identical. Grafana's PostgreSQL TLS mode comes from `GF_DATABASE_SSL_MODE`, not
 from the URL query, so set it explicitly. `require` encrypts the connection without verifying the server
-certificate, the same encrypted-but-unverified level as the MySQL setup (`verify-full` would need the CA as a
-file, which PicoPaaS can't mount).
+certificate, the same encrypted-but-unverified level as the MySQL setup. The platform now mounts the CA as a file
+(`${{ db.ca_file }}`, see the [User guide](USER_GUIDE.md)), so `verify-full` should be possible. Not verified with
+Grafana; follow-up.
 
 ### MySQL: TLS and the CA file
 
@@ -206,9 +207,9 @@ you tell it not to verify. So:
   image. Pointing at it satisfies the driver's file check.
 
 This gives you **encrypted-but-unverified** TLS: the connection is encrypted, but Grafana doesn't validate the
-server certificate against a specific CA. Full CA-*verified* TLS would need a PEM file mounted into the
-container, which PicoPaaS doesn't offer (there's no config-file or volume mount). Encrypted-but-unverified to
-the in-platform MySQL is the honest tradeoff here.
+server certificate against a specific CA. Since 2026-11-01 the CA is available as a file
+(`GF_DATABASE_CA_CERT_PATH=${{ db.ca_file }}` with `GF_DATABASE_SSL_MODE=true`), which should give CA-*verified*
+TLS. This is **not verified** with Grafana yet; the settings above are the tested ones.
 
 ### Connection pool cap
 
@@ -742,7 +743,8 @@ GraphQL login, page create and render, pages kept across a restart; 143 MiB peak
   UID with no entry. Also set `HOME=/tmp`.
 - **Env keys are UPPER_SNAKE.** If your app wants lowercase or nested config, translate in an entrypoint.
 - **Use the refs:** `${{ app.url }}`, `${{ db.host }}`, `${{ db.port }}`, `${{ db.name }}`, `${{ db.user }}`,
-  `${{ db.password }}`, `${{ db.ca_cert }}`, `${{ storage.endpoint }}`, `${{ storage.region }}`,
+  `${{ db.password }}`, `${{ db.url }}`, `${{ db.ca_cert }}`, `${{ db.ca_cert_body }}`, `${{ db.ca_file }}`,
+  `${{ db.tls }}`, `${{ storage.endpoint }}`, `${{ storage.region }}`,
   `${{ storage.bucket }}`, `${{ storage.access_key }}`, `${{ storage.secret_key }}`. See the
   [User guide](USER_GUIDE.md) and [API](API.md) for the full set.
 - **Build connection strings from parts.** A value can mix text and several refs, so a DSN such as
@@ -752,7 +754,7 @@ GraphQL login, page create and render, pages kept across a restart; 143 MiB peak
 - **No persistent filesystem.** The 250 MB scratch disk is wiped on restart. Keep state in the MySQL database and
   uploads in the blob storage bucket, and set your S3 client's public URL or asset host to the bucket's public Spaces URL.
 - **No outbound SMTP.** Disable features that send email, or they will error.
-- **Fit the caps:** 512 MB image, 200m CPU, 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
+- **Fit the caps:** 512 MB image, 200m CPU (the default), 384 MB RAM, 50 MB database, 100 MB bucket, 250 MB scratch disk.
 
 ## Apps we evaluated
 
@@ -776,17 +778,20 @@ was the blocker. FreshRSS would fit fine behind a **custom non-root image** (the
 recipe: do the root-time setup at build, run as the UID), which we haven't built. Out of the box, it doesn't
 run here.
 
-### Wiki.js: untested since the primary-key change (see the 2026-10-28 re-assessment below)
+### Wiki.js: superseded, now a recipe (see "Wiki.js 2 on PostgreSQL" above)
 
 [Wiki.js](https://js.wiki/) came much closer than most. It runs **non-root** out of the box and even does TLS to
 MySQL cleanly with a CA-verified connection (`DB_SSL_CA`). The only wall was in the database: its **first schema
 migration creates a table without a primary key**, and DigitalOcean's managed MySQL used to reject that
 (`sql_require_primary_key=ON`). That setting is being turned off cluster-wide (request 0009), so the blocker should be
-gone. We have **not re-tested Wiki.js since the change**, so treat it as "should work, unverified" until someone runs it.
+gone. Wiki.js was re-tested on PostgreSQL on 2026-11-01 and works; see the recipe above.
 Note the flip side: once the setting is off, tenants can create tables without primary keys, so apps no longer
 get that guarantee from the server.
 
 ## Candidate recipes (2026-10-28)
+
+> Historical research notes. The Miniflux, Vaultwarden, Memos, Forgejo and Wiki.js picks are now recipes (sections above); where a
+> note below says the CA "must be a file" or "untested", it is out of date: use `${{ db.ca_file }}` and `${{ db.ca_cert_body }}`.
 
 **Status 2026-11-01:** Miniflux, Forgejo and Wiki.js 2.5 run with the public images unchanged; Memos and Vaultwarden with
 one-line wrappers (root upstream). All five are live-verified recipes and templates (sections above). Linkding and Uptime
@@ -875,7 +880,9 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (over
   was not verified here.
 - **Nextcloud, Mattermost, Discourse, Metabase:** RAM or multi-service needs exceed 384 MB.
 
-### Wiki.js 2.x re-assessment (verdict: supportable, now with a 512 MB memory override; worth a test)
+### Wiki.js 2.x re-assessment (superseded)
+
+Superseded by "Wiki.js 2 on PostgreSQL" above (live-tested 2026-11-01). Kept for the research notes.
 
 **Why it was rejected:** its first schema migration creates a table without a primary key, and managed MySQL had
 `sql_require_primary_key=ON` (see "Apps we evaluated" above and request 0009). Nothing else blocked it: it runs non-root and does
@@ -914,7 +921,7 @@ env:
   DB_USER: "${{ db.user }}"
   DB_PASS: "${{ db.password }}"
   DB_SSL: "true"
-  DB_SSL_CA: "${{ db.ca_cert }}"     # Wiki.js takes the PEM content; confirm inline vs path
+  DB_SSL_CA: "${{ db.ca_cert_body }}"   # verified 2026-11-01: base64 body only, not the full PEM
   NODE_OPTIONS: "--max-old-space-size=320"
 ```
 Open checks: the image must run with a read-only-ish root FS (it writes `/wiki/data` for the git/sideload cache, so mount a

@@ -194,7 +194,7 @@ the app.
 
 A value can be a `${{ ref }}` on its own, or plain text with up to 16 references mixed in (optional spaces inside
 the braces), for example `postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}`.
-References are replaced at deploy time in a single pass: the inserted value is used as is (no URL or shell encoding)
+A value can be at most 8 KiB (8192 bytes); a longer one gives `422`. References are replaced at deploy time in a single pass: the inserted value is used as is (no URL or shell encoding)
 and is never scanned for further references. Generated database passwords use only letters and digits, so they are safe
 in a URL. Every `${{` in a value must start a complete, known reference (lowercase, closed with `}}`); a misspelled,
 unknown, unclosed or stray one gives `422` ("A value containing '${{' may only contain complete references like
