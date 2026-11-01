@@ -207,6 +207,7 @@ Otherwise you get `422` ("${{ db.url }} needs a database, but this app doesn't h
 | `${{ db.password }}` | Your database password |
 | `${{ db.url }}` | `mysql://user:password@host:port/name` for MySQL, or `postgres://user:password@host:port/name` (with `?sslmode=require` when the server has TLS) for PostgreSQL |
 | `${{ db.ca_cert }}` | CA certificate PEM text; empty string if the server has none |
+| `${{ db.ca_cert_body }}` | The same certificate as one base64 line, without the `BEGIN`/`END` lines (for apps such as Wiki.js that add them); empty string if none |
 | `${{ db.tls }}` | `required` if the server has a CA cert, else `off` |
 | `${{ storage.endpoint }}` | Full URL, for example `https://atl1.digitaloceanspaces.com` |
 | `${{ storage.region }}` | For example `atl1` |
@@ -617,7 +618,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, a Gatus status page and a static nginx site, each with a link to its example README. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
+The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux (PostgreSQL), Forgejo (volume), a Gatus status page and a static nginx site, each with a link to its example README. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
 
 ## 15. Projects (teams)
 

@@ -29,7 +29,16 @@ def test_refs(db_session, ca, tls):
     assert refs["db.ca_cert"] == (ca or "")
     assert refs["db.tls"] == tls
     assert refs["db.url"] == "mysql://u:pw@h:3306/d"
-    assert {"db.ca_cert", "db.tls"} <= ALLOWED_REFS
+    assert refs["db.ca_cert_body"] == ("abc" if ca else "")
+    assert {"db.ca_cert", "db.ca_cert_body", "db.tls"} <= ALLOWED_REFS
+
+
+def test_pem_body_is_first_cert_on_one_line():
+    from app.env_refs import pem_body
+    two = ("junk\n-----BEGIN CERTIFICATE-----\r\nMIIB\n  AAAA==\n-----END CERTIFICATE-----\n"
+           "-----BEGIN CERTIFICATE-----\nSECOND\n-----END CERTIFICATE-----\n")
+    assert pem_body(two) == "MIIBAAAA=="
+    assert pem_body("") == pem_body(None) == pem_body("not a pem") == ""
 
 
 def test_migration_round_trip(tmp_path):

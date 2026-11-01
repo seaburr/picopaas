@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import config, crypto, env_refs, image_check, image_history, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
-from app.env_refs import db_url
+from app.env_refs import db_url, pem_body
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
 log = logging.getLogger(__name__)
@@ -70,6 +70,7 @@ def _db_refs(app: models.App) -> dict[str, str]:
         "db.url": db_url(server.engine, row.db_user, password, server.host, server.port, row.db_name,
                          tls=bool(server.ca_cert)),
         "db.ca_cert": server.ca_cert or "",
+        "db.ca_cert_body": pem_body(server.ca_cert),
         "db.tls": "required" if server.ca_cert else "off",
     }
 

@@ -141,7 +141,7 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 ### Reference variables
 If an app requests a DB or blob storage, the platform exposes reference variables the user maps onto their
 own env names, e.g. `DATABASE_URL: ${{ db.url }}`:
-- `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`, `db.ca_cert`, `db.tls`
+- `db.host`, `db.port`, `db.name`, `db.user`, `db.password`, `db.url`, `db.ca_cert`, `db.ca_cert_body`, `db.tls`
 - `storage.endpoint`, `storage.region`, `storage.bucket`, `storage.access_key`, `storage.secret_key` (`storage.endpoint` is a full URL, e.g. `https://atl1.digitaloceanspaces.com`)
 
 User secrets and resolved refs go into the app namespace's k8s Secret. In the platform DB they are

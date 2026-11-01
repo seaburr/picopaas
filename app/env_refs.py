@@ -11,7 +11,7 @@ REF_RE = re.compile(r"^\$\{\{\s*([a-z0-9_]+(?:\.[a-z0-9_]+)?)\s*\}\}$")
 
 ALLOWED_REFS = {
     "db.host", "db.port", "db.name", "db.user", "db.password", "db.url",
-    "db.ca_cert", "db.tls",
+    "db.ca_cert", "db.ca_cert_body", "db.tls",
     "storage.endpoint", "storage.region", "storage.bucket",
     "storage.access_key", "storage.secret_key",
     "app.url",
@@ -31,6 +31,14 @@ def db_url(engine: str, user: str, password: str, host: str, port: int | str, na
     if engine == "pg":
         return f"postgres://{auth}" + ("?sslmode=require" if tls else "")
     return f"mysql://{user}:{password}@{host}:{port}/{name}"
+
+
+def pem_body(pem: str | None) -> str:
+    """`${{ db.ca_cert_body }}`: the base64 body of the FIRST certificate in a PEM, on one line, without the
+    BEGIN/END lines. For apps that take the CA in that form and add the PEM armour themselves (Wiki.js 2.x
+    DB_SSL_CA). Empty string when there is no certificate."""
+    m = re.search(r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----", pem or "", re.S)
+    return "".join(m.group(1).split()) if m else ""
 
 
 def validate_env_key(key: str) -> None:

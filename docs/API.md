@@ -149,7 +149,7 @@ change a scope). Pre-existing keys are `full`.
 wants_db, db_engine, wants_storage, env{KEY: value}, secrets[{key, hint}], health_check{path, timeout_seconds}|null,
 volume{size_gi, mount_path, required}|null, notes, docs_url}` (`env` values may be `${{ ref }}` references; `secrets` are
 names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub). Today:
-`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
+`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
 
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
@@ -223,7 +223,7 @@ value `********` to keep it.
 
 `EnvVar` (input): `{key, value, is_secret=false}`. `key` matches `^[A-Z_][A-Z0-9_]*$`. A `value` that is exactly
 `${{ ref }}` is a reference; allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
-db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public URL — an active custom domain or reserved subdomain if set, otherwise `https://<hostname>.<domain>`). `db.*` needs
+db.ca_cert_body, db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public URL — an active custom domain or reserved subdomain if set, otherwise `https://<hostname>.<domain>`). `db.*` needs
 `want_db`, `storage.*` needs `want_storage`.
 
 Image checks on create, update (when `image` is sent) and spec: registry must serve it publicly (422 "Couldn't find that image, or it's private..."), the USER must be non-root (422; a named user runs as UID 10001), and the summed compressed layers at most the app's image limit (512 MB by default, `limits.image_mb`; an administrator can
