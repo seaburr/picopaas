@@ -166,3 +166,28 @@ def test_mixed_value_stored_as_ref_text_and_422_through_api(client):
     assert r.status_code == 201
     env = client.get(f"/apps/{r.json()['id']}").json()["env"]
     assert [e["value"] for e in env if e["key"] == "X"] == ["jdbc:${{ db.host }}/${{ db.name }}"]
+
+
+def test_env_value_size_cap():
+    """PENTEST K56 (Chas 2026-11-01): one stored env value is at most 8 KiB (UTF-8 bytes, before refs resolve)."""
+    import pytest
+    from pydantic import ValidationError
+
+    from app import config
+    from app.schemas import EnvVarIn
+
+    assert config.ENV_VALUE_MAX_BYTES == 8192
+    EnvVarIn(key="BIG", value="a" * 8192)
+    with pytest.raises(ValidationError, match="at most 8 KiB"):
+        EnvVarIn(key="BIG", value="a" * 8193)
+    with pytest.raises(ValidationError):
+        EnvVarIn(key="BIG", value="é" * 4097)  # 8194 bytes in UTF-8
+
+
+def test_env_value_size_cap_api(client):
+    from tests.conftest import register_and_login
+
+    register_and_login(client, "bigenv@example.com")
+    r = client.post("/apps", json={"name": "big", "image": "nginxinc/nginx-unprivileged:alpine", "port": 8080,
+                                   "env": [{"key": "BIG", "value": "x" * 9000}]})
+    assert r.status_code == 422 and "8 KiB" in r.text

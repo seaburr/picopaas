@@ -223,7 +223,7 @@ value `********` to keep it.
 
 `EnvVar` (input): `{key, value, is_secret=false}`. `key` matches `^[A-Z_][A-Z0-9_]*$`. A `value` may mix plain text
 with up to 16 `${{ ref }}` references (single-pass substitution, values inserted as is without encoding, never
-re-scanned; every `${{` must start a valid, available ref, else 422); allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
+re-scanned; every `${{` must start a valid, available ref, else 422); a value is at most 8 KiB (UTF-8 bytes, as stored, else 422); allowed refs: `db.host, db.port, db.name, db.user, db.password, db.url, db.ca_cert,
 db.ca_cert_body, db.ca_file, db.tls, storage.endpoint, storage.region, storage.bucket, storage.access_key, storage.secret_key, app.url`. `app.url` is always available (the app's public URL — an active custom domain or reserved subdomain if set, otherwise `https://<hostname>.<domain>`). `db.ca_file` is `/etc/picopaas/db-ca.pem` (the platform mounts the DB server's CA there) or an empty string when the server has no CA. `db.*` needs
 `want_db`, `storage.*` needs `want_storage`.
 

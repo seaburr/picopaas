@@ -7,7 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Cap env var values at 32 KiB? (2026-11-01, PENTEST K56)** There is no length limit today, so a huge value can push the app's Secret past Kubernetes' 1 MiB limit and put that one app in error (no effect on others). I recommend the 32 KiB cap. (K55, a user volume at /etc/picopaas, is moot: no app on prod has a volume.)
 - **Wiki.js recipe and the Postgres connection budget (2026-11-01).** Wiki.js 2 only works with an admin override of
   `db_max_connections` = 10 (its pool is config-file only; at 5, saving pages fails). The 1 GB PG node has about 22 usable
   connections in all, so two Wiki.js apps could use most of them. Options: (a) keep it as a template with the admin step
@@ -54,6 +53,7 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-11-01: **Env value cap (K56)** (Chas, in chat): 8 KiB per value (largest real values are PEMs/JSON keys of 2-3 KB; a cert ref is stored as the ref text).
 - 2026-10-31: **K50 restore-over-source and bucket file fetch in suspended projects** (Chas, in chat): leave both as they are (restore over the source only for an app suspended on its own in an active project; members of a suspended project can't fetch bucket files, backup downloads still work).
 - 2026-10-30: **K16 web + build secrets** (Chas, in chat): option (a), a build with secrets never gets the web tools, allow-list or not (builder.py; PENTEST K16 closed).
 - 2026-10-30: **K39 rollout status for all apps** (Chas, in chat): keep `deploying` until every pod runs the new version for ALL apps, so a release whose pod never gets ready fails after DEPLOY_TIMEOUT_MINUTES and rolls back instead of hiding behind the old pod.

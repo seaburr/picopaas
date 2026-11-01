@@ -214,6 +214,9 @@ VOLUME_DEFAULT_MOUNT_PATH = "/data"
 DB_CA_MOUNT_DIR = "/etc/picopaas"  # the DB CA Secret is mounted here (read-only directory mount, so rotation propagates)
 DB_CA_FILE_NAME = "db-ca.pem"
 DB_CA_FILE = f"{DB_CA_MOUNT_DIR}/{DB_CA_FILE_NAME}"  # what `${{ db.ca_file }}` resolves to when the DB server has a CA
+# Max size of one stored env value (UTF-8 bytes, before refs are resolved). Keeps the app's env Secret far below
+# Kubernetes' 1 MiB limit (PENTEST K56; Chas 2026-11-01: 8 KiB, the largest real values are PEMs and JSON keys of ~2-3 KB).
+ENV_VALUE_MAX_BYTES = 8192
 ENV_MAX_REFS_PER_VALUE = 16  # at most this many `${{ ref }}` occurrences in one env value
 VOLUME_FS_GROUP = 10001  # pod fsGroup so the non-root UID can write a fresh volume
 

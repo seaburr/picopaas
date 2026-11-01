@@ -195,6 +195,16 @@ class EnvVarIn(BaseModel):
             raise ValueError(str(exc)) from exc
         return v
 
+    @field_validator("value")
+    @classmethod
+    def _validate_value_size(cls, v: str) -> str:
+        n = len(v.encode("utf-8"))
+        if n > config.ENV_VALUE_MAX_BYTES:
+            raise ValueError(
+                f"This value is {n} bytes; an env var value can be at most {config.ENV_VALUE_MAX_BYTES // 1024} KiB. "
+                "Put large files in the app's bucket or image instead.")
+        return v
+
 
 class EnvVarOut(BaseModel):
     key: str
