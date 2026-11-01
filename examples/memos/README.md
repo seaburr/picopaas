@@ -19,7 +19,8 @@ publishes it as `ghcr.io/seaburr/picopaas-example-memos`.
 
 ## Notes
 
-- `MEMOS_DSN=${{ db.url }}` is a `postgres://` URL with `sslmode=require` (encrypted, not CA-verified).
+- `MEMOS_DSN` is built from the `db.*` refs with `sslmode=verify-full&sslrootcert=${{ db.ca_file }}`, so the server
+  certificate is checked against the platform CA (`/etc/picopaas/db-ca.pem`).
 - Attachments are stored in the database by default and count toward the 50 MB quota. For more than a few
   images, set S3 storage in Memos' settings (use a bucket on the app) or keep attachments small.
 - No email (SMTP is blocked).

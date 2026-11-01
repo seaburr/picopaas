@@ -11,9 +11,9 @@ resources:
   db: true
   db_engine: pg   # Miniflux only supports PostgreSQL
 env:
-  # One ref: the platform builds a postgres:// URL with sslmode=require (encrypted, not CA-verified;
-  # Miniflux's driver wants the CA as a file and the platform passes it as text).
-  DATABASE_URL: "${{ db.url }}"
+  # Built from parts so it can verify the server against the platform CA, mounted at /etc/picopaas/db-ca.pem
+  # (${{ db.ca_file }}). Verified live: a wrong CA fails with "certificate signed by unknown authority".
+  DATABASE_URL: "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}"
   # Stay under the per-app Postgres role's CONNECTION LIMIT of 5.
   DATABASE_MAX_CONNS: "3"
   DATABASE_MIN_CONNS: "1"

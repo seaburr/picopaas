@@ -696,7 +696,8 @@ for the spec and env vars, and `examples/wordpress/MIGRATION.md` to move an exis
 ## Miniflux (RSS reader) on PostgreSQL
 
 Public image `miniflux/miniflux:2.3.4`, unchanged (USER 65534, port 8080, 14 MB). One ref does the database:
-`DATABASE_URL=${{ db.url }}` (`sslmode=require`: encrypted, not CA-verified, because Miniflux wants the CA as a file).
+`DATABASE_URL` built from the `db.*` refs with `sslmode=verify-full&sslrootcert=${{ db.ca_file }}` (CA-verified; checked live: a
+wrong CA fails with "certificate signed by unknown authority").
 `DATABASE_MAX_CONNS=3` stays under the Postgres role limit of 5. `CREATE_ADMIN=1` with an `ADMIN_PASSWORD` secret creates
 the `admin` user on first boot. Health check `/healthcheck`. Verified live 2026-11-01: migrations, admin, two feeds fetched
 through egress, API; 21 MiB RAM, 9.7 MB of the 50 MB database. Keep the cleanup settings so stored article bodies don't fill
@@ -706,7 +707,9 @@ the quota. Template `miniflux`; details in `examples/miniflux/README.md`.
 
 Public image `codeberg.org/forgejo/forgejo:17.0.1-rootless`, unchanged (USER 1000:1000, port 3000). Use the `-rootless`
 tag; the plain tag runs as root and is rejected. A 1 GiB volume at `/var/lib/gitea` holds repositories, `app.ini` and the
-SQLite database. Not the platform Postgres: Forgejo wants `host:port` in one value and a ref can only be a whole value.
+SQLite database (one place for all data). The platform Postgres also works (verified live 2026-11-01): `DB_TYPE=postgres`,
+`DB_HOST=${{ db.host }}:${{ db.port }}`, `DB_NAME`/`DB_USER`/`DB_PASSWD` refs, `FORGEJO__DATABASE__SSL_MODE=verify-full`,
+`PGSSLROOTCERT=${{ db.ca_file }}`, `FORGEJO__DATABASE__MAX_OPEN_CONNS=3`.
 `FORGEJO__SECTION__KEY` env vars work with our UPPER_SNAKE rule because Forgejo lowercases the section. The `SECRET_KEY`
 secret skips the install wizard; the first account to register becomes the admin, so register straight away, then set
 `FORGEJO__SERVICE__DISABLE_REGISTRATION=true`. Git over HTTPS only (no SSH), no email, no Actions. Verified live 2026-11-01:
@@ -717,7 +720,7 @@ RAM. Template `forgejo`; details in `examples/forgejo/README.md`.
 
 Both official images run as root, so each has a two-line `Dockerfile` (`FROM <upstream>` + `USER 10001:10001`) built by
 `examples.yml`. Memos (`examples/memos/`) drops privileges itself and already owns its data dir as 10001; it runs on the
-platform Postgres with `MEMOS_DSN=${{ db.url }}`. Vaultwarden (`examples/vaultwarden/`) keeps its SQLite database and key on a
+platform Postgres with a CA-verified `MEMOS_DSN` built from the `db.*` refs (same form as Miniflux). Vaultwarden (`examples/vaultwarden/`) keeps its SQLite database and key on a
 volume at `/data` and needs `ROCKET_PORT=8080`. Both verified live 2026-11-01 (first account becomes admin, data survives a
 restart or redeploy, closed sign-ups hold; Memos 24 MiB, Vaultwarden 29 MiB). Templates `memos`, `vaultwarden`.
 

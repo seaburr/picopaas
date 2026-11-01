@@ -23,9 +23,11 @@ takes its settings from env vars, so PicoPaaS runs it as is. Pin a version (`17.
 
 - **Git over HTTPS only.** Clone and push with `https://<your-app>.picopaas.xyz/<user>/<repo>.git`; use an
   access token (Settings > Applications) as the password. SSH is not available.
-- **Why SQLite, not the platform Postgres:** Forgejo wants the database host as one `host:port` value, and a
-  platform ref can only be a whole value (`${{ db.host }}` and `${{ db.port }}` are separate). SQLite on the
-  volume works well for a single-replica forge and the volume backup covers it.
+- **SQLite or Postgres:** SQLite on the volume keeps all data in one place, which suits a single-replica forge. To use
+  the platform Postgres instead (verified live), turn the database on (PostgreSQL) and set `DB_TYPE=postgres`,
+  `DB_HOST=${{ db.host }}:${{ db.port }}`, `DB_NAME=${{ db.name }}`, `DB_USER=${{ db.user }}`,
+  `DB_PASSWD=${{ db.password }}`, `FORGEJO__DATABASE__SSL_MODE=verify-full`, `PGSSLROOTCERT=${{ db.ca_file }}` and
+  `FORGEJO__DATABASE__MAX_OPEN_CONNS=3`. Repositories stay on the volume either way.
 - **Size:** repositories, LFS and attachments share the 1 GiB volume. An admin can grow it (up to 10 GiB).
 - **CPU:** large clones and pushes are slow at the default CPU limit; ask an admin for more if you use it a lot.
 - **Footprint (measured):** about 98 MiB RAM right after start.

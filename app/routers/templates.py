@@ -309,7 +309,7 @@ CATALOG: List[TemplateOut] = [
         db_engine="pg",
         wants_storage=False,
         env={
-            "DATABASE_URL": "${{ db.url }}",
+            "DATABASE_URL": "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}",
             "DATABASE_MAX_CONNS": "3",
             "DATABASE_MIN_CONNS": "1",
             "RUN_MIGRATIONS": "1",
@@ -331,7 +331,7 @@ CATALOG: List[TemplateOut] = [
         health_check=TemplateHealthCheck(path="/healthcheck"),
         notes=(
             "Sign in as 'admin'. Article bodies are stored in the 50 MB database; the cleanup settings archive old entries. "
-            "TLS to the database is encrypted but not CA-verified (sslmode=require)."
+            "TLS to the database is CA-verified (verify-full against the platform CA file)."
         ),
         docs_url=f"{REPO_EXAMPLES}/miniflux",
     ),
@@ -378,7 +378,7 @@ CATALOG: List[TemplateOut] = [
         env={
             "MEMOS_PORT": "5230",
             "MEMOS_DRIVER": "postgres",
-            "MEMOS_DSN": "${{ db.url }}",
+            "MEMOS_DSN": "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}",
             "MEMOS_INSTANCE_URL": "${{ app.url }}",
         },
         health_check=TemplateHealthCheck(path="/healthz"),

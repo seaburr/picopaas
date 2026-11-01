@@ -18,8 +18,9 @@ from env vars, so PicoPaaS runs it as is. Pin a version (`2.3.4` here), not `lat
 
 ## Notes
 
-- **TLS to the database:** `DATABASE_URL=${{ db.url }}` uses `sslmode=require`. The connection is encrypted
-  but the server certificate is not checked against the CA, because Miniflux's driver needs the CA as a file.
+- **TLS to the database:** `DATABASE_URL` is built from the `db.*` refs with `sslmode=verify-full` and
+  `sslrootcert=${{ db.ca_file }}` (the platform CA, mounted at `/etc/picopaas/db-ca.pem`), so the server certificate
+  is checked. `${{ db.url }}` also works but only encrypts (`sslmode=require`).
 - **Connections:** `DATABASE_MAX_CONNS=3` keeps it under the per-app Postgres limit of 5.
 - **Database size:** the schema is about 9 MB. Article bodies are stored, so keep the cleanup settings (or
   lower them) to stay under 50 MB. At the quota the database turns read-only and refreshes fail.

@@ -1,6 +1,6 @@
 import re
 
-from app.env_refs import ALLOWED_REFS, ENV_KEY_RE, resolve_ref
+from app.env_refs import ALLOWED_REFS, ENV_KEY_RE, REF_ANY_RE, validate_env_value
 from app.routers.templates import CATALOG
 from tests.conftest import register_and_login
 
@@ -52,13 +52,10 @@ def test_catalog_is_consistent():
         for k in keys:
             assert ENV_KEY_RE.match(k), (t.id, k)
         for k, v in t.env.items():
-            ref = resolve_ref(v)
-            if "${{" in v:
-                assert ref in ALLOWED_REFS, (t.id, k, v)  # a ref must be the whole value
-            if ref and ref.startswith("db."):
-                assert t.wants_db, (t.id, k)
-            if ref and ref.startswith("storage."):
-                assert t.wants_storage, (t.id, k)
+            # Same rules as the API: every ${{ }} is an allowed ref, available for the template's add-ons.
+            validate_env_value(v, want_db=t.wants_db, want_storage=t.wants_storage)
+            for ref in (m.group(1) for m in REF_ANY_RE.finditer(v)):
+                assert ref in ALLOWED_REFS, (t.id, k, v)
         assert 1024 <= t.port <= 65535
         assert t.image and not t.image.startswith("http")
         if t.docs_url:
@@ -104,7 +101,7 @@ def test_miniflux_and_forgejo_templates(client):
     register_and_login(client, "rss@example.com")
     by_id = {x["id"]: x for x in client.get("/templates").json()}
     m = by_id["miniflux"]
-    assert m["db_engine"] == "pg" and m["env"]["DATABASE_URL"] == "${{ db.url }}"
+    assert m["db_engine"] == "pg" and "sslmode=verify-full&sslrootcert=${{ db.ca_file }}" in m["env"]["DATABASE_URL"]
     assert [s["key"] for s in m["secrets"]] == ["ADMIN_PASSWORD"]
     f = by_id["forgejo"]
     assert not f["wants_db"] and f["image"].endswith("-rootless")
@@ -115,7 +112,7 @@ def test_memos_vaultwarden_wikijs_templates(client):
     """Verified live 2026-11-01. Wiki.js needs the CA body ref (DB_SSL_CA) and a volume for /wiki/data."""
     register_and_login(client, "wiki@example.com")
     by_id = {x["id"]: x for x in client.get("/templates").json()}
-    assert by_id["memos"]["env"]["MEMOS_DSN"] == "${{ db.url }}" and by_id["memos"]["db_engine"] == "pg"
+    assert by_id["memos"]["env"]["MEMOS_DSN"] == by_id["miniflux"]["env"]["DATABASE_URL"] and by_id["memos"]["db_engine"] == "pg"
     assert by_id["vaultwarden"]["volume"] == {"size_gi": 1, "mount_path": "/data", "required": True}
     w = by_id["wikijs"]
     assert w["env"]["DB_SSL_CA"] == "${{ db.ca_cert_body }}" and w["volume"]["mount_path"] == "/wiki/data"
