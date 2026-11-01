@@ -718,7 +718,18 @@ RAM. Template `forgejo`; details in `examples/forgejo/README.md`.
 Both official images run as root, so each has a two-line `Dockerfile` (`FROM <upstream>` + `USER 10001:10001`) built by
 `examples.yml`. Memos (`examples/memos/`) drops privileges itself and already owns its data dir as 10001; it runs on the
 platform Postgres with `MEMOS_DSN=${{ db.url }}`. Vaultwarden (`examples/vaultwarden/`) keeps its SQLite database and key on a
-volume at `/data` and needs `ROCKET_PORT=8080`. **Not yet verified live** (waiting on the first image build).
+volume at `/data` and needs `ROCKET_PORT=8080`. Both verified live 2026-11-01 (first account becomes admin, data survives a
+restart or redeploy, closed sign-ups hold; Memos 24 MiB, Vaultwarden 29 MiB). Templates `memos`, `vaultwarden`.
+
+## Wiki.js 2 on PostgreSQL (one admin override)
+
+Public image `requarks/wiki:2.5`, unchanged (named USER, so it runs as 10001). Three findings from the live test (2026-11-01):
+`DB_SSL_CA` takes the certificate's base64 body only, so use `${{ db.ca_cert_body }}` (a full PEM fails with
+`SELF_SIGNED_CERT_IN_CHAIN`, and `DATABASE_URL` loses TLS); `/wiki/data` is not writable as 10001, so mount a 1 GiB volume
+there; its knex pool (10) plus the render child process exceed the Postgres limit of 5, so an admin sets
+`db_max_connections` to 10 (`too many connections for role` otherwise; the pool size is config-file only). With those: setup,
+GraphQL login, page create and render, pages kept across a restart; 143 MiB peak, 9.5 MB DB. Template `wikijs`; details in
+`examples/wikijs/README.md`.
 
 ## Lessons for bringing your own image
 
@@ -770,10 +781,9 @@ get that guarantee from the server.
 
 ## Candidate recipes (2026-10-28)
 
-**Status 2026-11-01:** Miniflux and Forgejo are live-verified recipes (sections above). Memos and Vaultwarden have
-one-line wrapper images (root upstream), pending a live test. Wiki.js 2.5 passes the image checks unchanged but needs the new
-`${{ db.ca_cert_body }}` ref for TLS (`DB_SSL_CA` takes the base64 body only; a full PEM, or `DATABASE_URL`, fails), so
-it waits for that platform change. Linkding and Uptime Kuma also run as root (wrapper needed, not started).
+**Status 2026-11-01:** Miniflux, Forgejo and Wiki.js 2.5 run with the public images unchanged; Memos and Vaultwarden with
+one-line wrappers (root upstream). All five are live-verified recipes and templates (sections above). Linkding and Uptime
+Kuma also run as root (wrapper needed, not started).
 
 Original research notes follow (2026-10-28). Compressed image sizes were read from the Docker Hub API on 2026-10-28
 (the platform cap is 512 MB); RAM figures are third-party or upstream estimates and **must be measured** on a throwaway

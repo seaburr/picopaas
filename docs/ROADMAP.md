@@ -122,7 +122,7 @@ Next: re-pin the runtime image so generated tests report; run-level undo and dif
 
 - **Sign in with Google (planned, not built).** Optional alongside email and password; accounts still need admin approval. Design:
   docs/design/google-signin.md (effort M); waiting on a Google Cloud OAuth client from Chas (see docs/QUESTIONS.md).
-- Candidate recipes (research 2026-10-28; 2026-11-01: Miniflux + Forgejo shipped as templates, Memos + Vaultwarden wrappers pending a live test, Wiki.js waits on the db.ca_cert_body ref): build and test in this order:
+- Candidate recipes (research 2026-10-28; 2026-11-01: Miniflux, Forgejo, Wiki.js, Memos, Vaultwarden shipped as templates; Linkding and Uptime Kuma left (root images, wrapper needed)): build and test in this order:
   Miniflux (PG, public 14 MB image, no volume), Memos (PG), Vaultwarden (volume + backup restore showcase), Linkding
   (SQLite on volume), Forgejo/Gitea rootless (no SSH; needs CPU override). Reserve: Uptime Kuma (slim 185 MB). Not viable:
   Listmonk (SMTP blocked), Plausible (ClickHouse).

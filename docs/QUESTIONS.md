@@ -7,6 +7,11 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Wiki.js recipe and the Postgres connection budget (2026-11-01).** Wiki.js 2 only works with an admin override of
+  `db_max_connections` = 10 (its pool is config-file only; at 5, saving pages fails). The 1 GB PG node has about 22 usable
+  connections in all, so two Wiki.js apps could use most of them. Options: (a) keep it as a template with the admin step
+  and approve case by case; (b) build a small wrapper image with a pool of 2 so it fits the default 5. I recommend (a) for
+  now and (b) if anyone actually asks for a wiki. Background: docs/RECIPES.md "Wiki.js 2".
   source app (`overwrite_source`) needs that app suspended, but an app stopped by a project or user suspension now sits in a
   suspended project and every restore into it is refused (your rule). So that recovery path only works for an app suspended
   on its own in an active project. Options: (a) leave it (unsuspend the project, suspend the app on its own, restore);
