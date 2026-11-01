@@ -300,6 +300,73 @@ CATALOG: List[TemplateOut] = [
         docs_url=f"{REPO_EXAMPLES}/shlink",
     ),
     TemplateOut(
+        id="miniflux",
+        name="Miniflux (RSS reader)",
+        description="Minimalist feed reader with a web UI and REST API, on PostgreSQL. Public image, no custom build.",
+        image="miniflux/miniflux:2.3.4",
+        port=8080,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "DATABASE_URL": "${{ db.url }}",
+            "DATABASE_MAX_CONNS": "3",
+            "DATABASE_MIN_CONNS": "1",
+            "RUN_MIGRATIONS": "1",
+            "CREATE_ADMIN": "1",
+            "ADMIN_USERNAME": "admin",
+            "BASE_URL": "${{ app.url }}",
+            "POLLING_FREQUENCY": "60",
+            "BATCH_SIZE": "25",
+            "WORKER_POOL_SIZE": "2",
+            "CLEANUP_ARCHIVE_READ_DAYS": "30",
+            "CLEANUP_ARCHIVE_UNREAD_DAYS": "60",
+        },
+        secrets=[
+            TemplateSecret(
+                key="ADMIN_PASSWORD",
+                hint="Password for the 'admin' user, created on first start. Change it later in Miniflux's Settings, not here.",
+            ),
+        ],
+        health_check=TemplateHealthCheck(path="/healthcheck"),
+        notes=(
+            "Sign in as 'admin'. Article bodies are stored in the 50 MB database; the cleanup settings archive old entries. "
+            "TLS to the database is encrypted but not CA-verified (sslmode=require)."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/miniflux",
+    ),
+    TemplateOut(
+        id="forgejo",
+        name="Forgejo (git forge)",
+        description="Git hosting with issues and pull requests. Repos and SQLite live on a volume. Git over HTTPS only.",
+        image="codeberg.org/forgejo/forgejo:17.0.1-rootless",
+        port=3000,
+        wants_db=False,
+        wants_storage=False,
+        env={
+            "ROOT_URL": "${{ app.url }}",
+            "HTTP_PORT": "3000",
+            "DISABLE_SSH": "true",
+            "DB_TYPE": "sqlite3",
+            "FORGEJO__SERVER__START_SSH_SERVER": "false",
+            "FORGEJO__SERVER__OFFLINE_MODE": "true",
+            "FORGEJO__MAILER__ENABLED": "false",
+            "FORGEJO__CRON_UPDATE_CHECKER__ENABLED": "false",
+            "FORGEJO__ACTIONS__ENABLED": "false",
+            "FORGEJO__SERVICE__DISABLE_REGISTRATION": "false",
+        },
+        secrets=[
+            TemplateSecret(key="SECRET_KEY", hint=f"Random string, generate with: {HEX_CMD}. Also skips the install wizard."),
+        ],
+        health_check=TemplateHealthCheck(path="/api/healthz"),
+        volume=TemplateVolume(size_gi=1, mount_path="/var/lib/gitea", required=True),
+        notes=(
+            "Register your account right after the first start: the first account becomes the admin. "
+            "Then set FORGEJO__SERVICE__DISABLE_REGISTRATION to true. No SSH and no email."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/forgejo",
+    ),
+    TemplateOut(
         id="status",
         name="Status page (Gatus)",
         description="Uptime dashboard that probes public endpoints on a schedule. The shipped config is a generic demo (example.com + DNS check).",

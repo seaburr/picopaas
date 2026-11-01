@@ -1,0 +1,31 @@
+apiVersion: picopaas/v1
+name: forgejo
+# Public image, pinned. The -rootless variant runs as USER 1000:1000 on port 3000 and reads its config
+# from env vars, so PicoPaaS runs it unmodified (no Dockerfile here). Verified live 2026-11-01.
+image: codeberg.org/forgejo/forgejo:17.0.1-rootless
+port: 3000
+healthCheck:
+  enabled: true
+  path: /api/healthz
+resources:
+  # Repositories, the SQLite database, app.ini and the generated internal token all live here.
+  # Mount the image's whole work dir. Needs volumes enabled on the platform.
+  volume: { sizeGi: 1, mountPath: /var/lib/gitea }
+env:
+  # First-boot settings (written into app.ini on the volume the first time only).
+  ROOT_URL: "${{ app.url }}"
+  HTTP_PORT: "3000"
+  DISABLE_SSH: "true"        # only HTTPS reaches the app; git over SSH is not available
+  DB_TYPE: "sqlite3"         # on the volume; see the README for why not the platform Postgres
+  # Applied on every boot (FORGEJO__SECTION__KEY; Forgejo lowercases the section name).
+  FORGEJO__SERVER__START_SSH_SERVER: "false"
+  FORGEJO__SERVER__OFFLINE_MODE: "true"
+  FORGEJO__MAILER__ENABLED: "false"
+  FORGEJO__CRON_UPDATE_CHECKER__ENABLED: "false"
+  FORGEJO__ACTIONS__ENABLED: "false"
+  # Leave this at "false" until you have registered your own account (the first account becomes the admin),
+  # then set it to "true" and save.
+  FORGEJO__SERVICE__DISABLE_REGISTRATION: "false"
+secrets:
+  # Any long random string (openssl rand -hex 32). Setting it also skips the install wizard.
+  - SECRET_KEY

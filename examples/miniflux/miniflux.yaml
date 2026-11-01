@@ -1,0 +1,33 @@
+apiVersion: picopaas/v1
+name: miniflux
+# Public image, pinned. Miniflux runs as USER 65534 (nobody) on port 8080 and is configured entirely
+# through env vars, so PicoPaaS runs it unmodified (no Dockerfile here). Verified live 2026-11-01.
+image: miniflux/miniflux:2.3.4
+port: 8080
+healthCheck:
+  enabled: true
+  path: /healthcheck
+resources:
+  db: true
+  db_engine: pg   # Miniflux only supports PostgreSQL
+env:
+  # One ref: the platform builds a postgres:// URL with sslmode=require (encrypted, not CA-verified;
+  # Miniflux's driver wants the CA as a file and the platform passes it as text).
+  DATABASE_URL: "${{ db.url }}"
+  # Stay under the per-app Postgres role's CONNECTION LIMIT of 5.
+  DATABASE_MAX_CONNS: "3"
+  DATABASE_MIN_CONNS: "1"
+  RUN_MIGRATIONS: "1"
+  CREATE_ADMIN: "1"
+  ADMIN_USERNAME: "admin"
+  BASE_URL: "${{ app.url }}"
+  # Gentle polling at the default CPU limit.
+  POLLING_FREQUENCY: "60"
+  BATCH_SIZE: "25"
+  WORKER_POOL_SIZE: "2"
+  # Article bodies live in the 50 MB database: archive and clean up old entries.
+  CLEANUP_ARCHIVE_READ_DAYS: "30"
+  CLEANUP_ARCHIVE_UNREAD_DAYS: "60"
+secrets:
+  # The first admin's password (created on first boot). Set the value in the dashboard or via the API.
+  - ADMIN_PASSWORD

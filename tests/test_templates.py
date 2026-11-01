@@ -4,7 +4,8 @@ from app.env_refs import ALLOWED_REFS, ENV_KEY_RE, resolve_ref
 from app.routers.templates import CATALOG
 from tests.conftest import register_and_login
 
-EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "status", "static-site"}
+EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "miniflux", "forgejo", "status",
+            "static-site"}
 
 
 def test_templates_catalog(client):
@@ -95,3 +96,15 @@ def test_grafana_pg_variant(client):
     t = {x["id"]: x for x in client.get("/templates").json()}["grafana-pg"]
     assert t["db_engine"] == "pg" and t["env"]["GF_DATABASE_TYPE"] == "postgres"
     assert t["env"]["GF_DATABASE_SSL_MODE"] == "require" and t["env"]["GF_DATABASE_URL"] == "${{ db.url }}"
+
+
+def test_miniflux_and_forgejo_templates(client):
+    """Both verified live 2026-11-01 with the public images unchanged."""
+    register_and_login(client, "rss@example.com")
+    by_id = {x["id"]: x for x in client.get("/templates").json()}
+    m = by_id["miniflux"]
+    assert m["db_engine"] == "pg" and m["env"]["DATABASE_URL"] == "${{ db.url }}"
+    assert [s["key"] for s in m["secrets"]] == ["ADMIN_PASSWORD"]
+    f = by_id["forgejo"]
+    assert not f["wants_db"] and f["image"].endswith("-rootless")
+    assert f["volume"] == {"size_gi": 1, "mount_path": "/var/lib/gitea", "required": True}
