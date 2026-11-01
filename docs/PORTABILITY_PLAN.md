@@ -1,6 +1,6 @@
 # Cloud portability plan: decoupling PicoPaaS from DigitalOcean
 
-Status: **P1 in progress** (2026-11-01). Owner: Chas. Related: [Self-host positioning](ARCHITECTURE.md),
+Status: **P1 done** (2026-11-01, P1a 684dfcf + P1b d323478/9dd9f71, prod regression clean). Next: P2 generic target. Owner: Chas. Related: [Self-host positioning](ARCHITECTURE.md),
 questions in [QUESTIONS.md](QUESTIONS.md) ("Cloud portability").
 
 ## Goal
@@ -16,7 +16,7 @@ GCS through its XML API with HMAC keys. **Azure is deferred** because Blob Stora
 **Which cloud is tested first depends on where free credits are available** (Chas, 2026-11-01). So P1-P3 stay
 cloud-neutral, and the generic target (P2) is the proof that the seams are right before any credits are spent.
 
-**Status:** P1 started 2026-11-01.
+**Status:** P1 done 2026-11-01. P2 (generic target: kind + Garage + PG + MySQL in CI) is next.
 
 **Non-goals for now:** moving picopaas.xyz off DigitalOcean, running across several clouds at once, and
 spending money on AWS or GCP before a request in `docs/requests/` is approved (see Cost).
