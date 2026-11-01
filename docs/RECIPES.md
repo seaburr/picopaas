@@ -693,6 +693,33 @@ A non-root WordPress image lives in `examples/wordpress/` (PHP 8.5, WordPress 7.
 optional volume for the whole install, one-time restore from a backup bundle). Start with `examples/wordpress/README.md`
 for the spec and env vars, and `examples/wordpress/MIGRATION.md` to move an existing site onto PicoPaaS.
 
+## Miniflux (RSS reader) on PostgreSQL
+
+Public image `miniflux/miniflux:2.3.4`, unchanged (USER 65534, port 8080, 14 MB). One ref does the database:
+`DATABASE_URL=${{ db.url }}` (`sslmode=require`: encrypted, not CA-verified, because Miniflux wants the CA as a file).
+`DATABASE_MAX_CONNS=3` stays under the Postgres role limit of 5. `CREATE_ADMIN=1` with an `ADMIN_PASSWORD` secret creates
+the `admin` user on first boot. Health check `/healthcheck`. Verified live 2026-11-01: migrations, admin, two feeds fetched
+through egress, API; 21 MiB RAM, 9.7 MB of the 50 MB database. Keep the cleanup settings so stored article bodies don't fill
+the quota. Template `miniflux`; details in `examples/miniflux/README.md`.
+
+## Forgejo (git forge) on a volume
+
+Public image `codeberg.org/forgejo/forgejo:17.0.1-rootless`, unchanged (USER 1000:1000, port 3000). Use the `-rootless`
+tag; the plain tag runs as root and is rejected. A 1 GiB volume at `/var/lib/gitea` holds repositories, `app.ini` and the
+SQLite database. Not the platform Postgres: Forgejo wants `host:port` in one value and a ref can only be a whole value.
+`FORGEJO__SECTION__KEY` env vars work with our UPPER_SNAKE rule because Forgejo lowercases the section. The `SECRET_KEY`
+secret skips the install wizard; the first account to register becomes the admin, so register straight away, then set
+`FORGEJO__SERVICE__DISABLE_REGISTRATION=true`. Git over HTTPS only (no SSH), no email, no Actions. Verified live 2026-11-01:
+sign-up as admin, repo create, push and clone over HTTPS, and a redeploy kept the repo, the user and the closed sign-up; 98 MiB
+RAM. Template `forgejo`; details in `examples/forgejo/README.md`.
+
+## Memos and Vaultwarden (one-line wrappers)
+
+Both official images run as root, so each has a two-line `Dockerfile` (`FROM <upstream>` + `USER 10001:10001`) built by
+`examples.yml`. Memos (`examples/memos/`) drops privileges itself and already owns its data dir as 10001; it runs on the
+platform Postgres with `MEMOS_DSN=${{ db.url }}`. Vaultwarden (`examples/vaultwarden/`) keeps its SQLite database and key on a
+volume at `/data` and needs `ROCKET_PORT=8080`. **Not yet verified live** (waiting on the first image build).
+
 ## Lessons for bringing your own image
 
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build
@@ -743,7 +770,12 @@ get that guarantee from the server.
 
 ## Candidate recipes (2026-10-28)
 
-Research only: nothing here is built or tested. Compressed image sizes were read from the Docker Hub API on 2026-10-28
+**Status 2026-11-01:** Miniflux and Forgejo are live-verified recipes (sections above). Memos and Vaultwarden have
+one-line wrapper images (root upstream), pending a live test. Wiki.js 2.5 passes the image checks unchanged but needs the new
+`${{ db.ca_cert_body }}` ref for TLS (`DB_SSL_CA` takes the base64 body only; a full PEM, or `DATABASE_URL`, fails), so
+it waits for that platform change. Linkding and Uptime Kuma also run as root (wrapper needed, not started).
+
+Original research notes follow (2026-10-28). Compressed image sizes were read from the Docker Hub API on 2026-10-28
 (the platform cap is 512 MB); RAM figures are third-party or upstream estimates and **must be measured** on a throwaway
 app before a recipe is promoted. Fit rules used: non-root UID 10001 (or a wrapper like the Ghost recipe), single
 container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (override available), 50 MB DB,
