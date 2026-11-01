@@ -285,6 +285,34 @@ class ObjectStoreError(Exception):
     pass
 
 
+class HostMetricsError(Exception):
+    """Message is already scrubbed (safe to show to an admin)."""
+
+
+class DbHostMetrics(ABC):
+    """Managed-DB host cpu/mem/disk % (optional; cloud.db_host_metrics() returns None when unavailable)."""
+
+    @abstractmethod
+    def fetch(self, host: str) -> dict[str, "float | None"]:
+        """{"cpu_pct", "mem_pct", "disk_pct"} (each may be None). Raises HostMetricsError (scrubbed)."""
+
+
+class BackupTarget(ABC):
+    """Where backups go: the S3-style endpoint, the restic repository URL, and the network hole the Jobs need."""
+
+    @abstractmethod
+    def endpoint(self) -> str:
+        """Bucket endpoint URL (no trailing slash); '' when not configured."""
+
+    @abstractmethod
+    def repository_url(self, path: str) -> str:
+        """restic repository URL for `path` (relative to the bucket, e.g. 'apps/12/db' or 'platform/db'; BACKUP_PREFIX is added)."""
+
+    @abstractmethod
+    def ensure_egress(self, runner: Any) -> None:
+        """Make sure the backup namespace's egress policy lets the Jobs reach the endpoint. May raise."""
+
+
 class ObjectStore(ABC):
     """Manages one Spaces bucket + access key per app (ARCHITECTURE.md §2 "Storage")."""
 

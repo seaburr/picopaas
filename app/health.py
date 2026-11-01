@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -77,8 +76,11 @@ _host_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 
 def _host_metrics(server_id: int, host: str) -> dict[str, Any]:
     """{"host_metrics": {...}|None, "host_metrics_error": str|None}. Never raises."""
-    from app import db_host_metrics as hm
-    if not config.DB_METRICS_ENABLED or not os.environ.get("DIGITALOCEAN_TOKEN"):
+    from app.providers import cloud
+    from app.providers.base import HostMetricsError
+
+    metrics = cloud.db_host_metrics()
+    if metrics is None:
         return {"host_metrics": None, "host_metrics_error": None}
     now = time.monotonic()
     with _lock:
@@ -86,8 +88,8 @@ def _host_metrics(server_id: int, host: str) -> dict[str, Any]:
     if hit and now - hit[0] < HOST_METRICS_TTL_S:
         return hit[1]
     try:
-        out = {"host_metrics": hm.fetch_host_metrics(host), "host_metrics_error": None}
-    except hm.HostMetricsError as exc:
+        out = {"host_metrics": metrics.fetch(host), "host_metrics_error": None}
+    except HostMetricsError as exc:
         out = {"host_metrics": None, "host_metrics_error": str(exc)[:120]}
     except Exception as exc:  # noqa: BLE001
         out = {"host_metrics": None, "host_metrics_error": f"metrics failed ({type(exc).__name__})"}

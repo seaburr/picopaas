@@ -421,9 +421,9 @@ def get_mysql_admin_factory():
 
 def get_object_store() -> ObjectStore:
     """Overridden in tests with a FakeObjectStore."""
-    from app.providers.spaces import SpacesStore
+    from app.providers import cloud
 
-    return SpacesStore.from_env()
+    return cloud.object_store()
 
 
 @router.post("/{app_id}/rotate-credentials", response_model=schemas.AppOut)

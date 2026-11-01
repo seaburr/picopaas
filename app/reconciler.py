@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import config, crypto, env_refs, image_check, image_history, k8s_manifests, models, resources
 from app.db_placement import NoDbCapacity, choose_server
 from app.env_refs import db_url, pem_body
+from app.providers import cloud
 from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
 
 log = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ def _volume_backup_of(app: models.App, eff: dict[str, int]) -> Optional[dict[str
 
     if _volume_of(app) is None or not backups.volume_backups_on():
         return None
-    return {"pod": k8s_manifests.backup_pod_resources(eff), "ips": _private_storage_ips(config.backup_endpoint())}
+    return {"pod": k8s_manifests.backup_pod_resources(eff), "ips": _private_storage_ips(cloud.backup_target().endpoint())}
 
 
 def refresh_volume_phase(app: models.App, kube: KubeProvider) -> None:

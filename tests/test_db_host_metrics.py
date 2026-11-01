@@ -3,6 +3,7 @@ import httpx
 import pytest
 
 from app import db_host_metrics as hm
+from app.providers.digitalocean import db_metrics as dbm
 from app import health
 
 SAMPLE = '''# HELP cpu_usage_idle Telegraf collected metric
@@ -72,10 +73,10 @@ def test_health_wrapper_fallbacks(monkeypatch):
 
     def bad(host):
         raise RuntimeError("leak")
-    monkeypatch.setattr(hm, "fetch_host_metrics", bad)
+    monkeypatch.setattr(dbm, "fetch_host_metrics", bad)
     out = health._host_metrics(1, "h")
     assert out["host_metrics"] is None and "leak" not in out["host_metrics_error"]
     health.reset_cache()
-    monkeypatch.setattr(hm, "fetch_host_metrics", lambda host: {"cpu_pct": 1.0, "mem_pct": 2.0, "disk_pct": 3.0})
+    monkeypatch.setattr(dbm, "fetch_host_metrics", lambda host: {"cpu_pct": 1.0, "mem_pct": 2.0, "disk_pct": 3.0})
     assert health._host_metrics(1, "h")["host_metrics"]["disk_pct"] == 3.0
     health.reset_cache()

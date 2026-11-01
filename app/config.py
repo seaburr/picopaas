@@ -18,6 +18,30 @@ import os
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 IS_DEV = ENVIRONMENT == "dev"
 
+# Which cloud's providers app/providers/cloud.py builds (docs/PORTABILITY_PLAN.md). Default keeps today's DigitalOcean.
+CLOUD_PROVIDERS = ("digitalocean", "aws", "gcp", "generic")
+
+
+def validate_cloud_provider(value: str) -> str:
+    """Return the normalised provider name or raise ValueError (so a typo fails at startup, not at first use)."""
+    name = (value or "").strip().lower()
+    if name not in CLOUD_PROVIDERS:
+        raise ValueError(f"CLOUD_PROVIDER must be one of {', '.join(CLOUD_PROVIDERS)} (got {value!r})")
+    return name
+
+
+CLOUD_PROVIDER = validate_cloud_provider(os.environ.get("CLOUD_PROVIDER", "digitalocean"))
+
+
+def object_store_access_key_id() -> str:
+    """OBJECT_STORE_ACCESS_KEY_ID, falling back to the original SPACES_ACCESS_KEY_ID. Read at call time."""
+    return os.environ.get("OBJECT_STORE_ACCESS_KEY_ID") or os.environ.get("SPACES_ACCESS_KEY_ID", "")
+
+
+def object_store_secret_access_key() -> str:
+    """OBJECT_STORE_SECRET_ACCESS_KEY, falling back to the original SPACES_SECRET_ACCESS_KEY. Read at call time."""
+    return os.environ.get("OBJECT_STORE_SECRET_ACCESS_KEY") or os.environ.get("SPACES_SECRET_ACCESS_KEY", "")
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/picopaas.db")
 # Platform DB connection pool (per process; ignored for SQLite). Budget: DB_POOL_SIZE + DB_MAX_OVERFLOW connections
 # per API replica, times replicas (plus one pinned GET_LOCK connection each and rollout surge), must stay well under

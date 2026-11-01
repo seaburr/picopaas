@@ -29,6 +29,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app import audit, config, crypto, k8s_manifests, models, platform_settings, projects, resources, volume_stat
+from app.providers import cloud
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
@@ -193,9 +194,7 @@ def repo_password(cfg: models.AppBackupConfig) -> str:
 
 
 def repo_url(app_id: int, kind: str) -> str:
-    prefix = config.BACKUP_PREFIX.strip("/")
-    prefix = f"{prefix}/" if prefix else ""
-    return f"s3:{config.backup_endpoint()}/{config.BACKUP_BUCKET}/{prefix}apps/{app_id}/{kind}"
+    return cloud.backup_target().repository_url(f"apps/{app_id}/{kind}")
 
 
 # --- queueing ---------------------------------------------------------------------------------
@@ -545,7 +544,7 @@ def tick(session: Session, runner: BackupRunner, now: Optional[datetime] = None)
 def _ensure_egress(runner: BackupRunner) -> None:
     """Keep the namespace's NetworkPolicy for the Spaces endpoint's private VPC IPs current. Never raises."""
     try:
-        runner.ensure_spaces_egress(config.backup_endpoint())
+        cloud.backup_target().ensure_egress(runner)
     except Exception as exc:  # noqa: BLE001
         log.warning("backup: could not update the Spaces egress policy (%s)", type(exc).__name__)
 
@@ -1353,7 +1352,7 @@ def _build_package_env(session: Session, run: models.BackupRun) -> dict[str, str
         "SET_ID": str(st.id), "SET_CREATED_AT": _naive(st.created_at).isoformat() + "Z",
         "PICOPAAS_VERSION": config.PICOPAAS_VERSION, "MAX_VOLUME_BYTES": str(config.BACKUP_VOLUME_EXPORT_MAX_BYTES),
         "VOLUME_DIR": config.BACKUP_VOLUME_MOUNT,
-        "EXPORT_ENDPOINT": config.backup_endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET, "EXPORT_KEY": run.export_key,
+        "EXPORT_ENDPOINT": cloud.backup_target().endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET, "EXPORT_KEY": run.export_key,
     })
     return env
 
@@ -1365,7 +1364,7 @@ def _build_export_env(session: Session, run: models.BackupRun) -> dict[str, str]
         raise ValueError("the backup to download is gone")
     env = _repo_env(session, source.app_id, source.kind, cfg)
     env.update({"MODE": "export", "KIND": source.kind, "SNAPSHOT": source.snapshot_id, "TAG": "export",
-                "EXPORT_ENDPOINT": config.backup_endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET,
+                "EXPORT_ENDPOINT": cloud.backup_target().endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET,
                 "EXPORT_KEY": run.export_key, "VOLUME_DIR": config.BACKUP_VOLUME_MOUNT,
                 "MAX_VOLUME_BYTES": str(config.BACKUP_VOLUME_EXPORT_MAX_BYTES)})
     return env

@@ -67,15 +67,12 @@ def _settings() -> SimpleNamespace:
 
 
 def _object_store() -> Any | None:
+    from app.providers import cloud
+
     try:
-        from app.providers.spaces import SpacesStore
-    except ImportError:
-        log.warning("SpacesStore not available; storage reconcile/quota skipped")
-        return None
-    try:
-        return SpacesStore.from_env()
+        return cloud.object_store()
     except (KeyError, ObjectStoreError) as exc:
-        # SpacesStore.from_env() raises ObjectStoreError for a missing env var. Degrade (apps without storage still
+        # cloud.object_store() raises ObjectStoreError for a missing env var. Degrade (apps without storage still
         # reconcile); apps that DO need storage fail per-app with a clear error via _NoStorage / the reconciler.
         log.warning("Spaces not configured (%s); storage reconcile/quota skipped", exc)
         return None

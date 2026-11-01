@@ -20,6 +20,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app import audit, backups, config, crypto, models
+from app.providers import cloud
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError
 
 log = logging.getLogger(__name__)
@@ -40,9 +41,7 @@ def active() -> bool:
 
 
 def repo_url() -> str:
-    prefix = config.BACKUP_PREFIX.strip("/")
-    prefix = f"{prefix}/" if prefix else ""
-    return f"s3:{config.backup_endpoint()}/{config.BACKUP_BUCKET}/{prefix}platform/db"
+    return cloud.backup_target().repository_url("platform/db")
 
 
 def _repo_password(session: Session) -> str:

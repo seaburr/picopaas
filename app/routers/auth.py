@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, models, projects, schemas
 from app import config, platform_settings, ratelimit, resources
+from app.providers import cloud
 from app.config import (
     DEFAULT_CPU_REQUEST_M,
     DEFAULT_MEM_REQUEST_MI,
@@ -131,10 +131,6 @@ def logout(response: Response):
     return None
 
 
-def _spaces_configured() -> bool:
-    return all(os.environ.get(k) for k in ("DIGITALOCEAN_TOKEN", "SPACES_ACCESS_KEY_ID", "SPACES_SECRET_ACCESS_KEY"))
-
-
 def _available_db_engines(db: Session) -> list[str]:
     """Engines a new app database could land on now: each engine with an 'active' DbServer that has a
     free slot (draining/full don't count). A subset of ["mysql", "pg"], same order."""
@@ -178,7 +174,7 @@ def _me_out(current_user: models.User, db: Session) -> schemas.MeOut:
         app_limit_effective=resources.effective_app_limit(current_user),
         features=schemas.Features(
             databases=bool(db_engines),
-            storage=_spaces_configured(),
+            storage=cloud.storage_configured(),
             volumes=config.VOLUMES_ENABLED,
             kaisen=platform_settings.kaisen_on(db),
             db_engines=db_engines,
