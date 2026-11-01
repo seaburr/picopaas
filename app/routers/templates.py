@@ -367,6 +367,79 @@ CATALOG: List[TemplateOut] = [
         docs_url=f"{REPO_EXAMPLES}/forgejo",
     ),
     TemplateOut(
+        id="memos",
+        name="Memos (notes)",
+        description="Lightweight notes and microblog on PostgreSQL. The official image plus USER 10001.",
+        image="ghcr.io/seaburr/picopaas-example-memos:latest",
+        port=5230,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "MEMOS_PORT": "5230",
+            "MEMOS_DRIVER": "postgres",
+            "MEMOS_DSN": "${{ db.url }}",
+            "MEMOS_INSTANCE_URL": "${{ app.url }}",
+        },
+        health_check=TemplateHealthCheck(path="/healthz"),
+        notes=(
+            "Create your account right after the first start: the first account becomes the admin. Then turn off sign-ups "
+            "in Memos' settings. Attachments are stored in the 50 MB database unless you configure S3 storage."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/memos",
+    ),
+    TemplateOut(
+        id="vaultwarden",
+        name="Vaultwarden (password manager)",
+        description="Bitwarden-compatible server; vault and keys live on a volume. For test use, not passwords you need.",
+        image="ghcr.io/seaburr/picopaas-example-vaultwarden:latest",
+        port=8080,
+        wants_db=False,
+        wants_storage=False,
+        env={
+            "DOMAIN": "${{ app.url }}",
+            "ROCKET_PORT": "8080",
+            "SIGNUPS_ALLOWED": "true",
+            "INVITATIONS_ALLOWED": "false",
+            "SHOW_PASSWORD_HINT": "false",
+        },
+        health_check=TemplateHealthCheck(path="/alive"),
+        volume=TemplateVolume(size_gi=1, mount_path="/data", required=True),
+        notes=(
+            "Create your account right after the first start, then set SIGNUPS_ALLOWED to false. "
+            "No email, so use an authenticator app for two-factor login. The /admin page is off."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/vaultwarden",
+    ),
+    TemplateOut(
+        id="wikijs",
+        name="Wiki.js 2 (wiki)",
+        description="Wiki with Markdown editor and page history on PostgreSQL. Public image; needs an admin to raise DB connections to 10.",
+        image="requarks/wiki:2.5",
+        port=3000,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "DB_TYPE": "postgres",
+            "DB_HOST": "${{ db.host }}",
+            "DB_PORT": "${{ db.port }}",
+            "DB_NAME": "${{ db.name }}",
+            "DB_USER": "${{ db.user }}",
+            "DB_PASS": "${{ db.password }}",
+            "DB_SSL": "true",
+            "DB_SSL_CA": "${{ db.ca_cert_body }}",
+            "NODE_OPTIONS": "--max-old-space-size=300",
+            "HOME": "/tmp",
+        },
+        volume=TemplateVolume(size_gi=1, mount_path="/wiki/data", required=True),
+        notes=(
+            "Ask an admin to set this app's DB connections to 10, or saving pages fails (Wiki.js pools up to 10). "
+            "Finish the setup page right after the first start: whoever completes it becomes the admin."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/wikijs",
+    ),
+    TemplateOut(
         id="status",
         name="Status page (Gatus)",
         description="Uptime dashboard that probes public endpoints on a schedule. The shipped config is a generic demo (example.com + DNS check).",

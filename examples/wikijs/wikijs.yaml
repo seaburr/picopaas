@@ -1,0 +1,25 @@
+apiVersion: picopaas/v1
+name: wiki
+# Public image, pinned to 2.5 (3.x is 816 MB, over the image cap). USER is the name `node`, so the platform
+# runs it as UID 10001; no Dockerfile here. Verified live 2026-11-01.
+image: requarks/wiki:2.5
+port: 3000
+resources:
+  db: true
+  db_engine: pg
+  # Wiki.js writes its cache and upload temp files to /wiki/data, which UID 10001 can't write in the image.
+  # The volume (made writable by the pod's fsGroup) fixes that. Pages and uploads themselves live in the database.
+  volume: { sizeGi: 1, mountPath: /wiki/data }
+env:
+  DB_TYPE: "postgres"
+  DB_HOST: "${{ db.host }}"
+  DB_PORT: "${{ db.port }}"
+  DB_NAME: "${{ db.name }}"
+  DB_USER: "${{ db.user }}"
+  DB_PASS: "${{ db.password }}"
+  # CA-verified TLS. Wiki.js wants the certificate's base64 body only (it adds the BEGIN/END lines itself),
+  # which is exactly what db.ca_cert_body gives. db.ca_cert (full PEM) fails with SELF_SIGNED_CERT_IN_CHAIN.
+  DB_SSL: "true"
+  DB_SSL_CA: "${{ db.ca_cert_body }}"
+  NODE_OPTIONS: "--max-old-space-size=300"
+  HOME: "/tmp"

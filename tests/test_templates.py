@@ -4,7 +4,8 @@ from app.env_refs import ALLOWED_REFS, ENV_KEY_RE, resolve_ref
 from app.routers.templates import CATALOG
 from tests.conftest import register_and_login
 
-EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "miniflux", "forgejo", "status",
+EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "miniflux", "forgejo", "memos",
+            "vaultwarden", "wikijs", "status",
             "static-site"}
 
 
@@ -108,3 +109,13 @@ def test_miniflux_and_forgejo_templates(client):
     f = by_id["forgejo"]
     assert not f["wants_db"] and f["image"].endswith("-rootless")
     assert f["volume"] == {"size_gi": 1, "mount_path": "/var/lib/gitea", "required": True}
+
+
+def test_memos_vaultwarden_wikijs_templates(client):
+    """Verified live 2026-11-01. Wiki.js needs the CA body ref (DB_SSL_CA) and a volume for /wiki/data."""
+    register_and_login(client, "wiki@example.com")
+    by_id = {x["id"]: x for x in client.get("/templates").json()}
+    assert by_id["memos"]["env"]["MEMOS_DSN"] == "${{ db.url }}" and by_id["memos"]["db_engine"] == "pg"
+    assert by_id["vaultwarden"]["volume"] == {"size_gi": 1, "mount_path": "/data", "required": True}
+    w = by_id["wikijs"]
+    assert w["env"]["DB_SSL_CA"] == "${{ db.ca_cert_body }}" and w["volume"]["mount_path"] == "/wiki/data"

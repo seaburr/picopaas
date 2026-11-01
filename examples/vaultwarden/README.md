@@ -26,4 +26,6 @@ upstream default port is 80). Nothing in its start script needs root. `examples.
   not available because SMTP is blocked.
 - The `/admin` page is off. To turn it on, add an `ADMIN_TOKEN` secret holding an Argon2 hash from
   `vaultwarden hash`, never the plain password.
+- **Verified live 2026-11-01:** account registration and login over the Bitwarden API, the account and RSA key kept
+  across a redeploy, and `SIGNUPS_ALLOWED=false` refuses new sign-ups. About 29 MiB RAM.
 - Volume backups cover `/data`. Do a test restore before you rely on them.

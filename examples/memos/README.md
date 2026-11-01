@@ -23,3 +23,6 @@ publishes it as `ghcr.io/seaburr/picopaas-example-memos`.
 - Attachments are stored in the database by default and count toward the 50 MB quota. For more than a few
   images, set S3 storage in Memos' settings (use a bucket on the app) or keep attachments small.
 - No email (SMTP is blocked).
+- **Verified live 2026-11-01:** first account is ADMIN, memo create and list over the REST API (`/api/...`; the
+  old `/api/v1` paths are gone in 26.x), data kept across a restart. About 24 MiB RAM, schema 8.8 MB of the 50 MB DB.
+- Sign-ups stay open until you turn them off: a second sign-up gets an ordinary user account.

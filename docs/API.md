@@ -149,7 +149,7 @@ change a scope). Pre-existing keys are `full`.
 wants_db, db_engine, wants_storage, env{KEY: value}, secrets[{key, hint}], health_check{path, timeout_seconds}|null,
 volume{size_gi, mount_path, required}|null, notes, docs_url}` (`env` values may be `${{ ref }}` references; `secrets` are
 names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub). Today:
-`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
+`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `memos`, `vaultwarden`, `wikijs`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
 
 ## Apps (`/apps`, active; scoped to the caller's own apps)
 
