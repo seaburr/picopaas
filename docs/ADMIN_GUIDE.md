@@ -94,6 +94,7 @@ required.
 | `BOOTSTRAP_PG_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `BOOTSTRAP_PG_CA` | The same for a PostgreSQL server. The CA is a file path to a PEM. |
 | `MYSQL_SSL_CA` | CA file path for the bootstrapped MySQL server. |
 | `MYSQL_EGRESS_MODE`, `MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR` | How tenant NetworkPolicies reach the database: `in-cluster` (a pod in the data namespace) or `cidr` (the network that holds a managed server). |
+| `TENANT_EXTRA_PRIVATE_CIDRS`, `TENANT_EXTRA_RESERVED_CIDRS` | Optional comma-separated IPv4 networks to add to the ranges tenant apps can never reach over the internet rule (e.g. a VPC outside RFC1918). The built-ins (10/8, 172.16/12, 192.168/16, 169.254/16 and the reserved list) are always excluded; these can only add. Bad values stop startup. |
 | `MYSQL_ADMIN_USE_PROCEDURES` | `1` when the MySQL admin user works through stored procedures (in-cluster variant). |
 | `MAX_DB_USER_CONNECTIONS`, `PG_MAX_DB_USER_CONNECTIONS` | Per-app connection cap for each engine. |
 | `PG_HARD_CAP_RATIO`, `PG_STATEMENT_TIMEOUT_MS`, `PG_IDLE_TX_TIMEOUT_MS` | PostgreSQL second-stage quota multiple and session timeouts. |

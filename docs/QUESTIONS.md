@@ -45,6 +45,10 @@ background on each item if you want it.
   Spaces key limited as far as DO allows, then update the GitHub/k8s secrets and re-run bootstrap. Also revisit `main` branch
   protection and moving CI secrets into a protected Environment. Documented in docs/ARCHITECTURE.md (Production hardening).
 
+- **Re-verify a DB server when only its `flavor` changes? (security-reviewer 2026-11-01, PENTEST K60, LOW)** PATCH checks the connection
+  for password/CA changes but not for a flavor change, so a wrong flavor (wrong admin DB) breaks provisioning until fixed.
+  Recommend verifying on flavor change too (one line). Admin-only, availability only. OK to add?
+
 ## To-dos (only you can do these)
 
 - **Kaisen builder v0: what I need from you (2026-10-29).** Design: ~/source/kaisen/docs/BUILDER_V0.md. Setup happens in the app,
