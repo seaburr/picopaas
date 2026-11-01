@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-01 [scm-security] DONE: pushed f87dc93 (docs sweep), c064bb6 (feat landing), 695bf1d (ledger). Docs/copy only, pushed without security review. Pre-push: frontend build ok, gitleaks clean per commit. CI 41317389276, image 41317389405, examples 41317389252 success; deploy 41319064868 success (earlier deploy runs 41317440170/41318904216 skipped the rollout while CI was still running); https://picopaas.xyz/ serves "14 one-click".
 - 2026-11-01 [tech-writer] DONE: docs sweep for 5 templates / mixed env refs / db.ca_file / 8 KiB cap. RECIPES (Grafana ref wording, CA notes marked not-verified, Wiki.js and Candidate sections marked superseded, Lessons refs), examples/grafana/README, README template list, USER_GUIDE s5 (8 KiB), CLI, ARCHITECTURE. Uncommitted.
 - 2026-11-01 [marketing-writer] DONE: landing.html updated: 14 templates named, DB TLS/CA file + DSN-from-parts line, volumes and projects items, scheduled (not nightly) backups wording, 20 Mbit/s bandwidth row; limits checked vs app/config.py. Manager browser-checked at 390 and 1200 px (no horizontal scroll).
 - 2026-11-01 [marketing-writer] START: landing page pass (frontend/public/landing.html).
