@@ -145,6 +145,26 @@ NetworkPolicy needs Dataplane V2 (Cilium) or the Calico add-on. Each cloud targe
 
 **No MinIO** (Chas, 2026-11-01: the project is dead). Use Garage first, SeaweedFS if Garage falls short.
 
+## P2 status and follow-ups (2026-11-01)
+
+P2a (GarageStore, Garage v2.5.0, admin API v2), P2a.2 (generic backups: endpoint port, path-style, region), P2b
+(`deploy/generic/` + `scripts/dev/local-up.sh` on Docker Desktop Kubernetes, which is kind-based with kindnet and
+enforces NetworkPolicy), and P2c (in-cluster egress by namespace/pod selector, PG16 SET ROLE grant, BOOTSTRAP_*_FLAVOR)
+are done locally. Live local checks (5 tries each) passed: own DB and S3 open; Garage admin and rpc, the other engine's
+DB and metadata blocked; internet open; backup of db + bucket and export OK.
+
+Open follow-ups:
+1. **Public object-store endpoint.** Presigned and backup-download URLs use the in-cluster Garage URL, so browsers
+   outside the cluster can't open them. Add `OBJECT_STORE_PUBLIC_ENDPOINT` (Garage behind an Ingress) for presigns
+   and downloads, keeping the internal URL for apps and the platform.
+2. **`deploy/platform/backup.yaml` in-cluster variant.** Its `allow-egress-db` is CIDR-only. Locally it's
+   overridden by `deploy/generic/platform/backup-db-egress.yaml`; fold this into the Helm chart (P3).
+3. **Multi-arch images.** `ghcr.io/seaburr/picopaas-backup` is amd64 only, and so may be the platform image. Build
+   linux/arm64 too, for Apple Silicon and Graviton/Ampere self-hosters.
+4. **cryptography on arm64.** 50.0.2 crashed with SIGILL on Docker Desktop engine 27.5.1's VM but not on 29.9.2.
+   Keep the opt-in `ARM64_CRYPTO_FIX=1` overlay and re-test before the self-install guide.
+5. **CI.** Run `local-up.sh` on kind in GitHub Actions plus an e2e smoke (the remaining P2 item).
+
 ## Phases
 
 Each phase is shippable and leaves picopaas.xyz on DigitalOcean working unchanged.
