@@ -8,7 +8,7 @@ resources:
   - postgres.yaml
   - garage.yaml
 patches:
-  - path: mysql-patch.yaml
+  - path: mysql.patch.yaml
   # TLS for MySQL via the conf.d ConfigMap the base already mounts.
   - target:
       kind: ConfigMap

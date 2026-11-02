@@ -6,7 +6,7 @@ in-cluster, single replica, sized for a laptop. It is also the base for the kind
 | Piece | What | Where |
 |-------|------|-------|
 | PostgreSQL 16 | TLS only (`hostssl`), non-superuser `picopaas_admin` (CREATEROLE, CREATEDB, owns `postgres`) | `data/postgres.yaml` |
-| MySQL 8.4 | reuses `deploy/mysql/statefulset.yaml` (picopaas_ops procedures), TLS required, patched for `hostpath` | `data/kustomization.yaml`, `data/mysql-patch.yaml` |
+| MySQL 8.4 | reuses `deploy/mysql/statefulset.yaml` (picopaas_ops procedures), TLS required, patched for `hostpath` | `data/kustomization.yaml`, `data/mysql.patch.yaml` |
 | Garage v2.5.0 | single node, replication 1, layout + platform S3 key set by Job `garage-setup` through the admin API v2 | `data/garage.yaml`, `data/garage-setup-job.yaml` |
 | Traefik 42.0.0 | Helm, LoadBalancer on `localhost:80`, plain HTTP | `traefik-values.yaml` |
 | metrics-server 3.14.0 | Helm, `--kubelet-insecure-tls` | `metrics-server-values.yaml` |
