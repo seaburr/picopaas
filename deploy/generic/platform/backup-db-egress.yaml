@@ -1,0 +1,30 @@
+# Generic/in-cluster override of deploy/platform/backup.yaml `allow-egress-db` (applied right after it by local-up.sh, same
+# name). The base policy allows the DB servers by ClusterIP /32, which kindnet does not honour (policy is evaluated after
+# DNAT), so the backup Job's pg_dump/mysqldump could not connect. Selector peers work on both kindnet and Calico.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-db
+  namespace: picopaas-backup
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: picopaas-data
+          podSelector:
+            matchLabels:
+              app: mysql
+      ports:
+        - {protocol: TCP, port: 3306}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: picopaas-data
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - {protocol: TCP, port: 5432}

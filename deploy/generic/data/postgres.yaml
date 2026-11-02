@@ -1,0 +1,153 @@
+# In-cluster PostgreSQL 16 for tenant app databases (generic target). TLS only (hostssl), server cert from the
+# `db-tls` Secret that scripts/dev/local-up.sh generates (self-signed CA). Secret `pg-admin` is also script-made.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: picopaas-data
+data:
+  pg_hba.conf: |
+    local all all trust
+    hostssl all all all scram-sha-256
+  10-admin.sh: |
+    #!/bin/bash
+    set -eu
+    # Non-superuser admin like a managed service: CREATEROLE + CREATEDB, owns the stock `postgres` database
+    # (flavor self-managed: pg_admin_db = postgres, app/providers/db_flavor.py).
+    psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+    CREATE ROLE picopaas_admin LOGIN CREATEROLE CREATEDB PASSWORD '${PICOPAAS_ADMIN_PASSWORD}';
+    ALTER DATABASE postgres OWNER TO picopaas_admin;
+    -- PG16: CREATEROLE alone gives ADMIN OPTION on roles it creates but NOT the right to SET ROLE to them, which
+    -- PostgresAdmin needs (ALTER DEFAULT PRIVILEGES / ownership as the app role). Managed services preset this.
+    ALTER ROLE picopaas_admin SET createrole_self_grant = 'set, inherit';
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: picopaas-data
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: picopaas-data
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/pg-tls/tls.crt
+            - -c
+            - ssl_key_file=/etc/pg-tls/tls.key
+            - -c
+            - hba_file=/etc/pg-config/pg_hba.conf
+            - -c
+            - max_connections=60
+            - -c
+            - shared_buffers=64MB
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-admin
+                  key: POSTGRES_PASSWORD
+            - name: PICOPAAS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pg-admin
+                  key: PICOPAAS_ADMIN_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: tls
+              mountPath: /etc/pg-tls
+              readOnly: true
+            - name: config
+              mountPath: /etc/pg-config
+              readOnly: true
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d/10-admin.sh
+              subPath: 10-admin.sh
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: db-tls
+            defaultMode: 0440
+        - name: config
+          configMap:
+            name: postgres-config
+            items:
+              - key: pg_hba.conf
+                path: pg_hba.conf
+        - name: initdb
+          configMap:
+            name: postgres-config
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hostpath
+        resources:
+          requests:
+            storage: 2Gi

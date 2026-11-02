@@ -1,0 +1,12 @@
+# metrics-server for Docker Desktop / kind: the kubelet serving cert is self-signed, so --kubelet-insecure-tls is needed.
+replicas: 1
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+args:
+  - --kubelet-insecure-tls
+  - --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP

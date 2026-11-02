@@ -1,0 +1,52 @@
+# Plain-HTTP ingress for the local target (no cert-manager, no error-pages middleware). *.localhost resolves to
+# 127.0.0.1 in browsers and curl, so platform.localhost / <app>.localhost reach Traefik on the host's port 80.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: picopaas
+  namespace: picopaas-system
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: platform.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80
+    - host: localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80
+---
+# Unknown app subdomains get the platform's 404 page; priority 1 so real app Ingresses win.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: picopaas-unknown-apps
+  namespace: picopaas-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.priority: "1"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: "*.localhost"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: picopaas
+                port:
+                  number: 80

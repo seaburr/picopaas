@@ -1,0 +1,26 @@
+# Platform for the generic target (namespace, RBAC, priority class, Service reused from ../../platform).
+#   kubectl kustomize --load-restrictor=LoadRestrictionsNone deploy/generic/platform | kubectl apply -f -
+# Secrets picopaas-env and picopaas-db-ca come from scripts/dev/local-up.sh. The image is built locally.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../platform/namespace.yaml
+  - ../../platform/priorityclass.yaml
+  - ../../platform/rbac.yaml
+  - ../../platform/deployment.yaml
+  - ../../platform/service.yaml
+  - ingress.yaml
+patches:
+  - target:
+      kind: Deployment
+      name: picopaas
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: picopaas:local
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent

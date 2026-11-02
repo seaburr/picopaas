@@ -1,0 +1,57 @@
+# Traefik for the generic/local target. Derived from deploy/traefik/values.yaml: same chart, same Ingress-only routing,
+# but no DO load-balancer annotations, no default TLSStore (no cert-manager locally) and no http->https redirect.
+# Docker Desktop publishes a LoadBalancer Service on the host's localhost:80 (override with TRAEFIK_HTTP_PORT in local-up.sh).
+providers:
+  kubernetesCRD:
+    enabled: true
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: false   # a localhost LB has no routable IP to publish
+deployment:
+  replicas: 1
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+api:
+  dashboard: false
+  insecure: false
+ingressRoute:
+  dashboard:
+    enabled: false
+  healthcheck:
+    enabled: false
+ports:
+  web:
+    exposedPort: 80
+  websecure:
+    expose:
+      default: false   # plain HTTP only locally
+  traefik:
+    expose:
+      default: false
+service:
+  enabled: true
+  type: LoadBalancer
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 192Mi
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false

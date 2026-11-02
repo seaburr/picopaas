@@ -1,0 +1,29 @@
+# Strategic-merge patch over deploy/mysql/statefulset.yaml: local StorageClass/size and TLS from Secret `db-tls`.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: picopaas-data
+spec:
+  template:
+    spec:
+      containers:
+        - name: mysql
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/mysql-tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: db-tls
+            defaultMode: 0440
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hostpath
+        resources:
+          requests:
+            storage: 2Gi

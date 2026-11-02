@@ -1,0 +1,9 @@
+# Local-only, OPT-IN overlay (ARM64_CRYPTO_FIX=1) on the repo image. On the old Docker Desktop VM (engine 27.5.1) for Apple silicon the cryptography 50.x aarch64 wheel dies with
+# "Illegal instruction" at import (seen with 50.0.2; 46.0.5, 45.x and 43.x import fine). local-up.sh builds the repo
+# Dockerfile as picopaas:local-base, then applies this overlay as picopaas:local. Not used for CI/amd64 or production.
+ARG BASE=picopaas:local-base
+FROM ${BASE}
+ARG CRYPTOGRAPHY_PIN=46.0.5
+USER root
+RUN pip install --no-cache-dir "cryptography==${CRYPTOGRAPHY_PIN}"
+USER 10001:10001

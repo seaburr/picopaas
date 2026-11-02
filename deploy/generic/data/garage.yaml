@@ -1,0 +1,124 @@
+# Garage (S3-compatible object store, https://garagehq.deuxfleurs.fr/): single node, replication 1.
+# Secret `garage-secrets` (script-made): GARAGE_RPC_SECRET, GARAGE_ADMIN_TOKEN, PLATFORM_KEY_ID, PLATFORM_KEY_SECRET.
+# Ports: 3900 S3, 3901 RPC, 3903 admin API. The layout and the platform key are set by Job garage-setup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  namespace: picopaas-data
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "sqlite"
+    replication_factor = 1
+    rpc_bind_addr = "0.0.0.0:3901"
+    rpc_public_addr = "garage-0.garage.picopaas-data.svc:3901"
+    # rpc_secret / admin_token come from env GARAGE_RPC_SECRET / GARAGE_ADMIN_TOKEN (Secret garage-secrets)
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "0.0.0.0:3900"
+
+    [admin]
+    api_bind_addr = "0.0.0.0:3903"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  namespace: picopaas-data
+spec:
+  selector:
+    app: garage
+  ports:
+    - name: s3
+      port: 3900
+      targetPort: s3
+    - name: rpc
+      port: 3901
+      targetPort: rpc
+    - name: admin
+      port: 3903
+      targetPort: admin
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: garage
+  namespace: picopaas-data
+spec:
+  serviceName: garage
+  replicas: 1
+  selector:
+    matchLabels:
+      app: garage
+  template:
+    metadata:
+      labels:
+        app: garage
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: garage
+          image: dxflrs/garage:v2.5.0
+          args: ["/garage", "-c", "/etc/garage/garage.toml", "server"]
+          ports:
+            - name: s3
+              containerPort: 3900
+            - name: rpc
+              containerPort: 3901
+            - name: admin
+              containerPort: 3903
+          envFrom:
+            - secretRef:
+                name: garage-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          # /health answers 503 until a layout is applied (the setup Job needs the pod Ready first), so probe the port.
+          readinessProbe:
+            tcpSocket:
+              port: admin
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: admin
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/garage
+            - name: config
+              mountPath: /etc/garage
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: garage-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hostpath
+        resources:
+          requests:
+            storage: 5Gi
