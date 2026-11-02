@@ -63,6 +63,7 @@ def _settings() -> SimpleNamespace:
         mysql_egress_mode=config.MYSQL_EGRESS_MODE,
         mysql_cidr=config.MYSQL_EGRESS_CIDR or None,
         pg_cidr=config.PG_EGRESS_CIDR or None,
+        pg_egress_mode=config.PG_EGRESS_MODE,
     )
 
 
@@ -264,6 +265,16 @@ def rotate_encrypted_data() -> None:
         session.close()
 
 
+def _bootstrap_flavor(var: str) -> str:
+    """BOOTSTRAP_DB_FLAVOR / BOOTSTRAP_PG_FLAVOR: a db_flavor.FLAVOR_NAMES entry, default do-managed. Invalid = ValueError."""
+    from app.providers.db_flavor import DEFAULT_FLAVOR, FLAVOR_NAMES
+
+    value = (os.environ.get(var) or DEFAULT_FLAVOR).strip()
+    if value not in FLAVOR_NAMES:
+        raise ValueError(f"{var} must be one of {', '.join(FLAVOR_NAMES)}, got {value!r}")
+    return value
+
+
 def bootstrap_db_server() -> None:
     """Insert DbServer 'primary' from BOOTSTRAP_DB_* env if none exists; otherwise keep its connection details
     and admin credentials in sync with the env (bootstrap.yml reads them from DO each run). That also repairs a
@@ -274,6 +285,8 @@ def bootstrap_db_server() -> None:
     if not (host and user and password):
         return
     ca_cert = _read_ca()
+    flavor = _bootstrap_flavor("BOOTSTRAP_DB_FLAVOR")
+    flavor_set = bool(os.environ.get("BOOTSTRAP_DB_FLAVOR"))
     session = SessionLocal()
     try:
         if session.execute(select(models.DbServer.id).where(models.DbServer.engine == "mysql").limit(1)).first() is not None:
@@ -297,6 +310,9 @@ def bootstrap_db_server() -> None:
             if current != password:
                 primary.admin_password_encrypted = crypto.encrypt(password)
                 changed.append("admin password")
+            if flavor_set and primary.flavor != flavor:  # only when explicitly set: never undo an admin's PATCH
+                primary.flavor = flavor
+                changed.append("flavor")
             if changed:
                 session.commit()
                 log.info("updated DbServer 'primary': %s", ", ".join(changed))
@@ -309,6 +325,7 @@ def bootstrap_db_server() -> None:
                 admin_user=user,
                 admin_password_encrypted=crypto.encrypt(password),
                 ca_cert=ca_cert,
+                flavor=flavor,
             )
         )
         session.commit()
@@ -328,6 +345,8 @@ def bootstrap_pg_server() -> None:
     if not (host and user and password):
         return
     port = int(os.environ.get("BOOTSTRAP_PG_PORT", "25060"))
+    flavor = _bootstrap_flavor("BOOTSTRAP_PG_FLAVOR")
+    flavor_set = bool(os.environ.get("BOOTSTRAP_PG_FLAVOR"))
     ca_cert = None
     ca_path = os.environ.get("BOOTSTRAP_PG_CA") or config.PG_BOOTSTRAP_CA
     if ca_path:
@@ -345,6 +364,7 @@ def bootstrap_pg_server() -> None:
             session.add(models.DbServer(
                 name="primary-pg", engine="pg", host=host, port=port, admin_user=user,
                 admin_password_encrypted=crypto.encrypt(password), ca_cert=ca_cert, max_databases=10,
+                flavor=flavor,
             ))
             session.commit()
             log.info("bootstrapped DbServer 'primary-pg'")
@@ -363,6 +383,9 @@ def bootstrap_pg_server() -> None:
         if current != password:
             row.admin_password_encrypted = crypto.encrypt(password)
             changed.append("admin password")
+        if flavor_set and row.flavor != flavor:
+            row.flavor = flavor
+            changed.append("flavor")
         if changed:
             session.commit()
             log.info("updated DbServer 'primary-pg': %s", ", ".join(changed))

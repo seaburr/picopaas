@@ -45,6 +45,7 @@ from app.providers.base import DbAdmin, DbAdminError, generate_password
 
 log = logging.getLogger(__name__)
 
+PG_SET_ROLE_GRANT_MIN_VERSION = 160000  # server_version_num of PG16
 ADMIN_DB = DEFAULT_FLAVOR_ADMIN_DB = FLAVORS[DEFAULT_FLAVOR].pg_admin_db  # alias: the do-managed value, "defaultdb"
 _IDENT_RE = re.compile(r"^app_[0-9]+$")
 _ca_files: dict[str, str] = {}
@@ -129,6 +130,7 @@ class PostgresAdmin(DbAdmin):
                     conn.execute(sql.SQL("ALTER ROLE {} LOGIN PASSWORD {} CONNECTION LIMIT {}").format(ident, pw, limit))
                 else:
                     conn.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} CONNECTION LIMIT {}").format(ident, pw, limit))
+                self._ensure_set_role(conn, name, ident)
                 if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
                     conn.execute(sql.SQL("CREATE DATABASE {}").format(ident))  # owner stays doadmin
                 conn.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(ident))
@@ -145,6 +147,26 @@ class PostgresAdmin(DbAdmin):
         except psycopg.Error as exc:
             raise DbAdminError(f"create_db_user({app_id}) failed: {type(exc).__name__}: {exc.diag.message_primary or ''}") from exc
         return self._creds(app_id, password)
+
+    def _ensure_set_role(self, conn: psycopg.Connection, name: str, ident: sql.Identifier) -> None:
+        """PG16+: a non-superuser admin with CREATEROLE can only SET ROLE to roles it created if it holds the new
+        role with SET TRUE (createrole_self_grant is off by default), else the later ALTER SCHEMA .. OWNER fails with
+        `must be able to SET ROLE`. Grant it explicitly, only when needed (server >= 16 and not already effective).
+        Skipped for the do-managed flavor: DO's doadmin path is proven today and its SQL must stay unchanged (we
+        cannot show from code or docs that the extra GRANT is harmless there). Idempotent; a failure is logged and
+        the original statement that needs the privilege reports the real error."""
+        if self._flavor.name == DEFAULT_FLAVOR:
+            return
+        try:
+            row = conn.execute("SHOW server_version_num").fetchone()
+            if not row or int(row[0]) < PG_SET_ROLE_GRANT_MIN_VERSION:
+                return
+            row = conn.execute("SELECT pg_has_role(current_user, %s, 'SET')", (name,)).fetchone()
+            if row and row[0]:
+                return
+            conn.execute(sql.SQL("GRANT {} TO CURRENT_USER WITH INHERIT TRUE, SET TRUE").format(ident))
+        except (psycopg.Error, ValueError, TypeError):
+            log.warning("pg: could not grant SET ROLE on %s to the admin (continuing)", name)
 
     @staticmethod
     def _exec_init(conn: psycopg.Connection, admin_db: str = ADMIN_DB) -> None:

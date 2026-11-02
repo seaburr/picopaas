@@ -282,27 +282,43 @@ class KubeBackupRunner(BackupRunner):
     def ensure_spaces_egress(self, endpoint: str) -> None:
         from app.reconciler import _private_storage_ips  # same resolution as the tenant allow-egress-storage policy
 
-        ips = _private_storage_ips(endpoint)
-        if not ips or ips == _egress_applied:  # the runner is rebuilt every tick: remember the last applied answer
+        from app.providers.base import endpoint_port
+
+        from app.k8s_manifests import selector_peer
+
+        port = endpoint_port(endpoint)
+        if config.OBJECT_STORE_EGRESS_MODE == "in-cluster":  # selector rule, no ClusterIP /32 (evaluated after DNAT)
+            to: list[dict[str, Any]] = [selector_peer(config.OBJECT_STORE_EGRESS_NAMESPACE,
+                                                      config.OBJECT_STORE_EGRESS_POD_LABELS)]
+            state = [f"in-cluster:{config.OBJECT_STORE_EGRESS_NAMESPACE}", f"port:{port}",
+                     *sorted(config.OBJECT_STORE_EGRESS_POD_LABELS.items())]
+        else:
+            ips = _private_storage_ips(endpoint)
+            to = [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(ips))]
+            state = [*ips, f"port:{port}"]
+            if not ips:
+                return
+        if state == _egress_applied:  # the runner is rebuilt every tick: remember the last applied answer
             return
         policy = {
             "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
             "metadata": {"name": "allow-egress-spaces", "namespace": config.BACKUP_NAMESPACE},
             "spec": {"podSelector": {}, "policyTypes": ["Egress"],
-                     "egress": [{"to": [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(ips))],
-                                 "ports": [{"protocol": "TCP", "port": 443}]}]},
+                     "egress": [{"to": to, "ports": [{"protocol": "TCP", "port": port}]}]},
         }
         self._kube.apply([policy])
-        _egress_applied[:] = ips
+        _egress_applied[:] = state
 
     def _s3(self) -> Any:
         import boto3
         from botocore.config import Config
 
+        from app.providers import cloud
+
         return boto3.client(
-            "s3", region_name=config.BACKUP_REGION or "us-east-1", endpoint_url=config.backup_endpoint(),
+            "s3", region_name=config.backup_s3_region(), endpoint_url=config.backup_endpoint(),
             aws_access_key_id=config.BACKUP_ACCESS_KEY_ID, aws_secret_access_key=config.BACKUP_SECRET_ACCESS_KEY,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
+            config=Config(signature_version="s3v4", s3={"addressing_style": cloud.backup_target().s3_addressing_style()}))
 
     def presign_export(self, key: str, expires_seconds: int, filename: str) -> str:
         try:

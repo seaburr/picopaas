@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "dev")
 IS_DEV = ENVIRONMENT == "dev"
@@ -295,13 +296,61 @@ SESSION_COOKIE_SECURE = not IS_DEV
 
 # --- Reconciler / scheduler (app/scheduler.py) ---
 RECONCILER_ENABLED = os.environ.get("RECONCILER_ENABLED") == "1"
-# Where per-app NetworkPolicy allows MySQL egress: "in-cluster" (ns picopaas-data,
-# pod app=mysql) or "cidr" (managed DB, MYSQL_EGRESS_CIDR).
+# Where per-app NetworkPolicy allows MySQL egress: "in-cluster" (selector rule: one namespace + one pod label set,
+# default ns picopaas-data, pod app=mysql) or "cidr" (managed DB, MYSQL_EGRESS_CIDR).
 MYSQL_EGRESS_MODE = os.environ.get("MYSQL_EGRESS_MODE", "cidr")
 MYSQL_EGRESS_CIDR = os.environ.get("MYSQL_EGRESS_CIDR", "")
+
+
+_LABEL_KEY_RE = re.compile(r"^([a-z0-9]([-a-z0-9.]*[a-z0-9])?/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$")
+_LABEL_VALUE_RE = re.compile(r"^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$")
+_NS_RE = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+
+
+def parse_pod_labels(name: str, raw: str) -> dict[str, str]:
+    """'app=mysql,tier=db' -> {'app': 'mysql', 'tier': 'db'}. Fails at import time on a malformed or empty value."""
+    out: dict[str, str] = {}
+    for part in raw.split(","):
+        k, sep, v = part.strip().partition("=")
+        if not (k.strip() and sep and v.strip()):
+            raise ValueError(f"{name} must be comma-separated key=value pairs, got {raw!r}")
+        if not (_LABEL_KEY_RE.match(k.strip()) and _LABEL_VALUE_RE.match(v.strip())):
+            raise ValueError(f"{name} has an invalid Kubernetes label in {raw!r}")
+        out[k.strip()] = v.strip()
+    return out
+
+
+def _egress_namespace(name: str, default: str = "picopaas-data") -> str:
+    ns = os.environ.get(name, default)
+    if not _NS_RE.match(ns):
+        raise ValueError(f"{name} must be a DNS-1123 namespace name, got {ns!r}")
+    return ns
+
+
+def _egress_mode(name: str, default: str = "cidr") -> str:
+    mode = os.environ.get(name, default)
+    if mode not in ("cidr", "in-cluster"):
+        raise ValueError(f"{name} must be 'cidr' or 'in-cluster', got {mode!r}")
+    return mode
+
+
+# In-cluster egress is matched by selector, not by ClusterIP: policy is evaluated after DNAT, so an ipBlock on a
+# Service ClusterIP is implementation-defined (unreliable on kind / Docker Desktop). The selector names exactly one
+# namespace and one pod label set; the rule's port is the DbServer port (DBs) or the endpoint port (object store).
+MYSQL_EGRESS_NAMESPACE = _egress_namespace("MYSQL_EGRESS_NAMESPACE")
+MYSQL_EGRESS_POD_LABELS = parse_pod_labels("MYSQL_EGRESS_POD_LABELS", os.environ.get("MYSQL_EGRESS_POD_LABELS", "app=mysql"))
 # Managed PostgreSQL tenant egress (port comes from the DbServer, 25060 on DO). Empty = reuse MYSQL_EGRESS_CIDR
-# (same VPC CIDR). Postgres is always managed, so there is no in-cluster mode.
+# (same VPC CIDR). PG_EGRESS_MODE=in-cluster (self-hosted Postgres) uses the selector below instead of a CIDR.
 PG_EGRESS_CIDR = os.environ.get("PG_EGRESS_CIDR", "")
+PG_EGRESS_MODE = _egress_mode("PG_EGRESS_MODE")
+PG_EGRESS_NAMESPACE = _egress_namespace("PG_EGRESS_NAMESPACE")
+PG_EGRESS_POD_LABELS = parse_pod_labels("PG_EGRESS_POD_LABELS", os.environ.get("PG_EGRESS_POD_LABELS", "app=postgres"))
+# Object store (Garage etc.) inside the cluster: applies to the tenant allow-egress-storage policy and the backup
+# namespace / backup Job egress. "cidr" = today's resolved-/32 behaviour.
+OBJECT_STORE_EGRESS_MODE = _egress_mode("OBJECT_STORE_EGRESS_MODE")
+OBJECT_STORE_EGRESS_NAMESPACE = _egress_namespace("OBJECT_STORE_EGRESS_NAMESPACE")
+OBJECT_STORE_EGRESS_POD_LABELS = parse_pod_labels(
+    "OBJECT_STORE_EGRESS_POD_LABELS", os.environ.get("OBJECT_STORE_EGRESS_POD_LABELS", "app=garage"))
 
 # Ingress controller (Traefik, standard Ingress API): class name for per-app Ingresses and the
 # namespace the per-app NetworkPolicy admits traffic from.
@@ -414,7 +463,19 @@ def backup_endpoint() -> str:
     """Bucket endpoint URL (no trailing slash); '' when neither BACKUP_ENDPOINT nor BACKUP_REGION is set."""
     if BACKUP_ENDPOINT:
         return BACKUP_ENDPOINT.rstrip("/")
+    if CLOUD_PROVIDER == "generic":  # no region-derived URL off DO: use the platform object store's S3 endpoint
+        return os.environ.get("OBJECT_STORE_ENDPOINT", "").rstrip("/")
     return f"https://{BACKUP_REGION}.digitaloceanspaces.com" if BACKUP_REGION else ""
+
+
+def backup_s3_region() -> str:
+    """Signing region of the platform's own backup-bucket client: BACKUP_REGION, else us-east-1 (DO ignores it), and on
+    the generic target OBJECT_STORE_REGION / `garage` (Garage rejects a signature for any other region)."""
+    if BACKUP_REGION:
+        return BACKUP_REGION
+    if CLOUD_PROVIDER == "generic":
+        return os.environ.get("OBJECT_STORE_REGION") or "garage"
+    return "us-east-1"
 
 
 def backup_export_prefix_ok() -> bool:

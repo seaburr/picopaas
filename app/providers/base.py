@@ -297,6 +297,17 @@ class DbHostMetrics(ABC):
         """{"cpu_pct", "mem_pct", "disk_pct"} (each may be None). Raises HostMetricsError (scrubbed)."""
 
 
+def endpoint_port(endpoint: str) -> int:
+    """TCP port of an endpoint URL: its explicit port, else 443 for https and 80 for http (443 when unparseable)."""
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(endpoint if "://" in endpoint else f"https://{endpoint}")
+        return parts.port or (80 if parts.scheme == "http" else 443)
+    except ValueError:
+        return 443
+
+
 class BackupTarget(ABC):
     """Where backups go: the S3-style endpoint, the restic repository URL, and the network hole the Jobs need."""
 
@@ -311,6 +322,14 @@ class BackupTarget(ABC):
     @abstractmethod
     def ensure_egress(self, runner: Any) -> None:
         """Make sure the backup namespace's egress policy lets the Jobs reach the endpoint. May raise."""
+
+    def egress_port(self) -> int:
+        """TCP port the Jobs use to reach the endpoint (from its URL; 443 for https without a port)."""
+        return endpoint_port(self.endpoint())
+
+    def s3_addressing_style(self) -> str:
+        """boto3 addressing style for the platform's own export presign/sweep client: 'virtual' or 'path'."""
+        return "virtual"
 
 
 class ObjectStore(ABC):

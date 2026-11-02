@@ -31,7 +31,7 @@ from app import config, crypto, env_refs, image_check, image_history, k8s_manife
 from app.db_placement import NoDbCapacity, choose_server
 from app.env_refs import db_url, pem_body
 from app.providers import cloud
-from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore
+from app.providers.base import KubeProvider, MySQLAdmin, ObjectStore, endpoint_port
 
 log = logging.getLogger(__name__)
 
@@ -47,14 +47,30 @@ def _get(settings: Any, key: str, default: Any) -> Any:
 
 
 def _mysql_cidr(settings: Any, engine: str = "mysql") -> str | None:
-    """None means "in-cluster MySQL" (MYSQL_EGRESS_MODE=in-cluster); else a CIDR.
-    Postgres is always managed (never in-cluster): its CIDR is PG_EGRESS_CIDR, falling back to the MySQL one
+    """None means "in-cluster DB" (MYSQL_EGRESS_MODE / PG_EGRESS_MODE = in-cluster, see _db_peer); else a CIDR.
+    Managed Postgres CIDR is PG_EGRESS_CIDR, falling back to the MySQL one
     (both clusters live in the same VPC, so the VPC CIDR covers both)."""
     if engine == "pg":
+        if _get(settings, "pg_egress_mode", "cidr") == "in-cluster":
+            return None
         return _get(settings, "pg_cidr", None) or _get(settings, "mysql_cidr", None) or DEFAULT_MYSQL_CIDR
     if _get(settings, "mysql_egress_mode", "cidr") == "in-cluster":
         return None
     return _get(settings, "mysql_cidr", None) or DEFAULT_MYSQL_CIDR
+
+
+def _db_peer(engine: str) -> dict[str, Any] | None:
+    """Selector peer for a self-hosted Postgres (PG_EGRESS_MODE=in-cluster); None = use the MySQL default / CIDR."""
+    if engine == "pg":
+        return k8s_manifests.selector_peer(config.PG_EGRESS_NAMESPACE, config.PG_EGRESS_POD_LABELS)
+    return None
+
+
+def _object_store_peer() -> dict[str, Any] | None:
+    """Selector peer for an in-cluster object store (OBJECT_STORE_EGRESS_MODE=in-cluster), else None (resolved /32s)."""
+    if config.OBJECT_STORE_EGRESS_MODE != "in-cluster":
+        return None
+    return k8s_manifests.selector_peer(config.OBJECT_STORE_EGRESS_NAMESPACE, config.OBJECT_STORE_EGRESS_POD_LABELS)
 
 
 def _db_refs(app: models.App) -> dict[str, str]:
@@ -91,7 +107,10 @@ def _volume_backup_of(app: models.App, eff: dict[str, int]) -> Optional[dict[str
 
     if _volume_of(app) is None or not backups.volume_backups_on():
         return None
-    return {"pod": k8s_manifests.backup_pod_resources(eff), "ips": _private_storage_ips(cloud.backup_target().endpoint())}
+    peer = _object_store_peer()
+    return {"pod": k8s_manifests.backup_pod_resources(eff),
+            "ips": [] if peer else _private_storage_ips(cloud.backup_target().endpoint()),
+            "port": cloud.backup_target().egress_port(), **({"peer": peer} if peer else {})}
 
 
 def refresh_volume_phase(app: models.App, kube: KubeProvider) -> None:
@@ -485,8 +504,12 @@ def reconcile_app(
             settings, app.database.server.engine if app.want_db and app.database is not None else "mysql"),
         mysql_port=app.database.server.port if app.want_db and app.database is not None else None,
         storage_ips=(
-            _private_storage_ips(refs["storage.endpoint"]) if "storage.endpoint" in refs else []
+            _private_storage_ips(refs["storage.endpoint"])
+            if "storage.endpoint" in refs and _object_store_peer() is None else []
         ),
+        storage_peer=_object_store_peer() if "storage.endpoint" in refs else None,
+        db_peer=_db_peer(app.database.server.engine) if app.want_db and app.database is not None else None,
+        storage_port=endpoint_port(refs["storage.endpoint"]) if "storage.endpoint" in refs else 443,
         replicas=0 if suspended else (1 if _volume_of(app) else max(1, app.replicas or 1)),
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,

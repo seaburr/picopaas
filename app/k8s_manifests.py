@@ -293,6 +293,14 @@ ACME_SOLVER_PORT = 8089
 ACME_SOLVER_LABEL = {"acme.cert-manager.io/http01-solver": "true"}
 
 
+def selector_peer(namespace: str, labels: dict[str, str]) -> dict[str, Any]:
+    """NetworkPolicy peer for exactly one namespace and one pod label set (an AND of both selectors)."""
+    return {
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": namespace}},
+        "podSelector": {"matchLabels": dict(labels)},
+    }
+
+
 def network_policies(
     app_id: int,
     app_port: int,
@@ -302,6 +310,11 @@ def network_policies(
     custom_domain: bool = False,
     replicas: int = 1,
     backup_ips: list[str] | None = None,
+    storage_port: int = 443,
+    backup_port: int = 443,
+    db_peer: dict[str, Any] | None = None,
+    storage_peer: dict[str, Any] | None = None,
+    backup_peer: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Default-deny plus narrow allow rules. `backup_ips` (not None) means volume backups run in this namespace: the app's
     allow-* rules then skip the backup Job pod (label picopaas.io/backup) and a dedicated `allow-egress-backup` policy gives
@@ -411,11 +424,9 @@ def network_policies(
     # (reconciler picks the pg CIDR + 25060 for a Postgres-backed app), so an app only gets egress for its own engine.
     # mysql_cidr=None -> in-cluster MySQL (ns picopaas-data, pod app=mysql);
     # otherwise a managed DB reached by CIDR.
+    # `db_peer` (from selector_peer) overrides the in-cluster default, e.g. for a self-hosted Postgres.
     if mysql_cidr is None:
-        mysql_peer: dict[str, Any] = {
-            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "picopaas-data"}},
-            "podSelector": {"matchLabels": {"app": "mysql"}},
-        }
+        mysql_peer: dict[str, Any] = db_peer or selector_peer(config.MYSQL_EGRESS_NAMESPACE, config.MYSQL_EGRESS_POD_LABELS)
     else:
         mysql_peer = {"ipBlock": {"cidr": _to_cidr(mysql_cidr)}}
 
@@ -503,7 +514,20 @@ def network_policies(
                 "egress": [{"to": [{"podSelector": {}}]}],
             },
         })
-    if storage_ips:
+    if storage_peer is not None:
+        # In-cluster object store (OBJECT_STORE_EGRESS_MODE=in-cluster): one namespace + one pod label set on the
+        # endpoint port only; never a ClusterIP /32 (policy sees the post-DNAT pod IP).
+        policies.append({
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "NetworkPolicy",
+            "metadata": {"name": "allow-egress-storage", "namespace": namespace},
+            "spec": {
+                **app_pods_selector,
+                "policyTypes": ["Egress"],
+                "egress": [{"to": [storage_peer], "ports": [{"protocol": "TCP", "port": storage_port}]}],
+            },
+        })
+    elif storage_ips:
         # Spaces resolves to a private VPC IP inside DO; the internet rule excludes PRIVATE_CIDRS,
         # so allow exactly those /32s on 443 (never the whole VPC range).
         policies.append({
@@ -516,7 +540,7 @@ def network_policies(
                 "egress": [
                     {
                         "to": [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(storage_ips))],
-                        "ports": [{"protocol": "TCP", "port": 443}],
+                        "ports": [{"protocol": "TCP", "port": storage_port}],
                     }
                 ],
             },
@@ -524,6 +548,12 @@ def network_policies(
     if backup_ips is not None:
         backup_to: list[dict[str, Any]] = [{"ipBlock": {"cidr": "0.0.0.0/0", "except": list(EGRESS_EXCEPT_CIDRS)}}]
         backup_to += [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(backup_ips))]
+        backup_rules = [{"to": backup_to, "ports": [{"protocol": "TCP", "port": 443}]}]
+        if backup_port != 443 and backup_ips:  # a non-default endpoint port is opened for the endpoint IPs only
+            backup_rules.append({"to": [{"ipBlock": {"cidr": f"{ip}/32"}} for ip in sorted(set(backup_ips))],
+                                 "ports": [{"protocol": "TCP", "port": backup_port}]})
+        if backup_peer is not None:  # in-cluster object store: selector rule on the endpoint port
+            backup_rules.append({"to": [backup_peer], "ports": [{"protocol": "TCP", "port": backup_port}]})
         policies.append({
             "apiVersion": "networking.k8s.io/v1",
             "kind": "NetworkPolicy",
@@ -533,7 +563,7 @@ def network_policies(
                 "policyTypes": ["Egress"],
                 # The backup bucket only: HTTPS to public addresses (Spaces has no fixed range) plus the endpoint's private VPC /32s.
                 # DNS comes from allow-egress-dns, which still selects every pod. No database, no other namespace, no metadata.
-                "egress": [{"to": backup_to, "ports": [{"protocol": "TCP", "port": 443}]}],
+                "egress": backup_rules,
             },
         })
     return policies
@@ -825,6 +855,7 @@ def render_app_manifests(
     health_check_path: str = "/healthz",
     mysql_port: int | None = None,
     storage_ips: list[str] | None = None,
+    storage_port: int = 443,
     resources: dict[str, int] | None = None,
     include_ingress: bool = True,
     run_as_uid: int | None = None,
@@ -837,6 +868,8 @@ def render_app_manifests(
     volume: dict[str, Any] | None = None,
     volume_backup: dict[str, Any] | None = None,
     db_ca_pem: str | None = None,
+    db_peer: dict[str, Any] | None = None,
+    storage_peer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
@@ -848,7 +881,10 @@ def render_app_manifests(
         "limit_range": limit_range_manifest(app_id, resources),
         "network_policies": network_policies(app_id, port, mysql_cidr, mysql_port, storage_ips,
                                               custom_domain=bool(custom_host), replicas=replicas,
-                                              backup_ips=list(volume_backup["ips"]) if volume_backup else None),
+                                              backup_ips=list(volume_backup["ips"]) if volume_backup else None,
+                                              storage_port=storage_port, db_peer=db_peer, storage_peer=storage_peer,
+                                              backup_peer=volume_backup.get("peer") if volume_backup else None,
+                                              backup_port=int(volume_backup.get("port", 443)) if volume_backup else 443),
         "secret": secret_manifest(app_id, env),
         "deployment": deployment_manifest(app_id, image, port, env_checksum=_env_checksum(env),
                                        replicas=replicas,
