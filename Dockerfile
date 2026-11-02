@@ -14,7 +14,7 @@ COPY docs/ /docs/
 RUN npm run build
 
 # --- Stage 2: the API image ---
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Non-root by policy (docs/ARCHITECTURE.md decision: no root images). Fixed
 # numeric uid/gid so Kubernetes runAsNonRoot / runAsUser checks can verify it
