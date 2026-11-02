@@ -24,6 +24,7 @@ K=(kubectl --context "$CTX")
 echo "==> tenant namespaces (app-*) and the platform"
 "${K[@]}" get ns -o name | grep '^namespace/app-' | xargs -r "${K[@]}" delete --wait=false 2>/dev/null || true
 "${K[@]}" delete ns picopaas-system --ignore-not-found --wait=true
+"${K[@]}" delete ns picopaas-backup --ignore-not-found --wait=true  # applied by local-up.sh (deploy/platform/backup.yaml)
 "${K[@]}" delete validatingadmissionpolicybinding,validatingadmissionpolicy picopaas-rolebinding-scope --ignore-not-found
 "${K[@]}" delete clusterrolebinding picopaas-reconciler --ignore-not-found
 "${K[@]}" delete clusterrole picopaas-reconciler picopaas-app-ns --ignore-not-found
