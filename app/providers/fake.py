@@ -329,6 +329,7 @@ class FakeObjectStore(ObjectStore):
         self.creds.pop(app_id, None)
         self.sizes.pop(app_id, None)
         self.read_only.pop(app_id, None)
+        self.objects.pop(app_id, None)
 
     def bucket_size_bytes(self, app_id: int) -> int:
         return self.sizes.get(app_id, 0)
@@ -363,6 +364,8 @@ class FakeObjectStore(ObjectStore):
                 content_length: Optional[int] = None) -> dict[str, Any]:
         if "presign" in self.fail:
             raise ObjectStoreError("injected presign failure")
+        if method == "PUT" and content_length is None:
+            raise ObjectStoreError("content_length is required for PUT")
         bucket = self.creds[app_id]["bucket"] if app_id in self.creds else f"pp-{app_id}"
         headers = {"Content-Length": str(content_length)} if method == "PUT" else {}
         self.presigned.append({"app_id": app_id, "method": method, "key": key, "expires": expires_seconds,
