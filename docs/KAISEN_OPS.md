@@ -26,7 +26,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
   `GET_LOCK('picopaas-kaisen-worker')`. Liveness: a DB-free heartbeat thread touches `/tmp/kaisen-worker-heartbeat` every 30 s, but only while the
   worker's main loop has made progress within `KAISEN_HANG_SECONDS` + 120 s; the probe fails after 120 s, so a wedged worker is restarted
   about 3 min after that. `deploy.yml` waits for its rollout, so a worker that can't start fails the deploy.
-- **Hang path** (`app/kaisen/watchdog.py`, migration `*_kaisen_run_watchdog`). Every turn start, model response, tool call, deployer step and reviewer turn stamps `kaisen_runs.last_progress_at`. Model calls are bounded (`KAISEN_MODEL_CALL_SECONDS` idle, `KAISEN_MODEL_CALL_MAX_SECONDS` hard), tools by `KAISEN_TOOL_SECONDS`; the worker runs each step on a daemon thread and abandons it when it overruns. `sweep()` finds running runs with no stamp for `KAISEN_HANG_SECONDS` (600) and is called from the worker main loop, with the API pod's reconciler as backstop. A compare-and-swap on `(id, attempt)` bumps `attempt` (fencing: the abandoned step discards its late result), increments `hang_retries`, requeues the run and adds a closed inbox note of kind `hang`. After `KAISEN_HANG_RETRIES` (2) retries the run ends in `error` with `error_reason` `hung`; Resume retries it. Known limits: an abandoned model call may still bill tokens that are not metered; a hung tool thread is abandoned, not killed. `POST /kaisen/builds/{id}/runs/{rid}/interrupt` does the same by hand and is not counted as a retry.
+- **Hang path** (`app/kaisen/watchdog.py`, migration `*_kaisen_run_watchdog`; manual interrupt `POST /kaisen/builds/{id}/runs/{run_id}/interrupt` is capped at 3 per build per hour, then 429, because an abandoned model call still bills but is not metered). Every turn start, model response, tool call, deployer step and reviewer turn stamps `kaisen_runs.last_progress_at`. Model calls are bounded (`KAISEN_MODEL_CALL_SECONDS` idle, `KAISEN_MODEL_CALL_MAX_SECONDS` hard), tools by `KAISEN_TOOL_SECONDS`; the worker runs each step on a daemon thread and abandons it when it overruns. `sweep()` finds running runs with no stamp for `KAISEN_HANG_SECONDS` (600) and is called from the worker main loop, with the API pod's reconciler as backstop. A compare-and-swap on `(id, attempt)` bumps `attempt` (fencing: the abandoned step discards its late result), increments `hang_retries`, requeues the run and adds a closed inbox note of kind `hang`. After `KAISEN_HANG_RETRIES` (2) retries the run ends in `error` with `error_reason` `hung`; Resume retries it. Known limits: an abandoned model call may still bill tokens that are not metered; a hung tool thread is abandoned, not killed. `POST /kaisen/builds/{id}/runs/{rid}/interrupt` does the same by hand and is not counted as a retry.
 - **Deploys** of built apps go through `routers/spec.deploy_spec()` **as the build's creator into the build's project**
   (same app limit, audit and 403/422 messages as any app). No PicoPaaS API key is involved.
 - **Previews** are ordinary apps running `KAISEN_RUNTIME_IMAGE`; `boot.py` downloads the build's files at boot from the
@@ -59,7 +59,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
    a ui-ux-designer browser check that **measures page widths against Account/App settings** (a narrow settings page
    slipped through once).
 
-## 4. Accounts, credentials and live objects (no secret values here)
+## 4. Accounts and live objects
 
 - `~/.picopaas-e2e.env`: `E2E_ADMIN_TOKEN` = **Chas's own account** (read-mostly; don't spend his Anthropic key or touch his
   builds without asking), `E2E_USER_TOKEN` = test user (app limit 4), Ghost blog creds for release-blogger.
@@ -87,12 +87,13 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 - Wording Chas set: "Kaisen is in preview", badge "Built with Kaisen · Preview", success text "Key valid. Selected model
   available."; never compare PicoPaaS to Heroku.
 
-## 6. Where we left off (2026-10-30)
+## 6. Where we left off (2026-11-03)
 
-Shipped and live: Kaisen in PicoPaaS (per-build output, start on create, CONVERSATION.md, Take offline, inbox dismiss),
-final pentest (no HIGH/MEDIUM; open LOWs K9 accepted, P3 no per-user rate limit on Kaisen run/test/push), coverage 94%,
-blog posts, user guide how-to with starter briefs, landing page section. Next: Chas's testing feedback (expected
-2026-10-30), retire the standalone instance. Built 2026-10-30 (pending push and security review): logs in `deploy_preview`, web access, PostgreSQL/bucket/volume previews, build secrets, member limits, generated tests, reviewer. **Runtime image re-pin pending** (re-pin approved by Chas 2026-10-30; `boot.py` runs generated tests, now also for `static` projects with a `test` command, and logs `bundle sha=<12>` so the preview check can tell old pods from new; needs `kaisen-runtime-image` to publish, then a bootstrap run with Chas's approval, s3). Until then the test result is "no result in the log yet" and existing previews are unaffected.
+Shipped and live: Kaisen in PicoPaaS with per-build output, generated tests, reviewer, web access, PostgreSQL, bucket and
+volume previews, build secrets, member limits, and the hang watchdog (automatic retry plus a manual **Interrupt and retry**,
+limited to 3 per build per hour). Open: residual unmetered spend from abandoned model calls and auto-retries (see
+`QUESTIONS.md`), and the pentest LOWs in `PENTEST.md`. For the current state read "Now / Next" in `LEDGER.md`; for the
+runtime image pin see `OPERATIONS.md`.
 
 ## 7. Eval (manual, never in CI)
 

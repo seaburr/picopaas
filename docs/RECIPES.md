@@ -3,6 +3,10 @@
 PicoPaaS hosts real apps, not just toy images. This page walks through Ghost (a popular CMS) end to end, then
 lists the lessons that apply to any image you bring.
 
+Recipes with a one-click template: Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden,
+Wiki.js, Gatus and a static site. Vikunja, Umami, Planka, ntfy, IT-Tools and Excalidraw are recipes only (a spec in
+`examples/<app>/`, no template card yet). All specs are in [`examples/`](../examples/).
+
 > **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost6:latest`. Ghost 6 migration 6.61 creates a table without a
 > primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms, outbound webmentions and update check off, 2-minute frontend cache); set a Publication icon in Ghost Admin > Settings > Design so pages don't wait on a self-fetch. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
 
@@ -494,7 +498,7 @@ resources:
 **auto-provisions a per-app Postgres database and role** (exactly as it does for MySQL — a dedicated
 `app_<id>` database and login role, isolated from every other tenant), and the same `${{ db.* }}` refs
 resolve to the Postgres connection details. The engine is **immutable** once the app has a database (to
-switch, create a new app). MySQL and PostgreSQL are equal choices (a spec that omits `db_engine` still gets MySQL, so older specs are unaffected). n8n is Postgres-first,
+switch, create a new app). MySQL and PostgreSQL are equal choices. n8n is Postgres-first,
 which is why it's the recipe that exercises this path.
 
 ### Point it at Postgres (TLS)
@@ -593,7 +597,7 @@ Caveats for volume apps:
   the first boot may be restarted once by the probes. Wait for `/rest/settings` to return 200 before scripting against it.
 - **The UI cache lives on the volume**, so allow 1 GiB: about 29 MB is cache, the rest is your data.
 
-### Without a volume: `N8N_USER_FOLDER=/tmp`
+### Without a volume
 
 If volumes are off on your platform, point the user folder at the scratch disk:
 
@@ -604,7 +608,7 @@ and dies on boot. Pointing it at `/tmp` (writable for any UID) fixes it. This is
 Directus's `HOME=/tmp` / `PM2_HOME=/tmp/.pm2` line. Everything below in this section ("What is lost on restart") applies
 only to this setup; with a volume you can skip it.
 
-### What is lost on restart (no volume)
+### What is lost on restart
 
 Without a volume, these live in the scratch folder `/tmp/.n8n` instead of Postgres. Your workflows, credentials, users and execution history are in Postgres and
 survive restarts (verified). These are what live in the folder:
@@ -688,7 +692,7 @@ dashboard's secret editor or the API, never in the YAML file. Ask an admin to ra
 n8n is the end-to-end proof of managed Postgres on PicoPaaS: a per-app database and role, CA-verified TLS, and
 data that survives restarts.
 
-## WordPress (nginx + PHP-FPM, volume, MySQL)
+## WordPress (PHP-FPM, MySQL)
 
 A non-root WordPress image lives in `examples/wordpress/` (PHP 8.5, WordPress 7.1, WP-CLI, automatic locked-down first install,
 optional volume for the whole install, one-time restore from a backup bundle). Start with `examples/wordpress/README.md`
@@ -717,7 +721,7 @@ secret skips the install wizard; the first account to register becomes the admin
 sign-up as admin, repo create, push and clone over HTTPS, and a redeploy kept the repo, the user and the closed sign-up; 98 MiB
 RAM. Template `forgejo`; details in `examples/forgejo/README.md`.
 
-## Memos and Vaultwarden (one-line wrappers)
+## Memos and Vaultwarden
 
 Both official images run as root, so each has a two-line `Dockerfile` (`FROM <upstream>` + `USER 10001:10001`) built by
 `examples.yml`. Memos (`examples/memos/`) drops privileges itself and already owns its data dir as 10001; it runs on the
@@ -725,7 +729,7 @@ platform Postgres with a CA-verified `MEMOS_DSN` built from the `db.*` refs (sam
 volume at `/data` and needs `ROCKET_PORT=8080`. Both verified live 2026-11-01 (first account becomes admin, data survives a
 restart or redeploy, closed sign-ups hold; Memos 24 MiB, Vaultwarden 29 MiB). Templates `memos`, `vaultwarden`.
 
-## Wiki.js 2 on PostgreSQL (one admin override)
+## Wiki.js 2 on PostgreSQL
 
 Public image `requarks/wiki:2.5`, unchanged (named USER, so it runs as 10001). Three findings from the live test (2026-11-01):
 `DB_SSL_CA` takes the certificate's base64 body only, so use `${{ db.ca_cert_body }}` (a full PEM fails with
@@ -734,6 +738,47 @@ there; its knex pool (10) plus the render child process exceed the Postgres limi
 `db_max_connections` to 10 (`too many connections for role` otherwise; the pool size is config-file only). With those: setup,
 GraphQL login, page create and render, pages kept across a restart; 143 MiB peak, 9.5 MB DB. Template `wikijs`; details in
 `examples/wikijs/README.md`.
+
+## Vikunja on PostgreSQL
+
+Public image `vikunja/vikunja:2.7.1`, unchanged (USER 1000, port 3456, 55 MB). Engine PostgreSQL, bucket on, no volume.
+`VIKUNJA_DATABASE_*` from the `db.*` refs with `VIKUNJA_DATABASE_SSLMODE=verify-full` and `SSLROOTCERT=${{ db.ca_file }}`
+(CA-verified; a negative test with the wrong CA failed with "unknown authority"). Attachments go to the bucket with
+`VIKUNJA_FILES_TYPE=s3` and the `storage.*` refs. Use `VIKUNJA_SERVICE_SECRET`, not the deprecated `JWTSECRET`. There is no
+email, so no password reset; register the first user, then set `VIKUNJA_SERVICE_ENABLEREGISTRATION=false`. Verified live
+2026-11-03: restart-safe, about 27 MiB RAM idle, 10.4 MB database, boot about 3 s. Health check `/api/v1/info`. Details in
+`examples/vikunja/README.md`.
+
+## Umami (web analytics) on PostgreSQL
+
+Public image `ghcr.io/umami-software/umami:postgresql-latest` (3.4.1 when tested, USER nextjs, port 3000, 316 MB), unchanged.
+There is no `postgresql-3.4.1` tag, so pin by digest to freeze it. `DATABASE_URL` carries
+`sslmode=verify-full&sslrootcert=${{ db.ca_file }}` (connects and migrates; no negative CA test). **Change the default
+`admin` / `umami` login right after the first boot**: the app is public from the first request. Memory is the tight part:
+about 166-254 MiB idle, a peak near 328 MiB while the first-boot migrations run (384 MB limit). Umami stores one row per
+event, so a busy site fills the 50 MB database; use it on low-traffic sites. Health check `/api/heartbeat`. Verified live
+2026-11-03. Details in `examples/umami/README.md`.
+
+## Planka on PostgreSQL
+
+Public image `ghcr.io/plankanban/planka:2.2.1`, unchanged (USER node, port 1337). Three fixes for UID 10001:
+`LOG_FILE=/tmp/planka.log`; a 1 GiB volume at `/app/.tmp` (upload staging; attachments and avatars then live on the bucket);
+and TLS env vars (`PGSSLMODE=verify-full`, `NODE_EXTRA_CA_CERTS=${{ db.ca_file }}`,
+`KNEX_REJECT_UNAUTHORIZED_SSL_CERTIFICATE=false`). **That database connection is encrypted but not CA-verified**; a verified
+one needs a wrapper that patches the knexfile and datastores (not built). The first login asks to accept the terms. Verified
+live 2026-11-03: about 70 MiB RAM idle, boot about 45 s. **License:** Planka 2.x uses the PLANKA Community License (Fair Use
+v1.1), which bars running it as a commercial hosted service for third parties. Users may run it themselves on PicoPaaS;
+PicoPaaS does not offer or market it as a managed service. Read the license first. Details in `examples/planka/README.md`.
+
+## ntfy, IT-Tools, Excalidraw
+
+Local-only verification; the wrappers are not published yet. The upstream images run as root, so each has a wrapper in `examples/<app>/`
+built by `examples.yml` and published as `ghcr.io/seaburr/picopaas-example-<app>`. ntfy (v2.37.1) is the upstream image plus
+`USER 10001:10001`, with its cache, users and tokens in the platform PostgreSQL (`NTFY_DATABASE_URL`, `verify-full` with the CA
+file, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`); about 65 MiB RAM. IT-Tools and Excalidraw copy the upstream static files into
+`nginx-unprivileged` (port 8080), no env, about 20 MiB. All three ran as UID 10001 in Docker on 2026-11-03, but none has been
+deployed on PicoPaaS yet, so ntfy's CA-verified database connection is unproven live. Details in `examples/ntfy/`,
+`examples/it-tools/` and `examples/excalidraw/`.
 
 ## Lessons for bringing your own image
 
@@ -762,8 +807,15 @@ Not every popular app runs on PicoPaaS, and we'd rather tell you up front than h
 Two things define the shape of what fits: **images must run as a non-root numeric UID**, and the managed
 database is shared, so its settings are platform-wide. DigitalOcean's MySQL used to enforce
 `sql_require_primary_key=ON`; Ghost 6 (migration 6.61 creates a table without a primary key) and Wiki.js both
-collide with that, so the platform setting is being turned off (request 0009). We conform to the apps rather than
+collide with that, so the platform setting is turned off for our cluster (request 0009). We conform to the apps rather than
 patch them. Here's where that landed for two apps we tried.
+
+### Also ruled out for now
+
+Desk research and a live pass ([research notes](research/app-candidates-2026-11.md)) ruled these out for the 384 MB, 512 MB image and
+no-sidecar limits: Mealie (needs about 1 GB), Stirling-PDF (JVM), Karakeep and Linkwarden (image at or over the cap, plus
+Meilisearch and a browser), Docmost and Outline (Redis), Hoppscotch (several services), Plausible (ClickHouse), and Uptime Kuma's
+default image (617 MB; only `2-slim` fits). Pingvin Share, PocketBase and File Browser are archived or moving upstream.
 
 ### FreshRSS — not supported
 
@@ -778,7 +830,7 @@ was the blocker. FreshRSS would fit fine behind a **custom non-root image** (the
 recipe: do the root-time setup at build, run as the UID), which we haven't built. Out of the box, it doesn't
 run here.
 
-### Wiki.js: superseded, now a recipe (see "Wiki.js 2 on PostgreSQL" above)
+### Wiki.js (now a recipe)
 
 [Wiki.js](https://js.wiki/) came much closer than most. It runs **non-root** out of the box and even does TLS to
 MySQL cleanly with a CA-verified connection (`DB_SSL_CA`). The only wall was in the database: its **first schema
@@ -800,7 +852,7 @@ Kuma also run as root (wrapper needed, not started).
 Original research notes follow (2026-10-28). Compressed image sizes were read from the Docker Hub API on 2026-10-28
 (the platform cap is 512 MB); RAM figures are third-party or upstream estimates and **must be measured** on a throwaway
 app before a recipe is promoted. Fit rules used: non-root UID 10001 (or a wrapper like the Ghost recipe), single
-container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (override available), 50 MB DB,
+container, port above 1024, no outbound SMTP, 384 MB RAM, 200m CPU default (override available), 50 MB DB,
 1 GiB volume, daily backups. Existing recipes are Ghost, WordPress, n8n, Directus, Grafana, Shlink and Gatus.
 
 | Pick | Engine / volume | Image (compressed) | Expected RAM | Effort |
@@ -880,7 +932,7 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (over
   was not verified here.
 - **Nextcloud, Mattermost, Discourse, Metabase:** RAM or multi-service needs exceed 384 MB.
 
-### Wiki.js 2.x re-assessment (superseded)
+### Wiki.js 2.x (superseded)
 
 Superseded by "Wiki.js 2 on PostgreSQL" above (live-tested 2026-11-01). Kept for the research notes.
 

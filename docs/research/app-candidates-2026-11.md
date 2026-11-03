@@ -38,6 +38,7 @@ Effort: S under half a day, M a day, L more.
 Order is demo value times effort. All sketches assume `resources.db: pg` and the refs from RECIPES.md.
 
 ### 1. Vikunja on PostgreSQL
+- **Live results 2026-11-03:** works as is (v2.7.1, verify-full CA proven, bucket attachments, about 27 MiB); see RECIPES.md.
 - Image `vikunja/vikunja:2` (or pin `2.7`), user 1000 already, port 3456. No wrapper expected; set `HOME=/tmp` out of habit.
 - Engine PG, no volume. Env: `VIKUNJA_DATABASE_TYPE=postgres`, `VIKUNJA_DATABASE_HOST=${{ db.host }}:${{ db.port }}`
   (host takes `host:port`; verify), `VIKUNJA_DATABASE_DATABASE=${{ db.name }}`, `VIKUNJA_DATABASE_USER`, `VIKUNJA_DATABASE_PASSWORD`,
@@ -49,6 +50,7 @@ Order is demo value times effort. All sketches assume `resources.db: pg` and the
 - Risk: PG DB is 50 MB; fine for tasks. Sources: [config](https://vikunja.io/docs/config-options/), [repo](https://github.com/go-vikunja/vikunja).
 
 ### 2. Planka on PostgreSQL (+ bucket)
+- **Live results 2026-11-03:** works with fixes (log path, volume at `/app/.tmp`, TLS encrypted but not CA-verified; about 70 MiB); see RECIPES.md.
 - **License decision (Chas, 2026-11-03):** users may run it themselves on PicoPaaS; PicoPaaS never offers or markets it as a managed service.
 - Image `ghcr.io/plankanban/planka:latest` (pin a tag), user `node`, port 1337, entry `./start.sh`.
 - Env (from upstream compose): `BASE_URL=${{ app.url }}`, `DATABASE_URL=postgresql://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}`
@@ -60,6 +62,7 @@ Order is demo value times effort. All sketches assume `resources.db: pg` and the
   Sources: [compose](https://raw.githubusercontent.com/plankanban/planka/master/docker-compose.yml), [docs](https://docs.planka.cloud/docs/welcome/).
 
 ### 3. Umami on PostgreSQL
+- **Live results 2026-11-03:** works as is (v3.4.1, CA verify-full); 166-254 MiB idle, peak about 328 MiB on first boot; change the default login.
 - Image `ghcr.io/umami-software/umami:postgresql-latest` (316 MB, under the cap), user `nextjs` 1001, port 3000, `HOSTNAME=0.0.0.0`.
 - Env: `DATABASE_URL` (PG DSN with `sslmode`; Prisma wants `sslrootcert` as a path, use `${{ db.ca_file }}`), `APP_SECRET` (secret),
   `DISABLE_TELEMETRY=1`. No volume, no bucket, Redis optional (omit). Default login is `admin` / `umami`: change it on first visit
@@ -70,6 +73,7 @@ Order is demo value times effort. All sketches assume `resources.db: pg` and the
   Sources: [install](https://docs.umami.is/docs/install), [env vars](https://docs.umami.is/docs/environment-variables), [Dockerfile](https://raw.githubusercontent.com/umami-software/umami/master/Dockerfile).
 
 ### 4. ntfy on PostgreSQL
+- **Live results 2026-11-03:** not as is (root image, so a one-line wrapper); verified locally as UID 10001 (about 65 MiB), live pending publish.
 - Image `binwiederhier/ntfy:v2` (37 MB), entrypoint `ntfy`, command `serve`. Image sets no `User`, so it likely runs root upstream; the Go binary
   does not need root when `listen-http` is above 1024, so probably no wrapper (verify; fall back to a one-line wrapper like Memos).
 - Env: `NTFY_BASE_URL=${{ app.url }}`, `NTFY_LISTEN_HTTP=:8080`, `NTFY_DATABASE_URL=postgres://...?sslmode=verify-full&sslrootcert=${{ db.ca_file }}`
@@ -79,6 +83,7 @@ Order is demo value times effort. All sketches assume `resources.db: pg` and the
   Sources: [config docs](https://docs.ntfy.sh/config/), [repo](https://github.com/binwiederhier/ntfy).
 
 ### 5. IT-Tools and Excalidraw (static, near-zero RAM)
+- **Live results 2026-11-03:** wrappers built (nginx-unprivileged); verified locally as UID 10001 (about 20 MiB), live pending publish.
 - Both ship nginx on port 80 as root. One wrapper pattern covers both: `FROM nginxinc/nginx-unprivileged` (port 8080, non-root), then
   `COPY --from=<upstream image> /usr/share/nginx/html /usr/share/nginx/html`; set `HOME=/tmp`. Images 23 MB and 43 MB, no DB, no volume, no bucket.
 - Env: none. Effort is two Dockerfiles and two templates. Excalidraw's published image was last pushed 2026-05-06 and IT-Tools `latest` on Docker

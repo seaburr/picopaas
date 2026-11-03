@@ -7,6 +7,19 @@ background on each item if you want it.
 
 ## Open questions
 
+- [ ] **UX sweep proposals (2026-11-03, ui-ux-designer; small fixes already made).** Needs your OK (layout): (P2) App health and
+  Settings are linked only by gear/heart-pulse icons; show text labels ("Settings" / "App health") from the sm breakpoint up
+  (mockup first). Smaller ones I'd just do unless you object: (P3) Kaisen Interrupt/429 message inline next to the button instead of a
+  page-top banner; Kaisen build header icons wrap to their own row at 390px; Account time-zone select truncates at 390px; template
+  cards: fold the per-card "off on this instance" warnings into one banner. (P3, yours) Register says you agree to the Terms twice
+  (checkbox + sentence): keep both (legal) or drop the sentence?
+
+- [ ] **Templates for the six new recipes? (2026-11-03)** Vikunja, Umami, Planka, ntfy, IT-Tools and Excalidraw have specs in
+  `examples/` and sections in `docs/RECIPES.md`, but no one-click template card (catalog: `app/routers/templates.py`, 14 today).
+  Recommendation: add **Vikunja** and **ntfy** (small, no setup steps) once ntfy passes its live test; keep **Umami** (RAM close to
+  the cap, DB fills with events) and **Planka** (license: user-run only, never offered by us) as recipes only; IT-Tools/Excalidraw
+  optional (tiny static demos). The wrapper images are being published with the next push (no decision needed).
+
 - **AWS account for P4 testing: your decisions (2026-11-02).** Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the

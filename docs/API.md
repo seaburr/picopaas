@@ -151,7 +151,7 @@ volume{size_gi, mount_path, required}|null, notes, docs_url}` (`env` values may 
 names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub). Today:
 `ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `memos`, `vaultwarden`, `wikijs`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
 
-## Apps (`/apps`, active; scoped to the caller's own apps)
+## Apps (`/apps`, active)
 
 `App` response: `id, owner_id, name, hostname (full, e.g. clever-robin-a1b2c.picopaas.xyz), image, port,
 image_digest, auto_update, image_checked_at, image_update_error, want_db, db_engine (`mysql`|`pg`), want_storage, health_check_enabled, health_check_path, health_check_timeout_seconds, replicas, volume, status, status_detail, status_reason, retry_at, created_at, last_event, resources, quota, custom_domain, platform_subdomain, platform_host, env[]`.
@@ -256,7 +256,7 @@ values given for undeclared secrets, missing secret values, trying to remove a d
 app, trying to change the `resources.db_engine` of an existing app, removing `resources.volume` from an app that has one, an invalid volume request (see `POST /apps`; 409 when out of volume capacity), or an invalid `${{ }}` reference; 403 when the app is suspended or the app limit is reached. On create the app
 limit is checked first, so at the limit you get the 403 before any image or env error. The YAML format is in USER_GUIDE.md section 4.
 
-## Projects (`/projects`, `/invites`, active)
+## Projects (`/projects`)
 
 Every account has a **personal project** (created at signup; cannot be shared, renamed or deleted). Shared projects let
 several people manage the same apps. "Owner" in the app routes below means any member of the app's project. Non-members get 404 for
@@ -293,7 +293,7 @@ every app you can manage; `?project_id=` narrows it (404 for non-members). `App`
 `POST /apps/spec` also accepts `project` in the body (the CLI's `--project`); if the spec has `project:` too they must agree (422).
 Without either, the spec targets your personal project.
 
-## Backups (`/apps/{app_id}/backups`, owner or admin)
+## Backups (owner or admin)
 
 Off unless the administrator enabled `BACKUPS_ENABLED` (see ADMIN_GUIDE). Covers the app's database (`db`), blob storage bucket (`bucket`) and
 persistent volume (`volume`, only while the admin has set `BACKUP_KEY_SCOPED=1`; otherwise a `volume` kind is 422 "Volume backups need a bucket-scoped backup key; ask the admin." and a default backup simply leaves the volume out).
@@ -436,7 +436,7 @@ replicas, aggregate capacity, pod_usage[]), platform[] (pods in the platform nam
 plus live metrics), users{total, active, pending, suspended, admins} (all non-deleted accounts, admins included; `admins` is a subset), pending_users[], workloads{apps_total, by_status, with_db,
 with_storage, by_db_engine{mysql, postgres}}`. The cluster snapshot is cached about 15 seconds; `warming` is true until the first one lands.
 
-### Health: backups and platform logs (admin)
+### Health: backups and logs
 
 | Method | Path | Returns |
 |---|---|---|
@@ -469,7 +469,7 @@ Raising `max_apps_per_user` also raises `max_apps_per_admin` and `admin_default_
 
 Lowering a ceiling doesn't change values already set on apps; it limits future changes.
 
-## Kaisen (Preview) (`/kaisen`, `/projects/{id}/kaisen`)
+## Kaisen (Preview)
 
 Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the admin setting must both be on). Callers who are not members of the build's project get 404. API keys work; read-scope keys can read but `can_run` is false. Settings edits need project owner.
 
@@ -485,7 +485,7 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 | GET | `/kaisen/builds/{id}` | | List fields plus `brief`, `files [{path, size}]`, `runs` (last 10: `{id, kind (build/feedback/resume), status, summary, suggestions [str] (up to 3 "Next:" follow-ups), error, cost_usd, step (model turns so far, null before the first), last_tool (last tool called, or null), hang_retries (automatic hang retries so far), error_reason (null, or `hung` after retries are used up), notes [{text, at}] (watchdog and interrupt notes), review (null, or `{verdict (approve/changes/skipped), findings [str], model, note}`), started_at, finished_at, transcript [{role, text}], transcript_trimmed}`), `inbox [{id, kind, text, status, answer, created_at}]`, `app {id, name, hostname, status}`, `spend {build_usd, cap_build, month_usd}`, `output {mode, repo, branch, can_push}`, `tests` (null until a result exists, else `{status (pass/fail/timeout/running), ran_at, tail}`), `secrets [{name, value (masked), updated_at}]`, `has_anthropic_key`, `can_run`, `snapshots_kept` (restore points kept per build). Status: `idle`, `queued`, `running`, `waiting`, `done`, `stopped`, `error`. |
 | DELETE | `/kaisen/builds/{id}?delete_app=false` | | 204. Stops active runs, removes files and bundles. With `delete_app=true` also deletes the live app (403 if it is suspended). Audit `kaisen.build_delete`. |
 | POST | `/kaisen/builds/{id}/run` | | Starts, or resumes a stopped/failed build. 422 without an Anthropic key, 409 if a run is active or the project is at a cap. Audit `kaisen.run`. Returns detail. |
-| POST | `/kaisen/builds/{id}/runs/{run_id}/interrupt` | | Abandons the step in flight and requeues the run to retry from its last saved state. Any member of the build's project (same access as Run). 404 for another build's run, 409 when the run is not `running`. Not counted against the automatic hang retries. Audit `kaisen.interrupt`. Returns detail. |
+| POST | `/kaisen/builds/{id}/runs/{run_id}/interrupt` | | Abandons the step in flight and requeues the run to retry from its last saved state. Any member of the build's project (same access as Run). 404 for another build's run, 409 when the run is not `running`. Not counted against the automatic hang retries, but limited to 3 per build per hour (429 "This build was interrupted too often. Wait a while, or let the run finish."). Audit `kaisen.interrupt`. Returns detail. |
 | POST | `/kaisen/builds/{id}/feedback` | `{text (<=4000)}` | New change run. 409 before a first run. Audit `kaisen.run`. |
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/answer` | `{text (<=4000)}` | Answer an open question; 409 if already answered. |
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/dismiss` | none | Close a notice (deploy, push, error, budget, refusal) for everyone in the project; returns the build. 409 for an open question (answer it instead). A deploy that goes through also closes the build's open deploy notices. |

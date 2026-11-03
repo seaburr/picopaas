@@ -4,9 +4,26 @@ A tiny platform for hosting quick throwaway projects. You give it one Docker ima
 and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB), with nightly automatic backups of both and of an optional persistent volume. Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
+DigitalOcean is the reference cloud. The platform is built to run wherever you deploy it: `CLOUD_PROVIDER=generic` runs it on any Kubernetes with Garage for blob storage and in-cluster databases ([deploy/generic](deploy/generic/README.md)); AWS and GCP are planned ([portability plan](docs/PORTABILITY_PLAN.md)).
+
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
 Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Admin guide](docs/ADMIN_GUIDE.md) | [Deployment](docs/deployment/README.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
+
+## Documentation map
+
+| Reader | Doc | What is in it |
+|---|---|---|
+| App owner | [User guide](docs/USER_GUIDE.md) | Accounts, the app spec, env refs, databases, buckets, volumes, backups, projects, Kaisen, troubleshooting. |
+| App owner | [Recipes](docs/RECIPES.md) | Verified setups for real apps (specs in [`examples/`](examples/)). |
+| App owner | [CLI](docs/CLI.md), [API](docs/API.md) | The `picopaas` command and every HTTP route. |
+| Operator | [Admin guide](docs/ADMIN_GUIDE.md) | Running a platform: every setting, servers, quotas, backups, Kaisen, security. |
+| Operator | [Operations](docs/OPERATIONS.md), [Kaisen ops](docs/KAISEN_OPS.md) | Restores, worker, CI notes, working across PicoPaaS and Kaisen. |
+| Operator | [Deployment](docs/deployment/README.md) | The live instance: infrastructure, CI/CD, runbooks, [AWS account checklist](docs/deployment/aws-account-setup.md). |
+| Operator | [Generic target](deploy/generic/README.md) | PicoPaaS on any Kubernetes with Garage and in-cluster databases. |
+| Contributor | [Architecture](docs/ARCHITECTURE.md), [Portability plan](docs/PORTABILITY_PLAN.md), [Roadmap](docs/ROADMAP.md) | Design decisions, cost model, running on other clouds, what is next. |
+| Contributor | [Process](docs/PROCESS.md), [Ledger](docs/LEDGER.md), [Questions](docs/QUESTIONS.md) | How work is done, what is done, open decisions. |
+| Contributor | [Pentest notes](docs/PENTEST.md), [Design notes](docs/design/backups.md), [Research](docs/research/app-candidates-2026-11.md), [Requests](docs/requests/0010-aws-test-environment.md) | Security findings, feature designs ([projects](docs/design/projects.md), [Kaisen](docs/design/kaisen.md), [suspensions](docs/design/suspensions.md)), research, infra requests (`docs/requests/`). |
 
 ## Features
 
@@ -179,6 +196,9 @@ node. Per-app cost is about $0 until the node fills up. Details, sources and wha
 app/         FastAPI backend (routers/, models.py, reconciler.py, quota.py, image_check.py, providers/)
 frontend/    Vue 3 + Vite + Pinia + Tailwind (built into the app image)
 cli/         Command-line client
+examples/    Verified app specs and wrapper images (see docs/RECIPES.md)
+images/      Kaisen runtime image
+scripts/     Dev and ops helper scripts (scripts/dev/ brings up the generic target locally)
 tests/       pytest; tests/e2e and tests/pentest run against the live site
 alembic/     DB migrations
 infra/       Terraform (DigitalOcean), state in Terraform Cloud

@@ -65,6 +65,9 @@ required.
 | `SECRET_KEY` | Optional explicit JWT key; normally derived from `FERNET_KEY`. |
 | `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
 | `RATE_LIMIT_ENABLED` | Login and signup rate limiting; on by default. |
+| `LOG_LEVEL` | Log level for the JSON logs (default `INFO`). |
+| `METRICS_TOKEN` | Bearer token for `GET /metrics` (Prometheus). Unset: only a platform-admin browser session can read it. |
+| `CLOUD_PROVIDER` | Which provider set the platform builds: `digitalocean` (default), `generic` (self-hosted Garage object store, in-cluster databases; see `deploy/generic/README.md`), or `aws` / `gcp` (accepted, not implemented yet). Anything else stops startup. |
 
 **Persistent volumes** (off by default; a new paid resource, see `docs/requests/0007-persistent-volumes.md`)
 
@@ -90,10 +93,14 @@ required.
 
 | Variable | Purpose |
 |---|---|
-| `BOOTSTRAP_DB_HOST`, `_PORT`, `_USER`, `_PASSWORD` | If all are set and no MySQL server is registered, a server named `primary` is created and kept in sync on later starts. |
-| `BOOTSTRAP_PG_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `BOOTSTRAP_PG_CA` | The same for a PostgreSQL server. The CA is a file path to a PEM. |
+| `BOOTSTRAP_DB_HOST`, `_PORT`, `_USER`, `_PASSWORD` | If host, user and password are set and no MySQL server is registered, a server named `primary` is created and kept in sync on later starts. Port defaults to 3306. |
+| `BOOTSTRAP_PG_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `BOOTSTRAP_PG_CA` | The same for a PostgreSQL server named `primary-pg`. Port defaults to 25060. The CA is a file path to a PEM. |
+| `BOOTSTRAP_DB_FLAVOR`, `BOOTSTRAP_PG_FLAVOR` | Server flavor of the bootstrapped server: `do-managed` (default) or `self-managed`. An existing server's flavor changes only when the variable is set. An invalid value stops startup. Self-managed PostgreSQL 16 needs `createrole_self_grant = 'set, inherit'` on the server so the platform can create app roles. |
 | `MYSQL_SSL_CA` | CA file path for the bootstrapped MySQL server. |
-| `MYSQL_EGRESS_MODE`, `MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR` | How tenant NetworkPolicies reach the database: `in-cluster` (a pod in the data namespace) or `cidr` (the network that holds a managed server). |
+| `MYSQL_EGRESS_MODE`, `PG_EGRESS_MODE`, `OBJECT_STORE_EGRESS_MODE` | How tenant NetworkPolicies reach MySQL, PostgreSQL and the object store: `cidr` (default; the network that holds a managed server) or `in-cluster` (match pods by namespace and labels, not by Service IP). |
+| `MYSQL_EGRESS_CIDR`, `PG_EGRESS_CIDR` | Network of a managed server in `cidr` mode. `PG_EGRESS_CIDR` empty reuses `MYSQL_EGRESS_CIDR`. |
+| `MYSQL_EGRESS_NAMESPACE`, `PG_EGRESS_NAMESPACE`, `OBJECT_STORE_EGRESS_NAMESPACE` | Namespace of the in-cluster server (default `picopaas-data`). |
+| `MYSQL_EGRESS_POD_LABELS`, `PG_EGRESS_POD_LABELS`, `OBJECT_STORE_EGRESS_POD_LABELS` | Pod labels of the in-cluster server as `key=value,key=value` (defaults `app=mysql`, `app=postgres`, `app=garage`). Malformed values stop startup. |
 | `TENANT_EXTRA_PRIVATE_CIDRS`, `TENANT_EXTRA_RESERVED_CIDRS` | Optional comma-separated IPv4 networks to add to the ranges tenant apps can never reach over the internet rule (e.g. a VPC outside RFC1918). The built-ins (10/8, 172.16/12, 192.168/16, 169.254/16 and the reserved list) are always excluded; these can only add. Bad values stop startup. |
 | `MYSQL_ADMIN_USE_PROCEDURES` | `1` when the MySQL admin user works through stored procedures (in-cluster variant). |
 | `MAX_DB_USER_CONNECTIONS`, `PG_MAX_DB_USER_CONNECTIONS` | Per-app connection cap for each engine. |
@@ -105,6 +112,16 @@ required.
 `SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY` and `SPACES_REGION` identify the S3 account that creates buckets;
 `DIGITALOCEAN_TOKEN` is needed on that provider to mint per-bucket keys. Other providers need a matching provider
 module.
+
+With `CLOUD_PROVIDER=generic` the platform manages buckets in a Garage object store instead (one bucket and one key
+per app, the platform key can reach each bucket for usage, delete and presign):
+
+| Variable | Purpose |
+|---|---|
+| `OBJECT_STORE_ACCESS_KEY_ID`, `OBJECT_STORE_SECRET_ACCESS_KEY` | Platform S3 key. Each falls back to the matching `SPACES_*` variable when unset. |
+| `OBJECT_STORE_ENDPOINT` | S3 URL of the object store (including port and scheme). Also the backup endpoint when `BACKUP_ENDPOINT` is unset on this provider. |
+| `OBJECT_STORE_REGION` | Signing region (default `garage`; Garage rejects any other). |
+| `GARAGE_ADMIN_URL`, `GARAGE_ADMIN_TOKEN` | Garage admin API (v2) used to create and revoke buckets and keys. Keep the admin port unreachable from tenant namespaces. |
 
 **Caps and polling**
 
@@ -351,7 +368,7 @@ platform host like any API path; restrict it at the edge if you don't want it pu
 The platform's own database is backed up too (not just tenant databases): `app/platform_backup.py`, run by the same leader tick, backup
 Job image and bucket as app backups, in its own restic repository `<BACKUP_PREFIX>platform/db`. It needs `BACKUPS_ENABLED=1`, the backup bucket
 configured and a MySQL `DATABASE_URL` (`PLATFORM_BACKUP_ENABLED=1` is the default). Daily (`PLATFORM_BACKUP_INTERVAL_HOURS`), a failed run retries after an hour, retention
-`PLATFORM_BACKUP_KEEP_DAILY/WEEKLY/MONTHLY` (7/4/3). The repository password is random and stored Fernet-encrypted in `platform_settings`
+`PLATFORM_BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` (7 / 4 / 3). The repository password is random and stored Fernet-encrypted in `platform_settings`
 (`platform_backup_repo_password`): keep `FERNET_KEY` safe elsewhere, or the repo can't be opened. Admin > Health > Backups shows the runs, last success,
 repository size and a stale warning; "Back up now" is `POST /admin/health/backups/platform-db/run`. Restore: docs/OPERATIONS.md.
 
@@ -365,6 +382,7 @@ Kaisen builds apps from a brief and deploys them into the user's project; see th
 - **Spend is the project's own.** Each project saves its own Anthropic key (encrypted, write-only), and its caps (default $2 per run, $8 per day, $30 per build) apply per project. PicoPaaS pays nothing. Any project member can spend a team project's key.
 - **Limits.** Per project: `KAISEN_MAX_BUILDS_PER_PROJECT` (20), 300 files, 200 KB per file, 5 MB per build, 20 secrets per build, tests 120 s. Owners can also set per-member daily and per-build spend limits and turn on web access (each search costs `KAISEN_WEB_SEARCH_USD`) and the reviewer step in Kaisen settings; the user guide's "Kaisen limits" lists them all. Previews can ask for MySQL, PostgreSQL, a bucket and a volume (volumes only when enabled). Generated tests report back only once the runtime image is re-pinned. Previews count against the project's app limit and app caps like any app.
 - **Hang watchdog.** A run with no progress is interrupted and retried automatically. Env (whole seconds, 5 to 86400; invalid values stop the app starting): `KAISEN_MODEL_CALL_SECONDS` (300, idle timeout of a model stream), `KAISEN_MODEL_CALL_MAX_SECONDS` (540, hard limit per model call), `KAISEN_TOOL_SECONDS` (420, one tool call), `KAISEN_HANG_SECONDS` (600, no-progress threshold; must exceed the two limits above), `KAISEN_HANG_RETRIES` (2, automatic retries, 0 to 10; after that the run stops with reason `hung`). Details in `KAISEN_OPS.md` section 2.
+- **Other env.** `KAISEN_BUNDLE_FETCH_MAX` (120): fetches of the public code bundle per client IP per hour (a preview pod downloads once per boot). `KAISEN_HEARTBEAT_FILE` (`/tmp/kaisen-worker-heartbeat`): file the worker touches and the pod's liveness probe reads.
 - **Audit.** `kaisen.settings_update`, `kaisen.build_create`, `kaisen.build_delete`, `kaisen.run`, `kaisen.interrupt`, `kaisen.deploy`, `kaisen.push`, plus the usual `app.*` events for the preview app.
 
 ## Settings
@@ -487,9 +505,9 @@ platform now keeps a NetworkPolicy `allow-egress-spaces` (the endpoint's private
 `backoffLimit: 0` and `activeDeadlineSeconds` (`BACKUP_JOB_DEADLINE_SECONDS`, 1800), and the scheduler fails a run two minutes
 after that deadline even if Kubernetes never reports it, freeing its DB-server slot.
 
-Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` = 1 / 1 / 1 (Chas, 2026-10-23: owners archive anything older themselves); per-app cap
+Knobs (defaults in `app/config.py`): retention `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` and `BACKUP_KEEP_MONTHLY` = 1 / 1 / 1 (Chas, 2026-10-23: owners archive anything older themselves); per-app cap
 `BACKUP_MAX_BYTES_PER_APP` = 2 GiB; platform cap `BACKUP_MAX_BYTES_TOTAL` = 100 GiB (warning at 80%); `BACKUP_UPLOAD_LIMIT_KIB`
-(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14); `BACKUP_DEFAULT_ENABLED` (0); `BACKUP_EXPORT_TTL_SECONDS` (3600); `BACKUP_KEY_SCOPED` (0; the gate for volume backups, see above); `BACKUP_VOLUME_UPLOAD_LIMIT_KIB` (2048); `BACKUP_VOLUME_EXPORT_MAX_BYTES` (1 GiB); `PICOPAAS_VERSION` (`dev`, stamped in a package's manifest). A release that adds sets or volume backups needs the backup image republished and `BACKUP_IMAGE` re-pinned (new `MODE=prune|package`, `KIND=volume`), plus the deploy (migration `a7d3e9b1c5f2` creates `backup_sets` and groups existing runs into sets). Backup bytes do not count against
+(2048 per Job); `BACKUP_JOB_DEADLINE_SECONDS` (1800); `BACKUP_DELETED_RETENTION_DAYS` (14); `BACKUP_DEFAULT_ENABLED` (0); `BACKUP_EXPORT_TTL_SECONDS` (3600); `BACKUP_KEY_SCOPED` (0; the gate for volume backups, see above); `BACKUP_VOLUME_UPLOAD_LIMIT_KIB` (2048); `BACKUP_VOLUME_EXPORT_MAX_BYTES` (1 GiB); `BACKUP_EXPORT_MAX_PER_HOUR` (3 downloads per app per hour); `PICOPAAS_VERSION` (`dev`, stamped in a package's manifest). A release that adds sets or volume backups needs the backup image republished and `BACKUP_IMAGE` re-pinned (new `MODE=prune|package`, `KIND=volume`), plus the deploy (migration `a7d3e9b1c5f2` creates `backup_sets` and groups existing runs into sets). Backup bytes do not count against
 the 50 MB database or 100 MB storage caps. Over a cap, the backup is skipped with a failed run and an app event, never silently.
 
 **Volume backups (kind `volume`).** The one backup Job that runs in a TENANT namespace, so it is gated: nothing volume-related runs, and the API/UI say "Volume backups need a bucket-scoped backup key; ask the admin.", until `BACKUP_KEY_SCOPED=1` in `picopaas-env`. Set it only after replacing the shared full-access Spaces key with a key limited to the backup bucket (decisions log 2026-10-23): the volume Job's per-run Secret holds `BACKUP_ACCESS_KEY_ID` / `BACKUP_SECRET_ACCESS_KEY` inside `app-<id>`. What the gate switches on, per app with a volume:
@@ -557,9 +575,9 @@ tool for this ships with phase 1b).
   share that node. Spread across nodes for real availability.
 - **Costs and caps:** every new paid resource should be budgeted before you add it.
 
-### Failed backups and the orphan sweeper
+### Failed backups and the sweeper
 
-Every `BACKUP_SWEEP_MINUTES` (10) the leader runs `app/backup_sweeper.py`. It fails runs stuck in `running`/`queued` whose Job is gone or past its deadline ("interrupted (platform restart or job lost)", with an app event; a Job that actually finished while the API was down is recorded normally), puts a stuck `deleting` backup back to `succeeded`, deletes unmatched backup Jobs, pods and per-run Secrets (platform and `app-*` namespaces, older than 15 min), aborts incomplete multipart uploads older than 24 h, and removes empty sets, dangling set links and exports of vanished runs. Restic snapshots with no DB row and repo prefixes with no config row are never deleted, only listed as `orphan_repos`. Deletions are audited as `backup.orphan_cleaned` (counts only). The last result is `sweeper` in `GET /admin/health/backups` (`last_run_at`, `cleaned`, `errors`, `orphan_repos`). Details: `docs/design/backups.md` section 11.
+Every `BACKUP_SWEEP_MINUTES` (10) the leader runs `app/backup_sweeper.py`. It fails runs stuck in `running`/`queued` whose Job is gone or past its deadline ("interrupted (platform restart or job lost)", with an app event; a Job that actually finished while the API was down is recorded normally), puts a stuck `deleting` backup back to `succeeded`, deletes unmatched backup Jobs, pods and per-run Secrets (platform and `app-*` namespaces, older than 15 min), aborts incomplete multipart uploads older than 24 h, and removes empty sets, dangling set links and exports of vanished runs. Tunables (defaults in `app/config.py`): `BACKUP_SWEEP_LIMIT` (50 objects or rows per phase per sweep), `BACKUP_QUEUED_MAX_SECONDS` (12 h, a queued run older than this never got a slot), `BACKUP_ORPHAN_MIN_AGE_SECONDS` (900), `BACKUP_STALE_UPLOAD_SECONDS` (24 h). Volume sizes shown to owners are measured by small stat Jobs at most every `VOLUME_STAT_INTERVAL_SECONDS` (900), each stopped after `VOLUME_STAT_DEADLINE_SECONDS` (120). Restic snapshots with no DB row and repo prefixes with no config row are never deleted, only listed as `orphan_repos`. Deletions are audited as `backup.orphan_cleaned` (counts only). The last result is `sweeper` in `GET /admin/health/backups` (`last_run_at`, `cleaned`, `errors`, `orphan_repos`). Details: `docs/design/backups.md` section 11.
 
 ## Backups and upgrades
 

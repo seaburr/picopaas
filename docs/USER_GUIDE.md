@@ -164,7 +164,7 @@ secrets:
 | `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
 | `port` | integer | **yes** | none | 1 to 65535. There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
-| `resources.db_engine` | string | no | see note | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
+| `resources.db_engine` | string | no | `mysql` | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a blob storage bucket. Same removal rule. |
 | `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
@@ -227,7 +227,7 @@ You pick your own variable names. The platform does not inject `DATABASE_URL` an
 
 MySQL and PostgreSQL are equal choices on PicoPaaS: pick whichever your app supports best. Set `resources.db_engine`
 (`mysql` or `pg`) in the spec or choose it in the form. The engine is fixed after the database is created; to switch,
-create a new app and move your data. If a spec omits `db_engine`, the platform provisions MySQL (kept for older specs).
+create a new app and move your data.
 
 | | MySQL | PostgreSQL |
 |---|---|---|
@@ -624,7 +624,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | `422` "... isn't a valid env var name" | Env names use capital letters, digits and underscores, and don't start with a digit. |
 | 502 or 503 from your hostname | The app isn't ready yet, the `port` is wrong, or the app isn't listening on all interfaces. Bind to `0.0.0.0`. |
 | Stuck in **Deploying** | Readiness isn't passing. Check the health check path, the port, and that the app starts within a few seconds. After 10 minutes the app moves to **Failed** with the reason. |
-| **Failed** with a message | Read the message and the logs on the app page. The platform retries automatically (see section 12). To retry now, click **Restart** or save the app. |
+| **Failed** with a message | Read the message and the logs on the app page. The platform retries automatically (see section 12). If you fixed it (for example by redeploying a working image) and the newest pods are healthy, the app returns to **Running** by itself within about a minute. To retry now, click **Restart** or save the app. |
 | "My app restarted" (a **Restarted ...** notice on the app page, or a gap in the logs) | Open **Recent events** on the app page (or `GET /apps/{id}/events`, or `picopaas status`). It says why: more than 250 MB of local disk (files, `/tmp`, logs; local files are lost, so keep files in the storage bucket), out of memory (384 MB limit; reduce memory use), or the app exited with a code (check the logs; the previous container's last lines are shown above the current ones). The notice stays on the app page for 24 hours; the last 20 events are kept. |
 | TLS error from your database | Use the CA certificate from `${{ db.ca_cert }}`. For MySQL on Python 3.13, see the strict-flag note in section 6. |
 | Database writes fail with a read-only or permission error | You hit the 50 MB cap (on PostgreSQL, past 100 MB `CONNECT` is refused). The app page shows it. Run `TRUNCATE TABLE` or `DROP TABLE` to free space. Writes return within a minute. |
@@ -639,7 +639,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo and Vaultwarden (volume), a Gatus status page and a static nginx site, each with a link to its example README. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
+The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo and Vaultwarden (volume), a Gatus status page and a static nginx site, each with a link to its example README. Other tested apps (Vikunja, Umami, Planka, ntfy, IT-Tools, Excalidraw) have a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
 
 ## 15. Projects (teams)
 
@@ -724,7 +724,7 @@ Also in settings:
 
 ### Interrupt and retry
 
-If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from the last saved state, up to 2 times; each retry leaves a note on the run such as "No progress for 10 min; interrupted, retrying (1/2)." After that the run stops with the reason `hung` ("Hung 3 times; Resume to retry.") and you can press Resume. If a run looks stuck sooner, press **Interrupt and retry** on the progress strip (any project member); the note reads "Interrupted by you@example.com; retrying." and it does not use up the automatic retries.
+If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from the last saved state, up to 2 times; each retry leaves a note on the run such as "No progress for 10 min; interrupted, retrying (1/2)." After that the run stops with the reason `hung` ("Hung 3 times; Resume to retry.") and you can press Resume. If a run looks stuck sooner, press **Interrupt and retry** on the progress strip (any project member); the note reads "Interrupted by you@example.com; retrying." and it does not use up the automatic retries. A build accepts 3 manual interrupts per hour; after that you get a 429 "This build was interrupted too often" and should wait or let the run finish.
 
 ### Ask for changes
 

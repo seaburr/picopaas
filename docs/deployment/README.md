@@ -8,6 +8,7 @@ admins and describes how to run any PicoPaaS. Nothing here is bundled into the p
 |---|---|
 | [infrastructure.md](infrastructure.md) | Cloud layout: regions, cluster and node pool, managed databases, Spaces, DNS and domain, cost. |
 | [ci-cd.md](ci-cd.md) | GitHub Actions workflows, secret names, deploy order, E2E and pentest tokens. |
+| [aws-account-setup.md](aws-account-setup.md) | AWS account-readiness checklist for the portability test environment (request [0010](../requests/0010-aws-test-environment.md), proposed, nothing applied). |
 | [runbooks.md](runbooks.md) | Instance runbooks with real names: key rotation, cluster replacement (2026-10-19), accepted risks, open issues. |
 
 ## Other deployment material in the repo

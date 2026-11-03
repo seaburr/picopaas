@@ -5,7 +5,7 @@ share a concurrency lock. For the generic upgrade story see the [Admin guide](..
 
 | Workflow | Use it when | Notes |
 |---|---|---|
-| `ci` (push/PR) | Automatic | gitleaks (no allowlist files allowed), terraform validate, kubeconform, backend tests, MySQL integration, frontend. |
+| `ci` (push/PR) | Automatic | gitleaks (no allowlist files allowed), lint (ruff, actionlint, shellcheck), terraform validate, kubeconform, backend tests (coverage floor in `.coveragerc`), MySQL integration, frontend (typecheck, lint, build, layout check), e2e-smoke (Playwright). |
 | `image` (push to main) | Automatic | Builds and pushes `ghcr.io/seaburr/picopaas:<short sha>`. |
 | `terraform` | Create or change DO infra (cluster, MySQL, PostgreSQL, VPC, firewall, DNS, Spaces bucket) | Input `apply` (default true; untick for plan only). Skips if `TF_API_TOKEN` is unset. Pre-checks the MySQL slug and that the node size currently has capacity in the region. Sets the TFC workspace to local execution. |
 | `bootstrap` | Fresh or replaced cluster, or when platform add-ons/secrets change | Installs Traefik, cert-manager, metrics-server, upserts DNS A records `*` and `picopaas`, creates secrets and the platform DB, issuers and wildcard cert, deploys the platform, waits for health (up to about 10 min). Idempotent. Input `sha`. |
@@ -13,7 +13,9 @@ share a concurrency lock. For the generic upgrade story see the [Admin guide](..
 | `diag` | Something is broken in-cluster | Inputs `namespace` (default `picopaas-system`), `selector`, `tail`. Prints nodes, pods, events, non-ready pod descriptions and logs with secret values masked. |
 | `testapps` (push to `testapps/**`) | Automatic, or run to rebuild | Builds `hello`, `probe`, `toolbox`, `webpage` to `ghcr.io/seaburr/picopaas-testapp-*`. |
 | `quota-e2e` | Weekly | Runs the slow quota-fill E2E tests (`E2E_SLOW=1`). |
-| `examples`, `floating-tag-test` | As needed | Example-app builds and the floating-tag watcher test. |
+| `examples`, `floating-tag-test` | As needed | `examples` builds and pushes the wrapper images (`ghcr.io/seaburr/picopaas-example-<app>`: status, wordpress, memos, vaultwarden, ntfy, it-tools, excalidraw, ghost6); `floating-tag-test` is the floating-tag watcher test. |
+| `backup-image` (push to `images/backup/**`) | Automatic, or run by hand | Builds the restic backup Job image. Re-pin `BACKUP_IMAGE` after a republish. |
+| `kaisen-runtime-image` (push to `images/kaisen-runtime/**`) | Automatic, or run by hand | Builds and smoke-tests the Kaisen runtime image. Re-pin with `bootstrap`; see [Operations](../OPERATIONS.md). |
 
 Order for a new environment: `terraform`, `bootstrap`, register the first user (becomes platform admin), then run
 `tests/e2e` and `tests/pentest` (see their READMEs).
