@@ -39,6 +39,7 @@ const router = createRouter({
     { path: '/kaisen/new', component: () => import('../views/KaisenNewView.vue'), meta: { requiresAuth: true, title: 'New build' } },
     { path: '/kaisen/settings', component: () => import('../views/KaisenSettingsView.vue'), meta: { requiresAuth: true, title: 'Kaisen settings' } },
     { path: '/kaisen/:id(\\d+)', component: () => import('../views/KaisenBuildView.vue'), meta: { requiresAuth: true, title: 'Build' }, props: true },
+    { path: '/projects', component: () => import('../views/ProjectsListView.vue'), meta: { requiresAuth: true, title: 'Projects' } },
     { path: '/projects/new', component: () => import('../views/ProjectView.vue'), meta: { requiresAuth: true, title: 'New project' } },
     { path: '/projects/:id(\\d+)', component: () => import('../views/ProjectView.vue'), meta: { requiresAuth: true, title: 'Project' }, props: true },
     { path: '/invite/:token', component: () => import('../views/InviteView.vue'), meta: { requiresAuth: true, title: 'Project invite' }, props: true },

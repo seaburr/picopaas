@@ -24,7 +24,7 @@ async function accept() {
     projects.select(p.id)
     await projects.load()
     toast.success(`Joined ${p.name}.`)
-    await router.replace('/apps')
+    await router.replace(`/projects/${p.id}`)
   } catch (e) {
     error.value =
       e instanceof ApiError && (e.status === 404 || e.status === 410)

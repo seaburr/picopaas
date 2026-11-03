@@ -150,7 +150,7 @@ async function confirmLeave() {
     await api.leaveProject(id)
     store.drop(id)
     toast.success('You left the project.')
-    await router.push('/apps')
+    await router.push('/projects')
   } catch (e) {
     leaving.value = false
     memberError.value = err(e, "Couldn't leave the project.")
@@ -202,7 +202,7 @@ async function confirmDelete() {
     await api.deleteProject(id)
     store.drop(id)
     toast.success('Project deleted.')
-    await router.push('/apps')
+    await router.push('/projects')
   } catch (e) {
     deleteOpen.value = false
     memberError.value = err(e, "Couldn't delete the project.")
@@ -217,6 +217,7 @@ async function confirmDelete() {
     <NavBar />
     <main id="main" tabindex="-1" class="page-main space-y-3">
       <!-- create -->
+      <RouterLink to="/projects" class="link inline-block text-sm">Back to Projects</RouterLink>
       <template v-if="pid === null">
         <h1 class="page-title">New project</h1>
         <form class="card card-pad space-y-3 [&_.input]:max-w-3xl" @submit.prevent="onCreate">
@@ -333,7 +334,7 @@ async function confirmDelete() {
               </button>
             </div>
           </section>
-          <RouterLink to="/apps" class="btn-secondary inline-flex">Back to apps</RouterLink>
+          <RouterLink to="/projects" class="btn-secondary inline-flex">Back to Projects</RouterLink>
         </template>
       </template>
     </main>

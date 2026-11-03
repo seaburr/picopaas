@@ -21,7 +21,7 @@ export const useProjectsStore = defineStore('projects', () => {
 
   const personal = computed(() => projects.value.find((p) => p.is_personal) ?? null)
   const current = computed(() => projects.value.find((p) => p.id === currentId.value) ?? personal.value)
-  // The switcher is only worth showing once there is something to switch to.
+  // The project picker is only worth showing once there is something to switch to.
   const hasShared = computed(() => projects.value.some((p) => !p.is_personal))
 
   function select(id: number) {

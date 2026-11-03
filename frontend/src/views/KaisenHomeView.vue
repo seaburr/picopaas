@@ -12,6 +12,7 @@ import { relTime, useNow } from '../composables/appUi'
 import { fmtUsd, isActive } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
+import ProjectPicker from '../components/ProjectPicker.vue'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
@@ -103,7 +104,8 @@ function askDelete(b: KaisenBuild) {
       <nav class="meta mb-2" aria-label="Breadcrumb">Kaisen</nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 class="page-title">{{ !projects.current ? 'Builds' : projects.current.is_personal ? 'Personal builds' : `Builds in ${projects.current.name}` }}</h1>
+          <h1 class="page-title">Builds</h1>
+          <ProjectPicker label="in" />
           <PreviewBadge />
           <span v-if="!loading && store.builds.length" class="meta">{{ store.builds.length }} {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>
         </div>
@@ -170,7 +172,7 @@ function askDelete(b: KaisenBuild) {
       </ul>
 
       <p v-if="!loading && !error && store.spend" class="help mt-3">
-        Kaisen is in preview. Builds spend from this project's Anthropic key. This month: <span class="mono">{{ fmtUsd(store.spend.month_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
+        Kaisen is in preview. Builds spend from this project's Anthropic key. Last 30 days: <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
       </p>
     </main>
 

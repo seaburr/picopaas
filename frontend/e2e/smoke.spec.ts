@@ -48,6 +48,15 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(page.getByText('Nothing is suspended.')).toBeVisible()
   })
 
+  await test.step('projects page lists Personal and links to apps', async () => {
+    await page.goto('/projects')
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'New project' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Personal' }).first()).toBeVisible()
+    await page.getByRole('button', { name: 'Apps in Personal' }).click()
+    await expect(page).toHaveURL(/\/apps$/)
+  })
+
   await test.step('apps list renders (empty state)', async () => {
     await page.goto('/apps')
     await expect(page.getByRole('heading', { name: /apps/i, level: 1 })).toBeVisible()
