@@ -134,7 +134,7 @@ const imageError = computed(() => {
 const gone = computed(() => isEdit.value && !loading.value && !loadedApp.value)
 const formError = computed(() => (error.value && !error.value.toLowerCase().startsWith('image') ? error.value : ''))
 
-const templateNote = ref<{ name: string; notes: string } | null>(null)
+const templateNote = ref<{ name: string; notes: string; docs: string } | null>(null)
 const templateSecrets = ref<{ key: string; hint: string }[]>([])
 const templateHints = ref<string[]>([])
 
@@ -205,7 +205,7 @@ onMounted(async () => {
         if (t.wants_db && t.db_engine === 'pg' && !dbOff.value && !availableEngines.value.includes('pg')) hints.push('PostgreSQL has no free capacity right now.')
         templateSecrets.value = t.secrets ?? []
         templateHints.value = hints
-        templateNote.value = { name: t.name, notes: t.notes ?? '' }
+        templateNote.value = { name: t.name, notes: t.notes ?? '', docs: t.docs_url ?? '' }
       } else {
         error.value = `Unknown template "${route.query.template}".`
       }
@@ -362,7 +362,7 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
-      <KaisenChooser v-if="!isEdit && auth.user?.features?.kaisen" />
+      <KaisenChooser v-if="!isEdit && !route.query.sample" :kaisen="!!auth.user?.features?.kaisen" :current="typeof route.query.template === 'string' ? 'template' : 'image'" />
       <div v-if="!gone" class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
@@ -372,7 +372,6 @@ async function onSubmit() {
           <HostLink v-if="loadedApp" :hostname="primaryHost(loadedApp)" class="mt-1" />
           <p v-if="!isEdit" class="help">
             Deploy a public Docker image. You'll get an https URL as soon as the app is created.
-            <RouterLink to="/templates" class="link">Browse templates</RouterLink>
           </p>
         </div>
         <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" :to="`/apps/${loadedApp.id}`" />
@@ -383,7 +382,11 @@ async function onSubmit() {
         <RouterLink :to="`/kaisen/${loadedApp.kaisen_build_id}`" class="link">Open in Kaisen</RouterLink>
       </p>
       <p v-if="templateNote" class="alert-info mb-3">
-        <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong> {{ templateNote.notes }}
+        <strong class="font-medium">Prefilled from template: {{ templateNote.name }}.</strong>
+      </p>
+      <p v-if="templateNote?.notes" class="meta mb-3">
+        <span class="font-medium">Before you deploy:</span> {{ templateNote.notes }}
+        <a v-if="templateNote.docs" :href="templateNote.docs" target="_blank" rel="noopener noreferrer" class="link">Setup guide</a>
       </p>
       <p v-for="h in templateHints" :key="h" class="alert-warn mb-3">{{ h }}</p>
       <div v-if="templateSecrets.length" class="alert-info mb-3 text-sm">

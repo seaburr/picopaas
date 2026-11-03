@@ -44,6 +44,7 @@ class TemplateOut(BaseModel):
     volume: Optional[TemplateVolume] = None
     notes: str
     docs_url: str | None = None  # absolute https URL (example README on GitHub)
+    upstream_docs_url: str | None = None  # absolute https URL of the app's official docs
 
 
 _WP_SALTS = [
@@ -58,7 +59,7 @@ CATALOG: List[TemplateOut] = [
     TemplateOut(
         id="ghost",
         name="Ghost (blog/CMS)",
-        description="The Ghost publishing platform, preconfigured for PicoPaaS MySQL (TLS) and bucket storage. No secrets to set; finish setup at /ghost/.",
+        description="Ghost is a publishing platform for blogs and newsletters.",
         image="ghcr.io/seaburr/picopaas-example-ghost6:latest",
         port=2368,
         wants_db=True,
@@ -79,11 +80,12 @@ CATALOG: List[TemplateOut] = [
         },
         notes="CPU-bound, so the first start is slow; bump CPU (up to 1000m) for sustained traffic. Sign-in verification email is off (SMTP is blocked).",
         docs_url=f"{REPO_EXAMPLES}/ghost",
+        upstream_docs_url="https://ghost.org/docs/",
     ),
     TemplateOut(
         id="wordpress",
         name="WordPress (nginx + PHP-FPM)",
-        description="WordPress with a locked-down first-boot install, MySQL over TLS and an optional 1 GiB volume for the whole site.",
+        description="WordPress is a widely used publishing platform for sites and blogs.",
         image="ghcr.io/seaburr/picopaas-example-wordpress:latest",
         port=8080,
         wants_db=True,
@@ -113,11 +115,12 @@ CATALOG: List[TemplateOut] = [
             "Ask an admin for CPU 500m: the 200m default makes the installer and dashboard slow."
         ),
         docs_url=f"{REPO_EXAMPLES}/wordpress",
+        upstream_docs_url="https://wordpress.org/documentation/",
     ),
     TemplateOut(
         id="directus",
         name="Directus (headless CMS)",
-        description="Directus data platform on MySQL, with files stored in the bucket. The health check is off on purpose: cold start takes 90-110 s.",
+        description="Directus is a headless CMS and data platform with an instant API over your database.",
         image="directus/directus:12.4.1",
         port=8055,
         wants_db=True,
@@ -152,11 +155,12 @@ CATALOG: List[TemplateOut] = [
         ],
         notes="Change ADMIN_EMAIL and set the three secrets. Expect about 90 s of downtime on every deploy or restart (no health check, so no restart loop).",
         docs_url=f"{REPO_EXAMPLES}/directus",
+        upstream_docs_url="https://docs.directus.io/",
     ),
     TemplateOut(
         id="grafana",
         name="Grafana on MySQL",
-        description="Grafana with its state in PicoPaaS MySQL (TLS, encrypted but unverified).",
+        description="Grafana is a dashboard and visualization tool for metrics and logs.",
         image="grafana/grafana:13.2.4",
         port=3000,
         wants_db=True,
@@ -181,11 +185,12 @@ CATALOG: List[TemplateOut] = [
         health_check=TemplateHealthCheck(path="/api/health"),
         notes="Set GF_SECURITY_ADMIN_PASSWORD, then sign in as admin. Outbound traffic is restricted, so only public data sources work.",
         docs_url=f"{REPO_EXAMPLES}/grafana",
+        upstream_docs_url="https://grafana.com/docs/grafana/latest/",
     ),
     TemplateOut(
         id="grafana-pg",
         name="Grafana on PostgreSQL",
-        description="Grafana with its state in PicoPaaS PostgreSQL (TLS required).",
+        description="Grafana is a dashboard and visualization tool for metrics and logs.",
         image="grafana/grafana:13.2.4",
         port=3000,
         wants_db=True,
@@ -210,11 +215,12 @@ CATALOG: List[TemplateOut] = [
         health_check=TemplateHealthCheck(path="/api/health"),
         notes="Set GF_SECURITY_ADMIN_PASSWORD, then sign in as admin. Outbound traffic is restricted, so only public data sources work.",
         docs_url=f"{REPO_EXAMPLES}/grafana",
+        upstream_docs_url="https://grafana.com/docs/grafana/latest/",
     ),
     TemplateOut(
         id="n8n",
         name="n8n (workflow automation)",
-        description="n8n on PostgreSQL (CA-verified TLS), trimmed to fit the memory and 50 MB database caps.",
+        description="n8n is a workflow automation tool that connects apps and APIs.",
         image="n8nio/n8n:2.41.7",
         port=5678,
         wants_db=True,
@@ -264,11 +270,12 @@ CATALOG: List[TemplateOut] = [
             "Success executions are not kept, to stay inside the database quota."
         ),
         docs_url=f"{REPO_EXAMPLES}/n8n",
+        upstream_docs_url="https://docs.n8n.io/",
     ),
     TemplateOut(
         id="shlink",
         name="Shlink (URL shortener)",
-        description="Shlink short links on MySQL with TLS. REST API only; the web client is a separate app.",
+        description="Shlink is a self-hosted URL shortener with a REST API.",
         image="shlinkio/shlink:5.1.8",
         port=8080,
         wants_db=True,
@@ -298,11 +305,12 @@ CATALOG: List[TemplateOut] = [
             "Create the app first, then edit the value to match its hostname (or your reserved subdomain)."
         ),
         docs_url=f"{REPO_EXAMPLES}/shlink",
+        upstream_docs_url="https://shlink.io/documentation/",
     ),
     TemplateOut(
         id="miniflux",
         name="Miniflux (RSS reader)",
-        description="Minimalist feed reader with a web UI and REST API, on PostgreSQL. Public image, no custom build.",
+        description="Miniflux is a minimalist RSS and Atom feed reader.",
         image="miniflux/miniflux:2.3.4",
         port=8080,
         wants_db=True,
@@ -334,20 +342,30 @@ CATALOG: List[TemplateOut] = [
             "TLS to the database is CA-verified (verify-full against the platform CA file)."
         ),
         docs_url=f"{REPO_EXAMPLES}/miniflux",
+        upstream_docs_url="https://miniflux.app/docs/",
     ),
     TemplateOut(
         id="forgejo",
         name="Forgejo (git forge)",
-        description="Git hosting with issues and pull requests. Repos and SQLite live on a volume. Git over HTTPS only.",
+        description="Forgejo is a lightweight Git host with issues and pull requests.",
         image="codeberg.org/forgejo/forgejo:17.0.1-rootless",
         port=3000,
-        wants_db=False,
+        wants_db=True,
+        db_engine="mysql",
         wants_storage=False,
         env={
             "ROOT_URL": "${{ app.url }}",
             "HTTP_PORT": "3000",
             "DISABLE_SSH": "true",
-            "DB_TYPE": "sqlite3",
+            "DB_TYPE": "mysql",
+            "DB_HOST": "${{ db.host }}:${{ db.port }}",
+            "DB_NAME": "${{ db.name }}",
+            "DB_USER": "${{ db.user }}",
+            "DB_PASSWD": "${{ db.password }}",
+            "FORGEJO__DATABASE__SSL_MODE": "true",
+            "SSL_CERT_FILE": "${{ db.ca_file }}",
+            "FORGEJO__DATABASE__MAX_OPEN_CONNS": "3",
+            "FORGEJO__DATABASE__MAX_IDLE_CONNS": "2",
             "FORGEJO__SERVER__START_SSH_SERVER": "false",
             "FORGEJO__SERVER__OFFLINE_MODE": "true",
             "FORGEJO__MAILER__ENABLED": "false",
@@ -362,14 +380,15 @@ CATALOG: List[TemplateOut] = [
         volume=TemplateVolume(size_gi=1, mount_path="/var/lib/gitea", required=True),
         notes=(
             "Register your account right after the first start: the first account becomes the admin. "
-            "Then set FORGEJO__SERVICE__DISABLE_REGISTRATION to true. No SSH and no email."
+            "Then set FORGEJO__SERVICE__DISABLE_REGISTRATION to true. Git repos live on the volume, the rest in MySQL. No SSH and no email."
         ),
         docs_url=f"{REPO_EXAMPLES}/forgejo",
+        upstream_docs_url="https://forgejo.org/docs/latest/",
     ),
     TemplateOut(
         id="memos",
         name="Memos (notes)",
-        description="Lightweight notes and microblog on PostgreSQL. The official image plus USER 10001.",
+        description="Memos is a lightweight note-taking and microblogging app.",
         image="ghcr.io/seaburr/picopaas-example-memos:latest",
         port=5230,
         wants_db=True,
@@ -387,11 +406,12 @@ CATALOG: List[TemplateOut] = [
             "in Memos' settings. Attachments are stored in the 50 MB database unless you configure S3 storage."
         ),
         docs_url=f"{REPO_EXAMPLES}/memos",
+        upstream_docs_url="https://usememos.com/docs",
     ),
     TemplateOut(
         id="vikunja",
         name="Vikunja (tasks)",
-        description="To-do and project manager on PostgreSQL, with task attachments in the bucket. Public image, no custom build.",
+        description="Vikunja is a to-do and project manager.",
         image="vikunja/vikunja:2.7.1",
         port=3456,
         wants_db=True,
@@ -428,11 +448,12 @@ CATALOG: List[TemplateOut] = [
             "TLS to the database is CA-verified."
         ),
         docs_url=f"{REPO_EXAMPLES}/vikunja",
+        upstream_docs_url="https://vikunja.io/docs/",
     ),
     TemplateOut(
         id="umami",
         name="Umami (web analytics)",
-        description="Privacy-friendly website analytics on PostgreSQL. Public image (postgresql-latest tag), no custom build.",
+        description="Umami is privacy-friendly website analytics.",
         image="ghcr.io/umami-software/umami:postgresql-latest",
         port=3000,
         wants_db=True,
@@ -454,11 +475,12 @@ CATALOG: List[TemplateOut] = [
             "Memory peaks near 330 MiB during the first-boot migrations (cap is 384 MiB) and settles around 165-255 MiB."
         ),
         docs_url=f"{REPO_EXAMPLES}/umami",
+        upstream_docs_url="https://umami.is/docs",
     ),
     TemplateOut(
         id="ntfy",
         name="ntfy (push notifications)",
-        description="Publish and subscribe push notifications over HTTP, with all state in PostgreSQL. Tiny Go binary (about 20 MiB RAM).",
+        description="ntfy sends push notifications to your devices over simple HTTP.",
         image="ghcr.io/seaburr/picopaas-example-ntfy:latest",
         port=8080,
         wants_db=True,
@@ -488,11 +510,12 @@ CATALOG: List[TemplateOut] = [
             "Do not set cache-file, auth-file or web-push-file: all state is in the database."
         ),
         docs_url=f"{REPO_EXAMPLES}/ntfy",
+        upstream_docs_url="https://docs.ntfy.sh/",
     ),
     TemplateOut(
         id="it-tools",
         name="IT-Tools (developer utilities)",
-        description="A static collection of handy developer tools (encoders, hashes, converters) that run in the browser. No database, no secrets.",
+        description="IT-Tools is a collection of handy developer utilities that run in your browser.",
         image="ghcr.io/seaburr/picopaas-example-it-tools:latest",
         port=8080,
         wants_db=False,
@@ -501,11 +524,12 @@ CATALOG: List[TemplateOut] = [
         health_check=TemplateHealthCheck(path="/"),
         notes="Nothing to configure. Everything runs client-side in the browser, so the app only serves static files and uses very little memory.",
         docs_url=f"{REPO_EXAMPLES}/it-tools",
+        upstream_docs_url="https://it-tools.tech/",
     ),
     TemplateOut(
         id="excalidraw",
         name="Excalidraw (whiteboard)",
-        description="Virtual whiteboard for sketching diagrams. Static site on nginx. No database, no secrets.",
+        description="Excalidraw is a virtual whiteboard for sketching diagrams.",
         image="ghcr.io/seaburr/picopaas-example-excalidraw:latest",
         port=8080,
         wants_db=False,
@@ -514,11 +538,12 @@ CATALOG: List[TemplateOut] = [
         health_check=TemplateHealthCheck(path="/"),
         notes="Nothing to configure. Drawing works fully in the browser. Live collaboration and the library browser call external services, which may not work from here.",
         docs_url=f"{REPO_EXAMPLES}/excalidraw",
+        upstream_docs_url="https://docs.excalidraw.com/",
     ),
     TemplateOut(
         id="vaultwarden",
         name="Vaultwarden (password manager)",
-        description="Bitwarden-compatible server; vault and keys live on a volume. For test use, not passwords you need.",
+        description="Vaultwarden is a Bitwarden-compatible password manager server.",
         image="ghcr.io/seaburr/picopaas-example-vaultwarden:latest",
         port=8080,
         wants_db=False,
@@ -537,11 +562,12 @@ CATALOG: List[TemplateOut] = [
             "No email, so use an authenticator app for two-factor login. The /admin page is off."
         ),
         docs_url=f"{REPO_EXAMPLES}/vaultwarden",
+        upstream_docs_url="https://github.com/dani-garcia/vaultwarden/wiki",
     ),
     TemplateOut(
         id="wikijs",
         name="Wiki.js 2 (wiki)",
-        description="Wiki with Markdown editor and page history on PostgreSQL. Public image; needs an admin to raise DB connections to 10.",
+        description="Wiki.js is a wiki with a Markdown editor and page history.",
         image="requarks/wiki:2.5",
         port=3000,
         wants_db=True,
@@ -565,11 +591,12 @@ CATALOG: List[TemplateOut] = [
             "Finish the setup page right after the first start: whoever completes it becomes the admin."
         ),
         docs_url=f"{REPO_EXAMPLES}/wikijs",
+        upstream_docs_url="https://docs.requarks.io/",
     ),
     TemplateOut(
         id="status",
         name="Status page (Gatus)",
-        description="Uptime dashboard that probes public endpoints on a schedule. The shipped config is a generic demo (example.com + DNS check).",
+        description="Gatus is an uptime dashboard that checks your endpoints on a schedule.",
         image="ghcr.io/seaburr/picopaas-example-status:latest",
         port=8080,
         wants_db=False,
@@ -580,17 +607,19 @@ CATALOG: List[TemplateOut] = [
             "History is in memory and resets on restart. It cannot probe this platform's own public URLs (load balancer hairpin)."
         ),
         docs_url=f"{REPO_EXAMPLES}/status",
+        upstream_docs_url="https://github.com/TwiN/gatus#readme",
     ),
     TemplateOut(
         id="static-site",
         name="Static website (nginx)",
-        description="nginx serving a default page. A starter: swap in your own image once it works.",
+        description="A small nginx web server that serves a default page, as a starting point.",
         image="nginxinc/nginx-unprivileged:alpine",
         port=8080,
         wants_db=False,
         wants_storage=False,
         env={},
         notes="Runs as non-root UID 101.",
+        upstream_docs_url="https://nginx.org/en/docs/",
     ),
 ]
 

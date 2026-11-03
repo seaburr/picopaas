@@ -47,6 +47,11 @@ Apply with the CLI, `curl`, or the dashboard exactly as in the Ghost recipe:
 picopaas apply -f grafana.yaml
 ```
 
+## Limitation: only public data sources
+
+Outbound traffic from apps is restricted, so Grafana can only reach data sources on the public internet
+(or the app's own PicoPaaS database). Private networks and cluster-internal services are not reachable.
+
 ## Limitation: single replica only
 
 Run Grafana at **one replica**. PicoPaaS gives each app a single ClusterIP Service on the app port and no

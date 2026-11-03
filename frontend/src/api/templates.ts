@@ -21,6 +21,7 @@ export interface AppTemplate {
   volume: { size_gi: number; mount_path: string; required: boolean } | null
   notes: string
   docs_url?: string | null
+  upstream_docs_url?: string | null
 }
 
 export const listTemplates = () => apiFetch<AppTemplate[]>('/templates')

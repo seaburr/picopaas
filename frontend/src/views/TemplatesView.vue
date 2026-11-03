@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../stores/auth'
 import { ApiError } from '../api/client'
+import { dbEngineLabel } from '../composables/appUi'
 import { listTemplates, type AppTemplate } from '../api/templates'
 
 const auth = useAuthStore()
@@ -19,6 +20,10 @@ const offNotes = computed(() => {
   if (storageOff.value) n.push('blob storage')
   return n
 })
+
+// "Ghost (blog/CMS)" -> "Ghost"
+const DOCS_NAME: Record<string, string> = { grafana: 'Grafana', 'grafana-pg': 'Grafana', status: 'Gatus', 'static-site': 'nginx' }
+const docsName = (t: AppTemplate) => DOCS_NAME[t.id] ?? t.name.replace(/\s*\(.*\)$/, '')
 
 onMounted(async () => {
   try {
@@ -50,20 +55,21 @@ onMounted(async () => {
           <h2 class="section-title wrap-break-word">{{ t.name }}</h2>
           <p class="text-sm text-zinc-300">{{ t.description }}</p>
           <div class="flex flex-wrap gap-1">
-            <span v-if="t.wants_db" class="badge badge-info">{{ t.db_engine === 'pg' ? 'PostgreSQL database' : 'MySQL database' }}</span>
-            <span v-if="t.wants_storage" class="badge badge-info">Blob storage bucket</span>
-            <span v-if="t.volume" class="badge badge-info">{{ t.volume.size_gi }} GiB volume{{ t.volume.required ? '' : ' (optional)' }}</span>
+            <span v-if="t.wants_db" class="badge badge-info">{{ dbEngineLabel(t.db_engine) }}</span>
+            <span v-if="t.wants_storage" class="badge badge-info">Object Storage</span>
+            <span v-if="t.volume" class="badge badge-info">Block Storage{{ t.volume.required ? '' : ' (optional)' }}</span>
             <span v-if="!t.wants_db && !t.wants_storage && !t.volume" class="badge badge-neutral">No add-ons</span>
-            <span v-if="t.secrets.length" class="badge badge-neutral">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }} to set</span>
+            <span v-if="t.secrets.length" class="badge badge-neutral">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }}</span>
           </div>
           <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
           <p v-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
           <p class="mono text-xs text-zinc-400"><span class="break-all">{{ t.image }}</span> <span class="whitespace-nowrap">· port {{ t.port }}</span></p>
-          <p v-if="t.notes" class="meta">{{ t.notes }}</p>
-          <div class="mt-auto flex items-center justify-between gap-2 pt-2">
-            <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="link text-sm">README on GitHub</a>
-            <span v-else />
-            <RouterLink :to="{ path: '/apps/new', query: { template: t.id } }" class="btn-primary shrink-0">Use this template</RouterLink>
+          <div class="mt-auto pt-2">
+            <RouterLink :to="{ path: '/apps/new', query: { template: t.id } }" class="btn-primary">Use this template</RouterLink>
+            <p class="meta mt-2 flex flex-wrap gap-x-3">
+              <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="link">Setup guide</a>
+              <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="link">{{ docsName(t) }} docs</a>
+            </p>
           </div>
         </section>
       </div>

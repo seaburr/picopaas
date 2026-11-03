@@ -12,6 +12,7 @@ import { ApiError } from '../api/client'
 import { dbEngineLabel, eventNote, primaryHost, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
+import ProjectPicker from '../components/ProjectPicker.vue'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import type { App } from '../types'
@@ -114,9 +115,9 @@ function overCapTip(app: App) {
 function meta(app: App) {
   const bits = [app.image, `port ${app.port}`]
   const extras = [
-    app.want_db ? `DB (${dbEngineLabel(app.db_engine)})` : '',
-    app.want_storage ? 'blob storage' : '',
-    app.volume ? 'volume' : '',
+    app.want_db ? dbEngineLabel(app.db_engine) : '',
+    app.want_storage ? 'Object Storage' : '',
+    app.volume ? 'Block Storage' : '',
   ].filter(Boolean)
   if (extras.length) bits.push(extras.join(' + '))
   return bits
@@ -129,19 +130,24 @@ function meta(app: App) {
 
     <main id="main" tabindex="-1" class="page-main">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-baseline gap-3">
-          <h1 class="page-title">{{ !projects.current ? 'Apps' : projects.current.is_personal ? 'Personal apps' : `Apps in ${projects.current.name}` }}</h1>
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 class="page-title">Apps</h1>
+          <ProjectPicker label="in" />
           <span v-if="!loading && limit" class="meta">{{ store.apps.length }} of {{ limit }}</span>
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
           <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" disabled />
-          <RouterLink v-else to="/apps/new" class="btn-primary btn-sm"><Plus :size="14" aria-hidden="true" />New app</RouterLink>
+          <template v-else>
+            <RouterLink to="/templates" class="btn-secondary btn-sm">From template</RouterLink>
+            <RouterLink v-if="auth.user?.features?.kaisen" to="/kaisen/new" class="btn-secondary btn-sm">Build with Kaisen</RouterLink>
+            <RouterLink to="/apps/new" class="btn-primary btn-sm"><Plus :size="14" aria-hidden="true" />New app</RouterLink>
+          </template>
         </div>
       </div>
 
       <p v-if="projects.loaded && !projects.hasShared" class="help mb-3">
-        Want to share apps with others? <RouterLink to="/projects/new" class="underline">Create a project.</RouterLink>
+        Want to share apps with others? <RouterLink to="/projects" class="underline">Create a project.</RouterLink>
       </p>
 
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -161,6 +167,7 @@ function meta(app: App) {
         <p class="mt-1 text-sm text-zinc-300">Point us at a public Docker image and the port it listens on. You'll have a live https URL in about a minute.</p>
         <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <RouterLink to="/apps/new" class="btn-primary">Create app</RouterLink>
+          <RouterLink to="/templates" class="btn-secondary">From a template</RouterLink>
           <button type="button" class="btn-secondary" @click="trySample">Try a sample app</button>
           <RouterLink v-if="auth.user?.features?.kaisen" to="/kaisen/new" class="btn-secondary">Build with Kaisen (Preview)</RouterLink>
           <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>

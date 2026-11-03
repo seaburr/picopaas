@@ -68,6 +68,12 @@ Everything else is wired from platform refs (see `../../docs/RECIPES.md` for the
   (`N8N_RUNNERS_ENABLED`, `N8N_DIAGNOSTICS_ENABLED`, `N8N_VERSION_NOTIFICATIONS_ENABLED`,
   `N8N_TEMPLATES_ENABLED`, `NODES_INCLUDE`).
 
+## Execution history is kept small
+
+The database quota is 50 MB, so the spec does not keep successful executions
+(`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`) and prunes the rest after 72 hours or 1000 executions
+(`EXECUTIONS_DATA_MAX_AGE`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT`). Failed runs stay visible for debugging.
+
 ## Memory: n8n needs ~512 MiB (an admin override)
 
 n8n **OOMs at the 384 MiB default cap**. It needs an **admin resource override to ~512 MiB** (we verified 512

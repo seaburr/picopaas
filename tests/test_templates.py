@@ -104,7 +104,10 @@ def test_miniflux_and_forgejo_templates(client):
     assert m["db_engine"] == "pg" and "sslmode=verify-full&sslrootcert=${{ db.ca_file }}" in m["env"]["DATABASE_URL"]
     assert [s["key"] for s in m["secrets"]] == ["ADMIN_PASSWORD"]
     f = by_id["forgejo"]
-    assert not f["wants_db"] and f["image"].endswith("-rootless")
+    assert f["wants_db"] and f["db_engine"] == "mysql" and f["image"].endswith("-rootless")
+    # CA-verified MySQL (verified live 2026-11-03): Go trusts the platform CA via SSL_CERT_FILE
+    assert f["env"]["DB_TYPE"] == "mysql" and f["env"]["FORGEJO__DATABASE__SSL_MODE"] == "true"
+    assert f["env"]["SSL_CERT_FILE"] == "${{ db.ca_file }}" and f["env"]["DB_HOST"] == "${{ db.host }}:${{ db.port }}"
     assert f["volume"] == {"size_gi": 1, "mount_path": "/var/lib/gitea", "required": True}
 
 
@@ -147,3 +150,10 @@ def test_new_pg_templates_create_app_with_empty_secrets(client):
     r = client.post("/apps", json={"name": "ntfy", "image": t["image"], "port": t["port"], "want_db": True,
                                    "db_engine": "pg", "env": env})
     assert r.status_code == 201, r.text
+
+
+def test_cards_have_short_descriptions_and_upstream_docs():
+    for t in CATALOG:
+        assert t.upstream_docs_url and t.upstream_docs_url.startswith("https://"), t.id
+        assert len(t.description) <= 140, t.id
+        assert t.description.count(". ") == 0 and t.description.endswith("."), t.id

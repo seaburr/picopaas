@@ -627,6 +627,7 @@ export interface AdminProject {
   suspended_reason: string | null
   suspended_at: string | null
   suspended_by_email: string | null
+  kaisen_uploads_enabled?: boolean
 }
 
 // GET /admin/suspensions: flat list, newest first. Apps stopped by a project/user carry cause_type + cause_id.
@@ -724,12 +725,89 @@ export interface KaisenBuildDetail extends KaisenBuild {
   files: { path: string; size: number }[]
   runs: KaisenRun[]
   inbox: KaisenInboxItem[]
-  spend: { build_usd: number; cap_build: number; month_usd: number; cap_month?: number }
+  spend: { build_usd: number; cap_build: number; month_usd: number; last30_usd: number; cap_month?: number }
   output: KaisenOutput
   can_run: boolean
   snapshots_kept?: number
   secrets?: KaisenBuildSecret[]
   tests?: KaisenTests | null
+  uploads?: KaisenUploadsSummary
+}
+
+// Matches docs/API.md 'Kaisen file uploads'.
+export interface KaisenUploadsAvailability {
+  uploads_enabled: boolean
+  uploads_project_enabled: boolean
+  uploads_platform_enabled: boolean
+  uploads_disabled_reason: string | null
+  uploads_not_enabled_label: string
+  uploads_notice: string
+}
+
+export interface KaisenUploadsSummary extends KaisenUploadsAvailability {
+  count: number
+  asset_count: number
+  reference_count: number
+  asset_bytes: number
+  ref_bytes: number
+  max_files: number
+  asset_limit_bytes: number
+  ref_limit_bytes: number
+  changed_since_deploy: boolean
+}
+
+export interface KaisenUpload {
+  id: number
+  kind: 'asset' | 'reference'
+  path: string
+  name: string
+  name_orig: string
+  mime: string
+  ext: string
+  size: number
+  width: number | null
+  height: number | null
+  description: string
+  version: number
+}
+
+export interface KaisenUploadQuota {
+  count: number
+  max_files: number
+  asset_bytes: number
+  asset_limit_bytes: number
+  ref_bytes: number
+  ref_limit_bytes: number
+  project_bytes: number
+  project_limit_bytes: number
+  user_bytes: number
+  user_limit_bytes: number
+  max_upload_bytes: number
+}
+
+export interface KaisenUploadList extends KaisenUploadsAvailability {
+  uploads: KaisenUpload[]
+  quota: KaisenUploadQuota
+  notice: string
+}
+
+export interface KaisenUploadResult extends KaisenUpload {
+  notes?: string[]
+}
+
+export interface KaisenUploadsFlag {
+  project_id: number
+  name: string
+  kaisen_uploads_enabled: boolean
+}
+
+export interface KaisenUploadsPlatformSummary {
+  platform_bytes: number
+  platform_limit_bytes: number
+  percent: number
+  warn: boolean
+  files: number
+  blocklist_entries: number
 }
 
 export interface KaisenBuildSecret {
@@ -854,6 +932,7 @@ export interface KaisenSettingsPayload {
 
 export interface KaisenSpend {
   month_usd: number
+  last30_usd: number
   cap_day: number
   today_usd: number
 }
