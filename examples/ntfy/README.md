@@ -27,9 +27,17 @@ exists only after that workflow has run on the pushed commit; until then the spe
 
 ## Verified
 
-Local only (2026-11-03, ntfy 2.37.1 amd64 under emulation, `--user 10001`, Postgres 16 container with `sslmode=disable`):
-healthy in about 1 s; anonymous publish 403; authenticated publish and poll OK; access token created via
-`/v1/account/token`; after `docker restart` the message history, the token and the user all still work (state is in PG);
-about 65 MiB RAM with 3 pool connections; 12 tables, DB 8.3 MB of 50 MB. **Live test not run:** the wrapper image
-is unpublished, the platform refuses the root upstream image, and pushing a temporary public image was blocked by the
-permission system. TLS verify-full against the platform CA is therefore still unproven for ntfy (Miniflux/Memos prove the same pattern).
+**Verified live 2026-11-03** (throwaway app, published GHCR wrapper, PostgreSQL via the CA-verified DSN):
+- Boots and serves `/v1/health` (`{"healthy":true}`) with `sslmode=verify-full&sslrootcert=${{ db.ca_file }}`.
+- Negative test: the same DSN with `sslrootcert=/etc/ssl/certs/ca-certificates.crt` (system bundle) makes ntfy exit with
+  `FATAL database ping failed ... x509: certificate signed by unknown authority`, so verification is really on.
+- Anonymous publish and poll return 403; wrong password 401; authenticated publish and poll work; an access token
+  from `/v1/account/token` works.
+- After a platform restart the message history, the token and the user still work (state is in PG).
+- Numbers: about 15 MiB RAM (one metrics sample, 13m CPU); DB 8.2-8.4 MB of 50 MB after startup and one message.
+
+## Gotchas
+
+- Upstream has `ENTRYPOINT ["ntfy"]` and no `CMD`, and PicoPaaS has no command override, so the wrapper must set `CMD ["serve"]`
+  (the first published wrapper lacked it and printed help).
+- `status` stays `deploying` for a while after ntfy is already serving; judge by `/v1/health`.

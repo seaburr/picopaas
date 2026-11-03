@@ -775,10 +775,12 @@ PicoPaaS does not offer or market it as a managed service. Read the license firs
 The upstream images run as root, so each has a wrapper in `examples/<app>/` built by `examples.yml` and published as
 `ghcr.io/seaburr/picopaas-example-<app>`. **IT-Tools and Excalidraw: verified live 2026-11-03** (throwaway apps 274, 275,
 deleted): they copy the upstream static files into `nginx-unprivileged` (port 8080, SPA fallback so deep links work), no env,
-about 20 MiB (measured locally). **ntfy: live test pending a republish.** It is the upstream image (v2.37.1) plus
-`USER 10001:10001` and `CMD ["serve"]`, with its cache, users and tokens in the platform PostgreSQL (`NTFY_DATABASE_URL`,
-`verify-full` with the CA file, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`); about 65 MiB RAM locally. The first published image
-lacked `CMD ["serve"]` and exited printing help (app 273, deleted), so its CA-verified connection is still unproven live.
+about 20 MiB (measured locally). **ntfy: verified live 2026-11-03** (app 276, deleted). It is the upstream image (v2.37.1) plus `USER 10001:10001` and
+`CMD ["serve"]`, with its cache, users and tokens in the platform PostgreSQL (`NTFY_DATABASE_URL` with
+`sslmode=verify-full&sslrootcert=${{ db.ca_file }}&pool_max_conns=3`; a negative test with the system CA bundle fails
+`x509: certificate signed by unknown authority`, so verification is real), `NTFY_AUTH_DEFAULT_ACCESS=deny-all` (anonymous
+publish 403), history and tokens survive a restart; about 15 MiB RAM, DB about 8.3 MB. The first published image lacked
+`CMD ["serve"]` and exited printing help (app 273, deleted).
 Details in `examples/ntfy/`, `examples/it-tools/` and `examples/excalidraw/`.
 
 ## Lessons for bringing your own image
