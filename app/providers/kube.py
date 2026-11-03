@@ -138,6 +138,24 @@ def _app_pods(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [p for p in items if not _is_backup_pod(p)]
 
 
+def _current_revision_pods(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pods that can say something about the app's current state: not terminating, and (when pods carry a
+    pod-template-hash) only the newest rollout's pods, i.e. those of the newest-created live pod. A crashed pod of an
+    older revision (or one being replaced) must not keep the app in 'error' once a newer rollout is healthy; a failing
+    newest revision still shows because its own pods are the newest."""
+    live = [p for p in items if not (p.get("metadata") or {}).get("deletionTimestamp")]
+    if not live:
+        return items
+    def stamp(p: dict[str, Any]) -> str:
+        meta = p.get("metadata") or {}
+        return str(meta.get("creationTimestamp") or meta.get("creation_timestamp") or "")
+    h = lambda p: ((p.get("metadata") or {}).get("labels") or {}).get("pod-template-hash")  # noqa: E731
+    newest = max(live, key=stamp)
+    if not h(newest):
+        return live
+    return [p for p in live if h(p) == h(newest)]
+
+
 def _pod_info(pod: dict[str, Any]) -> PodInfo:
     meta = pod.get("metadata") or {}
     st = pod.get("status") or {}
@@ -252,7 +270,7 @@ class KubeClientProvider(KubeProvider):
             and any(c.get("ready") for c in (p.get("status") or {}).get("containerStatuses") or [])
             for p in items
         )
-        for pod in items:
+        for pod in _current_revision_pods(items):
             code = self._pod_error(pod)
             if code == "disk" and serving:
                 continue

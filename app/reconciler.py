@@ -739,6 +739,36 @@ def _is_not_found(exc: BaseException) -> bool:
     return False
 
 
+# Errors derived from live pod state: they clear as soon as the pods are healthy, without waiting out the backoff.
+_POD_DERIVED_REASONS = frozenset({"crash_loop", "oom", "not_ready", "image_pull", "config", "root_image", "disk",
+                                  "replica_failure", "quota", "timeout"})
+# NOT "unknown": that is also the reason of a failed kube apply (deploy_failed). The old revision is still serving then,
+# so get_status says running although the new spec/digest never went live; clearing it would hide the failure and
+# mark a never-run digest as known-good (defeating auto-rollback).
+
+
+def _recovered(app: models.App, kube: KubeProvider) -> bool:
+    """An errored app (waiting out its backoff) whose cluster state is now settled and ready: the failure was tied
+    to an old revision / crashed pod, so the status must follow reality. Never for spec-level errors (db, storage)."""
+    if app.status_reason not in _POD_DERIVED_REASONS or app.rendered_hash is None:
+        return False
+    try:
+        return kube.get_status(k8s_manifests.namespace_name(app.id)) == "running"
+    except Exception as exc:  # noqa: BLE001 - probe only; the normal retry path still runs
+        log.warning("app %s: recovery probe failed: %s", app.id, _kube_error_summary(exc))
+        return False
+
+
+def _clear_error(session: Session, app: models.App) -> None:
+    app.status = "running"
+    app.status_detail = None
+    app.status_reason = None
+    app.deploying_since = None
+    app.reset_retry()
+    session.commit()
+    image_history.record_running(session, app)
+
+
 def reconcile_all(
     session: Session,
     *,
@@ -784,6 +814,9 @@ def reconcile_all(
         )
     ).scalars().all()
     due = [a for a in errored if a.last_attempt_at is None or current >= retry_at(a)]  # None: pre-migration row
+    for a in errored:
+        if a not in due and _recovered(a, kube):
+            _clear_error(session, a)
     for app in [*pending_or_deploying, *due]:
         reconcile_app(
             session,
