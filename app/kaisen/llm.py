@@ -2,6 +2,7 @@
 import inspect
 import json
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -259,6 +260,11 @@ class ModelError(Exception):
     """Non-retryable (or retries exhausted) model failure. Message is safe to show."""
 
 
+class ModelTimeout(Exception):
+    """A model call went silent (stream idle timeout, or the hard wall in builder.bounded_create). Not a model error:
+    the watchdog treats it as a hang and retries the step."""
+
+
 @dataclass
 class ModelResponse:
     content: list  # list[dict], stored verbatim (thinking blocks included)
@@ -276,7 +282,8 @@ class AnthropicClient:
     def __init__(self, api_key: str = "", client=None, sleep: Callable[[float], None] = time.sleep):
         import anthropic  # imported late so the API process never needs the SDK unless a model is called
         self._a = anthropic
-        self.client = client or self._a.Anthropic(api_key=api_key, max_retries=0, timeout=600.0)
+        self.client = client or self._a.Anthropic(api_key=api_key, max_retries=0,
+                                                 timeout=float(config.KAISEN_MODEL_CALL_SECONDS))
         self.sleep = sleep
         try:
             self._native_effort = "output_config" in inspect.signature(self.client.messages.stream).parameters
@@ -303,6 +310,8 @@ class AnthropicClient:
                role: str = "builder") -> ModelResponse:
         delay = 2.0
         for attempt in range(5):
+            if getattr(threading.current_thread(), "abandoned", False):
+                raise ModelTimeout("model call abandoned")  # nobody is waiting: do not issue another billed request
             try:
                 return self._call(model, messages, effort, web, role)
             except self._a.RateLimitError:
@@ -311,6 +320,8 @@ class AnthropicClient:
                 if e.status_code < 500:
                     raise ModelError(f"Anthropic API error {e.status_code}: {_short(e)}") from None
                 err = f"Anthropic server error {e.status_code}"
+            except self._a.APITimeoutError:  # subclass of APIConnectionError: must come first
+                raise ModelTimeout("The model stream went silent") from None
             except self._a.APIConnectionError:
                 err = "Could not reach the Anthropic API"
             if attempt == 4:

@@ -686,6 +686,9 @@ export interface KaisenRun {
   suggestions?: string[]
   review?: KaisenReview | null
   has_diff?: boolean
+  hang_retries?: number
+  error_reason?: string | null
+  notes?: { text: string; at: string }[] // hang / interrupt notices
 }
 
 export interface KaisenReview {

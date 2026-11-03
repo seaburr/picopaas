@@ -4,6 +4,7 @@ Functions take `S`, a callable returning a context manager that yields a Session
 tests pass one that keeps the shared test session open)."""
 import json
 import re
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -12,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app import config
 from app import models as app_models
-from . import buildsecrets, checks, httptool, members, reviewing, snapshots
-from .llm import ModelError, parse_suggestions, web_supported
+from . import buildsecrets, checks, httptool, members, reviewing, snapshots, watchdog
+from .llm import ModelError, ModelTimeout, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
 from .paths import ToolError, normalize_path
 from .settings import RuntimeSettings, load as load_settings
@@ -396,9 +397,14 @@ def _stop(s: Session, run: KaisenRun, status: str, kind: str, text: str) -> None
     s.add(KaisenInbox(build_id=run.build_id, run_id=run.id, kind=kind, text=text))
 
 
-def stop_run(S, run_id: int, status: str, kind: str, text: str) -> None:
+def stop_run(S, run_id: int, status: str, kind: str, text: str, attempt: int | None = None) -> None:
+    """Stop a run. With `attempt`, only if the run is still on that attempt (a late abandoned step must not stop the
+    retry the watchdog queued)."""
     with S() as s:
-        _stop(s, s.get(KaisenRun, run_id), status, kind, text)
+        run = s.get(KaisenRun, run_id)
+        if attempt is not None and run.attempt != attempt:
+            return
+        _stop(s, run, status, kind, text)
         s.commit()
 
 
@@ -464,29 +470,76 @@ def _result(tu_id, text, error=False):
 
 # ---- the loop ---------------------------------------------------------------
 
-def _still_active(s: Session, run: KaisenRun) -> bool:
+def _still_active(s: Session, run: KaisenRun, attempt: int | None = None) -> bool:
     s.refresh(run)
+    if attempt is not None and run.attempt != attempt:
+        return False  # the watchdog (or an Interrupt) abandoned this attempt: discard whatever it was doing
     b = s.get(KaisenBuild, run.build_id)
     return run.status in ("queued", "running") and b is not None and b.deleted_at is None
 
 
-def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None, requester=None) -> str:
+def _fenced(s: Session, run_id: int, attempt: int) -> bool:
+    """True when this attempt was abandoned. A locking read, so on MySQL it sees the latest committed value (not this
+    transaction's snapshot) and an interrupt cannot slip in between this check and our commit."""
+    with s.no_autoflush:
+        cur = s.scalar(select(KaisenRun.attempt).where(KaisenRun.id == run_id).with_for_update())
+    return cur != attempt
+
+
+def bounded_create(client, **kw):
+    """client.create with a hard wall (KAISEN_MODEL_CALL_MAX_SECONDS): a model call that never returns raises
+    ModelTimeout instead of hanging the step. The call touches no database session, so abandoning its thread is safe."""
+    box: dict = {}
+
+    def _go():
+        try:
+            box["r"] = client.create(**kw)
+        except BaseException as e:  # noqa: BLE001 - re-raised in the caller
+            box["e"] = e
+    th = threading.Thread(target=_go, daemon=True)
+    th.abandoned = False  # the client's retry loop stops issuing (billed) requests once this is set
+    th.start()
+    deadline = time.monotonic() + config.KAISEN_MODEL_CALL_MAX_SECONDS
+    while th.is_alive() and time.monotonic() < deadline:
+        th.join(min(1.0, max(0.0, deadline - time.monotonic())))
+        if watchdog.abandoned():  # our own step was abandoned: stop the call's retries too
+            th.abandoned = True
+    if th.is_alive():
+        th.abandoned = True
+        raise ModelTimeout("model call exceeded its time limit")
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
+
+
+def _hung(S, run_id: int, attempt: int, why: str) -> str:
+    """The watchdog path for a step that noticed its own hang (a timed-out model call)."""
+    return {"requeued": "hung", "error": "error"}.get(watchdog.interrupt(S, run_id, attempt, why), "stopped")
+
+
+def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None, requester=None,
+             expect_attempt: int | None = None) -> str:
     """Run one step (until ask_human, finish, a stop, or MAX_TURNS). Returns the outcome."""
     started, recent = clock(), []
+    attempt = 0
     http = httptool.Limited(requester, config.KAISEN_HTTP_MAX_PER_STEP) if requester else None
     with S() as s:
         run = s.get(KaisenRun, run_id)
         if run is None or run.status not in ("queued", "running"):
             return "skipped"
-        run.error = None
+        if expect_attempt is not None and run.attempt != expect_attempt:
+            return "skipped"  # interrupted between the worker choosing this run and starting it
+        run.error, run.error_reason = None, None
+        attempt = run.attempt
         set_status(s, run, "running")
+        watchdog.stamp(run)
         s.commit()
 
     for _ in range(config.KAISEN_MAX_TURNS):
         with S() as s:
             run = s.get(KaisenRun, run_id)
-            if not _still_active(s, run):
-                return "stopped"  # build deleted (or run stopped) while we worked
+            if not _still_active(s, run, attempt):
+                return "stopped"  # build deleted (or run stopped, or this attempt abandoned) while we worked
             gone = stop_reason(s, run)
             if gone:  # suspended project / creator suspended or removed: stop before spending another model turn
                 _stop(s, run, "stopped", "error", gone)
@@ -516,19 +569,26 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
             # preview's env out, and the deploy runs it (pentest K16; Chas chose "off" over an allow-list).
             web_ok = rs.web_access and web_supported(rs.model) and not buildsecrets.names(s, run.build_id)
             web = {"allowed_domains": list(rs.web_allowed_domains)} if web_ok else None
+            watchdog.stamp(run)
+            s.commit()  # progress: a new turn starts
 
+        watchdog.set_phase("model")
         try:
-            resp = client.create(model=model, messages=messages, effort=effort, web=web)
+            resp = bounded_create(client, model=model, messages=messages, effort=effort, web=web)
+        except ModelTimeout:
+            return _hung(S, run_id, attempt, "Model call timed out")
         except ModelError as e:
-            stop_run(S, run_id, "error", "error", str(e))
+            stop_run(S, run_id, "error", "error", str(e), attempt)
             return "error"
         except Exception:
-            stop_run(S, run_id, "error", "error", "Unexpected model client failure")
+            stop_run(S, run_id, "error", "error", "Unexpected model client failure", attempt)
             return "error"
+        finally:
+            watchdog.set_phase("idle")
 
         with S() as s:
             run = s.get(KaisenRun, run_id)
-            if not _still_active(s, run):
+            if not _still_active(s, run, attempt):
                 return "stopped"  # deleted during the model call: discard the response, write nothing
             if not lease.check():
                 return "lease_lost"  # fenced: discard this response
@@ -541,18 +601,23 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
                 record_usage(s, run, s.get(KaisenBuild, run.build_id).project_id, model, resp.usage)
             except Exception:  # fail closed: no metering, no run
                 s.rollback()
-                stop_run(S, run_id, "error", "error", "Metering failed; run stopped.")
+                stop_run(S, run_id, "error", "error", "Metering failed; run stopped.", attempt)
                 return "error"
+            watchdog.stamp(run)
             outcome = _handle_response(s, run, resp, recent, deployer, review=want_review, requester=http)
+            if _fenced(s, run_id, attempt):  # a hung tool returned after the watchdog requeued the run: write nothing
+                s.rollback()
+                return "stopped"
+            watchdog.stamp(run)
             s.commit()
             if outcome == "review":
-                outcome = _review_round(S, run_id, client, lease, requester)
+                outcome = _review_round(S, run_id, client, lease, requester, attempt)
             if outcome != "continue":
                 return outcome
 
     with S() as s:
         run = s.get(KaisenRun, run_id)
-        if _still_active(s, run):
+        if _still_active(s, run, attempt):
             pid = s.get(KaisenBuild, run.build_id).project_id
             rs = load_settings(s, pid)
             capped = check_caps(s, run, pid, rs)
@@ -571,15 +636,18 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
     return "stopped"
 
 
-def _review_round(S, run_id: int, client, lease, requester=None) -> str:
+def _review_round(S, run_id: int, client, lease, requester=None, attempt: int | None = None) -> str:
     """The builder has called finish and the project wants a review. Returns "done" (approved, or the review was
     skipped), "continue" (findings: the builder gets its one fix round), or a stop outcome."""
-    state, rv = reviewing.review(S, run_id, client, lease, requester)
+    try:
+        state, rv = reviewing.review(S, run_id, client, lease, requester, attempt)
+    except ModelTimeout:
+        return _hung(S, run_id, attempt, "Review model call timed out") if attempt is not None else "stopped"
     if state != "ok":
         return "stopped" if state == "stopped" else "lease_lost"
     with S() as s:
         run = s.get(KaisenRun, run_id)
-        if not _still_active(s, run):
+        if not _still_active(s, run, attempt):
             return "stopped"
         run.review = rv
         if rv["verdict"] == "changes":
@@ -631,6 +699,8 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
     results, ask, finished = [], None, None
     for tu in uses:
         name, inp, tid = tu.get("name"), tu.get("input"), tu["id"]
+        watchdog.set_phase("tool")
+        watchdog.stamp(run)
         try:
             if name == "ask_human":
                 q = _str_arg(inp, "question")
@@ -670,6 +740,8 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
             results.append(_result(tid, exec_tool(ws, name, inp)))
         except ToolError as e:
             results.append(_result(tid, f"Error: {e}", True))
+        watchdog.stamp(run)
+    watchdog.set_phase("idle")
 
     if run.status not in ("queued", "running"):  # stopped mid-turn (a deploy found the project suspended): stay stopped
         run.messages = msgs + [{"role": "user", "content": results}]

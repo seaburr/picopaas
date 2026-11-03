@@ -634,3 +634,29 @@ KAISEN_BUNDLE_FETCH_MAX = int(os.environ.get("KAISEN_BUNDLE_FETCH_MAX", "120"))
 KAISEN_BUNDLE_FETCH_WINDOW_SECONDS = 60 * 60
 KAISEN_HEARTBEAT_FILE = os.environ.get("KAISEN_HEARTBEAT_FILE", "/tmp/kaisen-worker-heartbeat")  # touched by the worker; the pod's liveness probe reads it
 KAISEN_HEARTBEAT_SECONDS = 30
+
+
+# Hang watchdog (app/kaisen/watchdog.py). A step that makes no progress is interrupted and retried from its last
+# persisted state; after KAISEN_HANG_RETRIES retries the run stops with error_reason "hung".
+def _env_seconds(name: str, default: int, lo: int = 5, hi: int = 24 * 3600) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        v = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number of seconds (got {raw!r})") from None
+    if not lo <= v <= hi:
+        raise ValueError(f"{name} must be between {lo} and {hi} (got {v})")
+    return v
+
+
+KAISEN_MODEL_CALL_SECONDS = _env_seconds("KAISEN_MODEL_CALL_SECONDS", 300)  # idle (no bytes) timeout of the model HTTP stream
+KAISEN_MODEL_CALL_MAX_SECONDS = _env_seconds("KAISEN_MODEL_CALL_MAX_SECONDS", 540)  # hard wall for one model call incl. its retries
+KAISEN_TOOL_SECONDS = _env_seconds("KAISEN_TOOL_SECONDS", 420)  # one tool call (deploy_preview waits up to ~290 s)
+KAISEN_HANG_SECONDS = _env_seconds("KAISEN_HANG_SECONDS", 600)  # no progress stamp for this long = hung
+KAISEN_HANG_RETRIES = _env_seconds("KAISEN_HANG_RETRIES", 2, lo=0, hi=10)  # automatic retries (a count, not seconds)
+KAISEN_HANG_MARGIN_SECONDS = 120  # the liveness heartbeat stays fresh this long past KAISEN_HANG_SECONDS
+KAISEN_WATCHDOG_POLL_SECONDS = 5  # how often the worker checks an in-flight step
+if KAISEN_HANG_SECONDS <= max(KAISEN_MODEL_CALL_MAX_SECONDS, KAISEN_TOOL_SECONDS):
+    raise ValueError("KAISEN_HANG_SECONDS must exceed KAISEN_MODEL_CALL_MAX_SECONDS and KAISEN_TOOL_SECONDS")

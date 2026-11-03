@@ -13,6 +13,7 @@ export const createBuild = (payload: { project_id: number | null; name: string; 
 export const deleteBuild = (id: number, deleteApp: boolean) =>
   apiFetch<void>(`/kaisen/builds/${id}?delete_app=${deleteApp ? 'true' : 'false'}`, { method: 'DELETE' })
 export const runBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/run`)
+export const interruptRun = (id: number, runId: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/runs/${runId}/interrupt`)
 export const sendFeedback = (id: number, text: string) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/feedback`, { text })
 export const answerInbox = (id: number, itemId: number, text: string) =>
   post<KaisenBuildDetail>(`/kaisen/builds/${id}/inbox/${itemId}/answer`, { text })

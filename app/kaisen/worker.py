@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import delete, select, text, update
 
 from app import config, db as appdb
-from . import builder, deploy as deploy_mod, httptool, pushing, testresults
+from . import builder, deploy as deploy_mod, httptool, pushing, testresults, watchdog
 from .github import GitHubError, RealGitHub
 from .llm import AnthropicClient, ModelError
 from .models import KaisenBuild, KaisenEvent, KaisenInbox, KaisenRun
@@ -30,6 +30,7 @@ class Lease:
     def __init__(self, engine=None):
         self.engine = engine or appdb.engine
         self.conn = None
+        self._mu = threading.Lock()  # an abandoned (hung) step and the main loop may both check the lease
 
     @property
     def _mysql(self) -> bool:
@@ -38,6 +39,10 @@ class Lease:
     def acquire(self) -> bool:
         if not self._mysql:
             return True
+        with self._mu:
+            return self._acquire()
+
+    def _acquire(self) -> bool:
         try:
             if self.conn is None:
                 self.conn = self.engine.connect()
@@ -53,6 +58,10 @@ class Lease:
         """Still the leader? Re-checked before every model call, push and deploy."""
         if not self._mysql:
             return True
+        with self._mu:
+            return self._check()
+
+    def _check(self) -> bool:
         try:
             if self.conn is None:
                 return False
@@ -123,6 +132,14 @@ def _await_tests(s, b, runtime, app_id, secrets_, clock, sleep) -> None:
 def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sleep=time.sleep):
     """The builder's deploy_preview tool: (session, run) -> (ok, text). Raises ToolError."""
     def _deployer(s, run):
+        attempt = run.attempt  # an abandoned attempt must not persist its file writes or progress into the retry
+
+        def _fence():
+            if builder._fenced(s, run.id, attempt):
+                s.rollback()
+                raise ToolError("This step was interrupted.")
+        _fence()
+        watchdog.stamp(run)
         s.commit()  # persist this turn's file writes: a deploy failure rolls the session back
         gone = builder.stop_reason(s, run)
         if gone:
@@ -139,6 +156,8 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
             s.commit()
             suffix = " Code changes cannot fix this; call finish and tell the human." if e.final else ""
             raise ToolError(msg + suffix) from None
+        _fence()
+        watchdog.stamp(run)
         s.commit()  # do not hold a transaction open while waiting
         res = deploy_mod.check(runtime, app.id, rs.secret_values(), wait_s, clock, sleep,
                                health=deploy_mod.health_path(s, b), sha=testresults.current_sha(s, b))
@@ -147,6 +166,8 @@ def make_deployer(S, registry_factory, runtime, wait_s, clock=time.monotonic, sl
         if res.ok:
             _await_tests(s, b, runtime, app.id, rs.secret_values(), clock, sleep)
         block = redact(testresults.tool_block(s, b), rs.secret_values())
+        _fence()
+        watchdog.stamp(run)
         s.commit()
         return res.ok, _fit(block, res.text)
     return _deployer
@@ -198,8 +219,11 @@ def push_on_finish(S, run_id, gh_factory) -> None:
 
 
 def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_factory=None, runtime=None,
-         wait_s: float = config.KAISEN_PREVIEW_WAIT_TOOL, clock=time.monotonic, sleep=time.sleep) -> bool:
-    """Run one queued step if we hold the lease. Returns True if work was attempted."""
+         wait_s: float = config.KAISEN_PREVIEW_WAIT_TOOL, clock=time.monotonic, sleep=time.sleep,
+         threaded: bool = False, poll_s: float | None = None) -> bool:
+    """Run one queued step if we hold the lease. Returns True if work was attempted. `threaded` (the production
+    worker) runs the step on its own thread so a hung step can be abandoned and the run retried."""
+    watchdog.bump()
     if not lease.acquire():
         return False
     with S() as s:
@@ -227,12 +251,60 @@ def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_fac
         builder.stop_run(S, run_id, "error", "error", str(e))
         return True
     deployer = make_deployer(S, registry_factory, runtime, wait_s, clock, sleep)
-    if builder.run_step(S, run_id, client, lease, deployer=deployer, requester=make_requester(runtime)) == "done":
+    outcome = guarded_step(S, run_id, client, lease, deployer, make_requester(runtime), threaded, poll_s)
+    if outcome == "done":
         if lease.check():
             deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep)
         if lease.check():
             push_on_finish(S, run_id, gh_fn)
     return True
+
+
+def guarded_step(S, run_id, client, lease, deployer, requester, threaded: bool, poll_s: float | None = None) -> str:
+    """builder.run_step, optionally on a thread this function watches. The watcher abandons the step (daemon thread,
+    fenced by the run's attempt counter, so whatever it does later is discarded) when the run was interrupted from
+    elsewhere (manual Interrupt, another detector) or a tool call outlives KAISEN_TOOL_SECONDS, then returns so the
+    worker can pick the requeued run up. Model calls are bounded inside run_step itself."""
+    if not threaded:
+        return builder.run_step(S, run_id, client, lease, deployer=deployer, requester=requester)
+    with S() as s:
+        attempt = s.scalar(select(KaisenRun.attempt).where(KaisenRun.id == run_id))
+        s.rollback()
+    box: dict = {}
+    done = threading.Event()
+
+    def _go():
+        try:
+            box["r"] = builder.run_step(S, run_id, client, lease, deployer=deployer, requester=requester,
+                                        expect_attempt=attempt)
+        except BaseException as e:  # noqa: BLE001 - re-raised in the waiter
+            box["e"] = e
+        finally:
+            done.set()
+    th = threading.Thread(target=_go, daemon=True, name=f"kaisen-step-{run_id}")
+    th.abandoned = False
+    th.start()
+    poll = poll_s if poll_s is not None else config.KAISEN_WATCHDOG_POLL_SECONDS
+    while not done.wait(poll):
+        watchdog.bump()  # this loop is alive and watching
+        try:
+            with S() as s:
+                cur = s.scalar(select(KaisenRun.attempt).where(KaisenRun.id == run_id))
+                s.rollback()
+            if cur != attempt:
+                th.abandoned = True
+                log.warning("kaisen run %s: step abandoned (interrupted elsewhere)", run_id)
+                return "interrupted"
+            ph, age = watchdog.phase_age()
+            if ph == "tool" and age > config.KAISEN_TOOL_SECONDS:
+                th.abandoned = True
+                res = watchdog.interrupt(S, run_id, attempt, "A tool call timed out")
+                return {"requeued": "hung", "error": "error"}.get(res, "interrupted")
+        except Exception:
+            log.exception("kaisen step watcher failed")
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
 
 
 def retention(S, now=None) -> dict:
@@ -253,15 +325,46 @@ class Worker:
         self.S, self.lease, self.tick_kwargs = S, lease or Lease(), tick_kwargs
         self.stop = threading.Event()
         self._last_retention = 0.0
+        self._last_sweep = 0.0
+
+    def heartbeat_once(self) -> bool:
+        """Touch the liveness file only while the main loop is making progress (a wedged worker is then restarted by
+        its probe). DB-free on purpose: this thread only compares in-memory stamps."""
+        healthy = watchdog.loop_healthy()
+        if healthy:
+            touch_heartbeat()
+        else:
+            log.error("kaisen worker loop has made no progress for %.0f s; not touching the heartbeat", watchdog.loop_age())
+        return healthy
+
+    def sweep_if_due(self) -> None:
+        """Hang sweep from the main loop (own session per call; the API pod's reconciler is the independent backstop)."""
+        if time.monotonic() - self._last_sweep < config.KAISEN_HEARTBEAT_SECONDS:
+            return
+        self._last_sweep = time.monotonic()
+        try:
+            watchdog.sweep(self.S)
+        except Exception:
+            log.exception("kaisen hang sweep failed")
 
     def heartbeat_loop(self):
-        while not self.stop.is_set():
-            touch_heartbeat()
-            self.stop.wait(config.KAISEN_HEARTBEAT_SECONDS)
+        # the main loop touches the file itself at start and on every tick, so wait first: no work races a quick stop
+        while not self.stop.wait(config.KAISEN_HEARTBEAT_SECONDS):
+            self.heartbeat_once()
+
+    def recover(self) -> list:
+        """On start: runs left 'running' with stale progress (a worker killed mid-step) go through the hang path."""
+        try:
+            return watchdog.sweep(self.S)
+        except Exception:
+            log.exception("kaisen startup recovery failed")
+            return []
 
     def run_once(self) -> bool:
+        watchdog.bump()
         touch_heartbeat()
         try:
+            self.sweep_if_due()
             busy = tick(self.S, self.lease, **self.tick_kwargs)
             if time.monotonic() - self._last_retention > 3600:
                 self._last_retention = time.monotonic()
@@ -272,16 +375,19 @@ class Worker:
         return busy
 
     def run(self):
-        threading.Thread(target=self.heartbeat_loop, daemon=True).start()  # alive even during a long model stream
+        self.recover()
+        hb = threading.Thread(target=self.heartbeat_loop, daemon=True)  # alive even during a long model stream
+        hb.start()
         while not self.stop.is_set():
             busy = self.run_once()
             self.stop.wait(config.KAISEN_WORKER_BUSY_SECONDS if busy else config.KAISEN_WORKER_IDLE_SECONDS)
+        hb.join(5)
 
 
 def main() -> None:
     from app import logging_setup
     logging_setup.configure()
-    w = Worker()
+    w = Worker(threaded=True)
     signal.signal(signal.SIGTERM, lambda *_: w.stop.set())
     log.info("kaisen worker started")
     touch_heartbeat()

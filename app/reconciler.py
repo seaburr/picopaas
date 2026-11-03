@@ -855,6 +855,13 @@ def reconcile_all(
         session.rollback()
         log.warning("kaisen preview log snapshot failed: %s", _kube_error_summary(exc))
 
+    try:
+        from app.kaisen.watchdog import sweep_session
+        sweep_session(session)
+    except Exception as exc:  # noqa: BLE001 - backstop for a wedged kaisen worker; never break the sweep
+        session.rollback()
+        log.warning("kaisen hang sweep failed: %s", _kube_error_summary(exc))
+
     not_cleaned_up = (
         session.execute(
             select(models.App).where(

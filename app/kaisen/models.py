@@ -93,6 +93,10 @@ class KaisenRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     lease_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_progress_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # watchdog: last sign of life of the in-flight step
+    hang_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")  # bumped on interrupt: fences late steps
+    error_reason: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # "hung" when the watchdog gave up
     started_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # member whose spend this run counts against
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

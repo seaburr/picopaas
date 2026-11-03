@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { elapsed, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
 import type { KaisenRun } from '../types'
 
-const props = defineProps<{ run: KaisenRun; buildUsd: number; capBuild: number }>()
+const props = defineProps<{ run: KaisenRun; buildUsd: number; capBuild: number; canRun?: boolean; interrupting?: boolean }>()
+const emit = defineEmits<{ interrupt: [runId: number] }>()
 const t = ref(Date.now())
 const tick = setInterval(() => (t.value = Date.now()), 1000)
 onBeforeUnmount(() => clearInterval(tick))
@@ -20,6 +21,8 @@ const label = computed(() => RUN_KIND_LABEL[props.run.kind] ?? props.run.kind)
       <span>{{ elapsed(run.started_at, t) }}</span>
       <span>{{ fmtUsd(run.cost_usd) }} this run</span>
       <span class="meta">{{ fmtUsd(buildUsd) }} of {{ fmtUsd(capBuild) }} build cap</span>
+      <button v-if="canRun && run.status === 'running'" type="button" class="btn-secondary btn-sm sm:ml-auto" :disabled="interrupting" @click="emit('interrupt', run.id)">{{ interrupting ? 'Interrupting…' : 'Interrupt and retry' }}</button>
     </p>
+    <p v-for="n in run.notes ?? []" :key="n.at + n.text" class="meta mt-2" role="status">{{ n.text }}</p>
   </section>
 </template>

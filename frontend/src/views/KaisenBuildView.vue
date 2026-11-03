@@ -18,7 +18,7 @@ import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, interruptRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
@@ -42,7 +42,7 @@ const loadError = ref('')
 const notFound = ref(false)
 const announce = ref('')
 const actionError = ref('')
-const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume' | 'download'
+const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume' | 'interrupt' | 'download'
 const answerBusy = ref<number | null>(null)
 const feedback = ref('')
 const pushedUrl = ref('')
@@ -224,6 +224,7 @@ async function testOutput() {
   }
 }
 const resume = () => act('resume', () => runBuild(buildId.value))
+const interrupt = (runId: number) => act('interrupt', () => interruptRun(buildId.value, runId))
 const deployAgain = () => act('deploy', () => deployBuild(buildId.value))
 async function push() {
   const b = await act('push', () => pushBuild(buildId.value), 'Pushed to GitHub.')
@@ -365,7 +366,7 @@ async function doDelete() {
 
           <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" @answer="answer" @resume="resume" @dismiss="dismiss" />
 
-          <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" />
+          <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="busy === 'interrupt'" @interrupt="interrupt" />
           <p v-if="firstRun" class="help">Your first build is queued.</p>
           <section v-else class="card card-pad" aria-labelledby="h-change">
             <h2 id="h-change" class="section-title mb-2">Tell Kaisen what to change</h2>

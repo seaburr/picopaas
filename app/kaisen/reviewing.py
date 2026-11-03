@@ -12,8 +12,8 @@ import unicodedata
 from sqlalchemy.orm import Session
 
 from app import config
-from . import builder, deploy as deploy_mod, httptool, testresults
-from .llm import ModelError
+from . import builder, deploy as deploy_mod, httptool, testresults, watchdog
+from .llm import ModelError, ModelTimeout
 from .models import KaisenBuild, KaisenRun
 from .paths import ToolError
 from .redact import redact
@@ -155,7 +155,7 @@ def _skipped(model: str, why: str) -> dict:
     return {"verdict": "skipped", "findings": [], "model": model, "note": f"Review skipped: {why}"}
 
 
-def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | None]:
+def review(S, run_id: int, client, lease, requester=None, attempt: int | None = None) -> tuple[str, dict | None]:
     """Run the review. Returns (state, review dict): state is "ok", "stopped" (build deleted / run stopped) or
     "lease_lost". Never raises for model trouble: that becomes a "skipped" review."""
     with S() as s:
@@ -172,7 +172,7 @@ def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | N
     for _ in range(config.KAISEN_REVIEWER_MAX_TURNS):
         with S() as s:
             run = s.get(KaisenRun, run_id)
-            if not builder._still_active(s, run):
+            if not builder._still_active(s, run, attempt):
                 return "stopped", None
             if (gone := builder.stop_reason(s, run)):  # suspended: no reviewer turns either
                 builder._stop(s, run, "stopped", "error", gone)
@@ -182,15 +182,22 @@ def review(S, run_id: int, client, lease, requester=None) -> tuple[str, dict | N
                 return "ok", _skipped(model, why)
             if not lease.check():
                 return "lease_lost", None
+            watchdog.stamp(run)
+            s.commit()  # progress: a new reviewer turn starts
+        watchdog.set_phase("model")
         try:
-            resp = client.create(model=model, messages=msgs, effort=config.KAISEN_REVIEWER_EFFORT, role="reviewer")
+            resp = builder.bounded_create(client, model=model, messages=msgs, effort=config.KAISEN_REVIEWER_EFFORT, role="reviewer")
         except ModelError as e:
             return "ok", _skipped(model, str(e))
+        except ModelTimeout:
+            raise
         except Exception:  # noqa: BLE001
             return "ok", _skipped(model, "unexpected model client failure")
+        finally:
+            watchdog.set_phase("idle")
         with S() as s:
             run = s.get(KaisenRun, run_id)
-            if not builder._still_active(s, run):
+            if not builder._still_active(s, run, attempt):
                 return "stopped", None
             if not lease.check():
                 return "lease_lost", None

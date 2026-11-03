@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults
+from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults, watchdog
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
 from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret, KaisenSnapshot)
@@ -252,6 +252,10 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
     rs = ksettings.load_for_build(db, b)
     runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id.desc()).limit(10)).all()
     with_diff = snapshots.runs_with_diff(db, b.id)
+    hang_notes: dict[int, list] = {}
+    for n in db.scalars(select(KaisenInbox).where(KaisenInbox.build_id == b.id, KaisenInbox.kind == "hang")
+                        .order_by(KaisenInbox.id)):
+        hang_notes.setdefault(n.run_id, []).append(n)
     out.update({
         "brief": b.brief,
         "files": [{"path": p, "size": n} for p, n in builder.Workspace(db, b.id).list()],
@@ -263,6 +267,9 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
             "cost_usd": round(r.cost_usd or 0.0, 6),
             **_progress(r.messages),
             "context_resets": builder.context_resets(r.messages or []),
+            "hang_retries": r.hang_retries or 0,
+            "error_reason": r.error_reason,
+            "notes": [{"text": redact(n.text, sec), "at": n.created_at.isoformat()} for n in hang_notes.get(r.id, [])],
             "review": reviewing.view(r, sec),
             "started_at": r.created_at.isoformat(),
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
@@ -397,6 +404,28 @@ def run_build(build_id: int, request: Request, db: Session = Depends(get_db), us
         raise HTTPException(status_code=409, detail=msg)
     db.commit()
     audit.record(db, user, "kaisen.run", "kaisen_build", b.id, f"run={run.id} kind={run.kind}")
+    return _detail(db, b, request)
+
+
+@router.post("/kaisen/builds/{build_id}/runs/{run_id}/interrupt")
+def interrupt_run(build_id: int, run_id: int, request: Request, db: Session = Depends(get_db),
+                  user: models.User = Depends(get_active_user)):
+    """Abandon the step that is in flight (stuck or just too slow) and requeue the run to retry from its last saved
+    state. Same access as Run: any member of the build's project. Not counted against the automatic hang retries."""
+    b = get_build(db, build_id, user)
+    run = db.get(KaisenRun, run_id)
+    if run is None or run.build_id != b.id:
+        raise HTTPException(status_code=404, detail="We can't find that run.")
+    db.refresh(run)
+    if run.status != "running":
+        raise HTTPException(status_code=409, detail="That run has no step in progress to interrupt.")
+    if watchdog.manual_interrupts_recent(db, b.id) >= watchdog.MANUAL_INTERRUPTS_PER_HOUR:
+        # an abandoned model call is billed by Anthropic but never metered: bound how often it can be provoked
+        raise HTTPException(status_code=429, detail="This build was interrupted too often. Wait a while, or let the run finish.")
+    if watchdog.interrupt(watchdog.borrow(db), run.id, run.attempt, f"Interrupted by {user.email}",
+                          manual=True) != "requeued":
+        raise HTTPException(status_code=409, detail="That run has no step in progress to interrupt.")
+    audit.record(db, user, "kaisen.interrupt", "kaisen_build", b.id, f"run={run.id}")
     return _detail(db, b, request)
 
 
