@@ -7,20 +7,31 @@ background on each item if you want it.
 
 ## Open questions
 
-- [ ] **UX sweep proposals (2026-11-03, ui-ux-designer; small fixes already made).** Needs your OK (layout): (P2) App health and
-  Settings are linked only by gear/heart-pulse icons; show text labels ("Settings" / "App health") from the sm breakpoint up
-  (mockup first). Smaller ones I'd just do unless you object: (P3) Kaisen Interrupt/429 message inline next to the button instead of a
-  page-top banner; Kaisen build header icons wrap to their own row at 390px; Account time-zone select truncates at 390px; template
-  cards: fold the per-card "off on this instance" warnings into one banner. (P3, yours) Register says you agree to the Terms twice
-  (checkbox + sentence): keep both (legal) or drop the sentence?
+- [ ] **Kaisen file uploads: design is in [design/kaisen.md](design/kaisen.md) section 16 (2026-11-03); nothing built, security-reviewer goes first.** Your answers (my recommendation first):
+  (1) **P1 scope**: images (png/jpeg/webp) shipped with the site + css/html/txt/md as read-only references, model sees names/sizes/dimensions and your one-line description, not pixels. OK? (yes)
+  (2) **SVG**: refuse (script/XSS risk on `*.picopaas.xyz`); users export PNG or Kaisen draws icons inline as code. OK? (refuse)
+  (3) **Re-encode every image** (strips GPS/EXIF, caps at 2560 px, kills polyglots) so "as-is" means same picture, not same bytes. OK? (yes)
+  (4) **Vision** (model looks at a screenshot to copy a design): not in P1; P2 for reference images only, max 3 per run, opt-in per file, about 1.5k tokens each. Want it soon? (later)
+  (5) **Limits**: 4 MiB in, 20 files and 6 MiB of assets per build, 1 MiB references, 40 MiB per project, 30 uploads/hour/user. Too tight/loose? (keep)
+  (6) **Storage in the platform DB** (like bundles), no bucket, no new cost; needs a check of the managed MySQL `max_allowed_packet`. Move to Garage/Spaces only if usage grows past ~1 GB. OK? (yes)
+  (7) **Abuse**: uploads ship OFF behind an admin switch (`kaisen_uploads_enabled`), admin takedown route + search by image hash, nothing but re-encoded images is ever served. Who takes abuse reports, and what contact do the Terms name? (you)
+  (8) **Runtime image republish** (nosniff/CSP/manifest check in `boot.py`) needs a bootstrap re-pin from you; P1 is safe without it, OK to do it as P1b? (yes)
+  (9) New dependency **Pillow** (image re-encode in a resource-limited child process). OK? (yes)
+  **Security review (2026-11-03): approve with changes, details in design/kaisen.md 16.8.** Changes to your answers and extra decisions:
+  (9) is **amended**: Pillow runs in a separate secret-less `kaisen-imgproc` pod (no service-account token, no DB, no egress), not a child of the API pod, because a codec exploit there could read the API's k8s token and keys. One small extra pod on the existing node, no new paid resource, about +1 day of P1 work. OK?
+  (5)/(6) **amended**: pixel cap 8 MP; plus a per-user (100 MiB) and platform-wide (2 GiB) upload cap so DB growth and backup size are bounded; move blobs to Garage/Spaces at about 500 MiB real use. OK?
+  (10) **Abuse and legal**: image hosting on `*.picopaas.xyz` brings illegal-content risk (reporting/preservation duties may apply). Takedown deletes the bytes and blocklists the hashes; exact-hash only, no perceptual matching. Do you want a legal check before enabling uploads for anyone but you, and which contact goes in the Terms (extends (7))? Until answered: switch stays off.
+  (11) Assets are **public** once deployed (preview URL, public GitHub repo if pushed); private material goes in "reference" (never deployed, but sent to the AI provider when read). Fine to state that in the UI?
+  (2) SVG refusal and (3) re-encode: confirmed by review. (8) P1 before P1b: confirmed safe.
 
-- [ ] **Templates for the six new recipes? (2026-11-03)** Vikunja, Umami, Planka, ntfy, IT-Tools and Excalidraw have specs in
-  `examples/` and sections in `docs/RECIPES.md`, but no one-click template card (catalog: `app/routers/templates.py`, 14 today).
-  Recommendation: add **Vikunja** and **ntfy** (small, no setup steps) once ntfy passes its live test; keep **Umami** (RAM close to
-  the cap, DB fills with events) and **Planka** (license: user-run only, never offered by us) as recipes only; IT-Tools/Excalidraw
-  optional (tiny static demos). The wrapper images are being published with the next push (no decision needed).
+- [ ] **App health / Settings text labels (2026-11-03, UX sweep P2).** The two pages are linked only by gear/heart-pulse icons;
+  proposal: show text labels ("Settings" / "App health") from the sm breakpoint up. Mockup (local, not in the repo):
+  `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/labels-mockup/`
+  (`health_after_1280.png`, `health_after_390.png`, `settings_after_*.png`, plus the before shots). The header buttons on App health
+  (Open in Kaisen, Check for new image, Restart, Settings) and on Settings (App health) get icon + text; at 390px they wrap into two
+  rows. Per-section Download/Refresh icons stay icon-only. Approve / reject / also label those?
 
-- **AWS account for P4 testing: your decisions (2026-11-02).** Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
+- **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
   Paid plan for EKS; or an employer/Activate account); (2) **region** (I recommend us-east-1); (3) **caps** (proposed $5 per
@@ -83,6 +94,8 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-11-03: **Templates for the new recipes** (Chas, inline): add one-click templates for Vikunja, Umami, ntfy, IT-Tools and Excalidraw; skip Planka for now.
+- 2026-11-03: **UX sweep P3s + Terms wording** (Chas, inline): Register keeps both Terms statements (checkbox + sentence); the other P3s (inline Interrupt/429 message, Kaisen header icons and Account time-zone select at 390px, one banner for template "off on this instance" warnings) go ahead. Settings/App health labels stay open pending a mockup.
 - 2026-11-03: **Planka license** (Chas, in chat, after reading it): fine for users to run on PicoPaaS themselves (recipe/example, user deploys it), but PicoPaaS must never OFFER Planka as a managed service (no "managed Planka", not marketed as a platform feature).
 - 2026-11-02: **K69 unmetered abandoned model calls** (Chas, inline): leave as is (manual Interrupt capped 3/build/hour; up to KAISEN_HANG_RETRIES=2 unmetered calls per run accepted).
 - 2026-11-01: **Env value cap (K56)** (Chas, in chat): 8 KiB per value (largest real values are PEMs/JSON keys of 2-3 KB; a cert ref is stored as the ref text).
