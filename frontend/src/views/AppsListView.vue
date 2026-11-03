@@ -29,10 +29,10 @@ const restarting = ref<number | null>(null)
 const limit = computed(() => projects.current?.app_limit_effective ?? auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
 const atLimit = computed(() => limit.value > 0 && store.apps.length >= limit.value)
 
-// Poll while anything is queued or deploying.
+// Poll while anything is queued, deploying or failed (a failed app can recover on its own).
 let timer: ReturnType<typeof setInterval> | null = null
 function inFlight() {
-  return store.apps.some((a) => a.status === 'pending' || a.status === 'deploying')
+  return store.apps.some((a) => a.status === 'pending' || a.status === 'deploying' || a.status === 'error')
 }
 function syncPolling() {
   if (inFlight() && !timer) {
@@ -136,7 +136,7 @@ function meta(app: App) {
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
           <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" disabled />
-          <IconButton v-else :icon="Plus" label="New app" to="/apps/new" />
+          <RouterLink v-else to="/apps/new" class="btn-primary btn-sm"><Plus :size="14" aria-hidden="true" />New app</RouterLink>
         </div>
       </div>
 
@@ -181,7 +181,7 @@ function meta(app: App) {
                 <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="badge-warn" :title="overCapTip(app)">over cap</span>
               </div>
               <div class="mt-0.5"><HostLink :hostname="primaryHost(app)" /></div>
-              <p class="meta mono truncate" :title="meta(app).join(' · ')">
+              <p class="meta mono wrap-break-word" :title="meta(app).join(' · ')">
                 <template v-for="(b, i) in meta(app)" :key="i"><span v-if="i" aria-hidden="true"> · </span>{{ b }}</template>
               </p>
             </div>

@@ -53,14 +53,19 @@ async function loadApp(quiet = false) {
   }
 }
 
-// Poll while queued / deploying.
+// Poll while queued / deploying (3s) and while failed (10s): a failed app can recover on its own once its pods are healthy.
 let poll: ReturnType<typeof setInterval> | null = null
+let pollMs = 0
 function syncPoll() {
-  const active = app.value && (app.value.status === 'pending' || app.value.status === 'deploying')
-  if (active && !poll) poll = setInterval(() => loadApp(true), 3000)
-  else if (!active && poll) {
+  const st = app.value?.status
+  const want = st === 'pending' || st === 'deploying' ? 3000 : st === 'error' ? 10000 : 0
+  if (poll && want !== pollMs) {
     clearInterval(poll)
     poll = null
+  }
+  if (want && !poll) {
+    pollMs = want
+    poll = setInterval(() => loadApp(true), want)
   }
 }
 watch(app, syncPoll)

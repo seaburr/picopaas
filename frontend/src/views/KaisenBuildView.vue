@@ -361,6 +361,7 @@ async function doDelete() {
               <span>Offline. The code and conversation are kept here.</span>
               <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
             </div>
+            <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in Runs below to continue.</p>
             <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
           </section>
 
@@ -380,7 +381,7 @@ async function doDelete() {
             </form>
           </section>
 
-          <BuildRuns :build-id="build.id" :runs="build.runs" :now="now" :can-pick="!feedbackReason" @pick="feedback = $event" />
+          <BuildRuns :build-id="build.id" :runs="build.runs" :now="now" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'" @pick="feedback = $event" @resume="resume" />
           <BuildFiles :build-id="build.id" :files="build.files" />
           <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
 

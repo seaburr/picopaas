@@ -32,7 +32,7 @@ onMounted(async () => {
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
       </nav>
       <h1 class="page-title">Templates</h1>
-      <p class="help mb-3">Pick a ready-made app. Use this template opens the new-app form prefilled (add-ons, environment variables, health check, volume); you can change anything before creating. Secrets are listed, not generated: you set their values.</p>
+      <p class="help mb-3">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
 
       <div v-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
       <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>

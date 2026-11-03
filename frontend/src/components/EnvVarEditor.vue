@@ -179,7 +179,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       <p v-if="valueMsg(i)" class="field-error" role="alert">{{ valueMsg(i) }}</p>
     </div>
 
-    <IconButton :icon="Plus" label="Add env var" @click="addRow()" />
+    <button type="button" class="btn-secondary btn-sm" @click="addRow()"><Plus :size="14" aria-hidden="true" />Add variable</button>
 
     <div v-if="groups.length" class="rounded-md border border-pico-border bg-pico-card p-3">
       <p class="mb-2 text-xs text-zinc-300">

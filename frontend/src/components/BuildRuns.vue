@@ -9,9 +9,9 @@ import { relTime } from '../composables/appUi'
 import { duration, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
 import type { KaisenRun } from '../types'
 
-defineProps<{ buildId: number; runs: KaisenRun[]; now: number; canPick?: boolean }>()
+defineProps<{ buildId: number; runs: KaisenRun[]; now: number; canPick?: boolean; canResume?: boolean; resuming?: boolean }>()
 const showDiff = ref<number | null>(null)
-const emit = defineEmits<{ pick: [text: string] }>()
+const emit = defineEmits<{ pick: [text: string]; resume: [] }>()
 
 // Plain text only: prefix each turn with its role; never rendered as HTML.
 const VERDICT: Record<string, { label: string; cls: string }> = {
@@ -63,7 +63,10 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
             </button>
             <BuildDiffPanel v-if="showDiff === r.id" :load="() => getRunDiff(buildId, r.id)" :title="`What run #${r.id} changed`" />
           </div>
-          <p v-if="r.error" class="alert-error whitespace-pre-wrap">{{ r.error }}</p>
+          <div v-if="r.error" class="alert-error flex flex-wrap items-center justify-between gap-2">
+            <p class="whitespace-pre-wrap">{{ r.error }}</p>
+            <button v-if="i === 0 && canResume && (r.status === 'error' || r.status === 'stopped')" type="button" class="btn-secondary btn-sm" :disabled="resuming" @click="emit('resume')">{{ resuming ? 'Resuming…' : 'Resume' }}</button>
+          </div>
           <p v-if="r.transcript_trimmed" class="meta">The transcript was removed after 14 days. The summary is kept.</p>
           <details v-else-if="r.transcript && r.transcript.length">
             <summary class="cursor-pointer text-sm">Transcript (redacted)</summary>
