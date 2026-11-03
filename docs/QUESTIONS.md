@@ -7,16 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- [ ] **Security review of Kaisen uploads (2026-11-03): one small decision.** Details: docs/PENTEST.md K76 to K84. No HIGH/CRIT open; one MEDIUM (SVG CSS string-URL tracking beacon, K76) fixed. (a) K78: done, `sandbox` added to the SVG content CSP. (b) K79: embedded bitmaps inside SVG `<image>` are kept as-is (not re-encoded, not covered by the hash blocklist). Keep (simple) or strip/re-encode them (more code in the image pod)? Before enabling uploads on any project we still need: MySQL `max_allowed_packet` check (16 MiB), peak-RSS measurement on the imgproc pod, backup-size estimate.
-
-- [ ] **Projects page (F2, 2026-11-03): built per this mockup and browser-checked; tell me what to change.** Nav: Projects | Apps | Kaisen | Docs. The dropdown with the new-project and gear icons is gone. `/projects` lists your projects (role, members, apps used of the limit, links to Apps/Kaisen) with a "New project" button; click a name to open its settings and members page. On Apps and Kaisen a plain "Apps in [Personal v]" picker shows **only if you have more than one project** (most users see nothing extra). Left out of v1: a per-project "Kaisen key set" column. Mockup (local): `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/projects-mockup/` (projects-1280.png, apps-multi-*.png, apps-single-*.png, spec.md).
-
-- [ ] **App health / Settings text labels (2026-11-03, UX sweep P2).** The two pages are linked only by gear/heart-pulse icons;
-  proposal: show text labels ("Settings" / "App health") from the sm breakpoint up. Mockup (local, not in the repo):
-  `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/labels-mockup/`
-  (`health_after_1280.png`, `health_after_390.png`, `settings_after_*.png`, plus the before shots). The header buttons on App health
-  (Open in Kaisen, Check for new image, Restart, Settings) and on Settings (App health) get icon + text; at 390px they wrap into two
-  rows. Per-section Download/Refresh icons stay icon-only. Approve / reject / also label those?
 
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
@@ -69,7 +59,7 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
-- [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** my DO credentials here return 401 (kubectl and doctl), so please check: (1) managed MySQL `max_allowed_packet` is at least 16777216 (`doctl databases configuration get <db-id> --engine mysql`, or DO console, Settings, Configuration); (2) after the deploy, `kubectl -n picopaas-system get pods,networkpolicy --show-labels` shows kaisen-imgproc running; (3) `kubectl describe node | grep -A8 "Allocated resources"` has room (imgproc requests 25m/128Mi). Or refresh my doctl/kubectl token and I'll do it. Then turn it on in Admin, Projects, Kaisen uploads.
+- [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** (1) ~~managed MySQL `max_allowed_packet`~~ DONE 2026-11-03 (qa-tester, live via a throwaway Adminer app, deleted): `@@global.max_allowed_packet` = 67108864 (64 MiB, well above the 16 MiB needed), MySQL 8.4.11, node `picopaas-mysql-nyc3-2`, host = the `primary` db-server (`private-picopaas-mysql-nyc3-do-user-1298308-0...`); (2) ~~kaisen-imgproc running~~ and (3) ~~node room~~ confirmed by the successful rollout of kaisen-imgproc in deploy 41716416534 (still worth a glance at `kubectl top pod` for peak memory with an ~8 MP image). Remaining for you: turn it on in Admin, Projects, Kaisen uploads.
 
 - **Kaisen builder v0: what I need from you (2026-10-29).** Design: ~/source/kaisen/docs/BUILDER_V0.md. Setup happens in the app,
   so the only deploy-time secret is `SECRET_KEY`. When the build is ready: (1) ~~create a GitHub repo for Kaisen~~ done: seaburr/kaisen
@@ -83,6 +73,16 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- [x] **Security review of Kaisen uploads (2026-11-03).** RESOLVED 2026-11-03 (Chas: "full send"): K79 embedded SVG bitmaps are re-encoded in the image pod (built, K79 FIXED); runtime P1b (nosniff, upload CSP, manifest check) built, needs image republish + re-pin. Details: docs/PENTEST.md K76 to K84. No HIGH/CRIT open; one MEDIUM (SVG CSS string-URL tracking beacon, K76) fixed. (a) K78: done, `sandbox` added to the SVG content CSP. (b) K79: embedded bitmaps inside SVG `<image>` are kept as-is (not re-encoded, not covered by the hash blocklist). Keep (simple) or strip/re-encode them (more code in the image pod)? Before enabling uploads on any project we still need: MySQL `max_allowed_packet` check (16 MiB), peak-RSS measurement on the imgproc pod, backup-size estimate.
+- [x] **App health / Settings text labels (2026-11-03, UX sweep P2).** The two pages are linked only by gear/heart-pulse icons;
+  proposal: show text labels ("Settings" / "App health") from the sm breakpoint up. Mockup (local, not in the repo):
+  `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/labels-mockup/`
+  (`health_after_1280.png`, `health_after_390.png`, `settings_after_*.png`, plus the before shots). The header buttons on App health
+  (Open in Kaisen, Check for new image, Restart, Settings) and on Settings (App health) get icon + text; at 390px they wrap into two
+  rows. Per-section Download/Refresh icons stay icon-only. Approve / reject / also label those? **Chas 2026-11-03: "full send, I trust you" = approved as built / proposed.**
+
+- [x] **Projects page (F2, 2026-11-03): built per this mockup and browser-checked; tell me what to change.** Nav: Projects | Apps | Kaisen | Docs. The dropdown with the new-project and gear icons is gone. `/projects` lists your projects (role, members, apps used of the limit, links to Apps/Kaisen) with a "New project" button; click a name to open its settings and members page. On Apps and Kaisen a plain "Apps in [Personal v]" picker shows **only if you have more than one project** (most users see nothing extra). Left out of v1: a per-project "Kaisen key set" column. Mockup (local): `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/projects-mockup/` (projects-1280.png, apps-multi-*.png, apps-single-*.png, spec.md). **Chas 2026-11-03: "full send, I trust you" = approved as built / proposed.**
 
 - [x] **Kaisen file uploads (answered 2026-11-03), being built as P1 (switched off).** How I read your answers: (1)(3)(5)(6)(8)(9 amended) and the amended caps: yes as written. (2) SVG: you said no to refusing it, so SVG is **allowed**, but only after strict sanitizing in the secret-less imgproc pod (allowlisted elements/attributes, no script, foreignObject, event handlers or external links), served with nosniff and a script-blocking CSP. security-reviewer will pentest it; tell me if you meant refuse after all. (7)/(10): no separate abuse contact, the Terms keep the existing contact. Uploads are a **per-project switch only a platform admin can turn on**; users see the upload section grayed out ("Not enabled for this project yet"). You turn it on for your test project. (11): yes, uploaded images are used as-is (after re-encoding) in the site; the UI just says they become public once deployed. Your original answers:
   <details>
