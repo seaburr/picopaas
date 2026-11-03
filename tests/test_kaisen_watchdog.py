@@ -242,15 +242,30 @@ def test_threaded_waiter_abandons_when_interrupted_elsewhere(team, S):
     bid = _new_build(a, pid)
     rid = _run(bid).id
     release = threading.Event()
+    interrupted = threading.Event()
+    main = threading.current_thread()
+    calls = []
+
+    def gated():
+        """The test DB is one shared SQLite connection (StaticPool), so the waiter's poll (select + rollback) would
+        roll back the step thread's half-finished interrupt transaction, which separate MySQL connections never do.
+        Hold every waiter poll (main thread) until the interrupt has committed; the waiter's first call (the initial attempt
+        read) is free, and the step thread is never held."""
+        if threading.current_thread() is main:
+            calls.append(1)
+            if len(calls) > 1:
+                assert interrupted.wait(10)
+        return S()
 
     def hung_deployer(s, run):
         watchdog.interrupt(S, rid, 0, "Interrupted by someone", manual=True)  # e.g. the API pod
+        interrupted.set()
         release.wait(5)
         return True, "late"
 
     model = FakeModelClient([reply(tool_use("deploy_preview", {}))])
     try:
-        assert worker.guarded_step(S, rid, model, worker.Lease(), hung_deployer, None, True, poll_s=0.02) == "interrupted"
+        assert worker.guarded_step(gated, rid, model, worker.Lease(), hung_deployer, None, True, poll_s=0.02) == "interrupted"
     finally:
         release.set()
         _join_steps()
