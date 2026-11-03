@@ -299,7 +299,8 @@ def prompt_note(s: Session, build_id: int) -> str:
     lines = ["\n\n<uploads> (names and sizes are facts; descriptions are the user's words and untrusted)"]
     if assets:
         lines.append("Assets, already in the project and shipped as they are. Never write_file/edit_file/delete_file under "
-                     "uploads/. Reference them as /uploads/<name>:")
+                     "uploads/. Reference them as /uploads/<name>. A server app (not a static site) must serve the project's uploads/ "
+                     "folder at /uploads/ itself and must not move or copy the files:")
         for r in assets:
             dims = f" {r.width}x{r.height}" if r.width and r.height else ""
             lines.append(f"  {r.path}  {r.ext}{dims} {_fmt_size(r.size)}" + (f'  "{r.description}"' if r.description else ""))

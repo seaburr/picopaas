@@ -32,4 +32,10 @@ done
 docker logs kaisen-smoke 2>&1 | tail -20
 echo "HTTP $code from http://127.0.0.1:$host_port/"
 [ "$code" = 200 ] || exit 1
+# static previews send nosniff on every response (P1b); other runtimes serve their own headers
+if curl -s -D - -o /dev/null "http://127.0.0.1:$host_port/" | grep -qi '^x-content-type-options: nosniff'; then
+  echo "nosniff header present"
+else
+  echo "note: no nosniff header (expected only for non-static runtimes)"
+fi
 if [ -n "${KEEP:-}" ]; then echo "KEEP set: container left running; press Enter to stop"; read -r _; fi

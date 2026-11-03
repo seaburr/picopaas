@@ -22,6 +22,7 @@ import sys
 import tarfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 PREFIX = "[kaisen-runtime]"
@@ -258,12 +259,108 @@ def run_tests(command: str, cwd: str, env: dict, timeout: int | None = None, max
     return status, code
 
 
+UPLOADS_MANIFEST = ".kaisen-uploads.json"
+UPLOAD_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+                ".svg": "image/svg+xml"}
+CSP_SVG = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+CSP_UPLOAD = "default-src 'none'; sandbox"
+
+
+def verify_uploads(root: str) -> int:
+    """P1b: when the bundle carries a .kaisen-uploads.json manifest, every file under uploads/ must be listed, match its
+    sha256 and size, and have an allowed extension (defense in depth against a platform bug). Returns the files checked."""
+    mf = os.path.join(root, UPLOADS_MANIFEST)
+    if not os.path.isfile(mf):
+        return 0
+    try:
+        with open(mf) as f:
+            listed = json.load(f)
+        if not isinstance(listed, dict):
+            raise ValueError("not an object")
+    except ValueError as e:
+        raise BootError(f"{UPLOADS_MANIFEST} is not a valid manifest: {e}")
+    seen = set()
+    base = os.path.join(root, "uploads")
+    for dirpath, _dirs, files in os.walk(base):
+        for name in files:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root).replace(os.sep, "/")
+            seen.add(rel)
+            entry = listed.get(rel)
+            if not isinstance(entry, dict):
+                raise BootError(f"{rel} is not listed in {UPLOADS_MANIFEST}")
+            if os.path.splitext(name)[1] not in UPLOAD_TYPES:
+                raise BootError(f"{rel} has a file type that uploads may not have")
+            h = hashlib.sha256()
+            with open(full, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            if h.hexdigest() != entry.get("sha256") or ("size" in entry and entry["size"] != os.path.getsize(full)):
+                raise BootError(f"{rel} does not match {UPLOADS_MANIFEST}")
+    missing = [k for k in listed if k not in seen]
+    if missing:
+        raise BootError(f"{missing[0]} is listed in {UPLOADS_MANIFEST} but missing from the bundle")
+    return len(seen)
+
+
+class StaticHandler(http.server.SimpleHTTPRequestHandler):
+    """Plain static serving plus, for every response, nosniff; files under uploads/ also get a fixed image Content-Type
+    for known extensions, a strict CSP (with sandbox, so an SVG opened directly cannot run anything) and no directory listing."""
+
+    def __init__(self, *args, uploads_root=None, **kwargs):
+        # uploads_root: the verified <project root>/uploads when the site is served from public/. It wins over any
+        # public/uploads/ tree (which is agent-written and unverified, but still gets the CSP).
+        self.uploads_root = uploads_root
+        super().__init__(*args, **kwargs)
+
+    def translate_path(self, path):
+        full = super().translate_path(path)  # normalized: dot segments, encodings and query already handled
+        if self.uploads_root:
+            parts = os.path.relpath(full, self.directory).split(os.sep)
+            if parts[0] == "uploads":
+                mapped = os.path.join(self.uploads_root, *parts[1:])
+                if os.path.lexists(mapped):  # names only in public/uploads/ (agent files) still resolve, with the CSP
+                    return mapped
+        return full
+
+    def _in_uploads(self) -> bool:
+        bases = [os.path.realpath(os.path.join(self.directory, "uploads"))]
+        if self.uploads_root:
+            bases.append(os.path.realpath(self.uploads_root))
+        try:
+            target = os.path.realpath(self.translate_path(getattr(self, "path", "/")))
+            return any(os.path.commonpath([b, target]) == b for b in bases)
+        except ValueError:
+            return False
+
+    def guess_type(self, path):
+        ext = os.path.splitext(path)[1].lower()
+        if ext in UPLOAD_TYPES and self._in_uploads():
+            return UPLOAD_TYPES[ext]
+        return super().guess_type(path)
+
+    def list_directory(self, path):
+        if self._in_uploads():
+            self.send_error(404, "No permission to list directory")
+            return None
+        return super().list_directory(path)
+
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if self._in_uploads():
+            svg = os.path.splitext(urllib.parse.urlsplit(getattr(self, "path", "/")).path)[1].lower() == ".svg"
+            self.send_header("Content-Security-Policy", CSP_SVG if svg else CSP_UPLOAD)
+        super().end_headers()
+
+
 def serve_static(root: str, port: int) -> None:
     directory = os.path.join(root, "public")
     if not os.path.isdir(directory):
         directory = root
     log(f"serving static files from {directory} on 0.0.0.0:{port}")
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+    up = os.path.join(root, "uploads")
+    handler = functools.partial(StaticHandler, directory=directory,
+                                uploads_root=up if directory != root and os.path.isdir(up) else None)
     http.server.ThreadingHTTPServer(("0.0.0.0", port), handler).serve_forever()
 
 
@@ -284,6 +381,9 @@ def main() -> int:
     n = safe_extract(archive, SRC)
     root = project_root(SRC)
     log(f"extracted {n} files")
+    n_up = verify_uploads(project_root(SRC))
+    if n_up:
+        log(f"verified {n_up} uploaded files against {UPLOADS_MANIFEST}")
     log(f"bundle sha={want.strip().lower()[:12]}")  # lets the platform tell this pod's logs from a previous pod's
 
     mf_path = os.path.join(root, "kaisen.json")
