@@ -104,7 +104,7 @@ function askDelete(b: KaisenBuild) {
       <nav class="meta mb-2" aria-label="Breadcrumb">Kaisen</nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 class="page-title">Builds</h1>
+          <h1 class="page-title">Kaisen</h1>
           <ProjectPicker label="in" />
           <PreviewBadge />
           <span v-if="!loading && store.builds.length" class="meta">{{ store.builds.length }} {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>

@@ -374,11 +374,11 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <li v-for="h in servedHosts(app).slice(1)" :key="h" class="min-w-0"><HostLink :hostname="h" /></li>
             </ul>
           </div>
-          <div class="flex items-center gap-2">
-            <IconButton v-if="app.kaisen_build_id" :icon="Wand2" label="Open in Kaisen" :to="`/kaisen/${app.kaisen_build_id}`" />
-            <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" @click="checkImage" />
-            <IconButton :icon="RotateCw" :label="projSuspended ? 'Restart (project is suspended)' : suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" @click="restart" />
-            <IconButton :icon="Settings" label="Settings" :to="`/apps/${app.id}/edit`" />
+          <div class="flex flex-wrap items-center gap-2">
+            <IconButton v-if="app.kaisen_build_id" :icon="Wand2" label="Open in Kaisen" text="Open in Kaisen" :to="`/kaisen/${app.kaisen_build_id}`" />
+            <IconButton v-if="!isDigestRef" :icon="PackageSearch" :label="suspended ? 'Check for new image (suspended)' : checking ? 'Checking…' : 'Check for new image'" :disabled="suspended || checking" text="Check for new image" @click="checkImage" />
+            <IconButton :icon="RotateCw" :label="projSuspended ? 'Restart (project is suspended)' : suspended ? 'Restart (suspended: contact the administrator)' : restarting ? 'Restarting…' : 'Restart'" :disabled="suspended || restarting" text="Restart" @click="restart" />
+            <IconButton :icon="Settings" label="Settings" text="Settings" :to="`/apps/${app.id}/edit`" />
           </div>
         </header>
 

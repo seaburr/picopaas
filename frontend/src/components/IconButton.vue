@@ -14,14 +14,16 @@ const props = defineProps<{
   expanded?: boolean
   pressed?: boolean
   busy?: boolean // spinning icon, disabled
+  text?: string // visible label from sm up; icon-only below sm
+  touch?: boolean // 44px hit area below sm
 }>()
 defineEmits<{ click: [e: MouseEvent] }>()
-const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'btn-icon-sm' : '', props.danger ? 'btn-icon-danger' : '']
+const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'btn-icon-sm' : '', props.touch ? 'btn-icon-touch' : '', props.text ? 'btn-icon-text' : '', props.danger ? 'btn-icon-danger' : '']
 </script>
 
 <template>
   <RouterLink v-if="to && !disabled" :to="to" :class="cls()" :title="label" :aria-label="label">
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" />
+    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
   </RouterLink>
   <a
     v-else-if="href && !disabled"
@@ -32,7 +34,7 @@ const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'bt
     :title="label"
     :aria-label="label"
   >
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" />
+    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
   </a>
   <button
     v-else
@@ -47,6 +49,6 @@ const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'bt
     :aria-expanded="expanded"
     @click="$emit('click', $event)"
   >
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" />
+    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
   </button>
 </template>

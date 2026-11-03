@@ -175,6 +175,7 @@ async function confirmUnsuspend() {
     <p v-else-if="loading" class="meta" aria-busy="true">Loading projects…</p>
     <p v-else-if="rows.length === 0" class="card card-pad meta">No shared projects yet.</p>
     <template v-else>
+    <h2 class="section-title mb-1">Project app limits</h2>
     <p class="help mb-2">
       App limit is the most apps a project may hold. Leave it blank to use the default from settings ({{ defaultLimit ?? 'unknown' }} apps).
     </p>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -23,6 +23,9 @@ const data = ref<KaisenUploadList | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const error = ref('')
+const errorEl = ref<HTMLElement | null>(null)
+// Move focus to a new error so keyboard and screen reader users land on it.
+watch(error, (v) => { if (v) nextTick(() => errorEl.value?.focus()) })
 const busy = ref(false)
 
 // Allowed types (client-side pre-check only; the server decides).
@@ -192,7 +195,8 @@ async function confirmDelete() {
   }
 }
 
-const pct = (used: number, limit: number) => (limit ? Math.min(100, (used / limit) * 100) : 0)
+// Any non-zero use shows at least a sliver; exactly zero is an empty bar.
+const pct = (used: number, limit: number) => (used <= 0 || !limit ? 0 : Math.min(100, Math.max(3, (used / limit) * 100)))
 const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height}` : '')
 </script>
 
@@ -241,7 +245,7 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
           <button type="submit" class="btn-secondary" :disabled="!controlsOn || busy">{{ busy ? 'Working…' : 'Upload file' }}</button>
         </div>
       </form>
-      <p v-if="error" class="field-error whitespace-pre-wrap" role="alert">{{ error }}</p>
+      <p v-if="error" ref="errorEl" tabindex="-1" class="field-error whitespace-pre-wrap focus:outline-none" role="alert">{{ error }}</p>
       <span class="sr-only" aria-live="polite">{{ busy ? 'Working' : '' }}</span>
 
       <p v-if="items.length === 0" class="meta">No files yet.</p>
@@ -263,9 +267,9 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
             <p v-else class="text-sm text-zinc-300 break-words">{{ u.description || 'No description.' }}</p>
           </div>
           <div class="flex shrink-0 items-center gap-1">
-            <IconButton :icon="Pencil" :label="`Edit description of ${u.name_orig}`" sm :disabled="!canEdit || busy" @click="startEdit(u)" />
-            <IconButton :icon="RefreshCw" :label="`Replace ${u.name_orig}`" sm :disabled="!controlsOn || busy" @click="startReplace(u)" />
-            <IconButton :icon="Trash2" :label="`Delete ${u.name_orig}`" sm danger :disabled="!canEdit || busy" @click="delTarget = u" />
+            <IconButton :icon="Pencil" :label="`Edit description of ${u.name_orig}`" touch :disabled="!canEdit || busy" @click="startEdit(u)" />
+            <IconButton :icon="RefreshCw" :label="`Replace ${u.name_orig}`" touch :disabled="!controlsOn || busy" @click="startReplace(u)" />
+            <IconButton :icon="Trash2" :label="`Delete ${u.name_orig}`" danger touch :disabled="!canEdit || busy" @click="delTarget = u" />
           </div>
         </li>
       </ul>

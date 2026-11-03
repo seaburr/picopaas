@@ -70,7 +70,7 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
 
   await test.step('kaisen page renders', async () => {
     await page.goto('/kaisen')
-    await expect(page.getByRole('heading', { name: /builds/i, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Kaisen', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Build your first app with Kaisen/ })).toBeVisible()
   })
 

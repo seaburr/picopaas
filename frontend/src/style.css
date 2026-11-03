@@ -243,6 +243,16 @@
   @apply h-7 w-7;
 }
 
+@utility btn-icon-text {
+  /* Icon button that also shows its label from sm up (the label stays as aria-label below sm). */
+  @apply sm:w-auto sm:gap-1.5 sm:px-2.5 sm:text-sm;
+}
+
+@utility btn-icon-touch {
+  /* 44px touch target below sm; compact from sm up. */
+  @apply max-sm:h-11 max-sm:w-11;
+}
+
 @utility btn-icon-danger {
   @apply hover:bg-danger/10 hover:text-danger-light focus-visible:text-danger-light;
 }

@@ -374,7 +374,7 @@ async function onSubmit() {
             Deploy a public Docker image. You'll get an https URL as soon as the app is created.
           </p>
         </div>
-        <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" :to="`/apps/${loadedApp.id}`" />
+        <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" text="App health" :to="`/apps/${loadedApp.id}`" />
       </div>
 
       <p v-if="isEdit && loadedApp?.kaisen_build_id" class="alert-info mb-3">
