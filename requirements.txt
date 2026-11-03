@@ -7,9 +7,9 @@ psycopg[binary]==3.3.6
 bcrypt==5.0.0
 PyJWT==2.15.1
 email-validator==2.3.0
-dnspython==2.9.0
+dnspython==2.9.1
 cryptography==50.0.2
-pydantic-settings==2.16.1
+pydantic-settings==2.16.2
 
 pytest==9.2.0
 httpx==0.28.1
@@ -17,7 +17,7 @@ httpx==0.28.1
 PyYAML==6.0.3
 kubernetes==37.0.1
 APScheduler==3.11.3
-boto3==1.43.120
+boto3==1.43.123
 prometheus-client==0.26.0
 anthropic==2.3.0
 Pillow==13.0.0
