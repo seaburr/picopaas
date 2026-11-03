@@ -204,6 +204,24 @@ def audit_purge_job() -> None:
         session.close()
 
 
+def kaisen_upload_sweep_job() -> None:
+    """Leader-only hourly: delete uploaded files whose build is gone or was deleted (docs/design/kaisen.md 16.8 R9)."""
+    if not try_acquire_leader():
+        return
+    from app.kaisen import uploads
+
+    session = SessionLocal()
+    try:
+        n = uploads.sweep_orphans(session)
+        if n:
+            log.info("kaisen upload sweep: deleted %d orphaned files", n)
+    except Exception:
+        session.rollback()
+        log.exception("kaisen upload sweep failed")
+    finally:
+        session.close()
+
+
 def backup_job() -> None:
     """Leader-only: poll running backup Jobs, queue/start due ones, purge expired repos (app/backups.py). Inert unless
     BACKUPS_ENABLED and the backup bucket/key are configured."""
@@ -419,6 +437,8 @@ def start_scheduler() -> BackgroundScheduler:
                   coalesce=True, id="metrics_sample", next_run_time=now + timedelta(seconds=45))
     sched.add_job(audit_purge_job, "interval", hours=24, max_instances=1, coalesce=True, id="audit_purge",
                   next_run_time=now + timedelta(minutes=5))
+    sched.add_job(kaisen_upload_sweep_job, "interval", hours=1, max_instances=1, coalesce=True, id="kaisen_upload_sweep",
+                  next_run_time=now + timedelta(minutes=10))
     if config.BACKUPS_ENABLED:
         sched.add_job(backup_job, "interval", seconds=config.BACKUP_TICK_SECONDS, max_instances=1, coalesce=True,
                       id="backup", next_run_time=now + timedelta(seconds=30))

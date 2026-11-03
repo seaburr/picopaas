@@ -22,3 +22,14 @@ def normalize_path(p) -> str:
     if any(seg.lower() in (".git", ".github") for seg in n.split("/")):
         raise ToolError(".git/ and .github/ are not writable")
     return n
+
+
+RESERVED_UPLOAD_ROOTS = ("uploads", "references")
+
+
+def is_reserved_upload_path(p: str) -> bool:
+    """True for anything under the upload roots (`uploads/`, `references/`, compared case-insensitively on the first
+    segment, so `Uploads/x.png` cannot sneak past) and for the bundle's upload manifest. The model may not write there."""
+    n = posixpath.normpath(p.replace("\\", "/")) if isinstance(p, str) else ""
+    first = n.split("/")[0].lower()
+    return first in RESERVED_UPLOAD_ROOTS or n.lower() == ".kaisen-uploads.json"

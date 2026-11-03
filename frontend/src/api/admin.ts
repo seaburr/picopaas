@@ -100,3 +100,8 @@ export const suspendProject = (id: number, reason: string) =>
 export const unsuspendProject = (id: number) =>
   apiFetch<import('../types').AdminProject>(`/admin/projects/${id}/unsuspend`, { method: 'POST' })
 export const listSuspensions = () => apiFetch<import('../types').Suspension[]>('/admin/suspensions')
+
+export const getKaisenUploadsFlag = (projectId: number) => apiFetch<import('../types').KaisenUploadsFlag>(`/admin/projects/${projectId}/kaisen-uploads`)
+export const setKaisenUploadsFlag = (projectId: number, enabled: boolean) =>
+  apiFetch<import('../types').KaisenUploadsFlag>(`/admin/projects/${projectId}/kaisen-uploads`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+export const getKaisenUploadsSummary = () => apiFetch<import('../types').KaisenUploadsPlatformSummary>('/admin/kaisen/uploads/summary')

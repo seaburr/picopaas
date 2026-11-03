@@ -218,6 +218,7 @@ class AdminProjectOut(BaseModel):
     suspended_reason: Optional[str] = None
     suspended_at: Optional[datetime] = None
     suspended_by_email: Optional[str] = None
+    kaisen_uploads_enabled: bool = False  # PUT /admin/projects/{id}/kaisen-uploads changes it
 
 
 def _clean_reason(v: str) -> str:
@@ -270,7 +271,8 @@ def _admin_project_out(db: Session, p: models.Project) -> AdminProjectOut:
         member_count=db.query(models.ProjectMember).filter_by(project_id=p.id).count(),
         owner_emails=projects.owner_emails_map(db, [p.id]).get(p.id, []), app_limit=p.app_limit,
         app_limit_effective=projects.effective_project_app_limit(db, p), status=p.status,
-        suspended_reason=p.suspended_reason, suspended_at=p.suspended_at, suspended_by_email=_email_of(db, p.suspended_by))
+        suspended_reason=p.suspended_reason, suspended_at=p.suspended_at, suspended_by_email=_email_of(db, p.suspended_by),
+        kaisen_uploads_enabled=bool(p.kaisen_uploads_enabled))
 
 
 @router.get("/projects", response_model=List[AdminProjectOut], dependencies=[Depends(require_admin_session)])

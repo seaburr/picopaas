@@ -52,3 +52,19 @@ export const listSnapshots = (id: number) => apiFetch<KaisenSnapshot[]>(`/kaisen
 export const getSnapshotDiff = (id: number, sid: number) => apiFetch<KaisenDiff>(`/kaisen/builds/${id}/snapshots/${sid}/diff`)
 export const getRunDiff = (id: number, runId: number) => apiFetch<KaisenDiff>(`/kaisen/builds/${id}/runs/${runId}/diff`)
 export const restoreSnapshot = (id: number, sid: number) => post<KaisenRestoreResult>(`/kaisen/builds/${id}/snapshots/${sid}/restore`)
+
+// ---- file uploads (raw bodies, not multipart) ----
+const q = (o: Record<string, string>) => new URLSearchParams(o).toString()
+export const listUploads = (id: number) => apiFetch<import('../types').KaisenUploadList>(`/kaisen/builds/${id}/uploads`)
+export const addUpload = (id: number, file: File, kind: 'asset' | 'reference', description: string) =>
+  apiFetch<import('../types').KaisenUploadResult>(`/kaisen/builds/${id}/uploads?${q({ kind, filename: file.name, description })}`, {
+    method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' },
+  })
+export const replaceUpload = (id: number, uid: number, file: File, description?: string) =>
+  apiFetch<import('../types').KaisenUploadResult>(`/kaisen/builds/${id}/uploads/${uid}?${q({ filename: file.name, ...(description === undefined ? {} : { description }) })}`, {
+    method: 'PUT', body: file, headers: { 'Content-Type': 'application/octet-stream' },
+  })
+export const describeUpload = (id: number, uid: number, description: string) =>
+  apiFetch<import('../types').KaisenUpload>(`/kaisen/builds/${id}/uploads/${uid}`, { method: 'PATCH', body: JSON.stringify({ description }) })
+export const deleteUpload = (id: number, uid: number) => apiFetch<void>(`/kaisen/builds/${id}/uploads/${uid}`, { method: 'DELETE' })
+export const uploadContentUrl = (id: number, uid: number, version: number) => `/kaisen/builds/${id}/uploads/${uid}/content?v=${version}`

@@ -20,16 +20,28 @@ def build_mtime(db, b) -> int:
     return int(t.replace(tzinfo=timezone.utc).timestamp()) if t else int(time.time())
 
 
-def build_tarball(slug: str, files: list[tuple[str, str]], mtime: int | None = None) -> bytes:
+UPLOAD_MANIFEST = ".kaisen-uploads.json"
+
+
+def build_tarball(slug: str, files: list[tuple[str, str]], mtime: int | None = None,
+                  binaries: list[tuple[str, bytes]] | None = None) -> bytes:
     """Deterministic tar.gz of (path, content) under a `<slug>/` directory. Held in memory. `mtime` (epoch seconds)
-    is applied to every entry and the gzip header; defaults to now when not given."""
+    is applied to every entry and the gzip header; defaults to now when not given. `binaries` (uploaded assets, already
+    re-encoded) are written as they are, and a `.kaisen-uploads.json` manifest {path: {sha256, size}} is added when
+    there are any (no binaries: the archive is byte-identical to before)."""
+    import hashlib
+    import json
     mtime = int(time.time()) if mtime is None else int(mtime)
+    entries = [(p, c.encode()) for p, c in files]
+    if binaries:
+        entries += list(binaries)
+        manifest = {p: {"sha256": hashlib.sha256(b).hexdigest(), "size": len(b)} for p, b in sorted(binaries)}
+        entries.append((UPLOAD_MANIFEST, json.dumps(manifest, sort_keys=True).encode()))
     buf = io.BytesIO()
     with gzip.GzipFile(fileobj=buf, mode="wb", mtime=mtime) as gz:
         with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
-            for path, content in sorted(files):
+            for path, data in sorted(entries):
                 safe = normalize_path(path)  # re-check: never trust stored names
-                data = content.encode()
                 info = tarfile.TarInfo(f"{slug}/{safe}")
                 info.size = len(data)
                 info.mtime = mtime

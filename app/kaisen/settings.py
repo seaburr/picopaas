@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app import config, crypto
+from . import uploads
 from .models import KaisenBuild, KaisenSettings
 
 _REPO_RE = re.compile(r"^(?:https?://github\.com/)?([A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?$")
@@ -202,6 +203,7 @@ def describe(db: Session, project_id: int, can_edit: bool) -> dict:
         "reviewer_modes": list(config.KAISEN_REVIEWER_MODES),
         "reviewer_default_model": config.KAISEN_REVIEWER_DEFAULT_MODEL,
         "can_edit": can_edit,
+        **uploads.availability(db, project_id),
         "updated_at": row.updated_at.isoformat() if row is not None else None,
     }
 

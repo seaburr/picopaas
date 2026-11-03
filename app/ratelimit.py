@@ -198,3 +198,22 @@ def check_bundle_fetch(db: Session, request: Request) -> None:
         _bump(db, key, w)
 
     _safe(db, "check_bundle_fetch", run)
+
+
+def check_upload(db: Session, request: Request, user_id: int, project_id: int) -> None:
+    """Count a Kaisen upload attempt (rejected ones too) against the user, the project and the client IP; 429 past the cap."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        w, n = config.KAISEN_UPLOAD_RATE_WINDOW_SECONDS, config.KAISEN_UPLOAD_RATE_MAX
+        keys = [_key("kaisen-upload-user", str(user_id)), _key("kaisen-upload-project", str(project_id)),
+                _key("kaisen-upload-ip", client_ip(request))]
+        wait = max(_remaining(db, k, n, w) for k in keys)
+        if wait:
+            raise _deny(wait)
+        _prune(db)
+        for k in keys:
+            _bump(db, k, w)
+
+    _safe(db, "check_upload", run)

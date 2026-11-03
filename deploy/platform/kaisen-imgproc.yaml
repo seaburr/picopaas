@@ -1,0 +1,128 @@
+# Kaisen image unit (docs/design/kaisen.md 16.8 R1): decodes and re-encodes uploaded images and sanitizes SVG in a pod that
+# holds NOTHING worth stealing, so a codec exploit (Pillow/libwebp CVE) reaches no secret, no database and no network.
+# Same platform image, command `python -m app.imgproc`. No service-account token, NO env from picopaas-env (only the fixed
+# values below), no DB, read-only root, all capabilities dropped, and a NetworkPolicy that allows ingress only from the
+# platform API pods on 8080 and NO egress at all (not even DNS). deploy.yml seds only the image tag.
+# The API reaches it at http://kaisen-imgproc:8080 (config KAISEN_IMGPROC_URL); if the pod is down, uploads answer 503.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kaisen-imgproc
+  namespace: picopaas-system
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaisen-imgproc
+  namespace: picopaas-system
+  labels:
+    app: kaisen-imgproc
+spec:
+  replicas: 1 # one conversion at a time; the API bounds its own queue (KAISEN_UPLOAD_IMG_QUEUE) and answers 503 when busy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: kaisen-imgproc
+  template:
+    metadata:
+      labels:
+        app: kaisen-imgproc
+    spec:
+      serviceAccountName: kaisen-imgproc
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kaisen-imgproc
+          image: ghcr.io/seaburr/picopaas:latest # placeholder; deploy.yml sets the real short-sha tag
+          imagePullPolicy: Always
+          command: ["python", "-m", "app.imgproc"]
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # Fixed values only. KAISEN_IMGPROC_ROLE=1 lets app.config start without FERNET_KEY (the pod holds no key).
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: KAISEN_IMGPROC_ROLE
+              value: "1"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 320Mi # 8 MP RGBA is 32 MB plus copies; measured on a real pod before enabling (see design 16.8 R2)
+          # Probes run inside the pod against localhost, so the ingress policy below cannot block them.
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).status == 200 else 1)"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe: # one request at a time, so a wedged codec fails this and the pod is restarted
+            exec:
+              command: ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).status == 200 else 1)"]
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 8
+            failureThreshold: 4
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaisen-imgproc
+  namespace: picopaas-system
+spec:
+  selector:
+    app: kaisen-imgproc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Ingress: only the platform API pods (label app=picopaas), only 8080. Egress: none (policyTypes lists Egress with no rules).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kaisen-imgproc
+  namespace: picopaas-system
+spec:
+  podSelector:
+    matchLabels:
+      app: kaisen-imgproc
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: picopaas
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress: []

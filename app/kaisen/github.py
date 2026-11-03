@@ -24,7 +24,7 @@ class PushResult:
 
 class GitHubClient(Protocol):
     def check_repo(self, repo: str) -> str: ...
-    def push(self, repo: str, files: list[tuple[str, str]], slug: str, branch: str | None,
+    def push(self, repo: str, files: list[tuple[str, str | bytes]], slug: str, branch: str | None,
              message: str, open_pr: bool) -> PushResult: ...
 
 
@@ -91,7 +91,8 @@ class RealGitHub:
         entries = []
         for path, content in files:
             blob = self._req("POST", f"/repos/{repo}/git/blobs", json={
-                "content": base64.b64encode(content.encode()).decode(), "encoding": "base64"})
+                "content": base64.b64encode(content if isinstance(content, bytes) else content.encode()).decode(),
+                "encoding": "base64"})
             entries.append({"path": path, "mode": "100644", "type": "blob", "sha": blob["sha"]})
         # On Kaisen's own branch the tree mirrors the project, so deleted files go away;
         # on any other branch, layer onto the existing tree so the user's files are kept.

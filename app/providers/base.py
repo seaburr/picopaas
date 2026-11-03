@@ -429,3 +429,32 @@ class Registry(ABC):
         """Cheaply resolve `image_ref` to its manifest digest (amd64 manifest for an index), without
         fetching the image config. Same errors as above."""
         raise NotImplementedError
+
+
+# ---------------------------------------------------------------- image processing (Kaisen uploads)
+
+@dataclass
+class ProcessedImage:
+    """What the secret-less image unit hands back: freshly encoded bytes plus facts about them. The API re-checks the
+    magic bytes and size before storing and never trusts `mime` on its own."""
+    mime: str  # image/png | image/jpeg | image/webp | image/svg+xml
+    data: bytes
+    width: Optional[int] = None
+    height: Optional[int] = None
+    notes: list[str] = field(default_factory=list)  # plain-language facts shown to the user ("Metadata removed")
+
+
+class ImageProcessError(Exception):
+    """The image unit refused or could not process the input. `code` is a stable class (unsupported | corrupt | too_big |
+    animated | unavailable | busy | timeout); `message` is plain language and safe to show to the user."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code, self.message = code, message
+
+
+class ImageProcessor(ABC):
+    @abstractmethod
+    def process(self, data: bytes, hint: str) -> ProcessedImage:
+        """Decode and re-encode (raster) or sanitize (SVG) `data`. `hint` is "raster" or "svg" and only chooses the
+        code path; the unit verifies the content itself. Raises ImageProcessError."""

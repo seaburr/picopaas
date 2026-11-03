@@ -15,7 +15,7 @@ from app import config, logging_setup
 from app import models, metrics
 from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
-from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, spec, templates, usage
+from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
 
@@ -48,6 +48,8 @@ app.include_router(auth.router)
 app.include_router(apps.router)
 app.include_router(projects_router.router)
 app.include_router(kaisen_router.router)
+app.include_router(kaisen_uploads_router.router)
+app.include_router(kaisen_uploads_router.admin_router)
 app.include_router(app_ops.router)
 app.include_router(backups.router)
 app.include_router(usage.router)
@@ -281,7 +283,8 @@ def _add_security_headers(response, path: str) -> None:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     # FastAPI's /docs and /redoc pull Swagger/ReDoc from a CDN with inline scripts; a strict CSP would break them.
-    if path not in ("/docs", "/redoc"):
+    # A route that sets its own, stricter CSP (Kaisen upload content, docs/design/kaisen.md 16) keeps it.
+    if path not in ("/docs", "/redoc") and "content-security-policy" not in response.headers:
         response.headers["Content-Security-Policy"] = _csp()
 
 

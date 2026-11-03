@@ -339,7 +339,7 @@ def test_start_scheduler_registers_all_jobs_once_each(monkeypatch):
     monkeypatch.setattr(health, "start_background", lambda getter: started.append("health"))
     sched = scheduler.start_scheduler()
     assert isinstance(sched, FakeSched) and started == ["health", True]
-    assert set(jobs) == {"reconcile", "quota_db", "quota_storage", "image_watch", "health", "metrics_sample", "audit_purge"}
+    assert set(jobs) == {"reconcile", "quota_db", "quota_storage", "image_watch", "health", "metrics_sample", "audit_purge", "kaisen_upload_sweep"}
     for fn, trigger, kw in jobs.values():
         assert trigger == "interval" and kw["max_instances"] == 1 and kw["coalesce"] is True  # never overlap itself
     assert jobs["reconcile"][2]["seconds"] == 15 and jobs["reconcile"][0] is scheduler.reconcile_job

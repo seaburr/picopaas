@@ -94,6 +94,8 @@ class Project(Base):
     suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # True when the suspension came from suspending the owner of a personal project (user unsuspend lifts just that).
     suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    # Kaisen file uploads (docs/design/kaisen.md 16): off until a platform admin turns them on for this project.
+    kaisen_uploads_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
 
     members: Mapped[List["ProjectMember"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 

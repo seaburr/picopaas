@@ -15,7 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import audit, config, crypto, models, projects
-from . import buildsecrets, export, testresults
+from . import buildsecrets, export, testresults, uploads
 from .models import KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox
 from .redact import redact
 
@@ -54,7 +54,7 @@ def make_bundle(db: Session, b: KaisenBuild, *, reuse: bool = False) -> tuple[st
     files = [(r.path, r.content) for r in db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))]
     if not files:
         raise DeployError("The build has no files yet.")
-    data = export.build_tarball(b.slug, files, export.build_mtime(db, b))
+    data = export.build_tarball(b.slug, files, export.build_mtime(db, b), binaries=uploads.asset_blobs(db, b.id))
     sha = hashlib.sha256(data).hexdigest()
     newest = db.scalars(select(KaisenBundle).where(KaisenBundle.build_id == b.id).order_by(KaisenBundle.id.desc())).first()
     unchanged = newest is not None and newest.sha256 == sha

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Download, RotateCw, Settings, Trash2 } from 'lucide-vue-next'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import BuildFiles from '../components/BuildFiles.vue'
+import BuildUploads from '../components/BuildUploads.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildInbox from '../components/BuildInbox.vue'
 import BuildProgress from '../components/BuildProgress.vue'
@@ -394,6 +395,7 @@ async function doDelete() {
 
           <BuildRuns :build-id="build.id" :runs="build.runs" :now="now" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'" @pick="feedback = $event" @resume="resume" />
           <BuildFiles :build-id="build.id" :files="build.files" />
+          <BuildUploads v-if="build.uploads" :build-id="build.id" :summary="build.uploads" :can-edit="canRun && !active" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="load(false)" @deploy="deployAgain" />
           <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
 
           <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
@@ -430,7 +432,7 @@ async function doDelete() {
                 <div :class="['h-full', build.spend.build_usd >= build.spend.cap_build ? 'bg-danger' : 'bg-accent']" :style="{ width: Math.min(100, (build.spend.build_usd / build.spend.cap_build) * 100) + '%' }" />
               </div>
             </div>
-            <p class="meta mt-2">This month, project <span class="mono">{{ fmtUsd(build.spend.month_usd) }}</span></p>
+            <p class="meta mt-2">Last 30 days, project <span class="mono">{{ fmtUsd(build.spend.last30_usd) }}</span></p>
           </section>
         </div>
       </template>

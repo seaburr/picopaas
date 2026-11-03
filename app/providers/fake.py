@@ -7,6 +7,9 @@ from typing import Any, Optional
 from app.providers.backup import BackupJobSpec, BackupRunner, BackupRunnerError, JobStatus
 from app.providers.base import (
     ImageInfo,
+    ImageProcessError,
+    ImageProcessor,
+    ProcessedImage,
     PodInfo,
     PodLogs,
     mark_current,
@@ -579,3 +582,19 @@ class FakeBackupRunner(BackupRunner):
         if self.fail_repo_list:
             raise BackupRunnerError("could not list repositories (FakeError)")
         return set(self.repo_ids)
+
+
+class FakeImageProcessor(ImageProcessor):
+    """Runs the real image unit in-process (Pillow + the SVG sanitizer), so tests exercise the actual re-encode. Records
+    each call; `fail_with` makes the next calls raise that ImageProcessError (outage, timeout, busy)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, str]] = []  # (byte count, hint)
+        self.fail_with: Optional[ImageProcessError] = None
+
+    def process(self, data: bytes, hint: str) -> ProcessedImage:
+        self.calls.append((len(data), hint))
+        if self.fail_with is not None:
+            raise self.fail_with
+        from app.imgproc import core
+        return core.process(data, hint)

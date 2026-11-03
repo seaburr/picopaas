@@ -118,6 +118,9 @@ REGISTRY: List[Setting] = [
     # --- Features ---
     Setting("kaisen_enabled", "Kaisen (Preview)", "Let users build apps with Kaisen. Also needs KAISEN_ENABLED on the platform.",
             "Features", "bool", "", _c("KAISEN_ENABLED")),
+    Setting("kaisen_uploads_enabled", "Kaisen file uploads (kill switch)", "Global switch for adding or replacing Kaisen uploads. "
+            "Off blocks new uploads everywhere; listing and deleting stay available. A project also needs its own flag "
+            "(Admin > Projects).", "Features", "bool", "", _c("KAISEN_UPLOADS_ENABLED")),
 ]
 BY_KEY: Dict[str, Setting] = {s.key: s for s in REGISTRY}
 
@@ -158,6 +161,7 @@ _SINGLES = [  # (group, row id, row label, key, column)
     (G_BAK, "backup_manual", "On-demand backups per app per hour", "backup_manual_per_hour", "default"),
     (G_BAK, "backup_export", "Backup downloads per app per hour", "backup_export_max_per_hour", "default"),
     (G_BAK, "backup_default_on", "Scheduled backups on for new apps", "backups_enabled_default", "default"),    (G_ACC, "kaisen", "Kaisen (Preview)", "kaisen_enabled", "default"),
+    (G_ACC, "kaisen_uploads", "Kaisen file uploads (kill switch)", "kaisen_uploads_enabled", "default"),
 ]
 _LAYOUT = {}
 for _g, _r, _l, _dk, _ck in _PAIRS:

@@ -75,7 +75,7 @@ async function load() {
     store.settings = v
     clean.value = snapshot()
     try {
-      monthUsd.value = (await getKaisenSpend(pid.value)).month_usd
+      monthUsd.value = (await getKaisenSpend(pid.value)).last30_usd
     } catch {
       monthUsd.value = null
     }
@@ -202,7 +202,7 @@ async function test(which: 'anthropic') {
             <div><label for="ks-cap-day" class="label">Per day</label><input id="ks-cap-day" v-model.number="form.cap_day" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>
             <div><label for="ks-cap-build" class="label">Per build</label><input id="ks-cap-build" v-model.number="form.cap_build" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>
           </div>
-          <p v-if="monthUsd !== null" class="meta mt-2">This month: <span class="mono">{{ fmtUsd(monthUsd) }}</span></p>
+          <p v-if="monthUsd !== null" class="meta mt-2">Last 30 days: <span class="mono">{{ fmtUsd(monthUsd) }}</span></p>
         </section>
 
         <KaisenMemberLimits v-if="pid" :project-id="pid" />

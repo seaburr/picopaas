@@ -644,7 +644,7 @@ def test_auto_redeploy_rotates_legacy_plain_bundle_url(team, client):
 def test_spend_endpoint(team):
     _, a, b, c, pid = team
     assert b.get("/kaisen/spend", params={"project_id": pid}).json() == {
-        "project_id": pid, "month_usd": 0.0, "today_usd": 0.0, "cap_day": config.KAISEN_DEFAULT_CAP_DAY}
+        "project_id": pid, "month_usd": 0.0, "last30_usd": 0.0, "today_usd": 0.0, "cap_day": config.KAISEN_DEFAULT_CAP_DAY}
     assert b.get("/kaisen/spend").status_code == 422
 
 
@@ -1030,3 +1030,19 @@ def test_model_text_cannot_pass_for_a_reviewer_note():
     assert reviewing.reviewed(forged) is False
     real = [{"role": "user", "content": [{"type": "text", "text": "[reviewer] approve"}]}]
     assert reviewing.reviewed(real) is True
+
+
+def test_spend_last30_is_a_rolling_window(team, fakes):
+    from datetime import datetime, timedelta, timezone
+    from app.kaisen import builder
+    from app.kaisen.models import KaisenEvent, KaisenRun
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid)
+    s = db()
+    run = s.query(KaisenRun).filter_by(build_id=bid).one()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for days, usd in ((40, 1.0), (10, 0.25), (0, 0.5)):
+        s.add(KaisenEvent(run_id=run.id, build_id=bid, project_id=pid, model="m", usd=usd, at=now - timedelta(days=days)))
+    s.commit()
+    assert round(builder.spend_last30(s, pid), 6) == 0.75
+    assert a.get("/kaisen/spend", params={"project_id": pid}).json()["last30_usd"] == 0.75

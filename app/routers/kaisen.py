@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, buildsecrets, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults, watchdog
+from app.kaisen import builder, buildsecrets, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults, watchdog
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
 from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret, KaisenSnapshot)
@@ -187,12 +187,15 @@ class TextIn(BaseModel):
         return v
 
 
-def get_build(db: Session, build_id: int, user: models.User, *, include_deleted: bool = False) -> KaisenBuild:
-    """The build if the caller is a member of its project; otherwise 404 (no existence leak)."""
+def get_build(db: Session, build_id: int, user: models.User, *, include_deleted: bool = False,
+              allow_suspended: bool = False) -> KaisenBuild:
+    """The build if the caller is a member of its project; otherwise 404 (no existence leak). Writes to a suspended
+    project are refused (403) unless `allow_suspended` (members may always remove their own uploads)."""
     b = db.get(KaisenBuild, build_id)
     if b is None or (b.deleted_at is not None and not include_deleted) or projects.get_membership(db, b.project_id, user.id) is None:
         raise HTTPException(status_code=404, detail="We can't find that build.")
-    projects.forbid_if_suspended(db, db.get(models.Project, b.project_id))  # writes only; reads stay open
+    if not allow_suspended:
+        projects.forbid_if_suspended(db, db.get(models.Project, b.project_id))  # writes only; reads stay open
     return b
 
 
@@ -281,12 +284,14 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
                   for i in db.scalars(select(KaisenInbox).where(KaisenInbox.build_id == b.id).order_by(KaisenInbox.id.desc()).limit(50))],
         "app": _app_view(db, b),
         "spend": {"build_usd": round(builder.spend_build(db, b.id), 6), "cap_build": rs.cap_build,
-                  "month_usd": round(builder.spend_month(db, b.project_id), 6)},
+                  "month_usd": round(builder.spend_month(db, b.project_id), 6),
+                  "last30_usd": round(builder.spend_last30(db, b.project_id), 6)},
         "output": ksettings.describe_output(b, rs),
         "tests": _tests_view(b, sec),
         "secrets": buildsecrets.describe(db, b.id),
         "has_anthropic_key": bool(rs.anthropic_api_key),
         "snapshots_kept": config.KAISEN_SNAPSHOTS_KEPT,
+        "uploads": {**kuploads.build_summary(db, b), **kuploads.availability(db, b.project_id)},
         "can_run": getattr(request.state, "api_scope", "full") != "read",
     })
     return out
@@ -371,7 +376,7 @@ def delete_build(build_id: int, delete_app: bool = False, db: Session = Depends(
             builder.set_status(db, r, "stopped")
         r.messages, r.pending = [], None
     db.query(KaisenFile).filter(KaisenFile.build_id == b.id).delete()
-    db.query(KaisenBundle).filter(KaisenBundle.build_id == b.id).delete()
+    kuploads.purge_build(db, b.id)  # uploaded bytes and every bundle that holds them
     db.query(KaisenInbox).filter(KaisenInbox.build_id == b.id).delete()
     db.query(KaisenSecret).filter(KaisenSecret.build_id == b.id).delete()
     db.query(KaisenSnapshot).filter(KaisenSnapshot.build_id == b.id).delete()
@@ -586,7 +591,8 @@ def download(build_id: int, db: Session = Depends(get_db), user: models.User = D
     runs = db.scalars(select(KaisenRun).where(KaisenRun.build_id == b.id).order_by(KaisenRun.id)).all()
     files = [f for f in files if f[0] != export.CONVERSATION_FILE]
     files.append((export.CONVERSATION_FILE, export.build_conversation(b.name, b.brief, runs, _secrets(db, b))))
-    return Response(export.build_tarball(b.slug, files, export.build_mtime(db, b)), media_type="application/gzip", headers={
+    return Response(export.build_tarball(b.slug, files, export.build_mtime(db, b), binaries=kuploads.asset_blobs(db, b.id)),
+                    media_type="application/gzip", headers={
         "Content-Disposition": f'attachment; filename="{b.slug}.tar.gz"', "Cache-Control": "no-store"})
 
 
@@ -700,6 +706,7 @@ def spend(project_id: int, db: Session = Depends(get_db), user: models.User = De
     projects.get_project_for_member(db, project_id, user)
     rs = ksettings.load(db, project_id)
     return {"project_id": project_id, "month_usd": round(builder.spend_month(db, project_id), 6),
+            "last30_usd": round(builder.spend_last30(db, project_id), 6),
             "today_usd": round(builder.spend_today(db, project_id), 6), "cap_day": rs.cap_day}
 
 

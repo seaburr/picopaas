@@ -4,10 +4,11 @@ import { Ban, Check, Play, RotateCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SuspendDialog from './SuspendDialog.vue'
-import { listAdminProjects, setProjectAppLimit, suspendProject, unsuspendProject } from '../api/admin'
+import { getKaisenUploadsFlag, getKaisenUploadsSummary, listAdminProjects, setKaisenUploadsFlag, setProjectAppLimit, suspendProject, unsuspendProject } from '../api/admin'
 import { ApiError } from '../api/client'
 import { useToastStore } from '../stores/toast'
-import type { AdminProject } from '../types'
+import { fmtSize } from '../composables/kaisen'
+import type { AdminProject, KaisenUploadsFlag, KaisenUploadsPlatformSummary } from '../types'
 import { fullDate, humanDate } from '../utils/format'
 
 const emit = defineEmits<{ changed: [] }>()
@@ -37,6 +38,53 @@ async function load() {
   }
 }
 onMounted(load)
+
+// ---- Kaisen uploads: per-project switch (default off). Personal projects are not in the list, so an id lookup too. ----
+const flagError = ref('')
+const flagBusy = ref<number | null>(null)
+const lookupId = ref('')
+const lookup = ref<KaisenUploadsFlag | null>(null)
+const summary = ref<KaisenUploadsPlatformSummary | null>(null)
+getKaisenUploadsSummary().then((s) => (summary.value = s)).catch(() => (summary.value = null))
+
+async function toggleRow(p: AdminProject, enabled: boolean) {
+  flagError.value = ''
+  flagBusy.value = p.id
+  try {
+    const r = await setKaisenUploadsFlag(p.id, enabled)
+    rows.value = rows.value.map((x) => (x.id === p.id ? { ...x, kaisen_uploads_enabled: r.kaisen_uploads_enabled } : x))
+    toast.success(`Kaisen uploads ${r.kaisen_uploads_enabled ? 'on' : 'off'} for ${r.name}.`)
+  } catch (e) {
+    flagError.value = e instanceof ApiError ? e.message : "Couldn't change Kaisen uploads."
+    rows.value = rows.value.map((x) => ({ ...x }))
+  } finally {
+    flagBusy.value = null
+  }
+}
+async function findProject() {
+  flagError.value = ''
+  lookup.value = null
+  const id = Number(lookupId.value.trim())
+  if (!Number.isInteger(id) || id < 1) {
+    flagError.value = 'Enter a project id (a whole number).'
+    return
+  }
+  try {
+    lookup.value = await getKaisenUploadsFlag(id)
+  } catch (e) {
+    flagError.value = e instanceof ApiError ? e.message : "Couldn't look up that project."
+  }
+}
+async function toggleLookup(enabled: boolean) {
+  if (!lookup.value) return
+  flagError.value = ''
+  try {
+    lookup.value = await setKaisenUploadsFlag(lookup.value.project_id, enabled)
+    toast.success(`Kaisen uploads ${lookup.value.kaisen_uploads_enabled ? 'on' : 'off'} for ${lookup.value.name}.`)
+  } catch (e) {
+    flagError.value = e instanceof ApiError ? e.message : "Couldn't change Kaisen uploads."
+  }
+}
 
 async function save(p: AdminProject) {
   const raw = (draft[p.id] ?? '').trim()
@@ -104,6 +152,22 @@ async function confirmUnsuspend() {
 
 <template>
   <div>
+    <section class="card card-pad mb-3 space-y-2" aria-labelledby="ku-h">
+      <h2 id="ku-h" class="section-title">Kaisen file uploads</h2>
+      <p class="help">Off for every project until you turn it on. Find any project by id, including personal ones, or use the switch on a row below.<template v-if="summary"> Platform storage: {{ fmtSize(summary.platform_bytes) }} of {{ fmtSize(summary.platform_limit_bytes) }} ({{ Math.round(summary.percent) }}%{{ summary.warn ? ', nearly full' : '' }}), {{ summary.files }} files.</template></p>
+      <form class="flex flex-wrap items-end gap-2" novalidate @submit.prevent="findProject">
+        <div>
+          <label for="ku-id" class="label">Project id</label>
+          <input id="ku-id" v-model="lookupId" type="text" inputmode="numeric" pattern="[0-9]*" class="input mono w-32" />
+        </div>
+        <button type="submit" class="btn-secondary">Look up</button>
+        <label v-if="lookup" class="flex items-center gap-2 text-sm">
+          <input type="checkbox" :checked="lookup.kaisen_uploads_enabled" @change="toggleLookup(($event.target as HTMLInputElement).checked)" />
+          Uploads on for <strong class="font-medium text-white">{{ lookup.name }}</strong> (#{{ lookup.project_id }})
+        </label>
+      </form>
+      <p v-if="flagError" role="alert" class="field-error">{{ flagError }}</p>
+    </section>
     <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
       <span>{{ error }}</span>
       <IconButton :icon="RotateCw" label="Retry" @click="load" />
@@ -121,7 +185,7 @@ async function confirmUnsuspend() {
             <span class="truncate font-medium text-white" :title="p.name">{{ p.name }}</span>
             <span v-if="p.status === 'suspended'" class="badge-error">Suspended</span>
           </div>
-          <div class="meta truncate" :title="p.owner_emails.join(', ')">
+          <div class="meta break-all" :title="p.owner_emails.join(', ')">
             {{ p.app_count }} of {{ p.app_limit_effective }} apps · {{ p.member_count }} {{ p.member_count === 1 ? 'member' : 'members' }} · owner {{ p.owner_emails.join(', ') || 'none' }}
           </div>
           <p v-if="p.status === 'suspended'" class="meta wrap-break-word text-zinc-300">
@@ -135,6 +199,10 @@ async function confirmUnsuspend() {
           <button v-if="draft[p.id] !== orig(p)" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${p.name}`" title="Save limit">
             <Check :size="16" aria-hidden="true" />
           </button>
+          <label class="meta flex items-center gap-1">
+            <input type="checkbox" :checked="p.kaisen_uploads_enabled === true" :disabled="flagBusy === p.id" @change="toggleRow(p, ($event.target as HTMLInputElement).checked)" />
+            Kaisen uploads<span class="sr-only"> for {{ p.name }}</span>
+          </label>
           <IconButton v-if="p.status === 'suspended'" :icon="Play" :label="`Unsuspend ${p.name}`" sm @click="unsTarget = p" />
           <IconButton v-else :icon="Ban" :label="`Suspend ${p.name}`" sm danger @click="openSuspend(p)" />
         </form>

@@ -194,3 +194,42 @@ class KaisenSnapshot(Base):
     bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # uncompressed total
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     blob: Mapped[bytes] = mapped_column(LongBlob, nullable=False)
+
+
+class KaisenAsset(Base):
+    """An uploaded file (docs/design/kaisen.md section 16). kind "asset" is a re-encoded image shipped in the bundle at
+    `uploads/<name>`; kind "reference" is text the model may read through read_reference and is never deployed. Kept apart
+    from kaisen_files on purpose: the model-writable Workspace never touches it. List queries must defer `data`."""
+    __tablename__ = "kaisen_assets"
+    __table_args__ = (UniqueConstraint("build_id", "path", name="uq_kaisen_asset_path"),
+                      Index("ix_kaisen_assets_sha256", "sha256"), Index("ix_kaisen_assets_orig_sha256", "orig_sha256"))
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(ForeignKey("kaisen_builds.id"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # asset | reference
+    path: Mapped[str] = mapped_column(String(120), nullable=False)  # uploads/<name> (asset) or <name> (reference), generated
+    name_orig: Mapped[str] = mapped_column(String(100), nullable=False, default="")  # display only, never used elsewhere
+    mime: Mapped[str] = mapped_column(String(32), nullable=False)  # from detection, never from the client
+    ext: Mapped[str] = mapped_column(String(8), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)  # stored bytes
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)  # of the stored bytes
+    orig_sha256: Mapped[str] = mapped_column(String(64), nullable=False)  # of the bytes as received (before re-encode)
+    width: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    description: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    data: Mapped[bytes] = mapped_column(LongBlob, nullable=False)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenUploadBlock(Base):
+    """Exact-hash blocklist filled by admin takedowns: an upload whose received or stored sha256 is listed is refused."""
+    __tablename__ = "kaisen_upload_blocklist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    added_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

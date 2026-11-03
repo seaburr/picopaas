@@ -58,7 +58,7 @@ export async function apiFetch<T = unknown>(url: string, options?: RequestInit):
   const method = options?.method?.toUpperCase() ?? 'GET'
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (options?.headers) Object.assign(headers, options.headers)
-  if (['POST', 'PUT', 'PATCH'].includes(method) && options?.body) {
+  if (['POST', 'PUT', 'PATCH'].includes(method) && options?.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json'
   }
 

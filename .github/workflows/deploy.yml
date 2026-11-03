@@ -146,3 +146,12 @@ jobs:
           kubectl apply -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
           kubectl -n picopaas-system rollout status deployment/picopaas --timeout=300s
           kubectl -n picopaas-system rollout status deployment/kaisen-worker --timeout=300s
+          # Kaisen image unit (uploads, docs/design/kaisen.md 16.8 R1): same image, secret-less pod with no egress. Idle until a
+          # project's uploads flag is on (uploads answer 503 if it is down), so apply + rollout run LAST and are NON-FATAL:
+          # a failure here is a warning annotation, never a failed platform deploy. Only the image tag is substituted.
+          if sed -e "s#image: ghcr.io/seaburr/picopaas:.*#image: $IMAGE#" deploy/platform/kaisen-imgproc.yaml | kubectl apply -f - \
+             && kubectl -n picopaas-system rollout status deployment/kaisen-imgproc --timeout=180s; then
+            echo "kaisen-imgproc ready"
+          else
+            echo "::warning title=kaisen-imgproc::imgproc apply/rollout failed; platform deployed, Kaisen uploads stay unavailable (503). See docs/OPERATIONS.md"
+          fi

@@ -115,7 +115,11 @@ def _required_outside_dev(env_var: str, dev_default: str) -> str:
     )
 
 
-FERNET_KEY = _required_outside_dev("FERNET_KEY", _DEV_FERNET_KEY)
+# The secret-less image-processing pod (python -m app.imgproc, docs/design/kaisen.md 16.8 R1) imports this module but
+# holds no key and never encrypts anything: KAISEN_IMGPROC_ROLE=1 lets it start without FERNET_KEY (the placeholder is the
+# public dev value, not a secret).
+KAISEN_IMGPROC_ROLE = os.environ.get("KAISEN_IMGPROC_ROLE", "") == "1"
+FERNET_KEY = _required_outside_dev("FERNET_KEY", _DEV_FERNET_KEY) if not KAISEN_IMGPROC_ROLE else _DEV_FERNET_KEY
 
 
 def derive_secret_key(fernet_key: str) -> str:
@@ -660,3 +664,42 @@ KAISEN_HANG_MARGIN_SECONDS = 120  # the liveness heartbeat stays fresh this long
 KAISEN_WATCHDOG_POLL_SECONDS = 5  # how often the worker checks an in-flight step
 if KAISEN_HANG_SECONDS <= max(KAISEN_MODEL_CALL_MAX_SECONDS, KAISEN_TOOL_SECONDS):
     raise ValueError("KAISEN_HANG_SECONDS must exceed KAISEN_MODEL_CALL_MAX_SECONDS and KAISEN_TOOL_SECONDS")
+
+
+# File uploads (docs/design/kaisen.md section 16). Switched on per project by a platform admin (projects.kaisen_uploads_enabled);
+# the platform setting kaisen_uploads_enabled is a global kill switch for POST/PUT only (default on).
+KAISEN_UPLOADS_ENABLED = os.environ.get("KAISEN_UPLOADS_ENABLED", "1") == "1"  # default of the platform kill switch
+KAISEN_UPLOAD_MAX_BYTES_IN = 4 * 1024 * 1024  # raw request body; enforced while streaming, so chunked bodies cannot bypass it
+KAISEN_UPLOAD_MAX_BYTES_OUT = 8 * 1024 * 1024  # most the image pod may send back
+KAISEN_UPLOAD_MAX_PIXELS = 8_000_000  # 8 MP (R2); checked from the header before any pixel is decoded
+KAISEN_UPLOAD_MAX_EDGE_IN = 8000  # px; wider/taller inputs are refused
+KAISEN_UPLOAD_MAX_EDGE = 2560  # stored images are downscaled so their longest edge is at most this
+KAISEN_UPLOAD_JPEG_QUALITY = 90
+KAISEN_UPLOAD_WEBP_QUALITY = 90
+KAISEN_UPLOAD_MIN_LIBWEBP = (1, 3, 2)  # below this the libwebp encoder is never used (WebP input is written as PNG/JPEG)
+KAISEN_UPLOAD_SVG_BYTES = 512 * 1024  # SVG input and sanitized output
+KAISEN_UPLOAD_SVG_MAX_ELEMENTS = 5000
+KAISEN_UPLOAD_SVG_MAX_DEPTH = 40
+KAISEN_UPLOAD_MAX_FILES = 20  # per build, both kinds
+KAISEN_UPLOAD_BUILD_BYTES = 6 * 1024 * 1024  # assets per build (stored size)
+KAISEN_UPLOAD_REF_BYTES = 1024 * 1024  # references per build
+KAISEN_UPLOAD_PROJECT_BYTES = 40 * 1024 * 1024
+KAISEN_UPLOAD_USER_BYTES = 100 * 1024 * 1024  # all builds the user created
+KAISEN_UPLOAD_PLATFORM_BYTES = 2 * 1024 * 1024 * 1024
+KAISEN_UPLOAD_PLATFORM_WARN_PERCENT = 80  # admin summary flags the total from here
+KAISEN_UPLOAD_TEXT_BYTES = 100 * 1024  # one text reference
+KAISEN_UPLOAD_READ_BYTES = 20 * 1024  # read_reference returns at most this per call
+KAISEN_UPLOAD_DESC_MAX = 200
+KAISEN_UPLOAD_NAME_MAX = 40  # stored base name (S1), before the extension
+KAISEN_UPLOAD_ORIG_MAX = 100  # display-only original name
+KAISEN_UPLOAD_KINDS = ("asset", "reference")
+KAISEN_UPLOAD_ASSET_TYPES = ("png", "jpeg", "webp", "svg")
+KAISEN_UPLOAD_REF_EXTS = ("css", "html", "txt", "md")
+KAISEN_UPLOAD_RATE_MAX = 30  # uploads (rejected ones count) per window, per user, per project and per client IP
+KAISEN_UPLOAD_RATE_WINDOW_SECONDS = 60 * 60
+KAISEN_UPLOAD_IMG_TIMEOUT = 15  # seconds the API waits for the image pod
+KAISEN_UPLOAD_IMG_QUEUE = 2  # conversions in flight or waiting per API pod; more get 503
+KAISEN_UPLOAD_IMG_MEM_MB = 1024  # RLIMIT_AS inside the image pod (virtual size; the container limit is the real fence)
+KAISEN_UPLOAD_ORPHAN_DAYS = 1  # assets of a deleted build are swept after this
+KAISEN_IMGPROC_URL = os.environ.get("KAISEN_IMGPROC_URL", "http://kaisen-imgproc:8080").rstrip("/")  # same namespace Service
+KAISEN_IMGPROC_PORT = 8080
