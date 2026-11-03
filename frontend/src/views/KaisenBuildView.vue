@@ -224,7 +224,18 @@ async function testOutput() {
   }
 }
 const resume = () => act('resume', () => runBuild(buildId.value))
-const interrupt = (runId: number) => act('interrupt', () => interruptRun(buildId.value, runId))
+const interruptErr = ref('')
+async function interrupt(runId: number) {
+  interruptErr.value = ''
+  busy.value = 'interrupt'
+  try {
+    apply(await interruptRun(buildId.value, runId))
+  } catch (e) {
+    interruptErr.value = e instanceof ApiError ? e.message : 'Something went wrong. Try again.'
+  } finally {
+    busy.value = ''
+  }
+}
 const deployAgain = () => act('deploy', () => deployBuild(buildId.value))
 async function push() {
   const b = await act('push', () => pushBuild(buildId.value), 'Pushed to GitHub.')
@@ -304,8 +315,8 @@ async function doDelete() {
           <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
         </nav>
 
-        <header class="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
+        <header class="mb-3 flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
               <h1 class="page-title break-all">{{ build.name }}</h1>
               <StatusBadge kind="build" :status="build.status" />
@@ -313,7 +324,7 @@ async function doDelete() {
             </div>
             <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex shrink-0 items-center gap-2">
             <IconButton :icon="Settings" label="Kaisen settings" to="/kaisen/settings" />
             <IconButton :icon="Trash2" label="Delete build" danger @click="alsoApp = false; confirmDelete = true" />
           </div>
@@ -367,7 +378,7 @@ async function doDelete() {
 
           <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" @answer="answer" @resume="resume" @dismiss="dismiss" />
 
-          <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="busy === 'interrupt'" @interrupt="interrupt" />
+          <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" @interrupt="interrupt" />
           <p v-if="firstRun" class="help">Your first build is queued.</p>
           <section v-else class="card card-pad" aria-labelledby="h-change">
             <h2 id="h-change" class="section-title mb-2">Tell Kaisen what to change</h2>

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { elapsed, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
 import type { KaisenRun } from '../types'
 
-const props = defineProps<{ run: KaisenRun; buildUsd: number; capBuild: number; canRun?: boolean; interrupting?: boolean }>()
+const props = defineProps<{ run: KaisenRun; buildUsd: number; capBuild: number; canRun?: boolean; interrupting?: boolean; interruptError?: string }>()
 const emit = defineEmits<{ interrupt: [runId: number] }>()
 const t = ref(Date.now())
 const tick = setInterval(() => (t.value = Date.now()), 1000)
@@ -23,6 +23,7 @@ const label = computed(() => RUN_KIND_LABEL[props.run.kind] ?? props.run.kind)
       <span class="meta">{{ fmtUsd(buildUsd) }} of {{ fmtUsd(capBuild) }} build cap</span>
       <button v-if="canRun && run.status === 'running'" type="button" class="btn-secondary btn-sm font-sans sm:ml-auto" title="Use this if the run looks stuck. Kaisen drops the step in progress and retries from its last saved state." :disabled="interrupting" @click="emit('interrupt', run.id)">{{ interrupting ? 'Interrupting…' : 'Interrupt and retry' }}</button>
     </p>
+    <p v-if="interruptError" role="alert" class="alert-error mt-2 whitespace-pre-wrap">{{ interruptError }}</p>
     <p v-for="n in run.notes ?? []" :key="n.at + n.text" class="meta mt-2" role="status">{{ n.text }}</p>
   </section>
 </template>

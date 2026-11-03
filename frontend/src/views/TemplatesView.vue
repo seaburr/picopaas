@@ -12,6 +12,13 @@ const storageOff = computed(() => auth.user?.features?.storage === false)
 const templates = ref<AppTemplate[]>([])
 const loading = ref(true)
 const error = ref('')
+const offNotes = computed(() => {
+  const n: string[] = []
+  if (!volumesOn.value) n.push('persistent volumes')
+  if (dbOff.value) n.push('databases')
+  if (storageOff.value) n.push('blob storage')
+  return n
+})
 
 onMounted(async () => {
   try {
@@ -34,6 +41,8 @@ onMounted(async () => {
       <h1 class="page-title">Templates</h1>
       <p class="help mb-3">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
 
+      <p v-if="offNotes.length" class="alert-warn mb-3">Off on this instance: {{ offNotes.join(', ') }}. Templates that need them are marked below; templates with an optional volume deploy without it, and data on scratch disk is lost on restart.</p>
+
       <div v-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
       <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>
       <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -47,12 +56,8 @@ onMounted(async () => {
             <span v-if="!t.wants_db && !t.wants_storage && !t.volume" class="badge badge-neutral">No add-ons</span>
             <span v-if="t.secrets.length" class="badge badge-neutral">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }} to set</span>
           </div>
-          <p v-if="t.volume && !volumesOn" :class="t.volume.required ? 'alert-warn' : 'meta'">
-            Persistent volumes are off on this instance.
-            {{ t.volume.required ? 'This template needs one.' : 'It deploys without the volume; data on scratch disk is lost on restart.' }}
-          </p>
-          <p v-if="t.wants_db && dbOff" class="alert-warn">Databases are off on this instance.</p>
-          <p v-if="t.wants_storage && storageOff" class="alert-warn">Blob storage is off on this instance.</p>
+          <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
+          <p v-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
           <p class="mono text-xs text-zinc-400"><span class="break-all">{{ t.image }}</span> <span class="whitespace-nowrap">· port {{ t.port }}</span></p>
           <p v-if="t.notes" class="meta">{{ t.notes }}</p>
           <div class="mt-auto flex items-center justify-between gap-2 pt-2">

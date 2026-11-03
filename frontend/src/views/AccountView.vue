@@ -11,7 +11,7 @@ import { ApiError } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { fullDate } from '../utils/format'
-import { browserZone, effectiveZone, listZones } from '../utils/tz'
+import { effectiveZone, listZones } from '../utils/tz'
 
 const zones = listZones()
 const zoneFilter = ref('')
@@ -87,10 +87,10 @@ async function onSubmit() {
             <dt class="text-zinc-400">Joined</dt>
             <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
             <dt class="text-zinc-400"><label for="tz">Time zone</label></dt>
-            <dd class="space-y-1">
+            <dd class="min-w-0 space-y-1">
               <input v-model="zoneFilter" type="search" class="input" placeholder="Filter zones…" aria-label="Filter time zones" />
-              <select id="tz" class="input" :value="auth.user?.timezone ?? ''" :disabled="zoneBusy" @change="onZone">
-                <option value="">Browser default ({{ browserZone() }})</option>
+              <select id="tz" class="input w-full min-w-0 truncate" :value="auth.user?.timezone ?? ''" :disabled="zoneBusy" @change="onZone">
+                <option value="">Browser default</option>
                 <option v-for="z in shownZones" :key="z" :value="z">{{ z }}</option>
               </select>
               <p class="text-xs text-zinc-500">Times shown in {{ effectiveZone() }}</p>
