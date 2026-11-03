@@ -15,8 +15,8 @@ The upstream image (`excalidraw/excalidraw`) is nginx **as root on port 80** (no
 
 ## Verified
 
-Local only (2026-11-03, linux/amd64 under emulation): `docker run --user 10001 -p ...:8080` serves `/` and a deep
-link with 200, correct page title, ~20 MiB RAM. **Live test pending publish** of the wrapper image.
+**Verified live 2026-11-03** (throwaway app, published GHCR wrapper): running with the health check on, `/` and a deep link
+(`/base64-string-converter`) both return 200 with the right page title. Also checked locally with `docker run --user 10001`: about 20 MiB RAM idle.
 
 ## Gotchas
 
