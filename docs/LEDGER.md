@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-03 [backend-dev] DONE: flaky test_threaded_waiter_abandons_when_interrupted_elsewhere (CI 41716940724) is a TEST-INFRA race, no product change: tests use one shared SQLite connection (StaticPool), so the waiter's poll (select + rollback) can roll back the step thread's half-done manual interrupt transaction; MySQL uses separate connections. Test now holds waiter polls until the interrupt committed (tests/test_kaisen_watchdog.py). 15 x 30 tests green incl. under CPU load; not reproduced locally before the fix.
+- 2026-11-03 [backend-dev] START: flaky watchdog test (CI 41716940724).
 - 2026-11-03 [scm-security] DONE: pushed a5a1ff4 (ui P3s + button labels), abcc3c3 (kaisen runtime P1b), d653911 (K79/K85 SVG bitmaps), b80c6ae (docs), plus this ledger commit. gitleaks clean per commit, ruff + 160 targeted tests + frontend typecheck/lint/build green; pushed without security review.
 - 2026-11-03 [backend-dev] DONE: bug fix: /uploads/ served from verified <root>/uploads when public/ exists (boot.py StaticHandler uploads_root), prompt line in app/kaisen/uploads.py and prompts/builder.md that server apps must serve uploads/ themselves, ci-smoke.sh now uses public/, 5 new tests in tests/test_kaisen_runtime_static.py; KAISEN_OPS and PENTEST K86 updated; local docker smoke ok. Needs runtime republish + re-pin. NEEDS-SECURITY-REVIEW (path mapping).
 - 2026-11-03 [backend-dev] START: serve root uploads/ when public/ exists, server-app prompt note, K86 residual.
@@ -1399,3 +1401,4 @@ STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" firs
 - 2026-11-03 [qa-tester] DONE: max_allowed_packet on managed MySQL (db-server primary, cluster picopaas-mysql-nyc3, 8.4.11) = 67108864 (64 MiB); throwaway adminer app 282 deleted (404 confirmed); QUESTIONS.md to-do updated. Uncommitted.
 - 2026-11-03 [security-reviewer] START: review P1b runtime headers + K79 SVG re-encode
 - 2026-11-03 [security-reviewer] DONE: P1b clean (K86); K79 gap fixed (K85: xlink:href+href both re-encoded, missing-href 500); tests/test_sec_svg_images.py, test_sec_runtime_paths.py; no HIGH/CRIT
+- 2026-11-03 [manager] DONE: follow-ups live. 91fcf86 deployed (run 41733360096, CI: success, image: success); runtime image sha256:4a58353a… re-pinned via bootstrap 41734937157 (backup image kept at bc6ebfca…; picopaas rolled out). max_allowed_packet 64 MiB (qa app 282, deleted); node room ok. Flaky watchdog test fixed test-side (shared SQLite StaticPool connection; prod unaffected). Uploads ready for Chas to enable on his test project.
