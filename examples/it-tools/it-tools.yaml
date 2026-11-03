@@ -1,0 +1,8 @@
+apiVersion: picopaas/v1
+name: it-tools
+# examples/it-tools/Dockerfile: upstream static site on nginx-unprivileged (built by examples.yml once the matrix lists it).
+image: ghcr.io/seaburr/picopaas-example-it-tools:latest
+port: 8080
+healthCheck:
+  enabled: true
+  path: /

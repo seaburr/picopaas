@@ -1,0 +1,23 @@
+apiVersion: picopaas/v1
+name: ntfy
+# Upstream image as is (no Dockerfile): it sets no USER, so the platform's UID 10001 works. Go binary, ~20 MiB.
+image: ghcr.io/seaburr/picopaas-example-ntfy:latest
+port: 8080
+healthCheck:
+  enabled: true
+  path: /v1/health
+resources:
+  db: true
+  db_engine: pg
+env:
+  NTFY_LISTEN_HTTP: ":8080"
+  NTFY_BASE_URL: "${{ app.url }}"
+  NTFY_BEHIND_PROXY: "true"
+  # With database-url set, cache-file, auth-file and web-push-file must NOT be set: all state lives in PostgreSQL.
+  NTFY_DATABASE_URL: "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}&pool_max_conns=3"
+  NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
+  NTFY_CACHE_DURATION: "12h"
+# Provisioned users, comma separated "name:bcrypt-hash:role" (make the hash with `docker run --rm -i
+# binwiederhier/ntfy user hash`). Pass it with: picopaas apply -f ntfy.yaml --secret NTFY_AUTH_USERS='tester:$2a$...:admin'
+secrets:
+  - NTFY_AUTH_USERS

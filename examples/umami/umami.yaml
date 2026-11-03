@@ -1,0 +1,22 @@
+apiVersion: picopaas/v1
+name: umami
+# Public image. Umami 3.4.1 runs as USER nextjs (1001) on port 3000, so PicoPaaS runs it unmodified (no Dockerfile).
+# Verified live 2026-11-03. The "postgresql-latest" tag was 3.4.1 on that date; the project publishes no
+# postgresql-3.4.1 tag (only postgresql-3.0.0, postgresql-3.0 and postgresql-3), so to pin exactly, use the digest.
+image: ghcr.io/umami-software/umami:postgresql-latest
+port: 3000
+healthCheck:
+  enabled: true
+  path: /api/heartbeat
+resources:
+  db: true
+  db_engine: pg
+env:
+  HOME: /tmp
+  HOSTNAME: "0.0.0.0"
+  # Prisma reads the CA from a file: ${{ db.ca_file }} is the platform CA mounted at /etc/picopaas/db-ca.pem.
+  DATABASE_URL: "postgresql://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}"
+  DISABLE_TELEMETRY: "1"
+secrets:
+  # Salt for session hashing. Set the value in the dashboard or via the API.
+  - APP_SECRET

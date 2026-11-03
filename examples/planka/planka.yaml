@@ -1,0 +1,45 @@
+apiVersion: picopaas/v1
+name: planka
+# Public image, pinned. Planka runs as USER node (1000) on port 1337. Two things need a nudge on PicoPaaS (UID 10001):
+# the log file defaults to /app/logs (not writable) and uploads are staged in /app/.tmp (not writable), see below.
+# Verified live 2026-11-03. LICENSE: PLANKA Community "Fair Use" license, see the README before offering it to others.
+image: ghcr.io/plankanban/planka:2.2.1
+port: 1337
+healthCheck:
+  enabled: true
+  path: /
+resources:
+  db: true
+  db_engine: pg
+  storage: true   # attachments and avatars go to the bucket (S3_* below)
+  # Sails stages multipart uploads in /app/.tmp (hardcoded, owned by uid 1000 in the image). Without a writable
+  # directory there, every attachment upload fails with "EACCES: permission denied, mkdir '/app/.tmp'".
+  volume: { sizeGi: 1, mountPath: /app/.tmp }
+env:
+  HOME: /tmp
+  # The default log file is /app/logs/planka.log, which UID 10001 cannot create (the app exits at start).
+  LOG_FILE: /tmp/planka.log
+  BASE_URL: "${{ app.url }}"
+  DATABASE_URL: "postgresql://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}"
+  # TLS: Planka's own settings cannot take a CA file (see the README). PGSSLMODE makes the runtime connection use TLS
+  # (the server refuses plain connections); KNEX_REJECT_UNAUTHORIZED_SSL_CERTIFICATE=false is the only way to get TLS for
+  # the migration step, and it means "encrypted, certificate not checked" there.
+  PGSSLMODE: verify-full
+  NODE_EXTRA_CA_CERTS: "${{ db.ca_file }}"
+  KNEX_REJECT_UNAUTHORIZED_SSL_CERTIFICATE: "false"
+  S3_ENDPOINT: "${{ storage.endpoint }}"
+  S3_REGION: "${{ storage.region }}"
+  S3_ACCESS_KEY_ID: "${{ storage.access_key }}"
+  S3_SECRET_ACCESS_KEY: "${{ storage.secret_key }}"
+  S3_BUCKET: "${{ storage.bucket }}"
+  S3_FORCE_PATH_STYLE: "false"
+  # The first admin, created on first boot (not changed by later edits to these values).
+  DEFAULT_ADMIN_EMAIL: "admin@example.com"
+  DEFAULT_ADMIN_NAME: "Admin"
+  DEFAULT_ADMIN_USERNAME: "admin"
+  NODE_OPTIONS: "--max-old-space-size=256"
+secrets:
+  # Signing key for sessions.
+  - SECRET_KEY
+  # The first admin's password. Set the value in the dashboard or via the API.
+  - DEFAULT_ADMIN_PASSWORD

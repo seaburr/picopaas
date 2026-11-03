@@ -1,0 +1,45 @@
+apiVersion: picopaas/v1
+name: vikunja
+# Public image, pinned. Vikunja runs as USER 1000 on port 3456 and is configured entirely through
+# VIKUNJA_* env vars, so PicoPaaS runs it unmodified (no Dockerfile here). Verified live 2026-11-03.
+image: vikunja/vikunja:2.7.1
+port: 3456
+healthCheck:
+  enabled: true
+  path: /api/v1/info
+resources:
+  db: true
+  db_engine: pg
+  storage: true   # task attachments (and project backgrounds) go to the bucket
+env:
+  HOME: /tmp
+  VIKUNJA_SERVICE_PUBLICURL: "${{ app.url }}/"
+  VIKUNJA_DATABASE_TYPE: postgres
+  # host takes host:port.
+  VIKUNJA_DATABASE_HOST: "${{ db.host }}:${{ db.port }}"
+  VIKUNJA_DATABASE_DATABASE: "${{ db.name }}"
+  VIKUNJA_DATABASE_USER: "${{ db.user }}"
+  VIKUNJA_DATABASE_PASSWORD: "${{ db.password }}"
+  # CA-verified TLS using the platform CA mounted at /etc/picopaas/db-ca.pem (${{ db.ca_file }}).
+  # Verified live: pointing SSLROOTCERT at the system bundle fails with "certificate signed by unknown authority".
+  VIKUNJA_DATABASE_SSLMODE: verify-full
+  VIKUNJA_DATABASE_SSLROOTCERT: "${{ db.ca_file }}"
+  # Stay under the per-app Postgres role's CONNECTION LIMIT of 5.
+  VIKUNJA_DATABASE_MAXOPENCONNECTIONS: "3"
+  VIKUNJA_DATABASE_MAXIDLECONNECTIONS: "2"
+  # Attachments in the bucket (virtual-hosted style, as the Spaces endpoint expects).
+  VIKUNJA_FILES_TYPE: s3
+  VIKUNJA_FILES_S3_ENDPOINT: "${{ storage.endpoint }}"
+  VIKUNJA_FILES_S3_BUCKET: "${{ storage.bucket }}"
+  VIKUNJA_FILES_S3_REGION: "${{ storage.region }}"
+  VIKUNJA_FILES_S3_ACCESSKEY: "${{ storage.access_key }}"
+  VIKUNJA_FILES_S3_SECRETKEY: "${{ storage.secret_key }}"
+  VIKUNJA_FILES_S3_USEPATHSTYLE: "false"
+  # No outbound SMTP on the platform: password reset by email is unavailable.
+  VIKUNJA_MAILER_ENABLED: "false"
+  # Registration is open so you can create the first user. After that, set this to "false" and redeploy
+  # (verified: the register endpoint then returns 404 and existing users still sign in).
+  # VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+secrets:
+  # JWT signing key. Set the value in the dashboard or via the API.
+  - VIKUNJA_SERVICE_SECRET

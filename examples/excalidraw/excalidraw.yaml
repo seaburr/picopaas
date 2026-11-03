@@ -1,0 +1,8 @@
+apiVersion: picopaas/v1
+name: excalidraw
+# examples/excalidraw/Dockerfile: upstream static site on nginx-unprivileged (built by examples.yml once the matrix lists it).
+image: ghcr.io/seaburr/picopaas-example-excalidraw:latest
+port: 8080
+healthCheck:
+  enabled: true
+  path: /
