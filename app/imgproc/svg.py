@@ -4,13 +4,19 @@ Parse with defusedxml (no DTD, no entities, no external references), copy only a
 a new tree, drop everything else, and write the XML ourselves. The result is meant to be shown as an image: it contains
 no script, no foreignObject, no event handlers, no animation, no external reference of any kind (links are local
 #fragments or data:image/(png|jpeg|webp) URIs), and no CSS that can fetch or execute anything."""
+import base64
+import binascii
+import io
 import re
 from xml.sax.saxutils import escape, quoteattr
 
 from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import ParseError, fromstring
 
+from PIL import Image
+
 from app import config
+from app.imgproc import raster
 from app.providers.base import ImageProcessError, ProcessedImage
 
 SVG_NS = "http://www.w3.org/2000/svg"
@@ -182,6 +188,37 @@ def _drop_unsafe_use(root: _Node) -> None:
     prune(root)
 
 
+def _reencode_images(root: _Node) -> None:
+    """K79: every embedded bitmap goes through the same Pillow pipeline as an upload (metadata stripped, size caps, no
+    animation) and the data URI is replaced by the fresh encode. Any failure refuses the whole SVG."""
+    images = [n for n in _walk(root) if n.tag == "image"]
+    if len(images) > config.KAISEN_UPLOAD_SVG_MAX_IMAGES:
+        raise ImageProcessError("too_big", f"That SVG embeds more than {config.KAISEN_UPLOAD_SVG_MAX_IMAGES} pictures. "
+                                           "Use fewer, or upload them as separate images.")
+    total = 0
+    for n in images:
+        for key in [k for k in ("href", "xlink:href") if k in n.attrs]:  # both may be present; re-encode both
+            uri = n.attrs[key]
+            try:
+                raw = base64.b64decode(uri.split(",", 1)[1], validate=True)
+            except (binascii.Error, ValueError, IndexError):
+                raise ImageProcessError("corrupt", "A picture embedded in that SVG couldn't be read. "
+                                                   "Export the SVG again.") from None
+            try:
+                with Image.open(io.BytesIO(raw), formats=raster.FORMATS) as probe:
+                    total += probe.size[0] * probe.size[1]
+            except Exception:  # noqa: BLE001 - any decoder error means the embedded picture is unusable
+                raise ImageProcessError("corrupt", "A picture embedded in that SVG couldn't be read. "
+                                                   "Export the SVG again.") from None
+            if total > config.KAISEN_UPLOAD_SVG_MAX_IMAGE_PIXELS:
+                raise ImageProcessError("too_big", "The pictures embedded in that SVG have too many pixels in total.")
+            try:
+                res = raster.process(raw)
+            except ImageProcessError as exc:
+                raise ImageProcessError(exc.code, f"A picture embedded in that SVG was refused: {exc.message}") from None
+            n.attrs[key] = f"data:{res.mime};base64," + base64.b64encode(res.data).decode()
+
+
 def _write(node: _Node, out: list[str]) -> None:
     if node.tag == "#text":
         out.append(escape(node.text))
@@ -232,6 +269,7 @@ def sanitize(data: bytes) -> ProcessedImage:
     if node is None:  # pragma: no cover - root is svg, which is allow-listed
         raise ImageProcessError("unsupported", "That file isn't an SVG image.")
     _drop_unsafe_use(node)
+    _reencode_images(node)
     parts: list[str] = []
     _write(node, parts)
     out = "".join(parts).encode("utf-8")

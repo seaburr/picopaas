@@ -146,11 +146,101 @@ def test_use_bomb_by_self_reference_is_dropped():
     assert "<use" not in out
 
 
+def _png_b64(size=(4, 3), exif=True, fmt="PNG"):
+    import base64
+    import io
+
+    from PIL import Image
+    img = Image.new("RGB", size, (200, 10, 10))
+    buf = io.BytesIO()
+    kw = {}
+    if exif:
+        ex = Image.Exif()
+        ex[0x010E] = "secret-description-marker"
+        kw["exif"] = ex
+    img.save(buf, fmt, **kw)
+    return base64.b64encode(buf.getvalue()).decode(), buf.getvalue()
+
+
 def test_image_element_accepts_only_raster_data_uris():
-    out = clean('<image width="1" height="1" href="data:image/png;base64,iVBORw0KGgo="/>'
+    b64, _ = _png_b64()
+    out = clean(f'<image width="1" height="1" href="data:image/png;base64,{b64}"/>'
                 '<image width="1" height="1" href="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="/>'
                 '<image width="1" height="1" href="data:text/html;base64,PHNjcmlwdD4="/>')
-    assert out.count("<image") == 1 and "data:image/png;base64,iVBORw0KGgo=" in out and "svg+xml" not in out and "text/html" not in out
+    assert out.count("<image") == 1 and "data:image/png;base64," in out and "svg+xml" not in out and "text/html" not in out
+
+
+def test_embedded_jpeg_with_exif_is_reencoded_without_metadata():
+    import base64
+    b64, raw = _png_b64(fmt="JPEG")
+    assert b"secret-description-marker" in raw
+    out = clean(f'<image width="1" height="1" href="data:image/jpeg;base64,{b64}"/>')
+    uri = out.split('href="')[1].split('"')[0]
+    assert uri.startswith("data:image/jpeg;base64,")
+    new = base64.b64decode(uri.split(",", 1)[1])
+    assert b"secret-description-marker" not in new and new != raw and new[:3] == b"\xff\xd8\xff"
+
+
+def test_embedded_png_text_chunk_is_gone():
+    import base64
+    import io
+
+    from PIL import Image, PngImagePlugin
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Comment", "secret-description-marker")
+    buf = io.BytesIO()
+    Image.new("RGB", (3, 3)).save(buf, "PNG", pnginfo=info)
+    assert b"secret-description-marker" in buf.getvalue()
+    out = clean(f'<image width="1" height="1" href="data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"/>')
+    new = base64.b64decode(out.split("base64,")[1].split('"')[0])
+    assert b"secret-description-marker" not in new and Image.open(io.BytesIO(new)).size == (3, 3)
+
+
+@pytest.mark.parametrize("payload", [
+    "iVBORw0KGgo=",  # a truncated PNG signature
+    "bm90LWFuLWltYWdl",  # decodes fine, is not an image
+    "PGh0bWw+PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",  # html polyglot body
+    "AAAAA",  # bad base64 padding
+])
+def test_garbage_embedded_image_refuses_the_svg(payload):
+    err = refuses(wrap(f'<image width="1" height="1" href="data:image/png;base64,{payload}"/>'), "corrupt")
+    assert "embedded" in err.message
+
+
+def test_png_header_with_garbage_body_refuses():
+    import base64
+    b64, raw = _png_b64(exif=False)
+    bad = base64.b64encode(raw[:40]).decode()
+    refuses(wrap(f'<image width="1" height="1" href="data:image/png;base64,{bad}"/>'), "corrupt")
+
+
+def test_too_many_embedded_images_refused(monkeypatch):
+    b64, _ = _png_b64(exif=False)
+    n = config.KAISEN_UPLOAD_SVG_MAX_IMAGES + 1
+    inner = "".join(f'<image width="1" height="1" href="data:image/png;base64,{b64}"/>' for _ in range(n))
+    err = refuses(wrap(inner), "too_big")
+    assert str(config.KAISEN_UPLOAD_SVG_MAX_IMAGES) in err.message
+
+
+def test_embedded_image_over_pixel_cap_refused(monkeypatch):
+    monkeypatch.setattr(config, "KAISEN_UPLOAD_MAX_PIXELS", 10)
+    b64, _ = _png_b64(size=(8, 8), exif=False)
+    err = refuses(wrap(f'<image width="1" height="1" href="data:image/png;base64,{b64}"/>'), "too_big")
+    assert "embedded" in err.message
+
+
+def test_total_embedded_pixels_capped(monkeypatch):
+    monkeypatch.setattr(config, "KAISEN_UPLOAD_SVG_MAX_IMAGE_PIXELS", 30)
+    b64, _ = _png_b64(size=(4, 4), exif=False)
+    inner = "".join(f'<image width="1" height="1" href="data:image/png;base64,{b64}"/>' for _ in range(2))
+    refuses(wrap(inner), "too_big")  # 2 x 16 px > 30 in total
+    assert clean(inner.split("/>")[0] + "/>").count("<image") == 1  # one picture alone fits
+
+
+def test_svg_still_capped_after_reencoding(monkeypatch):
+    monkeypatch.setattr(config, "KAISEN_UPLOAD_SVG_BYTES", 400)
+    b64, _ = _png_b64(exif=False)
+    refuses(wrap(f'<image width="1" height="1" href="data:image/png;base64,{b64}"/><rect width="1" height="1"/>' * 3), "too_big")
 
 
 def test_unlisted_attributes_are_dropped():
