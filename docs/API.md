@@ -51,6 +51,8 @@ everywhere a user is accepted except where marked "session only".
 | DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
 | POST | `/admin/apps/{app_id}/suspend`, `/unsuspend` | admin |
 | POST | `/admin/projects/{project_id}/suspend`, `/unsuspend` | admin |
+| GET, PUT | `/admin/projects/{project_id}/kaisen-uploads` | admin (PUT turns Kaisen file uploads on or off for the project; see Kaisen file uploads) |
+| GET, DELETE | `/admin/kaisen/uploads`, `/admin/kaisen/uploads/summary`, `/admin/kaisen/builds/{id}/uploads/{uid}` | admin (search by hash: browser session only; platform totals; takedown) |
 | GET | `/admin/suspensions` | admin (browser session only) |
 | PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin |
 | PUT | `/admin/apps/{app_id}/replicas` | admin |
@@ -147,9 +149,9 @@ change a scope). Pre-existing keys are `full`.
 
 `GET /templates` returns the static catalog of one-click starters: a list of `{id, name, description, image, port,
 wants_db, db_engine, wants_storage, env{KEY: value}, secrets[{key, hint}], health_check{path, timeout_seconds}|null,
-volume{size_gi, mount_path, required}|null, notes, docs_url}` (`env` values may be `${{ ref }}` references; `secrets` are
-names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub). Today:
-`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `memos`, `vaultwarden`, `wikijs`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
+volume{size_gi, mount_path, required}|null, notes, docs_url, upstream_docs_url}` (`env` values may be `${{ ref }}` references; `secrets` are
+names to create as empty secret env vars, `hint` says how to generate the value; `docs_url` is the example README on GitHub, `upstream_docs_url` the app's own official docs). Today:
+`ghost`, `wordpress`, `directus`, `grafana`, `grafana-pg`, `n8n`, `shlink`, `miniflux`, `forgejo`, `memos`, `vikunja`, `umami`, `ntfy`, `it-tools`, `excalidraw`, `vaultwarden`, `wikijs`, `status`, `static-site`. A template is just a prefilled `POST /apps` body; nothing is created.
 
 ## Apps (`/apps`, active)
 
@@ -503,7 +505,31 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 | GET | `/kaisen/builds/{id}/secrets` | | A JSON list `[{name, value (masked), updated_at}]`; values are never returned. |
 | PUT | `/kaisen/builds/{id}/secrets/{NAME}` | `{value}` | Any project member who can run the build (not read keys). Creates or replaces; returns `{secrets, applies_on_next_deploy: true}`. 422: name not UPPER_SNAKE_CASE or over 64 characters, name starting with `KAISEN_` or `DB_` or one of the reserved names, value under 6 or over 4000 characters or containing `${{`, or more than 20 secrets. Fernet-encrypted at rest; the builder model sees names only; merged into the app's env on every deploy. Audit `kaisen.secret_set` (name only). |
 | DELETE | `/kaisen/builds/{id}/secrets/{NAME}` | | Returns `{secrets, applies_on_next_deploy: false}`; the secret is also removed from the live app, which restarts. 404 if unknown. Audit `kaisen.secret_delete`. |
-| GET | `/kaisen/spend?project_id=` | | `{project_id, month_usd, today_usd, cap_day}`. |
+| GET | `/kaisen/spend?project_id=` | | `{project_id, last30_usd, month_usd, today_usd, cap_day}`. `last30_usd` is the rolling last 30 days (what the UI shows); `month_usd` is kept for compatibility. The build detail's `spend` object carries `last30_usd` next to `month_usd` the same way. |
+
+### Kaisen file uploads (switched off until an admin enables a project)
+
+Uploads are a per-project feature: a platform admin turns it on for one project (`PUT /admin/projects/{id}/kaisen-uploads`), and there is a global kill switch (platform setting `kaisen_uploads_enabled`, default on) that blocks **adding and replacing** only. Listing, reading, describing and deleting never need either. The flag is read-only for users and appears in `GET /projects/{id}/kaisen` and in the build detail (`uploads`): `uploads_enabled` (the flag AND the kill switch; the UI grays the section out when false), `uploads_project_enabled`, `uploads_platform_enabled`, `uploads_disabled_reason` (plain text or null), `uploads_not_enabled_label` ("Not enabled for this project yet") and `uploads_notice` (the one-line public-assets notice to show in the UI). Not a member: 404. Anonymous: 401. Read-scope keys: GET only. **Bodies are raw, not multipart**: send the file as the request body (`Content-Type: application/octet-stream`); `kind`, `filename` (a label only) and `description` are query parameters. The body is capped at 4 MiB while streaming (413), also for chunked uploads.
+
+| Method | Path | Body / query | Notes |
+|---|---|---|---|
+| GET | `/kaisen/builds/{id}/uploads` | | `{uploads: [{id, kind ("asset"/"reference"), path, name, name_orig, mime, ext, size, width, height, description, version, sha256, created_by, created_at, updated_at}], quota: {count, max_files, asset_bytes, asset_limit_bytes, ref_bytes, ref_limit_bytes, project_bytes, project_limit_bytes, user_bytes, user_limit_bytes, max_upload_bytes}, notice, uploads_enabled, ...}`. Never loads the file bytes. |
+| POST | `/kaisen/builds/{id}/uploads?kind=asset\|reference&filename=&description=` | raw file | 201 `{...item, notes: ["Metadata removed", "Resized 4000x3000 to 2560x1920"]}`. **Assets**: PNG, JPEG, WebP (decoded and re-encoded in the secret-less image pod: metadata dropped, longest edge capped at 2560 px, 8 megapixels in, no animation) and SVG (sanitized in the same pod: no script, foreignObject, event handlers, animation, external links or fetching CSS; 512 KiB). They are shipped in the deployed app at `/uploads/<generated-name>` and are public once it is deployed. **References**: UTF-8 css/html/txt/md up to 100 KiB, scanned for secrets (422 naming the kind, never the value), never deployed, readable by the model through `read_reference`, sent to the AI provider when read. Stored names are generated (`uploads/<slug>.png\|jpg\|webp\|svg`, `references/<slug>.css...`); `filename` is only shown back as `name_orig`. Errors: 403 not enabled / switched off / suspended project / quota ("This build already has 20 files", per-build 6 MB images and 1 MB references, per-project 40 MB, per-user 100 MB, platform 2 GiB), 409 name taken by a generated file, 413 too large, 415 type not supported, 422 corrupt, too many pixels, animated, secret found or blocked, 429 rate limit (30 per hour per user, project and IP, rejected tries count), 503 image pod busy or down, 504 timeout. Audit `kaisen.upload_add`; rejections `kaisen.upload_rejected` (reason class only). |
+| PUT | `/kaisen/builds/{id}/uploads/{uid}?filename=&description=` | raw file | Replace: keeps the stored name and kind, `version` + 1; the type must stay the same (415 otherwise). 409 while a run is active. Same limits as POST. Audit `kaisen.upload_replace`. |
+| PATCH | `/kaisen/builds/{id}/uploads/{uid}` | `{description (<=200)}` | Edit the one-line description (angle brackets and newlines stripped; secret scan). Audit `kaisen.upload_describe`. |
+| DELETE | `/kaisen/builds/{id}/uploads/{uid}` | | 204. Also works in a suspended project and with the switches off. Deletes every stored bundle of the build (they hold the bytes); the next deploy builds a fresh one (`uploads.changed_since_deploy` tells the UI to offer Deploy). 409 while a run is active. Audit `kaisen.upload_delete`. |
+| GET | `/kaisen/builds/{id}/uploads/{uid}/content` | | The stored bytes for thumbnails and download: `Content-Type` from detection, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, `ETag` = sha256, `Content-Security-Policy: default-src 'none'; sandbox` (SVG: `default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox`). References: `text/plain; charset=utf-8` as an attachment. `Content-Disposition` carries the stored name only. |
+
+The build detail's `uploads` object: `{count, asset_count, reference_count, asset_bytes, ref_bytes, max_files, asset_limit_bytes, ref_limit_bytes, changed_since_deploy, uploads_enabled, uploads_project_enabled, uploads_platform_enabled, uploads_disabled_reason, uploads_not_enabled_label, uploads_notice}`. Bundles (`/kaisen/bundles/...`), the download tarball and the GitHub push contain the assets (plus a `.kaisen-uploads.json` manifest `{path: {sha256, size}}` in the bundle and download) and never the references. Deleting a build deletes its uploads.
+
+Admin (platform admins only; anonymous 401, others 403):
+
+| Method | Path | Body / query | Notes |
+|---|---|---|---|
+| GET, PUT | `/admin/projects/{id}/kaisen-uploads` | PUT `{enabled: bool}` | `{project_id, name, kaisen_uploads_enabled}`. Works for personal and shared projects. 404 unknown project, 422 bad body. Audit `kaisen.uploads_flag`. `GET /admin/projects` rows carry `kaisen_uploads_enabled` too (shared projects only, as before). |
+| GET | `/admin/kaisen/uploads?sha256=&build_id=&limit=` | | **Browser session only** (an admin API key, even read-only, gets 403, because rows carry user emails). Find uploads across builds by the stored or the as-received hash (64 hex characters, else 422). No bytes. Rows add `orig_sha256, build_id, project_id, build_deleted, created_by_email`. |
+| GET | `/admin/kaisen/uploads/summary` | | `{platform_bytes, platform_limit_bytes, percent, warn (from 80%), files, blocklist_entries}`. |
+| DELETE | `/admin/kaisen/builds/{id}/uploads/{uid}?reason=&suspend_app=false` | `reason` required (<=200) | Takedown: deletes the bytes, blocklists the stored and the original sha256 (exact match only, no perceptual matching), deletes all bundles of the build (the old public bundle URL answers 404), and with `suspend_app=true` suspends the live preview. Returns `{taken_down, build_id, sha256, app_suspended, needs_redeploy}`. Audit `kaisen.upload_takedown` (hash prefix, reason, no contents). A blocked file is refused later with a neutral 422. |
 
 `kaisen.json` keys a build may use: `runtime`, `start`, `health`, `database` (`mysql`\|`postgres`), `bucket` (`true`), `volume` (`{"path"}`) and `test` (a command, up to 300 characters). A static runtime can't ask for a database, bucket or volume; a database engine, bucket or volume can't be removed once added; a volume needs volumes enabled on the platform. The deploy fails with a plain message otherwise. The runtime runs `test` after the install and before the app starts (120 s limit, output tail only, no `KAISEN_`, `DB_`, `S3_` or `DATABASE_URL` variables); the result reaches the build's `tests` field from the preview's log snapshot, which the reconciler stores; until the runtime image on the instance supports it, `tests` stays null. With the reviewer on, a run's `review` is filled after the builder finishes (one fix round at most).
 

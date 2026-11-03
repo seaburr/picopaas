@@ -57,7 +57,7 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 ### 3a. UI form
 
-1. Open **Apps**, then **New app**, and stay on the **Form** tab.
+1. Open **Apps**, then **New app**. The page offers three ways to start: **Deploy an image** (this form), **Deploy from a template** (section 14) and, when an administrator has Kaisen on, **Build with Kaisen** (section 16). Stay on the **Form** tab.
 2. Enter a name, image and container port.
 3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
@@ -639,12 +639,19 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or "Browse templates" on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site, each with a link to its example README. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card. **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`), including add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the card says how to generate each value). Cards warn when the instance has volumes, databases or blob storage turned off. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the Ghost walkthrough.
+The **Templates** page (`/templates`, or **Deploy from a template** on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo (MySQL, volume) and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card.
+
+Each card has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. Cards warn when the instance has volumes, databases or blob storage turned off.
+
+**Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
 
 ## 15. Projects (teams)
 
 A project owns apps; its members manage them together. Everyone has a **personal project** (your apps until you choose
-otherwise). Create a shared project from the project switcher, then invite people.
+otherwise). Open **Projects** in the nav (`/projects`) to see every project you belong to with your role, member count and apps used against the limit. **New project** there creates a shared one; then invite people.
+
+- **Opening a project.** Click its name to open `/projects/<id>` for settings and members (rename, invite, roles, danger zone). **Apps** and **Kaisen** in a row jump to that project's apps or builds.
+- **Picking a project.** If you belong to more than one project, the Apps and Kaisen pages show an **Apps in** (or **Kaisen builds in**) select in the header. It is hidden while you only have your personal project.
 
 - **Roles.** A *member* can deploy, edit, restart, back up and delete the project's apps. An *owner* can also invite, remove people,
   change roles, rename and delete the project, and move apps. A project always keeps at least one owner.
@@ -668,7 +675,7 @@ otherwise). Create a shared project from the project switcher, then invite peopl
 
 ### Invite someone to a project
 
-1. Open **Account**. The **Projects** card lists every project you belong to with its role and counts. Shared projects you own show an invite (person) button and a manage (gear) button; members see only manage.
+1. Open **Projects** in the nav (the **Projects** card on **Account** lists the same projects). Shared projects you own show an invite (person) button and a manage (gear) button; members see only manage.
 2. Pick the invite button, or open the project and go to **Invite people to this project** (`/projects/<id>#invite`). Your personal project cannot be shared: choose **New project** first.
 3. Optionally enter the person's email. With an email you can also choose the role (*Member* or *Owner*); without one the link is a member link that any approved account can use.
 4. Press **Create invite** and copy the link now; it is shown once. No email is sent, so paste it into a message yourself.
@@ -708,7 +715,7 @@ Also in settings:
 
 - **Model.** `claude-haiku-5-5` (default: in our evals it built every starter brief, including a login-gated CRM, at about a fifth of Sonnet's cost), `claude-sonnet-5-5` (fewer steps, faster on bigger builds) or `claude-opus-5-5`. Existing projects keep the model they saved.
 - **Effort.** Low, medium (default) or high.
-- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap.
+- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap. The Kaisen home, settings and build pages also show what the project has spent over the **last 30 days** (a rolling window, not the calendar month).
 - **Member limits.** Owners can cap what each person spends. See "Kaisen limits".
 - **Web access** (off by default) and **Reviewer** (off by default). See "Web access" and "Reviewer step".
 - **GitHub token (optional).** See "Download or push to GitHub".
@@ -806,6 +813,20 @@ The **Secrets** card on the build page holds environment values the built app ne
 
 Kaisen sees the names only and is told to read them from the environment; values are encrypted, masked in the page and API and redacted from transcripts, logs and downloads. Limits are under "Kaisen limits".
 
+### Uploads
+
+The **Uploads** card on the build page lets you attach files for Kaisen to use. An administrator turns it on per project; until then the card is grayed out with "Not enabled for this project yet" (you can still delete files you uploaded earlier). Choose a file, then choose what it is for:
+
+- **Use in the site** (PNG, JPEG, WebP or SVG): a logo, photo, hero image or favicon. It ships with the app and Kaisen refers to it as `/uploads/<name>`. Kaisen sees its name, type, size and your one-line description, not the picture itself, so describe it ("company logo, transparent background").
+- **Reference only** (CSS, HTML, TXT or MD): an existing stylesheet or page for Kaisen to read for style or content. It is never deployed. Kaisen reads it on demand, so its contents are sent to the AI provider. It is scanned for secrets and refused if one is found.
+
+What happens to your files:
+
+- Images are decoded and re-encoded on the platform, so metadata (such as camera and location data) is removed, animation isn't kept and large images are scaled down to 2560 px on the long side. SVGs are sanitized: scripts, embedded HTML, animation, external links and CSS that fetches anything are removed, so an SVG can look slightly different from the original. A file that can't be processed is refused with a reason.
+- **Files used in the site are public** once the app is deployed, and also appear in the download and in a GitHub push (references don't). Don't upload anything private as a site image.
+- Kaisen gives each file a generated name under `uploads/` (or `references/`); your original name is only shown in the list. You can edit the description, replace a file (same type) and delete it. Replace and delete wait until no run is active, and the card offers **Deploy now** when uploads changed since the live app.
+- Limits: 4 MiB per file; images up to 8 megapixels; SVG up to 512 KiB; a text reference up to 100 KiB; 20 files per build, 6 MiB of site images and 1 MiB of references per build, 40 MiB per project and 100 MiB per person; 30 uploads per hour (refused tries count). Quota bars on the card show what you've used.
+
 ### Generated tests
 
 Kaisen writes a small test suite and puts its command in `kaisen.json` as `test`. The runtime runs that command after installing dependencies and before the app starts (a static site has nothing to install, so its test runs just before the site is served; use `"test": "node --test"`, which runs every `*.test.js` file; Node is in the runtime image, and `node --test tests/` fails on Node 22 and later), with a time limit and without any platform credentials in the environment. The app starts whatever the result. The build page shows a **Tests** row (pass, fail, timed out, running) with the output tail, and Kaisen reads the result when it checks the preview, fixing failures before it finishes. Results appear once the runtime has run them; until then the row says there is no result yet (static-site tests need the updated runtime image, which an administrator rolls out; before that the row stays at no result). When Kaisen checks the preview it requests the `health` path from `kaisen.json` (default `/`). Any 2xx or 3xx answer counts as the app answering, so a login-gated app that redirects to `/login` is fine; 4xx and 5xx do not. If the runtime log shows the new version has not started yet, the check says the answer may come from the previous version instead of reporting OK.
@@ -842,6 +863,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 
 - A project holds at most 20 builds. A name is up to 60 characters, a brief up to 8000, a change request or an answer up to 4000.
 - A run works in steps of up to 15 minutes and 40 model calls each, and chains up to 4 steps by itself, each in a fresh context seeded from `PLAN.md` (spend caps, the wall-clock limit and the repeat detector still stop it). Resume of a history over 30 messages also starts fresh from `PLAN.md`. A build holds files up to 200 KB each, 300 files and 5 MB in total.
+- Uploads: see "Uploads" for the file limits. Deleting a build deletes its uploads.
 - Transcripts are trimmed 14 days after a run ends.
 
 **Built apps**

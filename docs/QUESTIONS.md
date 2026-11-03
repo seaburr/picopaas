@@ -7,22 +7,9 @@ background on each item if you want it.
 
 ## Open questions
 
-- [ ] **Kaisen file uploads: design is in [design/kaisen.md](design/kaisen.md) section 16 (2026-11-03); nothing built, security-reviewer goes first.** Your answers (my recommendation first):
-  (1) **P1 scope**: images (png/jpeg/webp) shipped with the site + css/html/txt/md as read-only references, model sees names/sizes/dimensions and your one-line description, not pixels. OK? (yes)
-  (2) **SVG**: refuse (script/XSS risk on `*.picopaas.xyz`); users export PNG or Kaisen draws icons inline as code. OK? (refuse)
-  (3) **Re-encode every image** (strips GPS/EXIF, caps at 2560 px, kills polyglots) so "as-is" means same picture, not same bytes. OK? (yes)
-  (4) **Vision** (model looks at a screenshot to copy a design): not in P1; P2 for reference images only, max 3 per run, opt-in per file, about 1.5k tokens each. Want it soon? (later)
-  (5) **Limits**: 4 MiB in, 20 files and 6 MiB of assets per build, 1 MiB references, 40 MiB per project, 30 uploads/hour/user. Too tight/loose? (keep)
-  (6) **Storage in the platform DB** (like bundles), no bucket, no new cost; needs a check of the managed MySQL `max_allowed_packet`. Move to Garage/Spaces only if usage grows past ~1 GB. OK? (yes)
-  (7) **Abuse**: uploads ship OFF behind an admin switch (`kaisen_uploads_enabled`), admin takedown route + search by image hash, nothing but re-encoded images is ever served. Who takes abuse reports, and what contact do the Terms name? (you)
-  (8) **Runtime image republish** (nosniff/CSP/manifest check in `boot.py`) needs a bootstrap re-pin from you; P1 is safe without it, OK to do it as P1b? (yes)
-  (9) New dependency **Pillow** (image re-encode in a resource-limited child process). OK? (yes)
-  **Security review (2026-11-03): approve with changes, details in design/kaisen.md 16.8.** Changes to your answers and extra decisions:
-  (9) is **amended**: Pillow runs in a separate secret-less `kaisen-imgproc` pod (no service-account token, no DB, no egress), not a child of the API pod, because a codec exploit there could read the API's k8s token and keys. One small extra pod on the existing node, no new paid resource, about +1 day of P1 work. OK?
-  (5)/(6) **amended**: pixel cap 8 MP; plus a per-user (100 MiB) and platform-wide (2 GiB) upload cap so DB growth and backup size are bounded; move blobs to Garage/Spaces at about 500 MiB real use. OK?
-  (10) **Abuse and legal**: image hosting on `*.picopaas.xyz` brings illegal-content risk (reporting/preservation duties may apply). Takedown deletes the bytes and blocklists the hashes; exact-hash only, no perceptual matching. Do you want a legal check before enabling uploads for anyone but you, and which contact goes in the Terms (extends (7))? Until answered: switch stays off.
-  (11) Assets are **public** once deployed (preview URL, public GitHub repo if pushed); private material goes in "reference" (never deployed, but sent to the AI provider when read). Fine to state that in the UI?
-  (2) SVG refusal and (3) re-encode: confirmed by review. (8) P1 before P1b: confirmed safe.
+- [ ] **Security review of Kaisen uploads (2026-11-03): one small decision.** Details: docs/PENTEST.md K76 to K84. No HIGH/CRIT open; one MEDIUM (SVG CSS string-URL tracking beacon, K76) fixed. (a) K78: done, `sandbox` added to the SVG content CSP. (b) K79: embedded bitmaps inside SVG `<image>` are kept as-is (not re-encoded, not covered by the hash blocklist). Keep (simple) or strip/re-encode them (more code in the image pod)? Before enabling uploads on any project we still need: MySQL `max_allowed_packet` check (16 MiB), peak-RSS measurement on the imgproc pod, backup-size estimate.
+
+- [ ] **Projects page (F2, 2026-11-03): built per this mockup and browser-checked; tell me what to change.** Nav: Projects | Apps | Kaisen | Docs. The dropdown with the new-project and gear icons is gone. `/projects` lists your projects (role, members, apps used of the limit, links to Apps/Kaisen) with a "New project" button; click a name to open its settings and members page. On Apps and Kaisen a plain "Apps in [Personal v]" picker shows **only if you have more than one project** (most users see nothing extra). Left out of v1: a per-project "Kaisen key set" column. Mockup (local): `/private/tmp/claude-501/-Users-cberndt-source-picopaas/1c080756-79e3-412e-91b2-bcc6607a5ca0/scratchpad/ux/projects-mockup/` (projects-1280.png, apps-multi-*.png, apps-single-*.png, spec.md).
 
 - [ ] **App health / Settings text labels (2026-11-03, UX sweep P2).** The two pages are linked only by gear/heart-pulse icons;
   proposal: show text labels ("Settings" / "App health") from the sm breakpoint up. Mockup (local, not in the repo):
@@ -82,6 +69,8 @@ background on each item if you want it.
 
 ## To-dos (only you can do these)
 
+- [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** my DO credentials here return 401 (kubectl and doctl), so please check: (1) managed MySQL `max_allowed_packet` is at least 16777216 (`doctl databases configuration get <db-id> --engine mysql`, or DO console, Settings, Configuration); (2) after the deploy, `kubectl -n picopaas-system get pods,networkpolicy --show-labels` shows kaisen-imgproc running; (3) `kubectl describe node | grep -A8 "Allocated resources"` has room (imgproc requests 25m/128Mi). Or refresh my doctl/kubectl token and I'll do it. Then turn it on in Admin, Projects, Kaisen uploads.
+
 - **Kaisen builder v0: what I need from you (2026-10-29).** Design: ~/source/kaisen/docs/BUILDER_V0.md. Setup happens in the app,
   so the only deploy-time secret is `SECRET_KEY`. When the build is ready: (1) ~~create a GitHub repo for Kaisen~~ done: seaburr/kaisen
   (public, empty, remote added); first push follows once the build is green; (2) after the first release run, flip the
@@ -94,6 +83,27 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- [x] **Kaisen file uploads (answered 2026-11-03), being built as P1 (switched off).** How I read your answers: (1)(3)(5)(6)(8)(9 amended) and the amended caps: yes as written. (2) SVG: you said no to refusing it, so SVG is **allowed**, but only after strict sanitizing in the secret-less imgproc pod (allowlisted elements/attributes, no script, foreignObject, event handlers or external links), served with nosniff and a script-blocking CSP. security-reviewer will pentest it; tell me if you meant refuse after all. (7)/(10): no separate abuse contact, the Terms keep the existing contact. Uploads are a **per-project switch only a platform admin can turn on**; users see the upload section grayed out ("Not enabled for this project yet"). You turn it on for your test project. (11): yes, uploaded images are used as-is (after re-encoding) in the site; the UI just says they become public once deployed. Your original answers:
+  <details>
+
+  - [ ] **Kaisen file uploads: design is in [design/kaisen.md](design/kaisen.md) section 16 (2026-11-03); nothing built, security-reviewer goes first.** Your answers (my recommendation first):
+    (1) **P1 scope**: images (png/jpeg/webp) shipped with the site + css/html/txt/md as read-only references, model sees names/sizes/dimensions and your one-line description, not pixels. OK? (yes) Yes.
+    (2) **SVG**: refuse (script/XSS risk on `*.picopaas.xyz`); users export PNG or Kaisen draws icons inline as code. OK? (refuse) No.
+    (3) **Re-encode every image** (strips GPS/EXIF, caps at 2560 px, kills polyglots) so "as-is" means same picture, not same bytes. OK? (yes) Yes.
+    (4) **Vision** (model looks at a screenshot to copy a design): not in P1; P2 for reference images only, max 3 per run, opt-in per file, about 1.5k tokens each. Want it soon? (later)
+    (5) **Limits**: 4 MiB in, 20 files and 6 MiB of assets per build, 1 MiB references, 40 MiB per project, 30 uploads/hour/user. Too tight/loose? (keep) That's more than enough for now.
+    (6) **Storage in the platform DB** (like bundles), no bucket, no new cost; needs a check of the managed MySQL `max_allowed_packet`. Move to Garage/Spaces only if usage grows past ~1 GB. OK? (yes) Yes.
+    (7) **Abuse**: uploads ship OFF behind an admin switch (`kaisen_uploads_enabled`), admin takedown route + search by image hash, nothing but re-encoded images is ever served. Who takes abuse reports, and what contact do the Terms name? (you). Can this not be largely the same as the current ones?
+    (8) **Runtime image republish** (nosniff/CSP/manifest check in `boot.py`) needs a bootstrap re-pin from you; P1 is safe without it, OK to do it as P1b? (yes) Yes.
+    (9) New dependency **Pillow** (image re-encode in a resource-limited child process). OK? (yes) Yes.
+    **Security review (2026-11-03): approve with changes, details in design/kaisen.md 16.8.** Changes to your answers and extra decisions:
+    (9) is **amended**: Pillow runs in a separate secret-less `kaisen-imgproc` pod (no service-account token, no DB, no egress), not a child of the API pod, because a codec exploit there could read the API's k8s token and keys. One small extra pod on the existing node, no new paid resource, about +1 day of P1 work. OK? Yes.
+    (5)/(6) **amended**: pixel cap 8 MP; plus a per-user (100 MiB) and platform-wide (2 GiB) upload cap so DB growth and backup size are bounded; move blobs to Garage/Spaces at about 500 MiB real use. OK? Yes.
+    (10) **Abuse and legal**: image hosting on `*.picopaas.xyz` brings illegal-content risk (reporting/preservation duties may apply). Takedown deletes the bytes and blocklists the hashes; exact-hash only, no perceptual matching. Do you want a legal check before enabling uploads for anyone but you, and which contact goes in the Terms (extends (7))? Until answered: switch stays off. Let's make this a feature I can enable on a project. It should show in the UI for users but be grayed out. I'll enable it only for my testing for now.
+    (11) Assets are **public** once deployed (preview URL, public GitHub repo if pushed); private material goes in "reference" (never deployed, but sent to the AI provider when read). Fine to state that in the UI? Well, if they upload an image we can use as-is in the app why not?
+    (2) SVG refusal and (3) re-encode: confirmed by review. (8) P1 before P1b: confirmed safe.
+  </details>
 - 2026-11-03: **Templates for the new recipes** (Chas, inline): add one-click templates for Vikunja, Umami, ntfy, IT-Tools and Excalidraw; skip Planka for now.
 - 2026-11-03: **UX sweep P3s + Terms wording** (Chas, inline): Register keeps both Terms statements (checkbox + sentence); the other P3s (inline Interrupt/429 message, Kaisen header icons and Account time-zone select at 390px, one banner for template "off on this instance" warnings) go ahead. Settings/App health labels stay open pending a mockup.
 - 2026-11-03: **Planka license** (Chas, in chat, after reading it): fine for users to run on PicoPaaS themselves (recipe/example, user deploys it), but PicoPaaS must never OFFER Planka as a managed service (no "managed Planka", not marketed as a platform feature).

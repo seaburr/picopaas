@@ -71,3 +71,10 @@ The `frontend` CI job runs `npm run lint` (ESLint 9 flat config: eslint-plugin-v
 ## CI coverage floor
 
 The `backend-tests` CI job runs pytest with `--cov=app` and fails below `fail_under` in `.coveragerc` (93%; measured 95.25% on 2026-11-02, rule: measured total rounded down, minus 2). To raise it, run `python -m pytest tests/ -q --cov=app --cov-report=term`, apply the same rule to the new total and edit `.coveragerc`. The `mysql-integration` subset runs without `--cov`, so the floor does not apply to it.
+
+## Kaisen image unit (kaisen-imgproc)
+Secret-less pod (`deploy/platform/kaisen-imgproc.yaml`, same image, `python -m app.imgproc`) that decodes/re-encodes uploaded images. Ingress only from `app=picopaas` on 8080, no egress. `picopaas-system` has no namespace default-deny and the API pod has no egress policy, so no extra rule is needed for API -> `kaisen-imgproc:8080`.
+- deploy.yml applies it LAST and non-fatally: a failure shows as a `kaisen-imgproc` warning annotation, the platform deploy stays green, uploads answer 503.
+- Check: `kubectl -n picopaas-system get deploy,pod,networkpolicy -l app=kaisen-imgproc` and `kubectl -n picopaas-system logs deploy/kaisen-imgproc`.
+- Before enabling uploads: measure peak memory (`kubectl top pod`) with a ~8 MP image; verify `SELECT @@max_allowed_packet` on the managed MySQL is >= 16777216 (`doctl databases configuration get <db-id> --engine mysql`, or the DO console, Settings > Configuration).
+- Rollback: `kubectl -n picopaas-system delete deploy,svc,networkpolicy,sa kaisen-imgproc` (uploads flag stays off; nothing else depends on it).
