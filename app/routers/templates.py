@@ -389,6 +389,133 @@ CATALOG: List[TemplateOut] = [
         docs_url=f"{REPO_EXAMPLES}/memos",
     ),
     TemplateOut(
+        id="vikunja",
+        name="Vikunja (tasks)",
+        description="To-do and project manager on PostgreSQL, with task attachments in the bucket. Public image, no custom build.",
+        image="vikunja/vikunja:2.7.1",
+        port=3456,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=True,
+        env={
+            "HOME": "/tmp",
+            "VIKUNJA_SERVICE_PUBLICURL": "${{ app.url }}/",
+            "VIKUNJA_DATABASE_TYPE": "postgres",
+            "VIKUNJA_DATABASE_HOST": "${{ db.host }}:${{ db.port }}",
+            "VIKUNJA_DATABASE_DATABASE": "${{ db.name }}",
+            "VIKUNJA_DATABASE_USER": "${{ db.user }}",
+            "VIKUNJA_DATABASE_PASSWORD": "${{ db.password }}",
+            "VIKUNJA_DATABASE_SSLMODE": "verify-full",
+            "VIKUNJA_DATABASE_SSLROOTCERT": "${{ db.ca_file }}",
+            "VIKUNJA_DATABASE_MAXOPENCONNECTIONS": "3",
+            "VIKUNJA_DATABASE_MAXIDLECONNECTIONS": "2",
+            "VIKUNJA_FILES_TYPE": "s3",
+            "VIKUNJA_FILES_S3_ENDPOINT": "${{ storage.endpoint }}",
+            "VIKUNJA_FILES_S3_BUCKET": "${{ storage.bucket }}",
+            "VIKUNJA_FILES_S3_REGION": "${{ storage.region }}",
+            "VIKUNJA_FILES_S3_ACCESSKEY": "${{ storage.access_key }}",
+            "VIKUNJA_FILES_S3_SECRETKEY": "${{ storage.secret_key }}",
+            "VIKUNJA_FILES_S3_USEPATHSTYLE": "false",
+            "VIKUNJA_MAILER_ENABLED": "false",
+        },
+        secrets=[
+            TemplateSecret(key="VIKUNJA_SERVICE_SECRET", hint=f"Random string (JWT signing key), generate with: {HEX_CMD}"),
+        ],
+        health_check=TemplateHealthCheck(path="/api/v1/info"),
+        notes=(
+            "Register your first user right after the first start, then add VIKUNJA_SERVICE_ENABLEREGISTRATION=false and redeploy "
+            "so strangers cannot sign up (existing users keep working). No email, so password reset by mail is unavailable. "
+            "TLS to the database is CA-verified."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/vikunja",
+    ),
+    TemplateOut(
+        id="umami",
+        name="Umami (web analytics)",
+        description="Privacy-friendly website analytics on PostgreSQL. Public image (postgresql-latest tag), no custom build.",
+        image="ghcr.io/umami-software/umami:postgresql-latest",
+        port=3000,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "HOME": "/tmp",
+            "HOSTNAME": "0.0.0.0",
+            "DATABASE_URL": "postgresql://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}",
+            "DISABLE_TELEMETRY": "1",
+        },
+        secrets=[
+            TemplateSecret(key="APP_SECRET", hint=f"Random string (salt for session hashing), generate with: {HEX_CMD}"),
+        ],
+        health_check=TemplateHealthCheck(path="/api/heartbeat"),
+        notes=(
+            "WARNING: the default login is admin / umami. Sign in and change that password immediately, the app is public. "
+            "Umami stores one database row per event, so the 50 MB database fills up quickly on a busy site; use it for small sites only. "
+            "Memory peaks near 330 MiB during the first-boot migrations (cap is 384 MiB) and settles around 165-255 MiB."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/umami",
+    ),
+    TemplateOut(
+        id="ntfy",
+        name="ntfy (push notifications)",
+        description="Publish and subscribe push notifications over HTTP, with all state in PostgreSQL. Tiny Go binary (about 20 MiB RAM).",
+        image="ghcr.io/seaburr/picopaas-example-ntfy:latest",
+        port=8080,
+        wants_db=True,
+        db_engine="pg",
+        wants_storage=False,
+        env={
+            "NTFY_LISTEN_HTTP": ":8080",
+            "NTFY_BASE_URL": "${{ app.url }}",
+            "NTFY_BEHIND_PROXY": "true",
+            "NTFY_DATABASE_URL": "postgres://${{ db.user }}:${{ db.password }}@${{ db.host }}:${{ db.port }}/${{ db.name }}?sslmode=verify-full&sslrootcert=${{ db.ca_file }}&pool_max_conns=3",
+            "NTFY_AUTH_DEFAULT_ACCESS": "deny-all",
+            "NTFY_CACHE_DURATION": "12h",
+        },
+        secrets=[
+            TemplateSecret(
+                key="NTFY_AUTH_USERS",
+                hint=(
+                    "Comma-separated name:bcrypt-hash:role, e.g. tester:<hash>:admin. Make the hash with: "
+                    "docker run --rm -i binwiederhier/ntfy user hash (it prompts for the password). "
+                    "Bcrypt hashes contain $: single-quote the value in a shell or CLI."
+                ),
+            ),
+        ],
+        health_check=TemplateHealthCheck(path="/v1/health"),
+        notes=(
+            "Access defaults to deny-all, so nothing works until NTFY_AUTH_USERS holds at least one user (an admin can then create more and grant topics). "
+            "Do not set cache-file, auth-file or web-push-file: all state is in the database."
+        ),
+        docs_url=f"{REPO_EXAMPLES}/ntfy",
+    ),
+    TemplateOut(
+        id="it-tools",
+        name="IT-Tools (developer utilities)",
+        description="A static collection of handy developer tools (encoders, hashes, converters) that run in the browser. No database, no secrets.",
+        image="ghcr.io/seaburr/picopaas-example-it-tools:latest",
+        port=8080,
+        wants_db=False,
+        wants_storage=False,
+        env={},
+        health_check=TemplateHealthCheck(path="/"),
+        notes="Nothing to configure. Everything runs client-side in the browser, so the app only serves static files and uses very little memory.",
+        docs_url=f"{REPO_EXAMPLES}/it-tools",
+    ),
+    TemplateOut(
+        id="excalidraw",
+        name="Excalidraw (whiteboard)",
+        description="Virtual whiteboard for sketching diagrams. Static site on nginx. No database, no secrets.",
+        image="ghcr.io/seaburr/picopaas-example-excalidraw:latest",
+        port=8080,
+        wants_db=False,
+        wants_storage=False,
+        env={},
+        health_check=TemplateHealthCheck(path="/"),
+        notes="Nothing to configure. Drawing works fully in the browser. Live collaboration and the library browser call external services, which may not work from here.",
+        docs_url=f"{REPO_EXAMPLES}/excalidraw",
+    ),
+    TemplateOut(
         id="vaultwarden",
         name="Vaultwarden (password manager)",
         description="Bitwarden-compatible server; vault and keys live on a volume. For test use, not passwords you need.",

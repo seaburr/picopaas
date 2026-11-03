@@ -6,7 +6,7 @@ from tests.conftest import register_and_login
 
 EXPECTED = {"ghost", "wordpress", "directus", "grafana", "grafana-pg", "n8n", "shlink", "miniflux", "forgejo", "memos",
             "vaultwarden", "wikijs", "status",
-            "static-site"}
+            "static-site", "vikunja", "umami", "ntfy", "it-tools", "excalidraw"}
 
 
 def test_templates_catalog(client):
@@ -116,3 +116,34 @@ def test_memos_vaultwarden_wikijs_templates(client):
     assert by_id["vaultwarden"]["volume"] == {"size_gi": 1, "mount_path": "/data", "required": True}
     w = by_id["wikijs"]
     assert w["env"]["DB_SSL_CA"] == "${{ db.ca_cert_body }}" and w["volume"]["mount_path"] == "/wiki/data"
+
+
+def test_vikunja_umami_ntfy_itools_excalidraw_templates(client):
+    """Verified live 2026-11-03 (examples/<app>/)."""
+    register_and_login(client, "five@example.com")
+    by_id = {x["id"]: x for x in client.get("/templates").json()}
+    v = by_id["vikunja"]
+    assert v["db_engine"] == "pg" and v["wants_db"] and v["wants_storage"] and v["port"] == 3456
+    assert v["env"]["VIKUNJA_DATABASE_SSLROOTCERT"] == "${{ db.ca_file }}"
+    assert [s["key"] for s in v["secrets"]] == ["VIKUNJA_SERVICE_SECRET"]
+    u = by_id["umami"]
+    assert u["db_engine"] == "pg" and not u["wants_storage"] and "sslrootcert=${{ db.ca_file }}" in u["env"]["DATABASE_URL"]
+    assert [s["key"] for s in u["secrets"]] == ["APP_SECRET"] and "admin / umami" in u["notes"]
+    n = by_id["ntfy"]
+    assert n["env"]["NTFY_AUTH_DEFAULT_ACCESS"] == "deny-all" and "pool_max_conns=3" in n["env"]["NTFY_DATABASE_URL"]
+    assert [s["key"] for s in n["secrets"]] == ["NTFY_AUTH_USERS"] and n["health_check"]["path"] == "/v1/health"
+    for tid in ("it-tools", "excalidraw"):
+        t = by_id[tid]
+        assert not t["wants_db"] and not t["wants_storage"] and t["port"] == 8080 and t["health_check"]["path"] == "/"
+        assert t["env"] == {} and t["secrets"] == []
+    assert "planka" not in by_id
+
+
+def test_new_pg_templates_create_app_with_empty_secrets(client):
+    register_and_login(client, "ntfyc@example.com")
+    t = {x["id"]: x for x in client.get("/templates").json()}["ntfy"]
+    env = [{"key": k, "value": v, "is_secret": False} for k, v in t["env"].items()]
+    env += [{"key": s["key"], "value": "", "is_secret": True} for s in t["secrets"]]
+    r = client.post("/apps", json={"name": "ntfy", "image": t["image"], "port": t["port"], "want_db": True,
+                                   "db_engine": "pg", "env": env})
+    assert r.status_code == 201, r.text

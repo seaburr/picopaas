@@ -4,8 +4,8 @@ PicoPaaS hosts real apps, not just toy images. This page walks through Ghost (a 
 lists the lessons that apply to any image you bring.
 
 Recipes with a one-click template: Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden,
-Wiki.js, Gatus and a static site. Vikunja, Umami, Planka, ntfy, IT-Tools and Excalidraw are recipes only (a spec in
-`examples/<app>/`, no template card yet). All specs are in [`examples/`](../examples/).
+Wiki.js, Vikunja, Umami, ntfy, IT-Tools, Excalidraw, Gatus and a static site. Planka is a recipe only (a spec in
+`examples/planka/`, no template card; licence decision). All specs are in [`examples/`](../examples/).
 
 > **Ghost 6.** New blogs use `ghcr.io/seaburr/picopaas-example-ghost6:latest`. Ghost 6 migration 6.61 creates a table without a
 > primary key, so it needs the managed MySQL `sql_require_primary_key` setting off (request 0009). Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms, outbound webmentions and update check off, 2-minute frontend cache); set a Publication icon in Ghost Admin > Settings > Design so pages don't wait on a self-fetch. Upgrade runbook and rehearsal notes: `examples/ghost/README.md`.
