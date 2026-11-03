@@ -3,4 +3,6 @@
 # With NTFY_DATABASE_URL set it writes no files, so nothing else needs to be writable.
 FROM binwiederhier/ntfy:v2.37.1
 USER 10001:10001
+# Upstream has ENTRYPOINT ["ntfy"] and no CMD: without this it prints help and exits (PicoPaaS has no command override).
+CMD ["serve"]
 EXPOSE 8080

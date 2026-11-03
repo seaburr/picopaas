@@ -772,16 +772,20 @@ PicoPaaS does not offer or market it as a managed service. Read the license firs
 
 ## ntfy, IT-Tools, Excalidraw
 
-Local-only verification; the wrappers are not published yet. The upstream images run as root, so each has a wrapper in `examples/<app>/`
-built by `examples.yml` and published as `ghcr.io/seaburr/picopaas-example-<app>`. ntfy (v2.37.1) is the upstream image plus
-`USER 10001:10001`, with its cache, users and tokens in the platform PostgreSQL (`NTFY_DATABASE_URL`, `verify-full` with the CA
-file, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`); about 65 MiB RAM. IT-Tools and Excalidraw copy the upstream static files into
-`nginx-unprivileged` (port 8080), no env, about 20 MiB. All three ran as UID 10001 in Docker on 2026-11-03, but none has been
-deployed on PicoPaaS yet, so ntfy's CA-verified database connection is unproven live. Details in `examples/ntfy/`,
-`examples/it-tools/` and `examples/excalidraw/`.
+The upstream images run as root, so each has a wrapper in `examples/<app>/` built by `examples.yml` and published as
+`ghcr.io/seaburr/picopaas-example-<app>`. **IT-Tools and Excalidraw: verified live 2026-11-03** (throwaway apps 274, 275,
+deleted): they copy the upstream static files into `nginx-unprivileged` (port 8080, SPA fallback so deep links work), no env,
+about 20 MiB (measured locally). **ntfy: live test pending a republish.** It is the upstream image (v2.37.1) plus
+`USER 10001:10001` and `CMD ["serve"]`, with its cache, users and tokens in the platform PostgreSQL (`NTFY_DATABASE_URL`,
+`verify-full` with the CA file, `NTFY_AUTH_DEFAULT_ACCESS=deny-all`); about 65 MiB RAM locally. The first published image
+lacked `CMD ["serve"]` and exited printing help (app 273, deleted), so its CA-verified connection is still unproven live.
+Details in `examples/ntfy/`, `examples/it-tools/` and `examples/excalidraw/`.
 
 ## Lessons for bringing your own image
 
+- **Bake the start command into the image.** PicoPaaS has no command override: if the upstream image has only an
+  `ENTRYPOINT` (ntfy: `ENTRYPOINT ["ntfy"]`, no `CMD`), the wrapper must add the subcommand (`CMD ["serve"]`). Test the
+  wrapper locally with a bare `docker run <image>`, never with extra arguments the platform won't pass.
 - **Run as a non-root numeric UID.** PicoPaaS forces UID 10001. If the stock image uses a root entrypoint, build
   a wrapper that does the root-time setup at build and runs as the UID.
 - **Add an `/etc/passwd` entry for the UID.** Python 3.13 `getpass.getuser()` and Node `os.userInfo()` throw for a
