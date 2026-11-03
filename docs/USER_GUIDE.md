@@ -722,6 +722,10 @@ Also in settings:
 5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
 6. When it is `done`, open the app from the **Live app** card.
 
+### Interrupt and retry
+
+If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from the last saved state, up to 2 times; each retry leaves a note on the run such as "No progress for 10 min; interrupted, retrying (1/2)." After that the run stops with the reason `hung` ("Hung 3 times; Resume to retry.") and you can press Resume. If a run looks stuck sooner, press **Interrupt and retry** on the progress strip (any project member); the note reads "Interrupted by you@example.com; retrying." and it does not use up the automatic retries.
+
 ### Ask for changes
 
 Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.

@@ -7,6 +7,13 @@ background on each item if you want it.
 
 ## Open questions
 
+- **AWS account for P4 testing: your decisions (2026-11-02).** Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
+  request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
+  (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
+  Paid plan for EKS; or an employer/Activate account); (2) **region** (I recommend us-east-1); (3) **caps** (proposed $5 per
+  run, $25 per month); (4) spot nodes ok for non-pentest runs? (5) approve 0010 (static about $0.51/mo; a run is about $0.27/h,
+  about $1.10 for 4 h). Then you do checklist Part A and B (about 1-2 h); I take it from the gate.
+
 - **Cloud portability: AWS and GCP first (2026-11-01).** Plan: [PORTABILITY_PLAN.md](PORTABILITY_PLAN.md) (Azure deferred,
   no S3 API). Please answer: (1) AWS per-app bucket credentials: IAM user per app (recommended) or shared prefix-scoped
   keys? (2) GCP: one service account + HMAC key per app (recommended; 100-SA default quota)? (3) whose AWS/GCP accounts
@@ -63,6 +70,8 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+- 2026-11-03: **Planka license** (Chas, in chat, after reading it): fine for users to run on PicoPaaS themselves (recipe/example, user deploys it), but PicoPaaS must never OFFER Planka as a managed service (no "managed Planka", not marketed as a platform feature).
+- 2026-11-02: **K69 unmetered abandoned model calls** (Chas, inline): leave as is (manual Interrupt capped 3/build/hour; up to KAISEN_HANG_RETRIES=2 unmetered calls per run accepted).
 - 2026-11-01: **Env value cap (K56)** (Chas, in chat): 8 KiB per value (largest real values are PEMs/JSON keys of 2-3 KB; a cert ref is stored as the ref text).
 - 2026-10-31: **K50 restore-over-source and bucket file fetch in suspended projects** (Chas, in chat): leave both as they are (restore over the source only for an app suspended on its own in an active project; members of a suspended project can't fetch bucket files, backup downloads still work).
 - 2026-10-30: **K16 web + build secrets** (Chas, in chat): option (a), a build with secrets never gets the web tools, allow-list or not (builder.py; PENTEST K16 closed).

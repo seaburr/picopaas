@@ -23,8 +23,10 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 - **Agent loop** runs in Deployment `kaisen-worker` (`deploy/platform/kaisen-worker.yaml`): same platform image, command
   `python -m app.kaisen.worker`, 1 replica, Recreate, **no service-account token**, only the `picopaas-env` keys it needs
   (`secretKeyRef`, pentest K6), egress limited to DNS, the DB, internet 443 and the Traefik pods. Leader lock: MySQL
-  `GET_LOCK('picopaas-kaisen-worker')`. Liveness: the worker touches `/tmp/kaisen-worker-heartbeat` at least every 60 s;
-  the probe fails after 120 s. `deploy.yml` waits for its rollout, so a worker that can't start fails the deploy.
+  `GET_LOCK('picopaas-kaisen-worker')`. Liveness: a DB-free heartbeat thread touches `/tmp/kaisen-worker-heartbeat` every 30 s, but only while the
+  worker's main loop has made progress within `KAISEN_HANG_SECONDS` + 120 s; the probe fails after 120 s, so a wedged worker is restarted
+  about 3 min after that. `deploy.yml` waits for its rollout, so a worker that can't start fails the deploy.
+- **Hang path** (`app/kaisen/watchdog.py`, migration `*_kaisen_run_watchdog`). Every turn start, model response, tool call, deployer step and reviewer turn stamps `kaisen_runs.last_progress_at`. Model calls are bounded (`KAISEN_MODEL_CALL_SECONDS` idle, `KAISEN_MODEL_CALL_MAX_SECONDS` hard), tools by `KAISEN_TOOL_SECONDS`; the worker runs each step on a daemon thread and abandons it when it overruns. `sweep()` finds running runs with no stamp for `KAISEN_HANG_SECONDS` (600) and is called from the worker main loop, with the API pod's reconciler as backstop. A compare-and-swap on `(id, attempt)` bumps `attempt` (fencing: the abandoned step discards its late result), increments `hang_retries`, requeues the run and adds a closed inbox note of kind `hang`. After `KAISEN_HANG_RETRIES` (2) retries the run ends in `error` with `error_reason` `hung`; Resume retries it. Known limits: an abandoned model call may still bill tokens that are not metered; a hung tool thread is abandoned, not killed. `POST /kaisen/builds/{id}/runs/{rid}/interrupt` does the same by hand and is not counted as a retry.
 - **Deploys** of built apps go through `routers/spec.deploy_spec()` **as the build's creator into the build's project**
   (same app limit, audit and 403/422 messages as any app). No PicoPaaS API key is involved.
 - **Previews** are ordinary apps running `KAISEN_RUNTIME_IMAGE`; `boot.py` downloads the build's files at boot from the

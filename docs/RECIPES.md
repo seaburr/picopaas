@@ -808,7 +808,7 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (over
 | Miniflux (RSS reader) | PG, no volume | 14 MB | 30-60 MB | S |
 | Vaultwarden (password manager) | SQLite on volume (or PG) | 63 MB (alpine) | 20-50 MB | S-M |
 | Memos (notes / microblog) | PG, no volume | 26 MB | 30-80 MB | S |
-| Linkding (bookmarks) | SQLite on volume | 51 MB (alpine) | 80-150 MB | M |
+| Linkding (bookmarks) | SQLite on volume | 51 MB (`latest-alpine`) | 80-150 MB | M |
 | Forgejo or Gitea (git forge) | SQLite on volume or PG | about 70 MB (Gitea rootless 68 MB verified) | 100-200 MB | M-L |
 
 ### 1. Miniflux (best first pick)
@@ -848,8 +848,8 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (over
 - **Effort:** small. Wrapper image only if the entrypoint insists on root.
 
 ### 4. Linkding
-- **Why viable:** Python/Django, MIT, bookmark manager with browser extension and API. The `-alpine` tag is 51 MB (the
-  `-plus` variants with headless-browser archiving are 400-600 MB, avoid). SQLite on a volume at `/etc/linkding/data`, or PG.
+- **Why viable:** Python/Django, MIT, bookmark manager with browser extension and API. Only the plain `latest-alpine` tag (51 MB) fits;
+  the `-plus` variants with headless-browser archiving are 401 and 602 MB (over the cap, per 2026-11-02 research). SQLite on a volume at `/etc/linkding/data`, or PG.
 - **Needs:** volume, `LD_SUPERUSER_NAME`, `LD_SUPERUSER_PASSWORD` (secret), `LD_SERVER_PORT=8080` if supported by the
   nginx/uwsgi config (verify), `LD_CSRF_TRUSTED_ORIGINS=${{ app.url }}`. Optional PG via `LD_DB_ENGINE=postgres`, `LD_DB_*`.
 - **Risks:** runs nginx + uWSGI in one container; check non-root and that nginx can bind a high port and write its temp
@@ -872,7 +872,7 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 100m CPU default (over
 - **Effort:** medium to large.
 
 ### Not picked, and why
-- **Uptime Kuma:** the slim image is 185 MB and fits (SQLite on a volume, about 150-250 MB RAM), but Gatus already covers
+- **Uptime Kuma:** Uptime Kuma 2.x full images are 617 MB (over the 512 MB cap); only the `2-slim` tag (185 MB) fits, per 2026-11-02 research (SQLite on a volume, about 150-250 MB RAM), but Gatus already covers
   status pages, so it is a duplicate. Kept as a reserve pick.
 - **Listmonk:** Go and PG, but it exists to send email and SMTP is blocked. Only viable with an HTTP email API sender, so not a
   fit for the offer today.
