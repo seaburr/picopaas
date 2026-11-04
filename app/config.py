@@ -705,3 +705,10 @@ KAISEN_UPLOAD_IMG_MEM_MB = 1024  # RLIMIT_AS inside the image pod (virtual size;
 KAISEN_UPLOAD_ORPHAN_DAYS = 1  # assets of a deleted build are swept after this
 KAISEN_IMGPROC_URL = os.environ.get("KAISEN_IMGPROC_URL", "http://kaisen-imgproc:8080").rstrip("/")  # same namespace Service
 KAISEN_IMGPROC_PORT = 8080
+
+# GitHub push jobs (POST /kaisen/builds/{id}/push returns 202 and a thread finishes the push).
+KAISEN_PUSH_STALE_S = 15 * 60  # a push still "running" after this long (pod restarted mid-push) is reported as failed
+
+# Admin > Projects paging (GET /admin/projects?limit=&offset=)
+ADMIN_PROJECTS_PAGE_DEFAULT = 25
+ADMIN_PROJECTS_PAGE_MAX = 100

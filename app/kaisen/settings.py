@@ -23,7 +23,8 @@ class RuntimeSettings:
     cap_run: float = config.KAISEN_DEFAULT_CAP_RUN
     cap_day: float = config.KAISEN_DEFAULT_CAP_DAY
     cap_build: float = config.KAISEN_DEFAULT_CAP_BUILD
-    web_access: bool = False
+    web_access: bool = False  # effective: forced off while the project's web search flag is off
+    web_project_enabled: bool = True  # projects.kaisen_web_search_enabled (a platform admin's switch)
     web_allowed_domains: list = field(default_factory=list)
     reviewer: str = "off"
     reviewer_model: str = config.KAISEN_REVIEWER_DEFAULT_MODEL  # the effective model (row value or the config default)
@@ -59,16 +60,31 @@ def parse_repo(text: str) -> str:
     return f"{m.group(1)}/{m.group(2)}"
 
 
+WEB_DISABLED_REASON = "Web search isn't enabled for this project."
+
+
+class WebDisabledError(Exception):
+    """Turning web access on for a project whose web search flag is off."""
+
+
+def web_search_enabled(db: Session, project_id: int) -> bool:
+    from app import models
+    p = db.get(models.Project, project_id)
+    return True if p is None else bool(p.kaisen_web_search_enabled)
+
+
 def load(db: Session, project_id: int) -> RuntimeSettings:
     row = db.get(KaisenSettings, project_id)
+    web_ok = web_search_enabled(db, project_id)
     if row is None:
-        return RuntimeSettings(project_id=project_id)
+        return RuntimeSettings(project_id=project_id, web_project_enabled=web_ok)
     return RuntimeSettings(
         project_id=project_id,
         anthropic_api_key=(crypto.try_decrypt(row.anthropic_key_enc) or "") if row.anthropic_key_enc else "",
         github_token=(crypto.try_decrypt(row.github_token_enc) or "") if row.github_token_enc else "",
         model=row.model, effort=row.effort, cap_run=row.cap_run, cap_day=row.cap_day, cap_build=row.cap_build,
-        web_access=bool(row.web_access), web_allowed_domains=list(row.web_allowed_domains or []),
+        web_access=bool(row.web_access) and web_ok, web_project_enabled=web_ok,
+        web_allowed_domains=list(row.web_allowed_domains or []),
         reviewer=row.reviewer or "off", reviewer_model=row.reviewer_model or config.KAISEN_REVIEWER_DEFAULT_MODEL,
     )
 
@@ -98,6 +114,8 @@ def parse_domains(value) -> list[str]:
 
 def web_note(rs: RuntimeSettings) -> str:
     """Plain-words status of web access for the settings page and the test output."""
+    if not rs.web_project_enabled:
+        return WEB_DISABLED_REASON
     if not rs.web_access:
         return "Web access is off."
     if rs.model not in config.KAISEN_WEB_MODELS:
@@ -195,6 +213,8 @@ def describe(db: Session, project_id: int, can_edit: bool) -> dict:
         "github_token": _secret_view(rs.github_token),
         "web_access": rs.web_access, "web_allowed_domains": rs.web_allowed_domains,
         "web_supported": rs.model in config.KAISEN_WEB_MODELS, "web_models": list(config.KAISEN_WEB_MODELS),
+        "web_project_enabled": rs.web_project_enabled,
+        "web_disabled_reason": None if rs.web_project_enabled else WEB_DISABLED_REASON,
         "web_note": web_note(rs), "web_search_usd": config.KAISEN_WEB_SEARCH_USD,
         "web_domains_max": config.KAISEN_WEB_DOMAINS_MAX,
         "brief_max": config.KAISEN_BRIEF_MAX,
@@ -225,9 +245,11 @@ def save(db: Session, project_id: int, user_id: int, data: dict) -> None:
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= config.KAISEN_CAP_MAX:
             raise ValueError(f"{k} must be a number between 0 and {config.KAISEN_CAP_MAX:g} (US dollars).")
         caps[k] = float(v)
-    web_access = cur.web_access if data.get("web_access") is None else data["web_access"]
+    web_access = (bool(row.web_access) if row is not None else False) if data.get("web_access") is None else data["web_access"]
     if not isinstance(web_access, bool):
         raise ValueError("web_access must be true or false.")
+    if web_access and data.get("web_access") is True and not cur.web_project_enabled:
+        raise WebDisabledError(WEB_DISABLED_REASON)
     domains = parse_domains(data["web_allowed_domains"]) if data.get("web_allowed_domains") is not None else cur.web_allowed_domains
     reviewer = cur.reviewer if data.get("reviewer") is None else data["reviewer"]
     if reviewer not in config.KAISEN_REVIEWER_MODES:

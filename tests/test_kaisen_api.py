@@ -455,15 +455,19 @@ def test_push_to_github_uses_project_token_and_build_repo(team, fakes):
     a.put(f"/projects/{pid}/kaisen", json={"github_token": TOKEN})
     assert _out(b, bid, mode="github", repo="https://github.com/octo/demo.git").status_code == 200  # a member may set it
     r = b.post(f"/kaisen/builds/{bid}/push")
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
+    assert r.json()["status"] == "done"  # tests run the job inline
     push = fakes.github.pushes[-1]
     assert push["repo"] == "octo/demo" and push["branch"] == "kaisen/todo-list" and "public/index.html" in push["files"]
     assert fakes.tokens[-1] == TOKEN
-    assert "Pushed to https://github.com/octo/demo/tree/kaisen/todo-list" in r.json()["inbox"][0]["text"]
-    assert _audit("kaisen.push")[-1].detail == "repo=octo/demo"
+    detail = b.get(f"/kaisen/builds/{bid}").json()
+    assert "Pushed to https://github.com/octo/demo/tree/kaisen/todo-list" in detail["inbox"][0]["text"]
+    assert detail["push"]["status"] == "done"
+    assert _audit("kaisen.push")[-1].detail == f"repo=octo/demo push={r.json()['id']}"
     fakes.github.can_push = False
     bad = b.post(f"/kaisen/builds/{bid}/push")
-    assert bad.status_code == 502 and TOKEN not in bad.text
+    assert bad.status_code == 202 and TOKEN not in bad.text
+    assert bad.json()["status"] == "error" and bad.json()["error_code"] == "no_permission"
 
 
 BUILD_TOKEN = "not-the-build-github-token"
@@ -475,9 +479,9 @@ def test_push_with_build_token_and_other_repo_per_build(team, fakes):
     a.put(f"/projects/{pid}/kaisen", json={"github_token": TOKEN})
     assert _out(a, one, mode="github", repo="octo/one", auth="build", github_token=BUILD_TOKEN).status_code == 200
     assert _out(a, two, mode="github", repo="octo/two", branch="main", open_pr=True).status_code == 200
-    assert a.post(f"/kaisen/builds/{one}/push").status_code == 200
+    assert a.post(f"/kaisen/builds/{one}/push").status_code == 202
     assert (fakes.github.pushes[-1]["repo"], fakes.tokens[-1]) == ("octo/one", BUILD_TOKEN)
-    assert a.post(f"/kaisen/builds/{two}/push").status_code == 200
+    assert a.post(f"/kaisen/builds/{two}/push").status_code == 202
     last = fakes.github.pushes[-1]
     assert (last["repo"], fakes.tokens[-1], last["branch"]) == ("octo/two", TOKEN, "main")
 
@@ -760,7 +764,7 @@ def test_download_includes_conversation_but_bundle_and_push_do_not(team, fakes):
     assert "todo-list/public/index.html" in files
     # not in preview bundles or GitHub pushes
     _out(a, bid, mode="github", repo="octo/demo")
-    assert a.post(f"/kaisen/builds/{bid}/push").status_code == 200
+    assert a.post(f"/kaisen/builds/{bid}/push").status_code == 202
     assert "CONVERSATION.md" not in fakes.github.pushes[-1]["files"]
     app_id = _deploy(a, bid).json()["app"]["id"]
     path, _ = _bundle_url(a, app_id)

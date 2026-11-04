@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
 from app.dependencies import get_db_server_checker, get_registry
+from app.routers.kaisen import get_push_runner
 from app.main import app
 from app.providers.fake import FakeDbServerChecker, FakeRegistry
 
@@ -58,6 +59,8 @@ def make_client(db_session):
         default_size_bytes=DEFAULT_FAKE_IMAGE_SIZE_BYTES
     )
     app.dependency_overrides[get_db_server_checker] = lambda: FakeDbServerChecker()
+    # GitHub pushes run on a thread in production; tests run the job inline on the test session (deterministic).
+    app.dependency_overrides[get_push_runner] = lambda: (lambda job: job(db_session))
     clients = []
 
     def _make() -> TestClient:

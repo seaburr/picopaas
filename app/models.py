@@ -96,6 +96,8 @@ class Project(Base):
     suspended_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     # Kaisen file uploads (docs/design/kaisen.md 16): off until a platform admin turns them on for this project.
     kaisen_uploads_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
+    # Kaisen web search: on by default (existing projects keep it); an admin can switch it off per project.
+    kaisen_web_search_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_true())
 
     members: Mapped[List["ProjectMember"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 

@@ -17,7 +17,7 @@ from app.dependencies import get_active_user, get_registry
 from app.kaisen import builder, buildsecrets, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults, watchdog
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
-from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenRun, KaisenSecret, KaisenSnapshot)
+from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenPush, KaisenRun, KaisenSecret, KaisenSnapshot)
 from app.kaisen.redact import redact, transcript_lines
 
 NOT_FOUND = "That page doesn't exist."
@@ -31,6 +31,10 @@ def require_kaisen(db: Session = Depends(get_db)) -> None:
 # Overridden in tests with fakes (the real ones talk to Anthropic / GitHub).
 def get_github_factory():
     return lambda token: RealGitHub(token)
+
+
+def get_push_runner():
+    return pushing.threaded_runner
 
 
 def get_model_factory():
@@ -77,6 +81,9 @@ def put_settings(project_id: int, payload: SettingsIn, db: Session = Depends(get
     before = ksettings.load(db, project_id)
     try:
         ksettings.save(db, project_id, user.id, data)
+    except ksettings.WebDisabledError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     audit.record(db, user, "kaisen.settings_update", "project", project_id,
@@ -164,6 +171,7 @@ class BuildIn(BaseModel):
     name: str = Field(min_length=1, max_length=config.KAISEN_NAME_MAX)
     brief: str = Field(min_length=1, max_length=config.KAISEN_BRIEF_MAX)
     output: Optional[OutputIn] = None
+    start: bool = True  # false: create the build idle with no run queued (attach uploads first, then POST .../run)
 
     @field_validator("name", "brief")
     @classmethod
@@ -287,6 +295,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
                   "month_usd": round(builder.spend_month(db, b.project_id), 6),
                   "last30_usd": round(builder.spend_last30(db, b.project_id), 6)},
         "output": ksettings.describe_output(b, rs),
+        "push": pushing.view(pushing.latest(db, b.id)),  # newest GitHub push job (null if none): status running|done|error
         "tests": _tests_view(b, sec),
         "secrets": buildsecrets.describe(db, b.id),
         "has_anthropic_key": bool(rs.anthropic_api_key),
@@ -338,7 +347,9 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
     db.commit()
     audit.record(db, user, "kaisen.build_create", "kaisen_build", b.id, f"project={project.id}")
     start_error = None
-    if not ksettings.load(db, project.id).anthropic_api_key:
+    if not payload.start:
+        pass  # draft: nothing queued; POST /kaisen/builds/{id}/run starts run 1 with the stored brief
+    elif not ksettings.load(db, project.id).anthropic_api_key:
         start_error = ("This project has no Anthropic API key yet, so the build was created but not started. "
                        "A project owner can add one in Kaisen settings, then press Build.")
     else:
@@ -596,23 +607,35 @@ def download(build_id: int, db: Session = Depends(get_db), user: models.User = D
         "Content-Disposition": f'attachment; filename="{b.slug}.tar.gz"', "Cache-Control": "no-store"})
 
 
-@router.post("/kaisen/builds/{build_id}/push")
-def push(build_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
-         github_factory=Depends(get_github_factory)):
+@router.post("/kaisen/builds/{build_id}/push", status_code=202)
+def push(build_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user),
+         github_factory=Depends(get_github_factory), runner=Depends(get_push_runner)):
+    """Start a push and return at once (202 + the push job); poll GET .../push/{push_id}. A push already running
+    for the build is returned instead of starting a second one."""
     b = get_build(db, build_id, user)
     rs = ksettings.load_for_build(db, b)
     out = ksettings.output_for(b, rs)
     if not out.push_enabled:
         raise HTTPException(status_code=422, detail=(
             "Pushing to GitHub is not set up for this build. Choose GitHub under Output, with a repository and a token."))
-    try:
-        msg = pushing.push_build(db, b, out, github_factory)
-    except GitHubError as exc:
-        raise HTTPException(status_code=502, detail=redact(str(exc), rs.secret_values()))
-    db.add(KaisenInbox(build_id=b.id, kind="push", text=msg, status="closed"))
+    job, created = pushing.start(db, b, user.id)
+    if created:
+        audit.record(db, user, "kaisen.push", "kaisen_build", b.id, f"repo={out.repo} push={job.id}")
+        job_id = job.id
+        runner(lambda s: pushing.execute(s, job_id, github_factory))
+        db.refresh(job)
+    return pushing.view(job)
+
+
+@router.get("/kaisen/builds/{build_id}/push/{push_id}")
+def push_status(build_id: int, push_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    b = get_build(db, build_id, user, allow_suspended=True)
+    pushing.latest(db, b.id)  # marks pushes left running by a restart
+    j = db.get(KaisenPush, push_id)
+    if j is None or j.build_id != b.id:
+        raise HTTPException(status_code=404, detail="We can't find that push.")
     db.commit()
-    audit.record(db, user, "kaisen.push", "kaisen_build", b.id, f"repo={out.repo}")
-    return _detail(db, b, request)
+    return pushing.view(j)
 
 
 class SecretIn(BaseModel):

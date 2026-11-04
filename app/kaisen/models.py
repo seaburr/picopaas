@@ -233,3 +233,19 @@ class KaisenUploadBlock(Base):
     reason: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     added_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+
+
+class KaisenPush(Base):
+    """One GitHub push job. The request returns 202 with the id; a thread finishes it and the UI polls."""
+    __tablename__ = "kaisen_pushes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    build_id: Mapped[int] = mapped_column(ForeignKey("kaisen_builds.id"), nullable=False, index=True)
+    started_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")  # running | done | error
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # redacted result or plain-language error
+    error_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    pr_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

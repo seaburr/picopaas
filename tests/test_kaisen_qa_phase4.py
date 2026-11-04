@@ -40,7 +40,7 @@ def test_github_check_repo_paths():
         gh.check_repo("o/missing")
 
 
-@pytest.mark.parametrize("status,text", [(401, "rejected the token"), (403, "refused"), (500, "GitHub error 500")])
+@pytest.mark.parametrize("status,text", [(401, "rejected the token"), (403, "refused"), (500, r"GitHub had a problem \(500\)")])
 def test_github_plain_errors(status, text):
     gh = _gh({("GET", "/repos/o/r"): httpx.Response(status, text="boom")})
     with pytest.raises(GitHubError, match=text):

@@ -7,7 +7,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from cryptography import x509
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -218,7 +218,8 @@ class AdminProjectOut(BaseModel):
     suspended_reason: Optional[str] = None
     suspended_at: Optional[datetime] = None
     suspended_by_email: Optional[str] = None
-    kaisen_uploads_enabled: bool = False  # PUT /admin/projects/{id}/kaisen-uploads changes it
+    kaisen_uploads_enabled: bool = False  # PUT /admin/projects/{id}/features changes it
+    kaisen_web_search_enabled: bool = True  # ditto
 
 
 def _clean_reason(v: str) -> str:
@@ -272,14 +273,75 @@ def _admin_project_out(db: Session, p: models.Project) -> AdminProjectOut:
         owner_emails=projects.owner_emails_map(db, [p.id]).get(p.id, []), app_limit=p.app_limit,
         app_limit_effective=projects.effective_project_app_limit(db, p), status=p.status,
         suspended_reason=p.suspended_reason, suspended_at=p.suspended_at, suspended_by_email=_email_of(db, p.suspended_by),
-        kaisen_uploads_enabled=bool(p.kaisen_uploads_enabled))
+        kaisen_uploads_enabled=bool(p.kaisen_uploads_enabled),
+        kaisen_web_search_enabled=bool(p.kaisen_web_search_enabled))
 
 
-@router.get("/projects", response_model=List[AdminProjectOut], dependencies=[Depends(require_admin_session)])
-def list_projects(db: Session = Depends(get_db)):
-    return [_admin_project_out(db, p) for p in
-            db.query(models.Project).filter(models.Project.deleted_at.is_(None), models.Project.is_personal.is_(False))
-            .order_by(models.Project.id).all()]
+@router.get("/projects", dependencies=[Depends(require_admin_session)])
+def list_projects(response: Response, q: Optional[str] = Query(None, max_length=100),
+                  limit: Optional[int] = Query(None, ge=1, le=config.ADMIN_PROJECTS_PAGE_MAX), offset: Optional[int] = Query(None, ge=0),
+                  include_personal: Optional[bool] = Query(None), db: Session = Depends(get_db)):
+    """Without any query parameter: the shared projects as a plain list (the original call). With q, limit, offset or
+    include_personal: `{items, total, limit, offset}`; q is a case-insensitive substring of the project name or an owner's
+    email, include_personal=true adds personal projects. X-Total-Count carries the total in both forms."""
+    paged = any(v is not None for v in (q, limit, offset, include_personal))
+    query = db.query(models.Project).filter(models.Project.deleted_at.is_(None))
+    if not include_personal:
+        query = query.filter(models.Project.is_personal.is_(False))
+    needle = (q or "").strip().lower()
+    if needle:
+        like = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        owner_ids = (db.query(models.ProjectMember.project_id).join(models.User, models.User.id == models.ProjectMember.user_id)
+                     .filter(models.ProjectMember.role == "owner", func.lower(models.User.email).like(like, escape="\\")))
+        query = query.filter(or_(func.lower(models.Project.name).like(like, escape="\\"), models.Project.id.in_(owner_ids)))
+    total = query.count()
+    query = query.order_by(models.Project.id)
+    lim = limit or config.ADMIN_PROJECTS_PAGE_DEFAULT
+    rows = query.offset(offset or 0).limit(lim).all() if paged else query.all()
+    response.headers["X-Total-Count"] = str(total)
+    items = [_admin_project_out(db, p) for p in rows]
+    if not paged:
+        return items
+    return {"items": items, "total": total, "limit": lim, "offset": offset or 0}
+
+
+class FeaturesIn(BaseModel):
+    """Both optional: omitted flags are left as they are."""
+    model_config = ConfigDict(extra="forbid")
+    kaisen_web_search: Optional[bool] = None
+    kaisen_uploads: Optional[bool] = None
+
+
+def _features(p: models.Project) -> dict:
+    return {"project_id": p.id, "name": p.name, "kaisen_web_search": bool(p.kaisen_web_search_enabled),
+            "kaisen_uploads": bool(p.kaisen_uploads_enabled)}
+
+
+@router.get("/projects/{project_id}/features")
+def get_project_features(project_id: int, db: Session = Depends(get_db)):
+    p = projects.live_project(db, project_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="We can't find that project.")
+    return _features(p)
+
+
+@router.put("/projects/{project_id}/features")
+def set_project_features(project_id: int, payload: FeaturesIn, db: Session = Depends(get_db),
+                         admin: models.User = Depends(require_platform_admin)):
+    """Turn per-project Kaisen features on or off. Audit: kaisen.uploads_flag / kaisen.web_search_flag."""
+    p = projects.live_project(db, project_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="We can't find that project.")
+    if payload.kaisen_uploads is not None:
+        p.kaisen_uploads_enabled = payload.kaisen_uploads
+    if payload.kaisen_web_search is not None:
+        p.kaisen_web_search_enabled = payload.kaisen_web_search
+    db.commit()
+    if payload.kaisen_uploads is not None:
+        audit.record(db, admin, "kaisen.uploads_flag", "project", p.id, f"project={p.id} enabled={payload.kaisen_uploads}")
+    if payload.kaisen_web_search is not None:
+        audit.record(db, admin, "kaisen.web_search_flag", "project", p.id, f"project={p.id} enabled={payload.kaisen_web_search}")
+    return _features(p)
 
 
 @router.patch("/projects/{project_id}", response_model=AdminProjectOut)
