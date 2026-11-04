@@ -16,6 +16,7 @@ from app import backups, config, crypto, models
 from app.providers.backup import BackupRunnerError, KubeBackupRunner
 from app.providers.fake import FakeBackupRunner
 from tests.conftest import register_and_login
+from tests.conftest import utcnow_naive
 
 APP = {"name": "web", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
 NOW = datetime(2026, 10, 24, 12, 0, 0)
@@ -103,9 +104,9 @@ def wired(on, runner):
 
 
 def _finish_export(db, runner):
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
     runner.finish([s.name for s in runner.started][-1], {"exported": True, "bytes": 10})
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
 
 
 # --- tenant isolation: runs, exports, restore ----------------------------------------------------
@@ -166,7 +167,7 @@ def test_queued_export_of_app_deleted_meanwhile_never_starts(wired, alice, db_se
     alice.post(f"/apps/{a}/backups/{run}/download")
     db_session.get(models.App, a).deleted_at = NOW
     db_session.commit()
-    backups.tick(db_session, wired, datetime.utcnow())
+    backups.tick(db_session, wired, utcnow_naive())
     assert wired.started == []
     assert db_session.query(models.BackupRun).filter_by(trigger="export").one().status == "failed"
 
@@ -337,7 +338,7 @@ def test_export_object_key_is_built_from_integers_only(wired, alice, db_session)
     ex = alice.post(f"/apps/{a}/backups/{run}/download").json()["export_id"]
     row = db_session.get(models.BackupRun, ex)
     assert row.export_key == f"exports/{a}/{ex}.sql.gz"
-    backups.tick(db_session, wired, datetime.utcnow())
+    backups.tick(db_session, wired, utcnow_naive())
     env = wired.started[-1].env
     assert env["EXPORT_KEY"] == row.export_key and wired.started[-1].name == f"bk-{ex}"
 
@@ -361,7 +362,7 @@ def test_unreadable_repo_password_error_is_generic(wired, alice, db_session):
     db_session.get(models.AppBackupConfig, a).repo_password_enc = "not-a-fernet-token"
     db_session.commit()
     ex = alice.post(f"/apps/{a}/backups/{run}/download").json()["export_id"]
-    backups.tick(db_session, wired, datetime.utcnow())
+    backups.tick(db_session, wired, utcnow_naive())
     got = alice.get(f"/apps/{a}/backups/exports/{ex}").json()
     assert got["status"] == "failed" and got["error"] == "the stored backup password can't be read (platform key changed)"
     assert wired.started == []
@@ -371,9 +372,9 @@ def test_job_error_text_is_redacted_and_bounded(wired, alice, db_session):
     a = _app(alice, db_session)
     run = _succeeded(db_session, a)
     ex = alice.post(f"/apps/{a}/backups/{run}/download").json()["export_id"]
-    backups.tick(db_session, wired, datetime.utcnow())
+    backups.tick(db_session, wired, utcnow_naive())
     wired.fail(wired.started[-1].name, "boom secret_key=abcd1234 " + "x" * 400)
-    backups.tick(db_session, wired, datetime.utcnow())
+    backups.tick(db_session, wired, utcnow_naive())
     err = alice.get(f"/apps/{a}/backups/exports/{ex}").json()["error"]
     assert len(err) <= 255 and "abcd1234" not in err
 
@@ -398,9 +399,9 @@ def test_download_rate_limit_per_app(wired, alice, db_session):
         r = alice.post(f"/apps/{a}/backups/{rid}/download")
         seen.append(r.status_code)
         if r.status_code == 202:
-            backups.tick(db_session, wired, datetime.utcnow())
+            backups.tick(db_session, wired, utcnow_naive())
             wired.finish(wired.started[-1].name, {"exported": True, "bytes": 1})  # (failed downloads do NOT count: test_backups_limits)
-            backups.tick(db_session, wired, datetime.utcnow())
+            backups.tick(db_session, wired, utcnow_naive())
     assert seen == [202, 202, 202, 429, 429]
     assert alice.post(f"/apps/{a}/backups/{runs[3]}/download").headers["Retry-After"].isdigit()
 

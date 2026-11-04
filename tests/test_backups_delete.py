@@ -3,12 +3,13 @@ import os
 import shutil
 import stat
 import subprocess
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import backups, config, models
 from tests.test_backups import (NOW, _finish_export, _ghost_like, _succeeded, admin, dl, on, other, runner, user)  # noqa: F401
+from tests.conftest import utcnow_naive
 
 
 def rows(db, action):
@@ -25,7 +26,7 @@ def listing(client, aid):
 
 
 def run_forget(db, runner):
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
     return [s for s in runner.started if s.env["MODE"] == "forget"][-1]
 
 
@@ -55,7 +56,7 @@ def test_success_hides_run_keeps_row_and_updates_repo_bytes(dl, user, db_session
     user.delete(url(aid, run_db))
     spec = run_forget(db_session, runner)
     runner.finish(spec.name, {"forgotten": True, "repo_bytes": 1234})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert run_db not in listing(user, aid) and run_bk in listing(user, aid)
     assert db_session.get(models.BackupRun, run_db).status == "deleted"  # row kept: restore/export source_run_id still resolves
     assert db_session.get(models.AppBackupConfig, aid).db_repo_bytes == 1234
@@ -74,7 +75,7 @@ def test_success_without_repo_bytes_keeps_old_value(dl, user, db_session, runner
     db_session.commit()
     user.delete(url(aid, run_db))
     runner.finish(run_forget(db_session, runner).name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert db_session.get(models.AppBackupConfig, aid).db_repo_bytes == 777
 
 
@@ -83,7 +84,7 @@ def test_failure_returns_to_succeeded_with_event_and_audit(dl, user, db_session,
     user.delete(url(aid, run_db))
     spec = run_forget(db_session, runner)
     runner.fail(spec.name, "deleting the backup failed")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert listing(user, aid)[run_db]["status"] == "succeeded"
     d = db_session.get(models.BackupRun, spec.run_id)
     assert d.status == "failed" and d.error == "deleting the backup failed"
@@ -100,7 +101,7 @@ def test_start_failure_also_restores_source(dl, user, db_session, runner):
     aid, run_db, _ = dl
     user.delete(url(aid, run_db))
     runner.fail_start = True
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert listing(user, aid)[run_db]["status"] == "succeeded"
     assert len(rows(db_session, "backup.delete_failed")) == 1
 
@@ -122,7 +123,7 @@ def test_last_success_summary_recomputed_from_remaining_runs(on, user, db_sessio
     fastapi_app.dependency_overrides[get_backup_runner] = lambda: runner
     assert user.delete(url(aid, new)).status_code == 202
     runner.finish(run_forget(db_session, runner).name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     cfg = db_session.get(models.AppBackupConfig, aid)
     assert cfg.db_last_backup_at == NOW - timedelta(days=1) and cfg.db_last_bytes == 10 and cfg.db_last_status == "succeeded"
@@ -130,7 +131,7 @@ def test_last_success_summary_recomputed_from_remaining_runs(on, user, db_sessio
     # deleting the only remaining one clears the summary
     assert user.delete(url(aid, old)).status_code == 202
     runner.finish(run_forget(db_session, runner).name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     cfg = db_session.get(models.AppBackupConfig, aid)
     assert cfg.db_last_backup_at is None and cfg.db_last_status is None and cfg.last_success_at is None and cfg.last_status is None
@@ -147,7 +148,7 @@ def test_older_run_delete_leaves_summary(dl, user, db_session, runner):
     db_session.commit()
     user.delete(url(aid, older))
     runner.finish(run_forget(db_session, runner).name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     assert db_session.get(models.AppBackupConfig, aid).db_last_backup_at == NOW
 
@@ -286,7 +287,7 @@ def test_export_of_other_run_is_untouched(dl, user, db_session, runner):
 def test_running_export_of_the_run_is_409(dl, user, db_session, runner):
     aid, run_db, _ = dl
     user.post(f"/apps/{aid}/backups/{run_db}/download")
-    backups.tick(db_session, runner, datetime.utcnow())  # export now running
+    backups.tick(db_session, runner, utcnow_naive())  # export now running
     r = user.delete(url(aid, run_db))
     assert r.status_code == 409 and db_session.get(models.BackupRun, run_db).status == "succeeded"
 
@@ -310,7 +311,7 @@ def test_expired_export_needs_no_object_delete(dl, user, db_session, runner):
     user.post(f"/apps/{aid}/backups/{run_db}/download")
     _finish_export(db_session, runner)
     e = db_session.query(models.BackupRun).filter_by(trigger="export").one()
-    e.finished_at = datetime.utcnow() - timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS + 5)
+    e.finished_at = utcnow_naive() - timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS + 5)
     db_session.commit()
     assert user.delete(url(aid, run_db)).status_code == 202
     assert runner.deleted_exports == []
@@ -326,7 +327,7 @@ def test_delete_audit_by_user_without_secrets(dl, user, db_session, runner):
     assert a.detail == f"run={run_db} kind=db snapshot=d0d0d0d0"
     spec = run_forget(db_session, runner)
     runner.finish(spec.name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     for x in rows(db_session, "backup.delete") + rows(db_session, "backup.deleted"):
         assert "s3:" not in x.detail and "http" not in x.detail and spec.env["RESTIC_PASSWORD"] not in x.detail
 
@@ -344,13 +345,13 @@ def test_retention_prune_unaffected_by_deleted_rows(dl, user, db_session, runner
     aid, run_db, _ = dl
     user.delete(url(aid, run_db))
     runner.finish(run_forget(db_session, runner).name, {"forgotten": True})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert user.post(f"/apps/{aid}/backups").status_code == 202  # a new backup is queued as usual
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     spec = [s for s in runner.started if s.env["MODE"] == "backup"][-1]
     assert spec.env["KEEP_DAILY"] == str(config.BACKUP_KEEP_DAILY)
     runner.finish(spec.name)
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert len(rows(db_session, "backup.pruned")) >= 1
 
 
@@ -421,13 +422,13 @@ def test_second_delete_queues_and_runs_after_the_first_finishes(dl, user, db_ses
     d2 = user.delete(url(aid, older))
     assert d2.status_code == 202, d2.text
     d2 = d2.json()["delete_run_id"]
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     # forget --prune holds the repo's exclusive lock: only one starts, the other waits queued
     assert [db_session.get(models.BackupRun, i).status for i in (d1, d2)] == ["running", "queued"]
     assert user.post(f"/apps/{aid}/backups").status_code == 409  # a delete still blocks new backups
     runner.finish(f"bk-{d1}", {"forgotten": True, "repo_bytes": 10})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     assert db_session.get(models.BackupRun, d1).status == "succeeded"
     assert db_session.get(models.BackupRun, d2).status == "running"

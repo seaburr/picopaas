@@ -1,10 +1,11 @@
 """Per-app serialisation of backup/export enqueueing (row lock) and the owner's "come back later" download listing."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.dialects import mysql
 
 from app import backups, config, models
 from tests.test_backups import (_finish_export, _ghost_like, admin, dl, on, other, runner, user)  # noqa: F401
+from tests.conftest import utcnow_naive
 
 
 def test_lock_app_selects_config_row_for_update(monkeypatch, user, db_session, on):
@@ -28,7 +29,7 @@ def test_manual_backup_lock_taken_before_checks(monkeypatch, user, db_session, o
 
     def lock_then_rival_commits(session, app):
         cfg = real(session, app)
-        session.add(models.BackupRun(app_id=app.id, kind="db", trigger="manual", status="queued", created_at=datetime.utcnow()))
+        session.add(models.BackupRun(app_id=app.id, kind="db", trigger="manual", status="queued", created_at=utcnow_naive()))
         session.commit()
         return cfg
 
@@ -44,7 +45,7 @@ def test_export_lock_taken_before_checks(dl, monkeypatch, user, db_session):
     def lock_then_rival_commits(session, app):
         cfg = real(session, app)
         session.add(models.BackupRun(app_id=app.id, kind="bucket", trigger="export", status="queued",
-                                     created_at=datetime.utcnow(), source_run_id=run_bk))
+                                     created_at=utcnow_naive(), source_run_id=run_bk))
         session.commit()
         return cfg
 
@@ -83,7 +84,7 @@ def test_list_exports_and_run_export_field(dl, user, other, admin, db_session, r
 
 def test_list_exports_newest_first_hides_expired_and_old_failed(dl, user, db_session, runner):
     aid, run_db, run_bk = dl
-    now = datetime.utcnow()
+    now = utcnow_naive()
 
     def row(status, finished_ago, created_ago, src):
         r = models.BackupRun(app_id=aid, kind="db", trigger="export", status=status, source_run_id=src,
@@ -113,7 +114,7 @@ def test_scheduled_run_download_and_fresh_url_after_ten_minutes(dl, user, db_ses
     assert first["status"] == "ready" and first["url"] and first["url_expires_in"] == 600
     n = len(runner.presigned)
     row = db_session.get(models.BackupRun, ex["export_id"])
-    row.finished_at = datetime.utcnow() - timedelta(minutes=11)  # past the old link's life, inside the file's
+    row.finished_at = utcnow_naive() - timedelta(minutes=11)  # past the old link's life, inside the file's
     db_session.commit()
     again = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert again["status"] == "ready" and again["url"] and len(runner.presigned) == n + 1

@@ -12,6 +12,7 @@ from app.providers.backup import BackupJobSpec, job_manifests, parse_pod_output
 from app.providers.fake import FakeBackupRunner, FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
 from app.reconciler import reconcile_all
 from tests.conftest import register_and_login
+from tests.conftest import utcnow_naive
 
 APP = {"name": "web", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": []}
 NOW = datetime(2026, 10, 24, 12, 0, 0)
@@ -304,12 +305,12 @@ def test_api_list_post_and_rate_limit(on, user, db_session, runner):
     r = user.post(f"/apps/{aid}/backups")
     assert r.status_code == 202 and r.json()[0]["status"] == "queued" and r.json()[0]["trigger"] == "manual"
     assert user.post(f"/apps/{aid}/backups").status_code == 409  # one already queued
-    db_session.get(models.AppBackupConfig, aid).next_backup_at = datetime.utcnow() + timedelta(days=1)  # not due
+    db_session.get(models.AppBackupConfig, aid).next_backup_at = utcnow_naive() + timedelta(days=1)  # not due
     db_session.commit()
-    backups.tick(db_session, runner, datetime.utcnow())  # starts the manual run
+    backups.tick(db_session, runner, utcnow_naive())  # starts the manual run
     assert len(runner.started) == 1
     runner.finish(runner.started[0].name)
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     r = user.post(f"/apps/{aid}/backups")
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
     out = user.get(f"/apps/{aid}/backups").json()
@@ -392,7 +393,7 @@ def test_delete_waits_for_final_backup_then_retains_and_purges(on, user, db_sess
     assert app.status != "deleted" and app.database is not None  # held: final backup queued
     final = db_session.query(models.BackupRun).filter_by(trigger="final").one()
     assert final.status == "queued"
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     assert runner.started[0].env["TAG"] == "final"
     _sweep(db_session, kube)
@@ -426,7 +427,7 @@ def test_delete_proceeds_when_final_backup_fails(on, user, db_session, runner):
     user.delete(f"/apps/{aid}")
     kube = FakeKubeProvider()
     _sweep(db_session, kube)
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     runner.fail(runner.started[0].name)
     backups.tick(db_session, runner, now)
@@ -442,7 +443,7 @@ def test_delete_not_blocked_forever(on, user, db_session, runner):
     kube = FakeKubeProvider()
     _sweep(db_session, kube)  # queues the final run; nobody ever runs it
     run = db_session.query(models.BackupRun).filter_by(trigger="final").one()
-    run.created_at = datetime.utcnow() - timedelta(hours=3)
+    run.created_at = utcnow_naive() - timedelta(hours=3)
     db_session.commit()
     _sweep(db_session, kube)
     assert db_session.get(models.App, aid).status == "deleted"
@@ -658,7 +659,7 @@ def test_delete_takes_final_backup_of_every_kind(on, user, db_session, runner):
     _sweep(db_session, kube)
     finals = db_session.query(models.BackupRun).filter_by(trigger="final").all()
     assert sorted(r.kind for r in finals) == ["bucket", "db"]
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     assert sorted(s.kind for s in runner.started) == ["bucket", "db"]
     runner.finish(runner.started[0].name, {"snapshot_id": "f1", "bytes_added": 1, "repo_bytes": 9})
@@ -1086,7 +1087,7 @@ def test_optin_user_can_enable_then_it_runs(optin, user, db_session, runner):
     aid = _app_with_db(user, db_session)
     r = user.patch(f"/apps/{aid}/backups", json={"enabled": True})
     assert r.status_code == 200 and r.json()["enabled"] is True
-    backups.tick(db_session, runner, datetime.utcnow() + timedelta(minutes=1))  # the first backup is due right away
+    backups.tick(db_session, runner, utcnow_naive() + timedelta(minutes=1))  # the first backup is due right away
     assert [s.env["MODE"] for s in runner.started] == ["backup"]
     assert db_session.query(models.BackupRun).one().trigger == "scheduled"
 
@@ -1145,10 +1146,10 @@ def dl(on, user, admin, db_session, runner):
 
 
 def _finish_export(db_session, runner, now=None):
-    backups.tick(db_session, runner, now or datetime.utcnow())
+    backups.tick(db_session, runner, now or utcnow_naive())
     name = [s.name for s in runner.started][-1]
     runner.finish(name, {"exported": True, "bytes": 4242})
-    backups.tick(db_session, runner, now or datetime.utcnow())
+    backups.tick(db_session, runner, now or utcnow_naive())
 
 
 def test_download_flow_db(dl, user, db_session, runner):
@@ -1158,7 +1159,7 @@ def test_download_flow_db(dl, user, db_session, runner):
     ex = r.json()
     assert ex["status"] == "queued" and ex["run_id"] == run_db and ex["url"] is None and ex["kind"] == "db"
     assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "queued"
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     spec = runner.started[-1]
     env = spec.env
     assert env["MODE"] == "export" and env["KIND"] == "db" and env["SNAPSHOT"] == "d0d0d0d0"
@@ -1167,7 +1168,7 @@ def test_download_flow_db(dl, user, db_session, runner):
     assert "DB_PASSWORD" not in env and "SRC_SECRET_KEY" not in env  # an export never touches the app's own credentials
     assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "running"
     runner.finish(spec.name, {"exported": True, "bytes": 4242})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert got["status"] == "ready" and got["size_bytes"] == 4242 and got["url_expires_in"] == 600
     assert got["filename"] == f"devlog-db-backup{run_db}.sql.gz" and got["url"].startswith("https://")
@@ -1179,7 +1180,7 @@ def test_download_flow_db(dl, user, db_session, runner):
 def test_download_bucket_and_scratch(dl, user, db_session, runner):
     aid, _, run_bk = dl
     user.post(f"/apps/{aid}/backups/{run_bk}/download")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     spec = runner.started[-1]
     assert spec.env["KIND"] == "bucket" and spec.env["EXPORT_KEY"].endswith(".tar.gz")
     assert spec.scratch_mib == 2 * (config.BACKUP_BUCKET_MAX_BYTES // 1024**2) + 64
@@ -1199,7 +1200,7 @@ def test_download_postgres_extension(dl, user, db_session, runner):
 def test_download_does_not_block_backups_or_show_in_runs(dl, user, db_session, runner):
     aid, run_db, _ = dl
     user.post(f"/apps/{aid}/backups/{run_db}/download")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert user.post(f"/apps/{aid}/backups").status_code == 202  # export is running; manual backup still allowed
     runs = user.get(f"/apps/{aid}/backups").json()["runs"]
     assert all(r["trigger"] != "export" for r in runs)
@@ -1213,7 +1214,7 @@ def test_download_idempotent_one_active_and_rate_limit(dl, user, db_session, run
     assert user.post(f"/apps/{aid}/backups/{run_db}/download").json()["export_id"] == a["export_id"]  # same snapshot: reuse
     assert user.post(f"/apps/{aid}/backups/{run_bk}/download").status_code == 409  # one active export per app
     assert db_session.query(models.AuditLog).filter_by(action="backup.download").count() == 1
-    now = datetime.utcnow()
+    now = utcnow_naive()
     for _ in range(2):  # finish it, then make two more to reach 3 in the hour
         _finish_export(db_session, runner, now)
         row = db_session.query(models.BackupRun).filter_by(trigger="export").order_by(models.BackupRun.id.desc()).first()
@@ -1238,11 +1239,11 @@ def test_download_expires_and_failure_reports_error(dl, user, db_session, runner
     ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
     _finish_export(db_session, runner)
     row = db_session.get(models.BackupRun, ex["export_id"])
-    row.finished_at = datetime.utcnow() - timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS + 5)
+    row.finished_at = utcnow_naive() - timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS + 5)
     db_session.commit()
     got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert got["status"] == "expired" and got["url"] is None
-    row.status, row.error, row.created_at = "failed", "uploading the file failed", datetime.utcnow()
+    row.status, row.error, row.created_at = "failed", "uploading the file failed", utcnow_naive()
     db_session.commit()
     got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert got["status"] == "failed" and got["error"] == "uploading the file failed"
@@ -1251,9 +1252,9 @@ def test_download_expires_and_failure_reports_error(dl, user, db_session, runner
 def test_download_failure_cleans_up_and_audits_without_event(dl, user, db_session, runner):
     aid, run_db, _ = dl
     ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     runner.fail(runner.started[-1].name, "uploading the file failed")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert runner.secrets == {} and runner.cleaned
     assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "failed"
     assert db_session.query(models.AuditLog).filter_by(action="backup.export_failed").count() == 1

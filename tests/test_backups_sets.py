@@ -4,7 +4,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 import yaml
@@ -15,6 +15,7 @@ from app.providers.fake import FakeKubeProvider, FakeMySQLAdmin, FakeObjectStore
 from app.reconciler import reconcile_all
 from tests.test_backups import (NOW, _add_storage, _server, admin, on, other, runner, user)  # noqa: F401
 from tests.test_backups import _ghost_like, _sweep
+from tests.conftest import utcnow_naive
 
 VOL = {"size_gi": 1, "mount_path": "/data"}
 
@@ -223,10 +224,10 @@ def _ready(db, runner, user, aid, sid):
     r = user.post(f"/apps/{aid}/backups/sets/{sid}/download")
     assert r.status_code == 202, r.text
     ex = r.json()
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
     spec = runner.started[-1]
     runner.finish(spec.name, {"exported": True, "bytes": 4242})
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
     return ex, spec
 
 
@@ -241,7 +242,7 @@ def test_package_download_flow(app_ctx, user, db_session, runner):
     assert ex["filename"] == f"blog-backup{sid}.tar.gz"
     listing = user.get(f"/apps/{aid}/backups").json()["backups"][0]
     assert listing["export"] == {"id": ex["export_id"], "status": "queued", "available_until": None}
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     spec = runner.started[-1]
     env = spec.env
     assert env["MODE"] == "package" and env["REPO_BASE"].endswith(f"/backups/apps/{aid}") and "RESTIC_REPOSITORY" not in env
@@ -252,7 +253,7 @@ def test_package_download_flow(app_ctx, user, db_session, runner):
     assert spec.kind == "package" and spec.namespace is None and spec.volume is None and spec.scratch_mib > 1000
     assert user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()["status"] == "running"
     runner.finish(spec.name, {"exported": True, "bytes": 4242})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     got = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert got["status"] == "ready" and got["size_bytes"] == 4242 and got["url"].startswith("https://")
     assert runner.presigned[-1] == (f"exports/{aid}/{ex['export_id']}.tar.gz", 600, f"blog-backup{sid}.tar.gz")
@@ -273,7 +274,7 @@ def test_package_has_only_the_succeeded_parts(app_ctx, user, db_session, runner)
     aid = app_ctx
     sid, ids = _mk_set(db_session, aid, {"db": "succeeded", "bucket": ("failed", None, None, "boom"), "volume": "succeeded"})
     user.post(f"/apps/{aid}/backups/sets/{sid}/download")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     kinds = [p.split("=")[0] for p in runner.started[-1].env["PARTS"].split(",")]
     assert kinds == ["db", "volume"]
 
@@ -316,7 +317,7 @@ def test_packages_run_one_at_a_time_platform_wide(app_ctx, user, db_session, run
     b, _ = _mk_set(db_session, other_aid, {"db": "succeeded"})
     user.post(f"/apps/{aid}/backups/sets/{a}/download")
     user.post(f"/apps/{other_aid}/backups/sets/{b}/download")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert [s.kind for s in runner.started] == ["package"]  # the second waits: a package's scratch is the biggest Job there is
 
 
@@ -346,14 +347,14 @@ def test_delete_set_forgets_every_part_then_hides_it(app_ctx, user, db_session, 
     assert db_session.get(models.BackupRun, ids["bucket"]).status == "deleted"  # a failed part holds no snapshot
     (a,) = rows(db_session, "backup.delete")
     assert a.detail == f"set={sid} runs={ids['db']},{ids['volume']} kinds=db,volume"
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     forgets = [s for s in runner.started if s.env["MODE"] == "forget"]
     assert {s.kind for s in forgets} == {"db", "volume"} and all(s.namespace is None and s.volume is None for s in forgets)
     for s in forgets:
         assert s.env["SNAPSHOT"] and s.env["RESTIC_REPOSITORY"].endswith(f"/apps/{aid}/{s.kind}")
         runner.finish(s.name, {"forgotten": True, "repo_bytes": 10})
-    backups.tick(db_session, runner, datetime.utcnow())
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     assert db_session.get(models.BackupSet, sid).delete_status == "deleted"
     assert user.get(f"/apps/{aid}/backups").json()["backups"] == []
@@ -367,11 +368,11 @@ def test_delete_set_when_a_part_delete_fails_the_set_comes_back(app_ctx, user, d
     aid = app_ctx
     sid, ids = _mk_set(db_session, aid, {"db": "succeeded", "volume": "succeeded"})
     user.delete(f"/apps/{aid}/backups/sets/{sid}")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     by_kind = {s.kind: s for s in runner.started if s.env["MODE"] == "forget"}
     runner.finish(by_kind["db"].name, {"forgotten": True})
     runner.fail(by_kind["volume"].name, "deleting the backup failed")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     db_session.expire_all()
     st = db_session.get(models.BackupSet, sid)
     assert st.delete_status is None
@@ -595,12 +596,12 @@ def test_volume_export_and_delete_per_run(app_ctx, user, db_session, runner):
     sid, ids = _mk_set(db_session, aid, {"volume": "succeeded"})
     r = user.post(f"/apps/{aid}/backups/{ids['volume']}/download")
     assert r.status_code == 202 and r.json()["kind"] == "volume"
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     spec = runner.started[-1]
     assert spec.env["MODE"] == "export" and spec.env["KIND"] == "volume" and spec.env["EXPORT_KEY"].endswith(".tar.gz")
     assert spec.env["VOLUME_DIR"] == config.BACKUP_VOLUME_MOUNT and spec.scratch_mib >= 1024
     runner.finish(spec.name, {"exported": True, "bytes": 1})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert user.delete(f"/apps/{aid}/backups/{ids['volume']}").status_code == 202
 
 

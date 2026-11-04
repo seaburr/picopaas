@@ -9,6 +9,7 @@ from app import audit, config, models, scheduler
 from app.routers import admin as admin_router
 
 from tests.conftest import register_and_login
+from tests.conftest import utcnow_naive
 
 NOW = datetime(2026, 10, 23, 12, 0, 0)
 
@@ -63,7 +64,7 @@ def test_default_retention_is_90():
 def test_job_leader_only_and_disabled(db_session, monkeypatch):
     monkeypatch.setattr(scheduler, "SessionLocal", lambda: db_session)
     monkeypatch.setattr(db_session, "close", lambda: None)
-    _add(db_session, 2, 400, now=datetime.utcnow())
+    _add(db_session, 2, 400, now=utcnow_naive())
     monkeypatch.setattr(scheduler, "try_acquire_leader", lambda: False)
     scheduler.audit_purge_job()
     assert db_session.query(models.AuditLog).filter_by(action="seed").count() == 2

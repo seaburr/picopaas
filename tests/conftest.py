@@ -6,6 +6,7 @@ between queries). Auth is exercised through the real HTTP endpoints
 (register/login) rather than mocked — see `client` / `make_client` below.
 """
 import os
+from datetime import datetime, timezone
 
 os.environ.setdefault("ENVIRONMENT", "dev")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
@@ -28,6 +29,11 @@ DEFAULT_PASSWORD = "correct-horse-battery"
 # Comfortably under the 512MB cap, so existing tests that create apps with
 # arbitrary image names don't need to know about the registry dependency.
 DEFAULT_FAKE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+
+
+def utcnow_naive() -> datetime:
+    """The current UTC time without a timezone, as the DB columns store it (datetime.utcnow() is deprecated)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @pytest.fixture()

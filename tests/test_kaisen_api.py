@@ -11,6 +11,7 @@ from app.providers.fake import FakeRegistry
 from app.routers.kaisen import get_github_factory, get_model_factory
 from tests.conftest import register_and_login
 from tests.kaisen_helpers import KEY, TOKEN, Fakes, app_env, db
+from tests.conftest import utcnow_naive
 
 IMG = "ghcr.io/example/kaisen-runtime:1"
 
@@ -385,8 +386,7 @@ def test_deploy_of_a_deleted_build_is_refused(team):
     bid = _new_build(a, pid)
     s = db()
     build = s.get(KaisenBuild, bid)
-    from datetime import datetime
-    build.deleted_at = datetime.utcnow()
+    build.deleted_at = utcnow_naive()
     s.commit()
     with pytest.raises(deploy_mod.DeployError):
         deploy_mod.deploy_build(s, build, FakeRegistry(default_size_bytes=1024))

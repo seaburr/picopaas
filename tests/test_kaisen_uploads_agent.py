@@ -17,6 +17,7 @@ from tests import imgfix
 from tests.conftest import register_and_login
 from tests.kaisen_helpers import KEY, TOKEN, Fakes, db
 from tests.test_kaisen_uploads_api import OCTET, up
+from tests.conftest import utcnow_naive
 
 
 @pytest.fixture()
@@ -241,9 +242,9 @@ def test_changed_since_deploy_flag_for_the_ui(w):
     deploy_mod.make_bundle(w.s, b)
     w.s.commit()
     assert ku.build_summary(w.s, b)["changed_since_deploy"] is False
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from app.kaisen.models import KaisenBundle
-    w.s.query(KaisenBundle).update({"created_at": datetime.utcnow() - timedelta(minutes=5)})
+    w.s.query(KaisenBundle).update({"created_at": utcnow_naive() - timedelta(minutes=5)})
     w.s.commit()
     up(w.a, w.bid, imgfix.png(10, 10), filename="late.png")
     assert ku.build_summary(w.s, w.s.get(KaisenBuild, w.bid))["changed_since_deploy"] is True

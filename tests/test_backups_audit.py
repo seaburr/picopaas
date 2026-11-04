@@ -1,8 +1,9 @@
 """Audit rows for creating, deleting and downloading backups (actor, action, no secrets or URLs in the detail)."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app import backups, models
 from tests.test_backups import (NOW, _finish_export, _ghost_like, _app_with_db, admin, dl, on, other, runner, user)  # noqa: F401
+from tests.conftest import utcnow_naive
 
 
 def rows(db, action):
@@ -82,7 +83,7 @@ def test_export_sweep_audited_per_deleted_export(dl, user, db_session, runner):
     assert k1
     runner.swept_keys = [k1, "exports/unknown-object.tar.gz"]  # an unmapped key writes nothing
     _last_export_sweep.clear()
-    backups.tick(db_session, runner, datetime.utcnow() + timedelta(hours=1))
+    backups.tick(db_session, runner, utcnow_naive() + timedelta(hours=1))
     (r,) = rows(db_session, "backup.export_deleted")
     assert r.actor_id is None and r.actor_email == "system" and r.target_id == str(aid)
     assert r.detail == f"export={ex1['export_id']} run={run_db} reason=expired"

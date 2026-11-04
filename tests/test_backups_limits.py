@@ -1,10 +1,11 @@
 """Backup enable/disable (owner + admin lock), storage ceilings, max backups held, rolloff order, rate limits."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import backups, config, crypto, models
 from tests.test_backups import (NOW, _finish_export, _ghost_like, _succeeded, admin, dl, on, other, runner, user)  # noqa: F401
+from tests.conftest import utcnow_naive
 
 
 def rows(db, action):
@@ -174,7 +175,7 @@ def test_global_ceiling_skips_scheduled_and_surfaces_in_health(admin, db_session
     backups.tick(db_session, runner, NOW)
     run = db_session.query(models.BackupRun).filter_by(app_id=aid, trigger="scheduled").first()
     assert run.status == "failed" and "platform is full" in run.error or "for the platform is full" in run.error
-    run.created_at = datetime.utcnow()  # the health view lists failures from the last N days of the REAL clock, not NOW
+    run.created_at = utcnow_naive()  # the health view lists failures from the last N days of the REAL clock, not NOW
     db_session.commit()
     h = admin.get("/admin/health/backups").json()
     assert h["storage"]["over_cap"] is True and "AT the platform cap" in h["storage"]["warning"]
@@ -253,14 +254,14 @@ def test_failed_exports_do_not_count_and_messages(dl, user, db_session, runner):
     for _ in range(4):  # four failures never lock the owner out
         r = user.post(f"/apps/{aid}/backups/{run_db}/download")
         assert r.status_code == 202, r.text
-        backups.tick(db_session, runner, datetime.utcnow())
+        backups.tick(db_session, runner, utcnow_naive())
         runner.fail(runner.started[-1].name, "boom")
-        backups.tick(db_session, runner, datetime.utcnow())
+        backups.tick(db_session, runner, utcnow_naive())
     r = user.post(f"/apps/{aid}/backups/{run_db}/download")
     assert r.status_code == 202
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     runner.finish(runner.started[-1].name, {"exported": True, "bytes": 1})
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     for _ in range(2):
         user.post(f"/apps/{aid}/backups/{run_db}/download")  # idempotent while ready; doesn't consume the limit
     run_bk = db_session.query(models.BackupRun).filter_by(app_id=aid, kind="bucket", trigger="scheduled").one().id
@@ -302,9 +303,9 @@ def test_per_user_manual_cap_across_apps(user, admin, db_session, aid, monkeypat
 def test_failed_export_reason_in_payload_and_old_image_guard(dl, user, db_session, runner):
     aid, run_db, _ = dl
     ex = user.post(f"/apps/{aid}/backups/{run_db}/download").json()
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     runner.fail(runner.started[-1].name, "the repository is not configured")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     e = user.get(f"/apps/{aid}/backups/exports/{ex['export_id']}").json()
     assert e["status"] == "failed" and "older than this download needs" in e["error"]
     run = next(r for r in payload(user, aid)["runs"] if r["id"] == run_db)
@@ -314,9 +315,9 @@ def test_failed_export_reason_in_payload_and_old_image_guard(dl, user, db_sessio
 def test_failed_set_export_reason_on_set(user, db_session, aid, runner):
     sid = mkset(db_session, aid, 10)
     ex = user.post(f"/apps/{aid}/backups/sets/{sid}/download").json()
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     runner.fail(runner.started[-1].name, "package step failed")
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     st = next(b for b in payload(user, aid)["backups"] if b["id"] == sid)
     assert st["export"] is None and st["failed_export"] == {**st["failed_export"], "id": ex["export_id"], "error": "package step failed"}
 

@@ -19,6 +19,7 @@ from app.routers.kaisen_uploads import get_image_processor
 from tests import imgfix
 from tests.conftest import register_and_login
 from tests.kaisen_helpers import db
+from tests.conftest import utcnow_naive
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><script>alert(1)</script><rect width="5" height="5"/></svg>'
 OCTET = {"Content-Type": "application/octet-stream"}
@@ -583,7 +584,7 @@ def test_deleting_a_build_purges_its_uploads(world):
 
 
 def test_orphan_sweep_removes_uploads_of_long_deleted_builds(world):
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from app.kaisen.models import KaisenBuild
     up(world.a, world.bid, imgfix.png(8, 8))
     s = db()
@@ -592,7 +593,7 @@ def test_orphan_sweep_removes_uploads_of_long_deleted_builds(world):
     s.commit()
     assert ku.sweep_orphans(s) == 1 and len(rows()) == 1
     b = s.get(KaisenBuild, world.bid)
-    b.deleted_at = datetime.utcnow() - timedelta(days=config.KAISEN_UPLOAD_ORPHAN_DAYS + 1)
+    b.deleted_at = utcnow_naive() - timedelta(days=config.KAISEN_UPLOAD_ORPHAN_DAYS + 1)
     s.commit()
     assert ku.sweep_orphans(s) == 1 and rows() == []
 

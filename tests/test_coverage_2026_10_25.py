@@ -1,5 +1,5 @@
 """Coverage for the 2026-10-25 settings rows / admin app-limit pair / backup override ceiling / admin backup download."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from app import backups, models, platform_settings, resources
 from tests.test_backups import NOW, admin, on, other, runner, user  # noqa: F401
 from tests.test_backups_sets import _mk_set, api, app_ctx, rows, scoped, vols  # noqa: F401
+from tests.conftest import utcnow_naive
 
 OK = ("succeeded", None, 100, None)
 
@@ -119,17 +120,17 @@ def test_export_of_deleted_app_refused_when_purged(app_ctx, admin, db_session, r
     aid = app_ctx
     sid, _ = _mk_set(db_session, aid, {"db": OK})
     app = db_session.get(models.App, aid)
-    app.deleted_at = datetime.utcnow()
+    app.deleted_at = utcnow_naive()
     cfg = db_session.get(models.AppBackupConfig, aid)
-    cfg.deleted_retention_until = datetime.utcnow() + timedelta(days=14)
+    cfg.deleted_retention_until = utcnow_naive() + timedelta(days=14)
     db_session.commit()
     r = admin.post(f"/admin/apps/{aid}/backup-sets/{sid}/download")
     assert r.status_code == 202
     ex_id = r.json()["export_id"]
     # the repo is purged before the scheduler picks the export up
-    cfg.purged_at = datetime.utcnow()
+    cfg.purged_at = utcnow_naive()
     db_session.commit()
-    backups.tick(db_session, runner, datetime.utcnow())
+    backups.tick(db_session, runner, utcnow_naive())
     assert runner.started == [] or all("export" not in j.name for j in runner.started)
     got = admin.get(f"/admin/apps/{aid}/backup-exports/{ex_id}").json()
     assert got["status"] == "failed"

@@ -1,10 +1,11 @@
 """Measured volume usage: a tiny MODE=stat Job per volume app (app/volume_stat.py), exposed as quota.volume."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
 from app import backups, config, models, volume_stat
 from tests.test_backups import admin, on, runner, user  # noqa: F401
+from tests.conftest import utcnow_naive
 
 GI = 1024**3
 
@@ -36,7 +37,7 @@ def test_null_until_measured_and_without_volume(user, vol, db_session):
 
 
 def test_stat_job_measures_and_is_cheap(user, vol, db_session, runner):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     spec = runner.started[-1]
     assert spec.name == f"vs-{vol}" and spec.env == {"MODE": "stat", "KIND": "volume"}
@@ -54,7 +55,7 @@ def test_stat_job_measures_and_is_cheap(user, vol, db_session, runner):
 
 
 def test_throttled_to_the_interval_and_over_quota(user, vol, db_session, runner):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     runner.finish(f"vs-{vol}", {"used_bytes": GI})
     backups.tick(db_session, runner, now + timedelta(seconds=15))
@@ -67,7 +68,7 @@ def test_throttled_to_the_interval_and_over_quota(user, vol, db_session, runner)
 
 
 def test_failed_stat_keeps_old_value_and_retries_later(user, vol, db_session, runner):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     a = db_session.get(models.App, vol)
     a.volume_used_bytes, a.volume_used_at = 5, now
     db_session.commit()
@@ -79,7 +80,7 @@ def test_failed_stat_keeps_old_value_and_retries_later(user, vol, db_session, ru
 
 
 def test_hung_stat_job_is_stopped(db_session, vol, runner):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     backups.tick(db_session, runner, now + timedelta(seconds=config.VOLUME_STAT_DEADLINE_SECONDS + 90))
     assert db_session.get(models.App, vol).volume_stat_job is None and f"vs-{vol}" in runner.cleaned
@@ -87,7 +88,7 @@ def test_hung_stat_job_is_stopped(db_session, vol, runner):
 
 def test_skipped_when_not_eligible(db_session, vol, runner, monkeypatch):
     a = db_session.get(models.App, vol)
-    now = datetime.utcnow()
+    now = utcnow_naive()
     a.volume_phase = "Pending"
     db_session.commit()
     backups.tick(db_session, runner, now)
@@ -102,7 +103,7 @@ def test_skipped_when_not_eligible(db_session, vol, runner, monkeypatch):
 
 
 def test_volume_backup_result_records_usage_and_active_names_protect_stat_job(db_session, vol, runner):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     backups.tick(db_session, runner, now)
     assert f"vs-{vol}" in backups.active_jobs(db_session)  # secret sweeps must not delete a live stat Job's Secret
     assert vol in backups.tenant_app_ids(db_session, now)
@@ -116,7 +117,7 @@ def test_volume_backup_result_records_usage_and_active_names_protect_stat_job(db
 
 def test_record_ignores_junk():
     a = models.App()
-    now = datetime.utcnow()
+    now = utcnow_naive()
     for bad in (None, "5", -1, True, 1.5):
         assert volume_stat.record(a, bad, now) is False
     assert volume_stat.record(a, 0, now) is True and a.volume_used_bytes == 0

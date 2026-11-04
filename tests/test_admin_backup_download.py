@@ -1,24 +1,25 @@
 """Admin download of any app's backups, including deleted apps' (browser session only). Real login flow, fake runner."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app import backups, models
 from tests.test_backups import NOW, admin, on, other, runner, user  # noqa: F401
 from tests.test_backups_sets import _mk_set, api, app_ctx, rows, scoped, vols  # noqa: F401
+from tests.conftest import utcnow_naive
 
 OK = ("succeeded", None, 100, None)
 
 
 def _delete(db, aid):
     app = db.get(models.App, aid)
-    app.deleted_at = datetime.utcnow()
-    db.get(models.AppBackupConfig, aid).deleted_retention_until = datetime.utcnow() + timedelta(days=14)
+    app.deleted_at = utcnow_naive()
+    db.get(models.AppBackupConfig, aid).deleted_retention_until = utcnow_naive() + timedelta(days=14)
     db.commit()
 
 
 def _finish(db, runner):
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
     runner.finish(runner.started[-1].name, {"exported": True, "bytes": 4242})
-    backups.tick(db, runner, datetime.utcnow())
+    backups.tick(db, runner, utcnow_naive())
 
 
 def test_non_admin_and_api_key_refused(app_ctx, user, admin, other, make_client, db_session):
