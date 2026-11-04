@@ -628,6 +628,21 @@ export interface AdminProject {
   suspended_at: string | null
   suspended_by_email: string | null
   kaisen_uploads_enabled?: boolean
+  kaisen_web_search_enabled?: boolean
+}
+
+export interface AdminProjectPage {
+  items: AdminProject[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ProjectFeatures {
+  project_id: number
+  name: string
+  kaisen_web_search: boolean
+  kaisen_uploads: boolean
 }
 
 // GET /admin/suspensions: flat list, newest first. Apps stopped by a project/user carry cause_type + cause_id.
@@ -732,6 +747,20 @@ export interface KaisenBuildDetail extends KaisenBuild {
   secrets?: KaisenBuildSecret[]
   tests?: KaisenTests | null
   uploads?: KaisenUploadsSummary
+  push?: KaisenPushJob | null // newest push job
+}
+
+// docs/API.md: POST /kaisen/builds/{id}/push returns 202 with this job; poll GET .../push/{push_id}.
+export interface KaisenPushJob {
+  id: number
+  build_id: number
+  status: 'running' | 'done' | 'error'
+  message: string
+  error_code: string | null
+  url: string | null
+  pr_url: string | null
+  created_at: string
+  finished_at: string | null
 }
 
 // Matches docs/API.md 'Kaisen file uploads'.
@@ -769,6 +798,7 @@ export interface KaisenUpload {
   height: number | null
   description: string
   version: number
+  run_id?: number | null // the run that sent it with its message; null until the next run claims it
 }
 
 export interface KaisenUploadQuota {
@@ -901,7 +931,13 @@ export interface KaisenSettings {
   cap_day: number
   cap_build: number
   github_token: KaisenSecretState
+  uploads_enabled?: boolean
+  uploads_disabled_reason?: string | null
+  uploads_not_enabled_label?: string
+  uploads_notice?: string
   web_access: boolean
+  web_project_enabled?: boolean // false: a platform admin turned web search off for this project
+  web_disabled_reason?: string | null
   web_allowed_domains: string[]
   web_supported: boolean
   web_models: string[]

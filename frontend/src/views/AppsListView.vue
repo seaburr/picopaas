@@ -138,11 +138,7 @@ function meta(app: App) {
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
           <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" disabled />
-          <template v-else>
-            <RouterLink to="/templates" class="btn-secondary btn-sm">From template</RouterLink>
-            <RouterLink v-if="auth.user?.features?.kaisen" to="/kaisen/new" class="btn-secondary btn-sm">Build with Kaisen</RouterLink>
-            <RouterLink to="/apps/new" class="btn-primary btn-sm"><Plus :size="14" aria-hidden="true" />New app</RouterLink>
-          </template>
+          <IconButton v-else :icon="Plus" label="New app" to="/apps/new" />
         </div>
       </div>
 
@@ -166,10 +162,8 @@ function meta(app: App) {
         <h2 class="section-title">Deploy your first app</h2>
         <p class="mt-1 text-sm text-zinc-300">Point us at a public Docker image and the port it listens on. You'll have a live https URL in about a minute.</p>
         <div class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <RouterLink to="/apps/new" class="btn-primary">Create app</RouterLink>
-          <RouterLink to="/templates" class="btn-secondary">From a template</RouterLink>
+          <RouterLink to="/apps/new" class="btn-primary">New app</RouterLink>
           <button type="button" class="btn-secondary" @click="trySample">Try a sample app</button>
-          <RouterLink v-if="auth.user?.features?.kaisen" to="/kaisen/new" class="btn-secondary">Build with Kaisen (Preview)</RouterLink>
           <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
         </div>
         <p class="help">The sample deploys podinfo ({{ SAMPLE_APP.image }}, port {{ SAMPLE_APP.port }}), a tiny demo web app.</p>

@@ -5,13 +5,15 @@ import BuildOutputFields from '../components/BuildOutputFields.vue'
 import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import { ApiError } from '../api/client'
-import { createBuild, getKaisenSettings } from '../api/kaisen'
+import { createBuild, getKaisenSettings, runBuild } from '../api/kaisen'
+import AttachComposer from '../components/AttachComposer.vue'
 import { outputPayload, outputFieldErrors, blankOutputForm } from '../composables/kaisen'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
+import type { KaisenUploadsAvailability } from '../types'
 
 const router = useRouter()
 const projects = useProjectsStore()
@@ -51,6 +53,23 @@ const noKey = ref(false)
 const outForm = reactive(blankOutputForm())
 const outErr = reactive<Record<string, string>>({})
 const outOpen = ref(false)
+const composer = ref<InstanceType<typeof AttachComposer> | null>(null)
+// Upload availability for the current project comes with its Kaisen settings.
+const uploadsInfo = computed<KaisenUploadsAvailability | undefined>(() => {
+  const s = store.settings
+  if (!s) return undefined
+  return {
+    uploads_enabled: s.uploads_enabled === true, uploads_project_enabled: s.uploads_enabled === true, uploads_platform_enabled: true,
+    uploads_disabled_reason: s.uploads_disabled_reason ?? null, uploads_not_enabled_label: s.uploads_not_enabled_label ?? 'Not enabled for this project yet', uploads_notice: s.uploads_notice ?? '',
+  }
+})
+// Draft flow: the build exists (idle) once files are involved; `stage` drives the progress panel.
+const draftId = ref<number | null>(null)
+const stage = ref<'' | 'creating' | 'uploading' | 'partial' | 'starting'>('')
+const partialMsg = ref('')
+const chipList = computed(() => composer.value?.chips ?? [])
+const uploadedCount = computed(() => chipList.value.filter((c) => c.status === 'ready').length)
+const totalCount = computed(() => chipList.value.filter((c) => c.file || c.status === 'ready').length)
 
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
@@ -93,10 +112,21 @@ async function submit() {
   }
   busy.value = true
   try {
-    const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm) })
-    store.upsert(b)
-    if (b.start_error) toast.error(`Build created but not started: ${b.start_error}`)
-    router.push(`/kaisen/${b.id}`)
+    const heldN = composer.value?.held.length ?? 0
+    if (heldN === 0 && draftId.value === null) {
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm) })
+      store.upsert(b)
+      if (b.start_error) toast.error(`Build created but not started: ${b.start_error}`)
+      router.push(`/kaisen/${b.id}`)
+      return
+    }
+    if (draftId.value === null) {
+      stage.value = 'creating'
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), start: false })
+      store.upsert(b)
+      draftId.value = b.id
+    }
+    await uploadThenStart()
   } catch (e) {
     if (e instanceof ApiError) {
       nameError.value = e.fieldErrors.name ?? ''
@@ -108,6 +138,47 @@ async function submit() {
       error.value = nameError.value || briefError.value || outErr.github_repo || outErr.github_token ? '' : e.message
       if (e.status === 409 && !nameError.value) nameError.value = 'You already have an app with that name.'
     } else error.value = "Couldn't start the build."
+  } finally {
+    busy.value = false
+  }
+}
+
+async function uploadThenStart() {
+  const id = draftId.value
+  if (id === null || !composer.value) return
+  stage.value = 'uploading'
+  const failed = await composer.value.uploadHeld(id)
+  if (failed.length) {
+    stage.value = 'partial'
+    partialMsg.value = `${failed.length} ${failed.length === 1 ? 'file' : 'files'} didn't upload. Your build is saved as a draft.`
+    return
+  }
+  await startDraft()
+}
+async function startDraft() {
+  const id = draftId.value
+  if (id === null) return
+  stage.value = 'starting'
+  try {
+    const b = await runBuild(id)
+    store.upsert(b)
+  } catch (e) {
+    toast.error(`Build saved but not started: ${e instanceof ApiError ? e.message : 'unknown error'}`)
+  }
+  router.push(`/kaisen/${id}`)
+}
+async function retryFailed() {
+  busy.value = true
+  try {
+    await uploadThenStart()
+  } finally {
+    busy.value = false
+  }
+}
+async function startWithout() {
+  busy.value = true
+  try {
+    await startDraft()
   } finally {
     busy.value = false
   }
@@ -124,7 +195,7 @@ async function submit() {
       </nav>
       <div class="mb-3">
         <div class="flex flex-wrap items-center gap-2"><h1 class="page-title">New build</h1><PreviewBadge /></div>
-        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in the project you pick, and asks if it needs to know something.</p>
+        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in the current project, and asks if it needs to know something.</p>
       </div>
 
       <p v-if="noKey" class="alert-warn mb-3" role="status">
@@ -142,7 +213,10 @@ async function submit() {
         </div>
         <div>
           <label for="kb-brief" class="label">What should it do?</label>
-          <textarea id="kb-brief" v-model="brief" class="input min-h-32" autocomplete="off" :disabled="projSuspended" :placeholder="projSuspended ? 'Builds are paused while the project is suspended.' : undefined" :aria-invalid="briefError || overLimit ? 'true' : undefined" aria-describedby="kb-brief-help" />
+          <AttachComposer
+            ref="composer" v-model="brief" :build-id="null" :summary="uploadsInfo" label="What should it do?" input-id="kb-brief" describedby="kb-brief-help" :invalid="!!briefError || overLimit"
+            :placeholder="uploadsInfo && !uploadsInfo.uploads_enabled ? 'Describe the app.' : 'Describe the app. Drop, paste or attach files.'" no-submit :locked="projSuspended ? SUSPENDED_TITLE : ''" :can-attach="stage === '' || stage === 'partial'" :rows="5"
+          />
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-wrap items-center gap-1">
@@ -151,14 +225,7 @@ async function submit() {
             <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
           </div>
         </div>
-        <div v-if="projects.hasShared">
-          <label for="kb-project" class="label">Project</label>
-          <select id="kb-project" v-model="projectId" class="input" aria-describedby="kb-project-help" @change="checkKey">
-            <option v-for="p in projects.projects" :key="p.id" :value="p.id">{{ p.is_personal ? 'Personal' : p.name }}</option>
-          </select>
-          <p id="kb-project-help" class="help">Kaisen deploys into this project and spends from its Anthropic key.</p>
-        </div>
-        <p v-else class="help">Deploys to your personal apps.</p>
+        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projects.current ? (projects.current.is_personal ? 'Personal' : projects.current.name) : 'Personal' }}</strong>. Kaisen deploys into it and spends from its Anthropic key. Change the project from the picker on the Kaisen page.</p>
 
         <details class="help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
           <summary>Output (optional)</summary>
@@ -168,9 +235,22 @@ async function submit() {
           </div>
         </details>
 
+        <div v-if="stage && stage !== 'partial'" class="alert-info" role="status" aria-live="polite">
+          <p v-if="stage === 'creating'">Creating the build…</p>
+          <p v-else-if="stage === 'uploading'">Created build. Uploading {{ uploadedCount + 1 > totalCount ? totalCount : uploadedCount + 1 }} of {{ totalCount }}…</p>
+          <p v-else>Starting the build…</p>
+        </div>
+        <div v-if="stage === 'partial'" class="alert-warn space-y-2" role="alert">
+          <p>{{ partialMsg }}</p>
+          <p class="flex flex-wrap gap-2">
+            <button type="button" class="btn-secondary btn-sm" :disabled="busy" @click="retryFailed">Retry failed {{ composer && composer.failed.length > 1 ? 'files' : 'file' }}</button>
+            <button type="button" class="btn-primary btn-sm" :disabled="busy" @click="startWithout">Start building without {{ composer && composer.failed.length > 1 ? 'them' : 'it' }}</button>
+            <RouterLink v-if="draftId" :to="`/kaisen/${draftId}`" class="btn-secondary btn-sm">Open the draft</RouterLink>
+          </p>
+        </div>
         <div v-if="error" role="alert" class="alert-error whitespace-pre-wrap">{{ error }}</div>
         <div class="flex flex-col gap-2 sm:flex-row">
-          <button type="submit" class="btn-primary" :disabled="busy || noKey || overLimit || projSuspended" :title="projSuspended ? SUSPENDED_TITLE : undefined">{{ busy ? 'Starting…' : 'Start building' }}</button>
+          <button type="submit" class="btn-primary" :disabled="busy || noKey || overLimit || projSuspended || stage === 'partial' || (composer?.uploading ?? 0) > 0" :title="projSuspended ? SUSPENDED_TITLE : undefined">{{ busy ? 'Starting…' : 'Start building' }}</button>
           <RouterLink to="/kaisen" class="btn-secondary">Cancel</RouterLink>
         </div>
       </form>

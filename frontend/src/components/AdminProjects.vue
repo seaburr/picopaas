@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Ban, Check, Play, RotateCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SuspendDialog from './SuspendDialog.vue'
-import { getKaisenUploadsFlag, getKaisenUploadsSummary, listAdminProjects, setKaisenUploadsFlag, setProjectAppLimit, suspendProject, unsuspendProject } from '../api/admin'
+import { getKaisenUploadsSummary, listAdminProjectsPage, setProjectAppLimit, setProjectFeatures, suspendProject, unsuspendProject } from '../api/admin'
 import { ApiError } from '../api/client'
 import { useToastStore } from '../stores/toast'
+import ProjectFeaturesMenu from './ProjectFeaturesMenu.vue'
 import { fmtSize } from '../composables/kaisen'
-import type { AdminProject, KaisenUploadsFlag, KaisenUploadsPlatformSummary } from '../types'
+import type { AdminProject, KaisenUploadsPlatformSummary } from '../types'
 import { fullDate, humanDate } from '../utils/format'
 
 const emit = defineEmits<{ changed: [] }>()
@@ -21,68 +22,64 @@ const error = ref('')
 const rowError = reactive<Record<number, string>>({})
 const draft = reactive<Record<number, string>>({})
 
+const PAGE = 25
+const q = ref('')
+const offset = ref(0)
+const total = ref(0)
+let seq = 0
+let timer: ReturnType<typeof setTimeout> | null = null
+const orig = (p: AdminProject) => (p.app_limit === null ? '' : String(p.app_limit))
 // Rows without an override show the platform default as their effective limit.
 const defaultLimit = computed(() => rows.value.find((p) => p.app_limit === null)?.app_limit_effective ?? null)
-const orig = (p: AdminProject) => (p.app_limit === null ? '' : String(p.app_limit))
+const from = computed(() => (total.value ? offset.value + 1 : 0))
+const to = computed(() => Math.min(offset.value + PAGE, total.value))
 
 async function load() {
+  const mine = ++seq
   loading.value = true
   error.value = ''
   try {
-    rows.value = (await listAdminProjects()) ?? []
+    const page = await listAdminProjectsPage(q.value.trim(), PAGE, offset.value)
+    if (mine !== seq) return
+    rows.value = page.items
+    total.value = page.total
     for (const p of rows.value) draft[p.id] = orig(p)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : "Couldn't load projects."
+    if (mine === seq) error.value = e instanceof ApiError ? e.message : "Couldn't load projects."
   } finally {
-    loading.value = false
+    if (mine === seq) loading.value = false
   }
 }
+function onSearch() {
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(() => {
+    offset.value = 0
+    load()
+  }, 250)
+}
+function page(delta: number) {
+  offset.value = Math.max(0, offset.value + delta * PAGE)
+  load()
+}
+onBeforeUnmount(() => timer && clearTimeout(timer))
 onMounted(load)
 
-// ---- Kaisen uploads: per-project switch (default off). Personal projects are not in the list, so an id lookup too. ----
-const flagError = ref('')
-const flagBusy = ref<number | null>(null)
-const lookupId = ref('')
-const lookup = ref<KaisenUploadsFlag | null>(null)
 const summary = ref<KaisenUploadsPlatformSummary | null>(null)
 getKaisenUploadsSummary().then((s) => (summary.value = s)).catch(() => (summary.value = null))
-
-async function toggleRow(p: AdminProject, enabled: boolean) {
-  flagError.value = ''
+const flagBusy = ref<number | null>(null)
+// Optimistic: flip the row, roll back and show a toast if the server refuses.
+async function toggleFeature(p: AdminProject, field: 'kaisen_web_search' | 'kaisen_uploads', value: boolean) {
+  const key = field === 'kaisen_web_search' ? 'kaisen_web_search_enabled' : 'kaisen_uploads_enabled'
+  const before = p[key]
+  p[key] = value
   flagBusy.value = p.id
   try {
-    const r = await setKaisenUploadsFlag(p.id, enabled)
-    rows.value = rows.value.map((x) => (x.id === p.id ? { ...x, kaisen_uploads_enabled: r.kaisen_uploads_enabled } : x))
-    toast.success(`Kaisen uploads ${r.kaisen_uploads_enabled ? 'on' : 'off'} for ${r.name}.`)
+    await setProjectFeatures(p.id, { [field]: value })
   } catch (e) {
-    flagError.value = e instanceof ApiError ? e.message : "Couldn't change Kaisen uploads."
-    rows.value = rows.value.map((x) => ({ ...x }))
+    p[key] = before
+    toast.error(`Couldn't change ${field === 'kaisen_web_search' ? 'web search' : 'file uploads'} for ${p.name}: ${e instanceof ApiError ? e.message : 'unknown error'}`)
   } finally {
     flagBusy.value = null
-  }
-}
-async function findProject() {
-  flagError.value = ''
-  lookup.value = null
-  const id = Number(lookupId.value.trim())
-  if (!Number.isInteger(id) || id < 1) {
-    flagError.value = 'Enter a project id (a whole number).'
-    return
-  }
-  try {
-    lookup.value = await getKaisenUploadsFlag(id)
-  } catch (e) {
-    flagError.value = e instanceof ApiError ? e.message : "Couldn't look up that project."
-  }
-}
-async function toggleLookup(enabled: boolean) {
-  if (!lookup.value) return
-  flagError.value = ''
-  try {
-    lookup.value = await setKaisenUploadsFlag(lookup.value.project_id, enabled)
-    toast.success(`Kaisen uploads ${lookup.value.kaisen_uploads_enabled ? 'on' : 'off'} for ${lookup.value.name}.`)
-  } catch (e) {
-    flagError.value = e instanceof ApiError ? e.message : "Couldn't change Kaisen uploads."
   }
 }
 
@@ -152,38 +149,29 @@ async function confirmUnsuspend() {
 
 <template>
   <div>
-    <section class="card card-pad mb-3 space-y-2" aria-labelledby="ku-h">
-      <h2 id="ku-h" class="section-title">Kaisen file uploads</h2>
-      <p class="help">Off for every project until you turn it on. Find any project by id, including personal ones, or use the switch on a row below.<template v-if="summary"> Platform storage: {{ fmtSize(summary.platform_bytes) }} of {{ fmtSize(summary.platform_limit_bytes) }} ({{ Math.round(summary.percent) }}%{{ summary.warn ? ', nearly full' : '' }}), {{ summary.files }} files.</template></p>
-      <form class="flex flex-wrap items-end gap-2" novalidate @submit.prevent="findProject">
-        <div>
-          <label for="ku-id" class="label">Project id</label>
-          <input id="ku-id" v-model="lookupId" type="text" inputmode="numeric" pattern="[0-9]*" class="input mono w-32" />
-        </div>
-        <button type="submit" class="btn-secondary">Look up</button>
-        <label v-if="lookup" class="flex items-center gap-2 text-sm">
-          <input type="checkbox" :checked="lookup.kaisen_uploads_enabled" @change="toggleLookup(($event.target as HTMLInputElement).checked)" />
-          Uploads on for <strong class="font-medium text-white">{{ lookup.name }}</strong> (#{{ lookup.project_id }})
-        </label>
-      </form>
-      <p v-if="flagError" role="alert" class="field-error">{{ flagError }}</p>
-    </section>
+    <div class="mb-3">
+      <h2 class="section-title">Projects</h2>
+      <p v-if="summary" class="help">Kaisen upload storage: {{ fmtSize(summary.platform_bytes) }} of {{ fmtSize(summary.platform_limit_bytes) }} ({{ Math.round(summary.percent) }}%{{ summary.warn ? ', nearly full' : '' }}), {{ summary.files }} files.</p>
+      <p class="help">App limit is the most apps a project may hold. Leave it blank to use the default from settings<template v-if="defaultLimit !== null"> ({{ defaultLimit }} apps)</template>. Features turn Kaisen web search and file uploads on or off per project.</p>
+    </div>
+    <div class="mb-3">
+      <label for="ap-q" class="label">Search projects</label>
+      <input id="ap-q" v-model="q" type="search" class="input sm:max-w-sm" autocomplete="off" placeholder="Project name or owner email" @input="onSearch" />
+    </div>
+
     <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
       <span>{{ error }}</span>
       <IconButton :icon="RotateCw" label="Retry" @click="load" />
     </div>
-    <p v-else-if="loading" class="meta" aria-busy="true">Loading projects…</p>
-    <p v-else-if="rows.length === 0" class="card card-pad meta">No shared projects yet.</p>
+    <p v-else-if="loading && rows.length === 0" class="meta" aria-busy="true">Loading projects…</p>
+    <p v-else-if="rows.length === 0" class="card card-pad meta">{{ q.trim() ? 'No projects match that search.' : 'No projects yet.' }}</p>
     <template v-else>
-    <h2 class="section-title mb-1">Project app limits</h2>
-    <p class="help mb-2">
-      App limit is the most apps a project may hold. Leave it blank to use the default from settings ({{ defaultLimit ?? 'unknown' }} apps).
-    </p>
-    <ul class="card divide-y divide-pico-border">
+    <ul class="card divide-y divide-pico-border" :aria-busy="loading">
       <li v-for="p in rows" :key="p.id" class="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
         <div class="min-w-0">
           <div class="flex min-w-0 flex-wrap items-center gap-1.5">
             <span class="truncate font-medium text-white" :title="p.name">{{ p.name }}</span>
+            <span v-if="p.is_personal" class="badge-neutral">just you</span>
             <span v-if="p.status === 'suspended'" class="badge-error">Suspended</span>
           </div>
           <div class="meta break-all" :title="p.owner_emails.join(', ')">
@@ -194,21 +182,30 @@ async function confirmUnsuspend() {
           </p>
           <p v-if="rowError[p.id]" role="alert" class="field-error">{{ rowError[p.id] }}</p>
         </div>
-        <form class="flex shrink-0 flex-wrap items-center gap-1" @submit.prevent="save(p)">
-          <label :for="`pl-${p.id}`" class="meta">App limit <span class="text-zinc-500">(effective {{ p.app_limit_effective }})</span></label>
-          <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="blank = default" class="input mono w-40" />
-          <button v-if="draft[p.id] !== orig(p)" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${p.name}`" title="Save limit">
-            <Check :size="16" aria-hidden="true" />
-          </button>
-          <label class="meta flex items-center gap-1">
-            <input type="checkbox" :checked="p.kaisen_uploads_enabled === true" :disabled="flagBusy === p.id" @change="toggleRow(p, ($event.target as HTMLInputElement).checked)" />
-            Kaisen uploads<span class="sr-only"> for {{ p.name }}</span>
-          </label>
-          <IconButton v-if="p.status === 'suspended'" :icon="Play" :label="`Unsuspend ${p.name}`" sm @click="unsTarget = p" />
-          <IconButton v-else :icon="Ban" :label="`Suspend ${p.name}`" sm danger @click="openSuspend(p)" />
-        </form>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <form class="flex items-center gap-1" @submit.prevent="save(p)">
+            <label :for="`pl-${p.id}`" class="meta">App limit</label>
+            <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" :placeholder="String(p.app_limit_effective)" class="input mono w-20" />
+            <button v-if="draft[p.id] !== orig(p)" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${p.name}`" title="Save limit">
+              <Check :size="16" aria-hidden="true" />
+            </button>
+          </form>
+          <ProjectFeaturesMenu :project="p" :busy="flagBusy === p.id" @toggle="(f, v) => toggleFeature(p, f, v)" />
+          <template v-if="!p.is_personal">
+            <IconButton v-if="p.status === 'suspended'" :icon="Play" :label="`Unsuspend ${p.name}`" sm @click="unsTarget = p" />
+            <IconButton v-else :icon="Ban" :label="`Suspend ${p.name}`" sm danger @click="openSuspend(p)" />
+          </template>
+          <span v-else class="h-7 w-7" aria-hidden="true" />
+        </div>
       </li>
     </ul>
+    <nav class="mt-3 flex flex-wrap items-center justify-between gap-2" aria-label="Projects pages">
+      <span class="meta" role="status">{{ from }}–{{ to }} of {{ total }}</span>
+      <span class="flex gap-2">
+        <button type="button" class="btn-secondary btn-sm" :disabled="offset === 0 || loading" @click="page(-1)">Previous</button>
+        <button type="button" class="btn-secondary btn-sm" :disabled="offset + PAGE >= total || loading" @click="page(1)">Next</button>
+      </span>
+    </nav>
     </template>
 
     <SuspendDialog

@@ -31,7 +31,13 @@ const store = useAppsStore()
 const auth = useAuthStore()
 const toast = useToastStore()
 const projects = useProjectsStore()
-const projectId = ref<number | null>(null) // new apps only; null = backend default (personal)
+const projectId = ref<number | null>(null) // new apps only; the Apps picker's project (null = backend default, personal)
+const projectName = computed(() => {
+  const p = projects.projects.find((x) => x.id === projectId.value)
+  return p ? (p.is_personal ? 'Personal' : p.name) : ''
+})
+// /apps/new with no deep-link query is the first step: pick how to create the app.
+const chooserStep = computed(() => !isEdit.value && !route.query.sample && typeof route.query.template !== 'string' && route.query.from !== 'image')
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
   projectId.value = projects.current?.id ?? null
@@ -362,7 +368,12 @@ async function onSubmit() {
         <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
-      <KaisenChooser v-if="!isEdit && !route.query.sample" :kaisen="!!auth.user?.features?.kaisen" :current="typeof route.query.template === 'string' ? 'template' : 'image'" />
+      <template v-if="chooserStep">
+        <h1 class="page-title mb-1">New app</h1>
+        <p class="help mb-3">How do you want to create it?<template v-if="projectName"> It goes in <strong class="font-medium text-zinc-200">{{ projectName }}</strong>.</template></p>
+        <KaisenChooser :kaisen="!!auth.user?.features?.kaisen" />
+      </template>
+      <template v-else>
       <div v-if="!gone" class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
@@ -441,15 +452,7 @@ async function onSubmit() {
             <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
           </div>
 
-          <div v-if="!isEdit && projects.projects.length > 0">
-            <label for="f-project" class="label">Project</label>
-            <select id="f-project" v-model="projectId" class="input">
-              <option v-for="p in projects.projects" :key="p.id" :value="p.id">
-                {{ p.is_personal ? 'Personal' : p.name }} ({{ p.app_count }} of {{ p.app_limit_effective }} apps)
-              </option>
-            </select>
-            <p class="help">Everyone in the project can manage this app. <RouterLink to="/projects/new" class="underline">New project</RouterLink></p>
-          </div>
+          <p v-if="!isEdit && projectName" class="help">In project: <strong class="font-medium text-zinc-200">{{ projectName }}</strong>. Everyone in the project can manage this app. Change the project from the picker on the Apps page.</p>
 
           <div>
             <label for="f-image" class="label">Image</label>
@@ -643,6 +646,7 @@ async function onSubmit() {
           <BackupSettings :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
         </AppSettingsPanel>
       </section>
+      </template>
       </template>
     </main>
   </div>

@@ -210,14 +210,15 @@ async function test(which: 'anthropic') {
         <section class="card card-pad space-y-3" aria-labelledby="ks-web">
           <h2 id="ks-web" class="section-title">Web access</h2>
           <p class="help">Lets the builder search the web and read pages, for example to check a library's docs. Web content is untrusted: a page can contain text that tries to steer the builder. The allow-list limits which sites it can read.</p>
-          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.web_access" type="checkbox" class="check" :disabled="readOnly" /> Allow web access<span v-if="readOnly" class="meta">({{ s.web_access ? 'on' : 'off' }})</span></label>
+          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.web_access" type="checkbox" class="check" :disabled="readOnly || s.web_project_enabled === false" /> Allow web access<span v-if="readOnly" class="meta">({{ s.web_access ? 'on' : 'off' }})</span></label>
           <div>
             <label for="ks-web-domains" class="label">Allowed sites</label>
             <textarea id="ks-web-domains" v-model="form.web_domains" class="input mono" rows="4" :disabled="readOnly" :aria-invalid="!!fieldErr.web_allowed_domains" placeholder="docs.python.org&#10;github.com/owner" />
             <p class="help">One domain per line, no https://, a path is optional. Leave empty to allow any site. Up to {{ s.web_domains_max }}.</p>
             <p v-if="fieldErr.web_allowed_domains" class="field-error" role="alert">{{ fieldErr.web_allowed_domains }}</p>
           </div>
-          <p v-if="s.web_note" class="text-sm text-zinc-300" role="status">{{ s.web_note }}</p>
+          <p v-if="s.web_project_enabled === false" class="alert-info" role="status">{{ s.web_disabled_reason || "Web search isn't enabled for this project." }} Ask a platform admin to turn it on.</p>
+          <p v-if="s.web_note && s.web_project_enabled !== false" class="text-sm text-zinc-300" role="status">{{ s.web_note }}</p>
           <p class="help">Each web search costs {{ fmtUsd(s.web_search_usd) }} plus tokens.</p>
         </section>
 

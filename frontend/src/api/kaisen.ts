@@ -8,7 +8,7 @@ const post = <T>(url: string, body?: unknown) =>
 export const listBuilds = (projectId?: number | null) =>
   apiFetch<KaisenBuild[]>(projectId ? `/kaisen/builds?project_id=${projectId}` : '/kaisen/builds')
 export const getBuild = (id: number) => apiFetch<KaisenBuildDetail>(`/kaisen/builds/${id}`)
-export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload }) =>
+export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload; start?: boolean }) =>
   post<KaisenBuildDetail>('/kaisen/builds', payload)
 export const deleteBuild = (id: number, deleteApp: boolean) =>
   apiFetch<void>(`/kaisen/builds/${id}?delete_app=${deleteApp ? 'true' : 'false'}`, { method: 'DELETE' })
@@ -21,7 +21,8 @@ export const answerInbox = (id: number, itemId: number, text: string) =>
 export const dismissInbox = (id: number, itemId: number) =>
   post<KaisenBuildDetail>(`/kaisen/builds/${id}/inbox/${itemId}/dismiss`)
 export const deployBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/deploy`)
-export const pushBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/push`)
+export const pushBuild = (id: number) => post<import('../types').KaisenPushJob>(`/kaisen/builds/${id}/push`)
+export const getPushJob = (id: number, pushId: number) => apiFetch<import('../types').KaisenPushJob>(`/kaisen/builds/${id}/push/${pushId}`)
 export const getBuildFile = (id: number, path: string) =>
   apiFetch<KaisenFile>(`/kaisen/builds/${id}/files/${path.split('/').map(encodeURIComponent).join('/')}`)
 export const saveBuildOutput = (id: number, payload: KaisenOutputPayload) =>

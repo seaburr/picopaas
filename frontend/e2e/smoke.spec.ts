@@ -63,8 +63,14 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Deploy your first app' })).toBeVisible()
   })
 
-  await test.step('new app form renders', async () => {
-    await page.goto('/apps/new')
+  await test.step('new app shows the chooser, then the image form', async () => {
+    await page.goto('/apps')
+    await page.getByRole('link', { name: 'New app' }).first().click()
+    await expect(page).toHaveURL(/\/apps\/new$/)
+    await expect(page.getByRole('heading', { name: 'Deploy from a template' })).toBeVisible()
+    await page.getByRole('link', { name: /Deploy an image/ }).click()
+    await expect(page.getByLabel('Image', { exact: true })).toBeVisible()
+    await page.goto('/apps/new?sample=1')
     await expect(page.getByRole('heading', { name: 'New app', level: 1 })).toBeVisible()
   })
 

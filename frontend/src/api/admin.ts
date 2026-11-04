@@ -101,7 +101,8 @@ export const unsuspendProject = (id: number) =>
   apiFetch<import('../types').AdminProject>(`/admin/projects/${id}/unsuspend`, { method: 'POST' })
 export const listSuspensions = () => apiFetch<import('../types').Suspension[]>('/admin/suspensions')
 
-export const getKaisenUploadsFlag = (projectId: number) => apiFetch<import('../types').KaisenUploadsFlag>(`/admin/projects/${projectId}/kaisen-uploads`)
-export const setKaisenUploadsFlag = (projectId: number, enabled: boolean) =>
-  apiFetch<import('../types').KaisenUploadsFlag>(`/admin/projects/${projectId}/kaisen-uploads`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+export const listAdminProjectsPage = (q: string, limit: number, offset: number) =>
+  apiFetch<import('../types').AdminProjectPage>(`/admin/projects?${new URLSearchParams({ q, limit: String(limit), offset: String(offset), include_personal: 'true' })}`)
+export const setProjectFeatures = (projectId: number, body: { kaisen_web_search?: boolean; kaisen_uploads?: boolean }) =>
+  apiFetch<import('../types').ProjectFeatures>(`/admin/projects/${projectId}/features`, { method: 'PUT', body: JSON.stringify(body) })
 export const getKaisenUploadsSummary = () => apiFetch<import('../types').KaisenUploadsPlatformSummary>('/admin/kaisen/uploads/summary')

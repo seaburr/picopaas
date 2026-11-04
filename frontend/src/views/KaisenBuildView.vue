@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Download, RotateCw, Settings, Trash2 } from 'lucide-vue-next'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import BuildFiles from '../components/BuildFiles.vue'
-import BuildUploads from '../components/BuildUploads.vue'
+import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
+import BuildConversation from '../components/BuildConversation.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildInbox from '../components/BuildInbox.vue'
 import BuildProgress from '../components/BuildProgress.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
-import BuildRuns from '../components/BuildRuns.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
@@ -19,14 +19,14 @@ import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, interruptRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, getPushJob, interruptRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { useToastStore } from '../stores/toast'
-import type { App, KaisenBuildDetail, KaisenSettings } from '../types'
+import type { App, KaisenBuildDetail, KaisenPushJob, KaisenSettings } from '../types'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 
@@ -46,7 +46,12 @@ const actionError = ref('')
 const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume' | 'interrupt' | 'download'
 const answerBusy = ref<number | null>(null)
 const feedback = ref('')
-const pushedUrl = ref('')
+const filesOpen = ref(false)
+const filesFocus = ref<number | null>(null)
+function openFiles(uid?: number) {
+  filesFocus.value = uid ?? null
+  filesOpen.value = true
+}
 const confirmDelete = ref(false)
 const alsoApp = ref(false)
 const deleting = ref(false)
@@ -97,7 +102,11 @@ async function loadApp(b: KaisenBuildDetail) {
 
 function apply(b: KaisenBuildDetail) {
   const prev = build.value?.status
-  if (!outDirty.value || !build.value) Object.assign(outForm, outputToForm(b.output))
+  if (!outDirty.value || !build.value) {
+    Object.assign(outForm, outputToForm(b.output))
+    // Loading saved settings is not an edit: the deep watcher below fires after this tick.
+    nextTick(() => nextTick(() => { outDirty.value = false }))
+  }
   build.value = b
   store.upsert(b)
   if (prev && prev !== b.status) announce.value = `Build ${b.name} is now ${b.status}.`
@@ -133,6 +142,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
   timer = null
+  stopPushPoll()
 })
 watch(buildId, () => {
   build.value = null
@@ -154,8 +164,8 @@ async function act(kind: string, fn: () => Promise<KaisenBuildDetail>, ok?: stri
     busy.value = ''
   }
 }
-async function sendChange() {
-  const t = feedback.value.trim()
+async function sendChange(text?: string) {
+  const t = (text ?? feedback.value).trim()
   if (!t) return
   if (await act('feedback', () => sendFeedback(buildId.value, t))) feedback.value = ''
 }
@@ -238,10 +248,53 @@ async function interrupt(runId: number) {
   }
 }
 const deployAgain = () => act('deploy', () => deployBuild(buildId.value))
-async function push() {
-  const b = await act('push', () => pushBuild(buildId.value), 'Pushed to GitHub.')
-  if (b?.output.pr_url) pushedUrl.value = b.output.pr_url
+// ---- async push: POST returns a running job at once; poll it every 2 s (stop on done/error, on leaving, after ~10 min) ----
+const pushJob = ref<KaisenPushJob | null>(null)
+const pushError = ref('')
+const pushRunning = computed(() => pushJob.value?.status === 'running')
+let pushTimer: ReturnType<typeof setInterval> | null = null
+let pushSince = 0
+function stopPushPoll() {
+  if (pushTimer) clearInterval(pushTimer)
+  pushTimer = null
 }
+function finishPush(j: KaisenPushJob) {
+  stopPushPoll()
+  if (j.status === 'done') toast.success('Pushed to GitHub.')
+  else toast.error(`Push failed: ${j.message}`)
+  load(false)
+}
+function startPushPoll() {
+  if (pushTimer) return
+  pushSince = Date.now()
+  pushTimer = setInterval(async () => {
+    const j = pushJob.value
+    if (!j || j.status !== 'running') return stopPushPoll()
+    if (Date.now() - pushSince > 10 * 60 * 1000) return stopPushPoll()
+    try {
+      const n = await getPushJob(buildId.value, j.id)
+      pushJob.value = n
+      if (n.status !== 'running') finishPush(n)
+    } catch {
+      // transient; the next tick retries
+    }
+  }, 2000)
+}
+// A reload shows the newest job from the build detail; a running one resumes polling.
+watch(() => build.value?.push, (j) => {
+  if (j && (!pushJob.value || j.id >= pushJob.value.id)) pushJob.value = j
+  if (pushJob.value?.status === 'running') startPushPoll()
+}, { immediate: true })
+async function push() {
+  pushError.value = ''
+  try {
+    pushJob.value = await pushBuild(buildId.value)
+    startPushPoll()
+  } catch (e) {
+    pushError.value = e instanceof ApiError ? e.message : 'Something went wrong. Try again.'
+  }
+}
+const NOTHING_CHANGED = ['token_invalid', 'no_permission', 'not_found', 'non_fast_forward', 'protected_branch', 'empty_repo', 'too_large', 'bad_repo', 'rate_limited']
 async function download() {
   actionError.value = ''
   busy.value = 'download'
@@ -373,29 +426,21 @@ async function doDelete() {
               <span>Offline. The code and conversation are kept here.</span>
               <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
             </div>
-            <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in Runs below to continue.</p>
+            <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in the conversation below to continue.</p>
             <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
           </section>
 
-          <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" @answer="answer" @resume="resume" @dismiss="dismiss" />
+          <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" :build-id="build.id" :summary="build.uploads" @answer="answer" @resume="resume" @dismiss="dismiss" @open-files="openFiles" @changed="load(false)" />
 
           <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" @interrupt="interrupt" />
           <p v-if="firstRun" class="help">Your first build is queued.</p>
-          <section v-else class="card card-pad" aria-labelledby="h-change">
-            <h2 id="h-change" class="section-title mb-2">Tell Kaisen what to change</h2>
-            <form @submit.prevent="sendChange">
-              <textarea v-model="feedback" class="input" rows="3" aria-labelledby="h-change" :disabled="!!feedbackReason" />
-              <p class="help">{{ feedbackReason || 'Kaisen edits the code and redeploys. About a minute.' }}</p>
-              <div class="mt-2 flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                <span v-if="hint && !feedbackReason" class="help">{{ hint }}</span>
-                <button type="submit" class="btn-primary" :disabled="!!feedbackReason || busy === 'feedback' || !feedback.trim()">{{ busy === 'feedback' ? 'Sending…' : 'Send to Kaisen' }}</button>
-              </div>
-            </form>
-          </section>
+          <BuildConversation
+            v-else v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
+            :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="feedbackReason" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
+            @submit="(p) => sendChange(p.text)" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
+          />
 
-          <BuildRuns :build-id="build.id" :runs="build.runs" :now="now" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'" @pick="feedback = $event" @resume="resume" />
           <BuildFiles :build-id="build.id" :files="build.files" />
-          <BuildUploads v-if="build.uploads" :build-id="build.id" :summary="build.uploads" :can-edit="canRun && !active" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="load(false)" @deploy="deployAgain" />
           <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
 
           <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
@@ -408,8 +453,31 @@ async function doDelete() {
               <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button type="submit" class="btn-primary" :disabled="!canRun || !outDirty || busy === 'output'">{{ busy === 'output' ? 'Saving…' : 'Save output settings' }}</button>
                 <button v-if="outForm.output_mode === 'github'" type="button" class="btn-secondary" :disabled="!canRun || outDirty || busy === 'test' || !githubReady" @click="testOutput">{{ busy === 'test' ? 'Testing…' : 'Test' }}</button>
-                <button v-if="githubReady" type="button" class="btn-secondary" :disabled="outDirty || busy === 'push' || !out?.can_push" @click="push">{{ busy === 'push' ? 'Pushing…' : 'Push now' }}</button>
+                <button v-if="githubReady" type="button" class="btn-secondary" :disabled="outDirty || pushRunning || !out?.can_push" @click="push">{{ pushRunning ? 'Pushing…' : 'Push now' }}</button>
                 <button type="button" class="btn-secondary" :disabled="busy === 'download'" @click="download"><Download :size="16" aria-hidden="true" /> {{ busy === 'download' ? 'Preparing…' : 'Download code (.tar.gz)' }}</button>
+              </div>
+              <div v-if="pushRunning" class="alert-info" role="status">
+                <p><span class="motion-safe:animate-pulse">Pushing to GitHub…</span> You can leave this page; the push keeps going.</p>
+              </div>
+              <div v-else-if="pushError" class="alert-error" role="alert">
+                <p class="whitespace-pre-wrap">{{ pushError }}</p>
+              </div>
+              <div v-else-if="pushJob?.status === 'done'" class="alert-success" role="status">
+                <p>Pushed. {{ pushJob.message }}</p>
+                <p class="mt-1 flex flex-wrap gap-x-3">
+                  <a v-if="pushJob.pr_url" :href="pushJob.pr_url" target="_blank" rel="noopener noreferrer" class="link">Open pull request<span class="sr-only"> (opens in new tab)</span></a>
+                  <a v-if="pushJob.url" :href="pushJob.url" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a>
+                  <span v-if="pushJob.finished_at" class="meta">{{ relTime(pushJob.finished_at, now) }}</span>
+                </p>
+              </div>
+              <div v-else-if="pushJob?.status === 'error'" class="alert-error" role="alert">
+                <p class="whitespace-pre-wrap">Push failed: {{ pushJob.message }}</p>
+                <p v-if="pushJob.error_code && NOTHING_CHANGED.includes(pushJob.error_code)" class="mt-1">Nothing changed in your repo.</p>
+                <p v-if="pushJob.error_code" class="meta mt-1">Reason: <span class="mono">{{ pushJob.error_code }}</span></p>
+                <p class="mt-2 flex flex-wrap gap-2">
+                  <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="outDirty || !out?.can_push" @click="push">Try again</button>
+                  <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="!canRun || outDirty || busy === 'test'" @click="testOutput">Test connection</button>
+                </p>
               </div>
               <p v-if="outDirty" class="help">Save first, then test or push.</p>
             </form>
@@ -417,7 +485,6 @@ async function doDelete() {
               <p v-if="outTest" :class="[outTest.ok ? 'alert-success' : 'alert-error', 'mt-2']">{{ outTest.message }}</p>
             </div>
             <p v-if="githubReady && !outDirty" class="help">Pushes to {{ out?.repo }} on branch {{ out?.branch || 'kaisen/' + build.slug }}.{{ out?.open_pr ? ' Opens a pull request.' : '' }}</p>
-            <p v-if="pushedUrl" class="alert-success mt-2" role="status">Pushed. <a :href="pushedUrl" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a></p>
           </section>
 
           <section class="card card-pad" aria-labelledby="h-spend">
@@ -438,6 +505,7 @@ async function doDelete() {
       </template>
     </main>
 
+    <BuildFilesDrawer v-if="build?.uploads" :open="filesOpen" :focus-id="filesFocus" :build-id="build.id" :summary="build.uploads" :can-edit="canRun && !active" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @close="filesOpen = false" @changed="load(false)" @deploy="deployAgain" />
     <DeleteAppDialog v-if="confirmOffline" :app="app" :busy="goingOffline" @confirm="takeOffline" @cancel="confirmOffline = false" />
     <ConfirmDialog
       :open="confirmDelete"
