@@ -17,7 +17,8 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep existing loggers on: the default would silently disable every logger already created in this process.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # DATABASE_URL (env-driven, see app/config.py) is the single source of truth
 # for the connection string, so alembic.ini never carries a real URL.

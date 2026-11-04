@@ -1,4 +1,6 @@
 """Uploads in the conversation: idle (draft) builds, run claiming, run_id in the list, prompt marker, K91 push filter."""
+import logging
+
 import pytest
 
 from app import config
@@ -133,10 +135,18 @@ def test_migration_up_and_down(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path}/m.db"
     monkeypatch.setattr(config, "DATABASE_URL", url)  # alembic/env.py reads it at run time
     cfg = Config("alembic.ini")
-    command.upgrade(cfg, "head")
-    assert "run_id" in {c["name"] for c in inspect(create_engine(url)).get_columns("kaisen_assets")}
-    command.downgrade(cfg, "c5a2e8d4f7b1")
-    assert "run_id" not in {c["name"] for c in inspect(create_engine(url)).get_columns("kaisen_assets")}
+    app_logger = logging.getLogger("app.quota")  # exists before alembic runs, like every app logger in a real process
+    root = logging.getLogger()
+    root_level, root_handlers = root.level, root.handlers[:]
+    try:
+        command.upgrade(cfg, "head")
+        assert "run_id" in {c["name"] for c in inspect(create_engine(url)).get_columns("kaisen_assets")}
+        command.downgrade(cfg, "c5a2e8d4f7b1")
+        assert "run_id" not in {c["name"] for c in inspect(create_engine(url)).get_columns("kaisen_assets")}
+        assert not app_logger.disabled  # alembic/env.py's fileConfig must not switch off existing loggers
+    finally:
+        root.setLevel(root_level)  # fileConfig also replaces the root handlers: don't leak that into later tests
+        root.handlers[:] = root_handlers
 
 
 # ---- K91: legacy secret files never reach GitHub ---------------------------------------------------------------------

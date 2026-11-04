@@ -193,8 +193,6 @@ def test_kill_result_counts():
 
 
 def test_kill_errors_tolerated(caplog):
-    caplog.set_level(logging.WARNING)  # do not depend on log levels left by earlier tests
-    caplog.set_level(logging.WARNING, logger="app.quota")
     for kw in ({"fail_kill": True}, {"fail_list": True}):
         _client(_Cur(**kw)).set_read_only(5, True)  # must not raise
     assert "could not" in caplog.text
@@ -202,7 +200,6 @@ def test_kill_errors_tolerated(caplog):
 
 def test_poll_logs_revoke_restore_failure_and_summary(db_session, caplog):
     caplog.set_level(logging.INFO)
-    caplog.set_level(logging.INFO, logger="app.quota")  # an earlier test may leave a level on the app logger
     _, (app,) = _setup(db_session)
     admin, store = FakeMySQLAdmin(), FakeObjectStore()
     admin.sizes[app.id] = DB_QUOTA_BYTES + 1
