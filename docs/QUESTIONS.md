@@ -218,3 +218,5 @@ background on each item if you want it.
 - [x] 2026-10-20: doadmin can't kill app sessions (MySQL 1095 'not owner of thread'); the pod-roll fallback cut a 300MB fill at ~88MB. Now the platform kills sessions as the app's own user first.
 
 
+
+- [x] [security-reviewer 2026-11-04] Kaisen self-harm guards: (a) OK to accept that python/node preview apps are protected only by the prompt rule (K90)? Option: boot refuses to start a server app whose start command is a known static-root pattern (heuristic, cheap). (b) Filter `.env*`/key files out of the GitHub push for legacy builds (K91, small change in pushing.py)? (c) Runtime image needs publish + re-pin for K87/K88. See docs/PENTEST.md K87-K91. **Chas 2026-11-04: agreed with the manager's calls: (a) K90 accepted; (b) K91 fix (push skips secret files); (c) publish + re-pin after this wave's deploy.**

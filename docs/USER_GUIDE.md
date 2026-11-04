@@ -57,7 +57,7 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 ### 3a. UI form
 
-1. Open **Apps**, then **New app**. The page offers three ways to start: **Deploy an image** (this form), **Deploy from a template** (section 14) and, when an administrator has Kaisen on, **Build with Kaisen** (section 16). Stay on the **Form** tab.
+1. Open **Apps**, then press **+** (New app). A chooser offers three ways to start: **Image** (this form), **Template** (section 14) and, when an administrator has Kaisen on, **Kaisen** (section 16). Pick Image; the form shows **In project: X** (change the project with the picker on Apps). Stay on the **Form** tab.
 2. Enter a name, image and container port.
 3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
@@ -651,7 +651,7 @@ A project owns apps; its members manage them together. Everyone has a **personal
 otherwise). Open **Projects** in the nav (`/projects`) to see every project you belong to with your role, member count and apps used against the limit. **New project** there creates a shared one; then invite people.
 
 - **Opening a project.** Click its name to open `/projects/<id>` for settings and members (rename, invite, roles, danger zone). **Apps** and **Kaisen** in a row jump to that project's apps or builds.
-- **Picking a project.** If you belong to more than one project, the Apps and Kaisen pages show an **Apps in** (or **Kaisen builds in**) select in the header. It is hidden while you only have your personal project.
+- **Picking a project.** If you belong to more than one project, the Apps and Kaisen pages show an **Apps in** (or **Kaisen builds in**) select in the header; it is hidden while you only have your personal project. The new-app form and the Kaisen new build page have no selector: they show **In project: X** for the project picked on Apps or Kaisen. To create something elsewhere, change the project there first.
 
 - **Roles.** A *member* can deploy, edit, restart, back up and delete the project's apps. An *owner* can also invite, remove people,
   change roles, rename and delete the project, and move apps. A project always keeps at least one owner.
@@ -684,7 +684,7 @@ otherwise). Open **Projects** in the nav (`/projects`) to see every project you 
 
 ## 16. Kaisen
 
-Kaisen is in preview. You describe a small web app in plain language; Kaisen writes the code, runs it and deploys it for you, then changes it when you ask. It shows as "Kaisen" in the nav and as "Build with Kaisen" on **New app** when an administrator has it on. Expect rough edges: generated apps are throwaway-grade.
+Kaisen is in preview. You describe a small web app in plain language; Kaisen writes the code, runs it and deploys it for you, then changes it when you ask. It shows as "Kaisen" in the nav and as a Kaisen choice on **New app** when an administrator has it on. Expect rough edges: generated apps are throwaway-grade.
 
 ### What a built app is
 
@@ -717,14 +717,14 @@ Also in settings:
 - **Effort.** Low, medium (default) or high.
 - **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap. The Kaisen home, settings and build pages also show what the project has spent over the **last 30 days** (a rolling window, not the calendar month).
 - **Member limits.** Owners can cap what each person spends. See "Kaisen limits".
-- **Web access** (off by default) and **Reviewer** (off by default). See "Web access" and "Reviewer step".
+- **Web access** (off by default) and **Reviewer** (off by default). See "Web access" and "Reviewer step". An administrator can turn web search off for a project; Web access is then grayed out with "Web search isn't enabled for this project."
 - **GitHub token (optional).** See "Download or push to GitHub".
 
 ### Your first build
 
-1. Choose **New app > Build with Kaisen**, or **Kaisen > New build**.
-2. Give it a name (up to 60 characters), a brief (up to 8000 characters) and a project. A project holds at most 20 builds.
-3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why.
+1. Press **+** (New app) on the Apps page, which opens a chooser: *Image*, *Template* or *Kaisen*. Pick Kaisen, or go to **Kaisen > New build**.
+2. Give it a name (up to 60 characters) and a brief (up to 8000 characters). The page shows **In project: X**; a project holds at most 20 builds. You can attach files to the brief (see "Attach files").
+3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why. If you attached files, the build is first saved as a draft, each file is uploaded, then the run starts (see "Attach files").
 4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off; after a long run, Resume starts a fresh model context from `PLAN.md` and the files instead of the whole conversation. Work happens in steps of up to 15 minutes and 40 model calls; a long build continues on its own in a fresh context (the plan, brief and files carry over) for up to 4 steps before it stops and waits for you; the transcript is redacted and trimmed 14 days after a run ends.
 5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
 6. When it is `done`, open the app from the **Live app** card.
@@ -733,9 +733,13 @@ Also in settings:
 
 If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from the last saved state, up to 2 times; each retry leaves a note on the run such as "No progress for 10 min; interrupted, retrying (1/2)." After that the run stops with the reason `hung` ("Hung 3 times; Resume to retry.") and you can press Resume. If a run looks stuck sooner, press **Interrupt and retry** on the progress strip (any project member); the note reads "Interrupted by you@example.com; retrying." and it does not use up the automatic retries. A build accepts 3 manual interrupts per hour; after that you get a 429 "This build was interrupted too often" and should wait or let the run finish.
 
+### Conversation
+
+The build page shows a **Conversation** timeline: your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run. The box at the bottom sends the next change request. Files you attached appear on the message they were sent with.
+
 ### Ask for changes
 
-Type what to change (up to 4000 characters) in **Tell Kaisen what to change**. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.
+Type what to change (up to 4000 characters) in the Conversation box. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.
 
 - **Next ideas.** When a run finishes, up to three suggestion chips ("Next: ...") appear for the latest run. Pressing one copies it into the box so you can edit and send it; nothing runs until you send.
 - **Fix it.** When the preview app is in `error` or `retrying`, the Live app card shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
@@ -791,13 +795,15 @@ Build a recipe scaler as a static page with no server and nothing saved. I paste
 
 - **Download** (`.tar.gz`) is always available from the build page. It holds the files plus `CONVERSATION.md`: your brief, feedback and answers, and Kaisen's replies, questions and summaries for every run (no internal agent detail; saved keys are redacted).
 - **Push**: each build has its own **Output** card (also an optional section on New build). Choose *Download and push to GitHub*, enter the repository (`https://github.com/owner/repo`) and a branch (optional; blank = `kaisen/<build>`), then pick the auth: *Use the project's GitHub token* or *Use a token for this build only*. Options: push when a build finishes, and open a pull request. **Test** checks push access to that repository with the chosen token; **Push now** pushes immediately. The download's `CONVERSATION.md` is not pushed.
+- **Pushing runs in the background.** The button changes to "Pushing to GitHub..." and you can leave the page; the result shows in the Output card and as a message when it finishes. If it fails, the card says why in plain words and offers **Try again** and **Test connection**. The reasons: the token was rejected (expired or revoked); the token has no write permission on the repository (needs Contents: Read and write); GitHub's rate limit was reached (wait a few minutes); the repository or branch wasn't found; the branch already has commits Kaisen doesn't have (pick another branch or delete it on GitHub); the branch is protected; the repository is empty and GitHub refused the first commit; a file is too large; GitHub is having trouble (try in a minute) or could not be reached; the repository name isn't `owner/name`; or the push was interrupted because the platform restarted (press Try again).
+- Files that look like secrets (`.env*`, private keys) are never pushed, even in older builds. The result message lists the names it left out.
 - The project token is shared: anyone who can run builds in the project can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean.
 
 To make a token: GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token. Name it `kaisen`, expire it in 90 days, pick the account that owns the repository, choose **Only select repositories** and pick just that one. Under repository permissions set **Contents** and **Pull requests** to Read and write (Metadata read-only is added for you) and leave the rest at No access. Copy the token (it starts with `github_pat_`) and paste it into Kaisen settings or the build's Output card; GitHub shows it once. For an organization, an owner may need to approve it.
 
 ### Web access
 
-Off by default. In **Kaisen > Settings > Web access** an owner can let the builder search the web and read pages, for example to check a library's documentation or a link in your brief. It works with all three models.
+Off by default, and an administrator can turn web search off for a whole project (it then can't be switched on there). In **Kaisen > Settings > Web access** an owner can let the builder search the web and read pages, for example to check a library's documentation or a link in your brief. It works with all three models.
 
 - **Allowed sites.** Leave the list empty to allow any site, or enter up to 20 domains, one per line, without `https://` (a path such as `github.com/owner` is allowed). The settings page says in words what is in force.
 - **Untrusted content.** A page can contain text that tries to steer the builder. Kaisen treats web content as data, and the builder has no secrets and can only touch its own build's files, but an allow-list is the safest setting. A build that has secrets never gets the web tools, with or without an allow-list, because injected page text could make the builder write code that sends the secrets out. Page text is not shown in the transcript or `CONVERSATION.md`; they say only "searched for ..." or "read ...".
@@ -813,9 +819,16 @@ The **Secrets** card on the build page holds environment values the built app ne
 
 Kaisen sees the names only and is told to read them from the environment; values are encrypted, masked in the page and API and redacted from transcripts, logs and downloads. Limits are under "Kaisen limits".
 
-### Uploads
+### Attach files
 
-The **Uploads** card on the build page lets you attach files for Kaisen to use. An administrator turns it on per project; until then the card is grayed out with "Not enabled for this project yet" (you can still delete files you uploaded earlier). Choose a file, then choose what it is for:
+You can attach files to the brief on **New build**, to each change request in the Conversation box and to each answer in the inbox. An administrator turns file uploads on per project; until then attaching is grayed out with a note "Not enabled for this project yet" (you can still delete files you uploaded earlier).
+
+- **How.** Press the paperclip (**Attach**), drag files onto the box, or paste an image. Each file shows as a chip with its progress; a refused file shows the reason with **Try again** and a remove button, and sending waits until uploads finish or you remove the refused ones. Files are sent with the message, and Kaisen is told they came with it.
+- **Files N of 20** opens the **Files** drawer: every file on the build, with its description, replace, delete, quota bars, and **Deploy now** when files changed since the live app. Files not yet sent are marked "Not sent yet" and come back as chips if you reload. Clicking a file on a message opens it in the drawer.
+- **New build with files.** The build is saved as a draft, files upload one by one, then the run starts. If some fail, the draft is kept and you can **Retry failed files**, **Start building without them** or **Open the draft** (its page has a **Start building** button).
+- **Error messages state the limit and your file's value**, for example "That image is 9.4 megapixels (4000 x 2350). The most allowed is 8 megapixels; resize it and try again." Quota messages give what is used, the limit and the size of this file.
+
+What each file is for:
 
 - **Use in the site** (PNG, JPEG, WebP or SVG): a logo, photo, hero image or favicon. It ships with the app and Kaisen refers to it as `/uploads/<name>`. Kaisen sees its name, type, size and your one-line description, not the picture itself, so describe it ("company logo, transparent background").
 - **Reference only** (CSS, HTML, TXT or MD): an existing stylesheet or page for Kaisen to read for style or content. It is never deployed. Kaisen reads it on demand, so its contents are sent to the AI provider. It is scanned for secrets and refused if one is found.
@@ -825,6 +838,7 @@ What happens to your files:
 - Images are decoded and re-encoded on the platform, so metadata (such as camera and location data) is removed, animation isn't kept and large images are scaled down to 2560 px on the long side. SVGs are sanitized: scripts, embedded HTML, animation, external links and CSS that fetches anything are removed, so an SVG can look slightly different from the original. A file that can't be processed is refused with a reason.
 - **Files used in the site are public** once the app is deployed, and also appear in the download and in a GitHub push (references don't). Don't upload anything private as a site image.
 - Kaisen gives each file a generated name under `uploads/` (or `references/`); your original name is only shown in the list. You can edit the description, replace a file (same type) and delete it. Replace and delete wait until no run is active, and the card offers **Deploy now** when uploads changed since the live app.
+- **Files that look like secrets are never accepted, served or pushed.** Uploads (text references, SVGs and descriptions) are scanned, and a file with a private key, an API token (Anthropic, OpenAI-style, GitHub, AWS, Slack, Stripe, Google, DigitalOcean), a JWT, a database URL with a password or a `password = "..."` line is refused with "That file looks like it contains a credential (line N: kind). Remove it and upload again; put secrets in Build secrets instead." Kaisen itself won't write `.env*` or key files, or content like that, and the preview answers "not found" for dotfiles, `.env*`, keys, databases, dumps, backups, logs, server source files (`.php`, `.py`, `.sh` and similar), `kaisen.json` and directory listings. If a file you meant to offer for download is blocked, rename it. Use **Build secrets** for values the app needs. The scan is a heuristic and can have false alarms. Python and Node apps serve their own files, so for them this relies on Kaisen following its rule to serve one static folder. The preview guards apply once the platform's runtime image has been updated.
 - Limits: 4 MiB per file; images up to 8 megapixels; SVG up to 512 KiB; a text reference up to 100 KiB; 20 files per build, 6 MiB of site images and 1 MiB of references per build, 40 MiB per project and 100 MiB per person; 30 uploads per hour (refused tries count). Quota bars on the card show what you've used.
 
 ### Generated tests
@@ -863,7 +877,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 
 - A project holds at most 20 builds. A name is up to 60 characters, a brief up to 8000, a change request or an answer up to 4000.
 - A run works in steps of up to 15 minutes and 40 model calls each, and chains up to 4 steps by itself, each in a fresh context seeded from `PLAN.md` (spend caps, the wall-clock limit and the repeat detector still stop it). Resume of a history over 30 messages also starts fresh from `PLAN.md`. A build holds files up to 200 KB each, 300 files and 5 MB in total.
-- Uploads: see "Uploads" for the file limits. Deleting a build deletes its uploads.
+- Uploads: see "Attach files" for the file limits. Deleting a build deletes its uploads.
 - Transcripts are trimmed 14 days after a run ends.
 
 **Built apps**
