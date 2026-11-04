@@ -52,7 +52,7 @@ definitions, process docs) go to seaburr/kaisen; product changes go here.
 3. **Runtime image changes** need a re-pin: after `kaisen-runtime-image` publishes, run `bootstrap.yml` with input
    `kaisen_runtime_image_digest=sha256:...` (it writes `KAISEN_RUNTIME_IMAGE` into `picopaas-env`). A bootstrap run
    **needs Chas's approval** (QUESTIONS.md). Leaving `backup_image_digest` empty re-pins the backup image to `:latest` too.
-   Current pin (2026-11-03, run 41734937157, Chas approved "full send"): `picopaas-kaisen-runtime@sha256:4a58353a2657f130fd313faf7e2815c6717c0fd9f953786495999c7901d761bf` (P1b upload headers, manifest check, /uploads for public/ sites). Previous: `sha256:0b06ce362c897448c7d4c7e2acd2e75d61c01aa4321cc606c849b0c8fecb77a7` (2026-10-31, run 41192942142). Backup image pinned at `sha256:bc6ebfca524f2b7a149e3c160b8b63d5b9030f1a7e75bb90eb6587fe36bfd694`.
+   Current pin (2026-11-04, run 41827361864, approved by Chas for after the wave 2 deploy): `picopaas-kaisen-runtime@sha256:3f6ee178536d3fc1ae3414587defd712ca84592b6dfdeb387309e64991c93260` (P1b upload headers, manifest check, /uploads for public/ sites). Previous: `sha256:0b06ce362c897448c7d4c7e2acd2e75d61c01aa4321cc606c849b0c8fecb77a7` (2026-10-31, run 41192942142). Backup image pinned at `sha256:bc6ebfca524f2b7a149e3c160b8b63d5b9030f1a7e75bb90eb6587fe36bfd694`.
    Dependabot (Mondays) opens base-image PRs for `images/kaisen-runtime/`. A merged one publishes a new image but
    changes nothing live until this re-pin, so batch them and ask Chas for one re-pin at a time.
 4. Existing built apps pick up deploy-time changes (e.g. the bundle-URL-as-secret fix) only on their next deploy
