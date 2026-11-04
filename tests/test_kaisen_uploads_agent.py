@@ -189,7 +189,7 @@ def test_github_push_sends_asset_bytes_and_no_references(w):
     up(w.a, w.bid, b"just notes", kind="reference", filename="ref.txt")
     assert w.a.put(f"/kaisen/builds/{w.bid}/output", json={"mode": "github", "repo": "octo/site"}).status_code == 200
     r = w.a.post(f"/kaisen/builds/{w.bid}/push")
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
     pushed = w.f.github.pushes[-1]["files"]
     stored = w.s.query(KaisenAsset).filter_by(kind="asset").one()
     assert pushed["uploads/logo.png"] == stored.data and isinstance(pushed["uploads/logo.png"], bytes)

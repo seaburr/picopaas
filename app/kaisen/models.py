@@ -218,6 +218,8 @@ class KaisenAsset(Base):
     height: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     description: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # The run (message) this file was attached to: NULL until the next run is created, which claims every unbound upload.
+    run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     data: Mapped[bytes] = mapped_column(LongBlob, nullable=False)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)

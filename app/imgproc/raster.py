@@ -8,6 +8,8 @@ from PIL import features
 from app import config
 from app.providers.base import ImageProcessError, ProcessedImage
 
+from .fmt import mb, megapixels
+
 FORMATS = ["PNG", "JPEG", "WEBP"]
 _MIME = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
 ImageFile.LOAD_TRUNCATED_IMAGES = False
@@ -50,9 +52,38 @@ def _flatten(img):
     return img
 
 
+def _check_dimensions(w: int, h: int) -> None:
+    if max(w, h) > config.KAISEN_UPLOAD_MAX_EDGE_IN:
+        raise ImageProcessError("too_big", f"That image is {w} \u00d7 {h} pixels. The longest side can be at most "
+                                           f"{config.KAISEN_UPLOAD_MAX_EDGE_IN} pixels; resize it and try again.")
+    if w * h > config.KAISEN_UPLOAD_MAX_PIXELS:
+        raise ImageProcessError("too_big", f"That image is {megapixels(w * h)} ({w} \u00d7 {h}). The most allowed is "
+                                           f"{config.KAISEN_UPLOAD_MAX_PIXELS // 1_000_000} megapixels; resize it and try again.")
+
+
+def _too_many_pixels(data: bytes) -> ImageProcessError:
+    """Pillow's own bomb check fires inside Image.open, before the size is known to us: read the header without it."""
+    saved = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None
+    try:
+        with Image.open(io.BytesIO(data), formats=FORMATS) as im:
+            w, h = im.size
+        try:
+            _check_dimensions(w, h)
+        except ImageProcessError as exc:
+            return exc
+    except Exception:  # noqa: BLE001 - header unreadable: fall back to the limit alone
+        pass
+    finally:
+        Image.MAX_IMAGE_PIXELS = saved
+    return ImageProcessError("too_big", "That image has too many pixels. The most allowed is "
+                                        f"{config.KAISEN_UPLOAD_MAX_PIXELS // 1_000_000} megapixels; resize it and try again.")
+
+
 def process(data: bytes) -> ProcessedImage:
     if len(data) > config.KAISEN_UPLOAD_MAX_BYTES_IN:
-        raise ImageProcessError("too_big", "That file is too large.")
+        raise ImageProcessError("too_big", f"That file is {mb(len(data))}. The most allowed is "
+                                           f"{mb(config.KAISEN_UPLOAD_MAX_BYTES_IN)}; make it smaller and try again.")
     notes: list[str] = []
     try:
         with warnings.catch_warnings():
@@ -60,9 +91,7 @@ def process(data: bytes) -> ProcessedImage:
             img = Image.open(io.BytesIO(data), formats=FORMATS)
             fmt = img.format
             w, h = img.size
-            if w * h > config.KAISEN_UPLOAD_MAX_PIXELS or max(w, h) > config.KAISEN_UPLOAD_MAX_EDGE_IN:
-                raise ImageProcessError("too_big", "That image has too many pixels. Use one under "
-                                        f"{config.KAISEN_UPLOAD_MAX_PIXELS // 1_000_000} megapixels.")
+            _check_dimensions(w, h)
             if getattr(img, "n_frames", 1) > 1 or getattr(img, "is_animated", False):
                 raise ImageProcessError("animated", "Animated images aren't supported. Upload a single still image.")
             edge = config.KAISEN_UPLOAD_MAX_EDGE
@@ -99,15 +128,16 @@ def process(data: bytes) -> ProcessedImage:
     except ImageProcessError:
         raise
     except (Image.DecompressionBombError, Image.DecompressionBombWarning, MemoryError):
-        raise ImageProcessError("too_big", "That image has too many pixels.") from None
+        raise _too_many_pixels(data) from None
     except UnidentifiedImageError:
         if data[:8] == b"\x89PNG\r\n\x1a\n" or data[:3] == b"\xff\xd8\xff" or (data[:4] == b"RIFF" and data[8:12] == b"WEBP"):
             raise ImageProcessError("corrupt", "That image couldn't be read. It may be damaged; try exporting it again.") from None
-        raise ImageProcessError("unsupported", "That file type isn't supported. Use a PNG, JPEG or WebP image.") from None
+        raise ImageProcessError("unsupported", "That file type isn't supported. Allowed image types: PNG, JPEG, WebP.") from None
     except Exception:  # noqa: BLE001 - truncated/corrupt streams raise OSError, SyntaxError, ValueError, struct.error ...
         raise ImageProcessError("corrupt", "That image couldn't be read. It may be damaged; try exporting it again.") from None
     out = buf.getvalue()
     if len(out) > config.KAISEN_UPLOAD_MAX_BYTES_OUT:
-        raise ImageProcessError("too_big", "That image is still too large after processing.")
+        raise ImageProcessError("too_big", f"That image is {mb(len(out))} after processing. The most allowed is "
+                                           f"{mb(config.KAISEN_UPLOAD_MAX_BYTES_OUT)}; use a smaller image.")
     notes.insert(0, "Metadata removed")
     return ProcessedImage(mime=_MIME[out_fmt], data=out, width=img.size[0], height=img.size[1], notes=notes)

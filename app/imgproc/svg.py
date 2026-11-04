@@ -19,6 +19,8 @@ from app import config
 from app.imgproc import raster
 from app.providers.base import ImageProcessError, ProcessedImage
 
+from .fmt import kb, megapixels
+
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -122,9 +124,11 @@ def _convert(el, depth: int, budget: list[int]):
         return None
     budget[0] -= 1
     if budget[0] < 0:
-        raise ImageProcessError("too_big", "That SVG has too many elements.")
+        raise ImageProcessError("too_big", f"That SVG has more than {config.KAISEN_UPLOAD_SVG_MAX_ELEMENTS} elements, the most allowed. Simplify it or "
+                                           "export it with fewer shapes.")
     if depth > config.KAISEN_UPLOAD_SVG_MAX_DEPTH:
-        raise ImageProcessError("too_big", "That SVG is nested too deeply.")
+        raise ImageProcessError("too_big", f"That SVG is nested more than {config.KAISEN_UPLOAD_SVG_MAX_DEPTH} levels deep, the most allowed. "
+                                           "Flatten its groups and export it again.")
     node = _Node(name)
     for raw, val in el.attrib.items():
         got = _attr(raw)
@@ -193,8 +197,8 @@ def _reencode_images(root: _Node) -> None:
     animation) and the data URI is replaced by the fresh encode. Any failure refuses the whole SVG."""
     images = [n for n in _walk(root) if n.tag == "image"]
     if len(images) > config.KAISEN_UPLOAD_SVG_MAX_IMAGES:
-        raise ImageProcessError("too_big", f"That SVG embeds more than {config.KAISEN_UPLOAD_SVG_MAX_IMAGES} pictures. "
-                                           "Use fewer, or upload them as separate images.")
+        raise ImageProcessError("too_big", f"That SVG embeds {len(images)} pictures. The most allowed is "
+                                           f"{config.KAISEN_UPLOAD_SVG_MAX_IMAGES}; use fewer, or upload them as separate images.")
     total = 0
     for n in images:
         for key in [k for k in ("href", "xlink:href") if k in n.attrs]:  # both may be present; re-encode both
@@ -211,7 +215,8 @@ def _reencode_images(root: _Node) -> None:
                 raise ImageProcessError("corrupt", "A picture embedded in that SVG couldn't be read. "
                                                    "Export the SVG again.") from None
             if total > config.KAISEN_UPLOAD_SVG_MAX_IMAGE_PIXELS:
-                raise ImageProcessError("too_big", "The pictures embedded in that SVG have too many pixels in total.")
+                raise ImageProcessError("too_big", (f"The pictures embedded in that SVG add up to {megapixels(total)}. The most allowed in total is "
+                                                f"{megapixels(config.KAISEN_UPLOAD_SVG_MAX_IMAGE_PIXELS)}; use smaller pictures."))
             try:
                 res = raster.process(raw)
             except ImageProcessError as exc:
@@ -255,7 +260,8 @@ def _size(root: _Node) -> tuple[int | None, int | None]:
 
 def sanitize(data: bytes) -> ProcessedImage:
     if len(data) > config.KAISEN_UPLOAD_SVG_BYTES:
-        raise ImageProcessError("too_big", f"SVG files can be at most {config.KAISEN_UPLOAD_SVG_BYTES // 1024} KB.")
+        raise ImageProcessError("too_big", f"That SVG is {kb(len(data))}. SVG files can be at most "
+                                           f"{kb(config.KAISEN_UPLOAD_SVG_BYTES)}; simplify it and try again.")
     try:
         root = fromstring(data, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     except DefusedXmlException:
@@ -274,7 +280,8 @@ def sanitize(data: bytes) -> ProcessedImage:
     _write(node, parts)
     out = "".join(parts).encode("utf-8")
     if len(out) > config.KAISEN_UPLOAD_SVG_BYTES:
-        raise ImageProcessError("too_big", f"That SVG is over {config.KAISEN_UPLOAD_SVG_BYTES // 1024} KB after cleaning.")
+        raise ImageProcessError("too_big", f"That SVG is {kb(len(out))} after cleaning. The most allowed is "
+                                           f"{kb(config.KAISEN_UPLOAD_SVG_BYTES)}; simplify it and try again.")
     w, h = _size(node)
     return ProcessedImage(mime="image/svg+xml", data=out, width=w, height=h,
                           notes=["Scripts, external links and animation removed from the SVG"])

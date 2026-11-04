@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, defer
 from app import audit, config, models, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, require_admin_session, require_platform_admin
-from app.kaisen import builder, deploy as deploy_mod, uploads as ku
+from app.kaisen import builder, deploy as deploy_mod, secretscan, uploads as ku
 from app.kaisen.models import KaisenAsset, KaisenBuild, KaisenBundle, KaisenUploadBlock
 from app.providers.base import ImageProcessError, ImageProcessor
 from app.routers.kaisen import get_build, require_kaisen
@@ -48,7 +48,7 @@ _IMG_REASON = {"unsupported": "type", "corrupt": "corrupt", "too_big": "bomb", "
 def _item(r: KaisenAsset) -> dict:
     return {"id": r.id, "kind": r.kind, "path": r.path, "name": r.path.rsplit("/", 1)[-1], "name_orig": r.name_orig,
             "mime": r.mime, "ext": r.ext, "size": r.size, "width": r.width, "height": r.height,
-            "description": r.description, "version": r.version, "sha256": r.sha256,
+            "description": r.description, "version": r.version, "run_id": r.run_id, "sha256": r.sha256,
             "created_by": r.created_by, "created_at": r.created_at.isoformat(), "updated_at": r.updated_at.isoformat()}
 
 
@@ -82,7 +82,7 @@ async def _read_body(request: Request) -> bytes:
     if declared is not None:
         try:
             if int(declared) > cap:
-                raise HTTPException(status_code=413, detail=_too_big())
+                raise HTTPException(status_code=413, detail=_too_big(int(declared)))
         except ValueError:
             raise HTTPException(status_code=400, detail="Bad Content-Length.")
     buf = bytearray()
@@ -93,8 +93,9 @@ async def _read_body(request: Request) -> bytes:
     return bytes(buf)
 
 
-def _too_big() -> str:
-    return f"That file is too large. The most allowed is {config.KAISEN_UPLOAD_MAX_BYTES_IN // (1024 * 1024)} MB."
+def _too_big(size: int | None = None) -> str:
+    seen = f"That file is {size / (1024 * 1024):.1f} MB. " if size else "That file is too large. "
+    return f"{seen}The most allowed is {config.KAISEN_UPLOAD_MAX_BYTES_IN // (1024 * 1024)} MB; make it smaller and try again."
 
 
 def _reject(db: Session, user: models.User, b: KaisenBuild, exc: ku.Refused) -> HTTPException:
@@ -132,11 +133,12 @@ def _ingest(db: Session, b: KaisenBuild, user: models.User, kind: str, filename:
         width = height = None
         if det.family == "text":
             text = ku.decode_text(data)
-            if (found := ku.scan_text(text)):
-                raise ku.Refused(422, f"This file looks like it contains {found}. Remove it and upload again. "
-                                      "(The check is a heuristic: other secrets can slip through.)", "secret")
+            if (hit := secretscan.find(text)):
+                raise ku.Refused(422, secretscan.refusal_for_upload(*hit), "secret")
             stored, mime, ext = data, "text/plain", det.ext
         else:
+            if det.family == "svg" and (hit := secretscan.find(data.decode("utf-8", "replace"))):
+                raise ku.Refused(422, secretscan.refusal_for_upload(*hit), "secret")
             res = _process(db, data, det, processor)
             stored, mime, ext, width, height, notes = res.data, res.mime, ku.ext_for(res.mime), res.width, res.height, res.notes
             if ku.blocked(db, ku.sha256(stored)):

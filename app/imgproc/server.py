@@ -99,11 +99,22 @@ def make_server(host: str = "0.0.0.0", port: int | None = None) -> HTTPServer:
     return srv
 
 
-def main() -> None:  # pragma: no cover - process entry point
+def apply_memory_limit() -> None:
+    """RLIMIT_AS is defense in depth (the container memory limit is the real fence). Mandatory on Linux: a failure
+    raises and the pod does not start. macOS rejects it, so there (local dev only) it is best effort with a warning."""
     import resource
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     limit = config.KAISEN_UPLOAD_IMG_MEM_MB * 1024 * 1024
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))  # defense in depth; the container memory limit is the real fence
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    except (ValueError, OSError):
+        if sys.platform != "darwin":
+            raise
+        log.warning("could not set the address-space limit on this platform; continuing without it (local dev only)")
+
+
+def main() -> None:  # pragma: no cover - process entry point
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    apply_memory_limit()
     global _alarm_ready
     signal.signal(signal.SIGALRM, _on_alarm)
     _alarm_ready = True

@@ -132,3 +132,22 @@ def test_server_rejects_a_missing_content_length(pod):
         while chunk := s.recv(4096):  # the server closes after answering (Connection: close)
             reply += chunk
     assert b"422" in reply.split(b"\r\n")[0] and b"too_big" in reply
+
+
+def _raise_value_error(*_a):
+    raise ValueError("current limit exceeds maximum limit")
+
+
+def test_memory_limit_is_best_effort_only_on_macos(monkeypatch, caplog):
+    import resource
+    import sys
+
+    from app.imgproc import server
+    monkeypatch.setattr(resource, "setrlimit", _raise_value_error)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    server.apply_memory_limit()  # warns, does not raise
+    assert "address-space limit" in caplog.text
+    monkeypatch.setattr(sys, "platform", "linux")
+    import pytest
+    with pytest.raises(ValueError):
+        server.apply_memory_limit()

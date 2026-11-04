@@ -327,7 +327,7 @@ def test_processing_queue_is_bounded(world, monkeypatch):
 
 def test_declared_content_length_over_the_cap_is_413_before_any_work(world):
     r = up(world.a, world.bid, b"\x89PNG\r\n\x1a\n" + b"0" * config.KAISEN_UPLOAD_MAX_BYTES_IN)
-    assert r.status_code == 413 and "too large" in r.json()["detail"] and world.proc.calls == []
+    assert r.status_code == 413 and "most allowed is 4 MB" in r.json()["detail"] and world.proc.calls == []
 
 
 def test_chunked_body_over_the_cap_is_cut_off_while_streaming(world):
@@ -447,7 +447,7 @@ def test_max_files_per_build(world, monkeypatch):
     assert up(world.a, world.bid, imgfix.png(8, 8)).status_code == 201
     assert up(world.a, world.bid, b"notes", kind="reference", filename="n.txt").status_code == 201
     r = up(world.a, world.bid, imgfix.png(9, 9))
-    assert r.status_code == 403 and "already has 2 files" in r.json()["detail"] and len(rows()) == 2
+    assert r.status_code == 403 and "already has 2 of 2 files" in r.json()["detail"] and len(rows()) == 2
 
 
 def test_asset_byte_cap_per_build_counts_stored_size_and_replace_nets_the_old_size(world, monkeypatch):

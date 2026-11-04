@@ -15,7 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import audit, config, crypto, models, projects
-from . import buildsecrets, export, testresults, uploads
+from . import buildsecrets, export, paths, testresults, uploads
 from .models import KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox
 from .redact import redact
 
@@ -51,7 +51,8 @@ def make_bundle(db: Session, b: KaisenBuild, *, reuse: bool = False) -> tuple[st
     """Store a bundle for the build's current files and keep only the newest (the URL is a bearer capability the app
     holds; older URLs 404). Returns (bundle URL, sha256, unchanged). With reuse=True and identical content nothing is
     minted and the URL is None: the app already holds the live URL (only its hash is stored)."""
-    files = [(r.path, r.content) for r in db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))]
+    files = [(r.path, r.content) for r in db.scalars(select(KaisenFile).where(KaisenFile.build_id == b.id))
+             if not paths.is_secret_file(r.path)]  # legacy builds: a .env or key file never reaches the public preview
     if not files:
         raise DeployError("The build has no files yet.")
     data = export.build_tarball(b.slug, files, export.build_mtime(db, b), binaries=uploads.asset_blobs(db, b.id))

@@ -303,11 +303,49 @@ def verify_uploads(root: str) -> int:
     return len(seen)
 
 
+# ---- sensitive-path guard (docs/design/kaisen.md 16.10). Scanners probe /.env, /.git/config, /backup.zip, /wp-config.php ...
+# and users drop such files into their repo by accident. These names are never served, whatever the app is.
+BLOCK_EXT = {  # keys, certificates stores, databases, dumps, editor/backup leftovers, logs, server-side source
+    "pem", "key", "p12", "pfx", "jks", "keystore", "ppk", "gpg", "kdbx", "env", "tfstate", "tfvars",
+    "sqlite", "sqlite3", "db", "sql", "dump", "bak", "swp", "swo", "orig", "old", "log",
+    "php", "py", "pyc", "rb", "pl", "sh", "cgi", "asp", "aspx", "jsp",
+}
+BLOCK_ARCHIVE_EXT = {"zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar"}  # only blocked when the whole repo is served
+BLOCK_PREFIX = ("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "wp-config.php", "secrets.", "secret.", "credentials",
+                "docker-compose", "service-account")
+BLOCK_NAMES = {"kaisen.json", "dockerfile", "thumbs.db", "node_modules", "__pycache__", "composer.json", "composer.lock"}
+BLOCK_ROOT_ONLY_PREFIX = ("config.", "settings.", "application.", "appsettings")  # config.json etc. are legit in public/
+BLOCK_ROOT_ONLY_EXT = {"json", "yml", "yaml", "toml", "ini", "conf", "cfg", "properties", "xml"}  # config.js / settings.html stay served
+
+
+def is_sensitive(rel_parts: list[str], public_mode: bool) -> bool:
+    """True when a path (already decoded and normalized, relative to the served directory) must answer 404."""
+    for i, seg in enumerate(rel_parts):
+        n = seg.lower()
+        if not n or n == ".":
+            continue
+        if n.startswith("."):
+            if i == 0 and n == ".well-known":
+                continue
+            return True
+        if n.endswith("~") or n in BLOCK_NAMES or n.startswith(BLOCK_PREFIX):
+            return True
+        ext = n.rsplit(".", 1)[-1] if "." in n else ""
+        if ext in BLOCK_EXT:
+            return True
+        if not public_mode and (ext in BLOCK_ARCHIVE_EXT or (n.startswith(BLOCK_ROOT_ONLY_PREFIX) and ext in BLOCK_ROOT_ONLY_EXT)):
+            return True
+    return False
+
+
 class StaticHandler(http.server.SimpleHTTPRequestHandler):
     """Plain static serving plus, for every response, nosniff; files under uploads/ also get a fixed image Content-Type
     for known extensions, a strict CSP (with sandbox, so an SVG opened directly cannot run anything) and no directory listing."""
 
-    def __init__(self, *args, uploads_root=None, **kwargs):
+    def __init__(self, *args, uploads_root=None, public_mode=False, **kwargs):
+        # public_mode: the site is served from public/, so archives and config.* there are deliberate; when the whole
+        # repo is served (no public/) they are blocked as well.
+        self.public_mode = public_mode
         # uploads_root: the verified <project root>/uploads when the site is served from public/. It wins over any
         # public/uploads/ tree (which is agent-written and unverified, but still gets the CSP).
         self.uploads_root = uploads_root
@@ -322,6 +360,26 @@ class StaticHandler(http.server.SimpleHTTPRequestHandler):
                 if os.path.lexists(mapped):  # names only in public/uploads/ (agent files) still resolve, with the CSP
                     return mapped
         return full
+
+    def _blocked(self) -> bool:
+        try:
+            full = os.path.realpath(self.translate_path(getattr(self, "path", "/")))
+        except (ValueError, OSError):  # e.g. %00 in the path: answer 404 instead of a traceback and a dropped connection
+            return True
+        for base in [self.directory] + ([self.uploads_root] if self.uploads_root else []):
+            b = os.path.realpath(base)
+            try:
+                if os.path.commonpath([b, full]) == b:
+                    return is_sensitive(os.path.relpath(full, b).split(os.sep), self.public_mode)
+            except ValueError:
+                continue
+        return True  # resolves outside the served tree (a symlink): never serve
+
+    def send_head(self):
+        if self._blocked():
+            self.send_error(404, "File not found")
+            return None
+        return super().send_head()
 
     def _in_uploads(self) -> bool:
         bases = [os.path.realpath(os.path.join(self.directory, "uploads"))]
@@ -340,10 +398,8 @@ class StaticHandler(http.server.SimpleHTTPRequestHandler):
         return super().guess_type(path)
 
     def list_directory(self, path):
-        if self._in_uploads():
-            self.send_error(404, "No permission to list directory")
-            return None
-        return super().list_directory(path)
+        self.send_error(404, "No permission to list directory")  # listings would reveal the names of files we refuse to serve
+        return None
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -360,7 +416,8 @@ def serve_static(root: str, port: int) -> None:
     log(f"serving static files from {directory} on 0.0.0.0:{port}")
     up = os.path.join(root, "uploads")
     handler = functools.partial(StaticHandler, directory=directory,
-                                uploads_root=up if directory != root and os.path.isdir(up) else None)
+                                uploads_root=up if directory != root and os.path.isdir(up) else None,
+                                public_mode=directory != root)
     http.server.ThreadingHTTPServer(("0.0.0.0", port), handler).serve_forever()
 
 

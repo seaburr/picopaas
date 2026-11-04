@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from app import config
 from app import models as app_models
-from . import buildsecrets, checks, httptool, members, reviewing, snapshots, uploads, watchdog
+from . import buildsecrets, checks, httptool, members, reviewing, secretscan, snapshots, uploads, watchdog
 from .llm import ModelError, ModelTimeout, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
-from .paths import ToolError, is_reserved_upload_path, normalize_path
+from .paths import ToolError, check_write_name, is_reserved_upload_path, normalize_path
 from .settings import RuntimeSettings, load as load_settings
 
 ACTIVE = ("queued", "running", "waiting")
@@ -60,8 +60,11 @@ class Workspace:
     def write(self, path, content) -> str:
         path = normalize_path(path)
         self._guard(path)
+        check_write_name(path)
         if not isinstance(content, str):
             raise ToolError("content must be a string")
+        if (hit := secretscan.find(content, code=True)):
+            raise ToolError(secretscan.tool_refusal(*hit))
         size = len(content.encode())
         if size > config.KAISEN_MAX_FILE_BYTES:
             raise ToolError(f"file too large ({size} bytes, max {config.KAISEN_MAX_FILE_BYTES})")
@@ -298,6 +301,7 @@ def start_feedback(s: Session, b: KaisenBuild, feedback: str, preview_url: str |
     s.add(run)
     b.status = "queued"
     s.flush()
+    uploads.claim(s, b.id, run.id)  # files uploaded since the last run belong to this one
     snapshots.take_safely(s, b.id, "run_start", run.id)  # restore point; a no-op when the files are unchanged or empty
     return run, "Change request queued."
 
@@ -323,6 +327,7 @@ def start_build(s: Session, b: KaisenBuild, user_id: int | None = None) -> tuple
     s.add(run)
     b.status = "queued"
     s.flush()
+    uploads.claim(s, b.id, run.id)
     snapshots.take_safely(s, b.id, "run_start", run.id)  # restore point; a no-op when the files are unchanged or empty
     return run, msg
 
