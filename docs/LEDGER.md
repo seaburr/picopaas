@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-03 [dependabot-steward] DONE: Dependabot alert #1 (minimatch GHSA-g3hv-75wg-m249): frontend/package.json overrides minimatch ^11.0.1, lockfile at 11.0.4 everywhere; npm ci, npm audit (0 vulns), lint, build green; pushed 8f08d37 (scm-security). Alert still `open` right after push (rescan pending); CI for 8f08d37 not yet finished at report time.
+- 2026-11-03 [dependabot-steward] START: minimatch override for alert #1.
 - 2026-11-03 [backend-dev] DONE: flaky test_threaded_waiter_abandons_when_interrupted_elsewhere (CI 41716940724) is a TEST-INFRA race, no product change: tests use one shared SQLite connection (StaticPool), so the waiter's poll (select + rollback) can roll back the step thread's half-done manual interrupt transaction; MySQL uses separate connections. Test now holds waiter polls until the interrupt committed (tests/test_kaisen_watchdog.py). 15 x 30 tests green incl. under CPU load; not reproduced locally before the fix.
 - 2026-11-03 [backend-dev] START: flaky watchdog test (CI 41716940724).
 - 2026-11-03 [scm-security] DONE: pushed a5a1ff4 (ui P3s + button labels), abcc3c3 (kaisen runtime P1b), d653911 (K79/K85 SVG bitmaps), b80c6ae (docs), plus this ledger commit. gitleaks clean per commit, ruff + 160 targeted tests + frontend typecheck/lint/build green; pushed without security review.
