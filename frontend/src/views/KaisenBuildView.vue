@@ -8,6 +8,7 @@ import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
 import BuildConversation from '../components/BuildConversation.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildInbox from '../components/BuildInbox.vue'
+import BuildLastDeployment from '../components/BuildLastDeployment.vue'
 import BuildProgress from '../components/BuildProgress.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
@@ -414,6 +415,7 @@ async function doDelete() {
                   <pre class="mono mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-pico-bg p-3 text-xs text-zinc-200" tabindex="0" aria-label="Test output">{{ build.tests.tail }}</pre>
                 </details>
               </div>
+              <BuildLastDeployment :items="inbox" :now="now" />
               <div v-if="app && ['pending', 'deploying', 'error'].includes(app.status)" class="mt-2"><AppStatusNote compact :app="app" /></div>
               <div class="mt-3 flex flex-col gap-2 sm:flex-row">
                 <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary">App health</RouterLink>
@@ -428,6 +430,7 @@ async function doDelete() {
             </div>
             <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in the conversation below to continue.</p>
             <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
+            <BuildLastDeployment v-if="!(build.app_id && build.app_hostname)" :items="inbox" :now="now" />
           </section>
 
           <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" :build-id="build.id" :summary="build.uploads" @answer="answer" @resume="resume" @dismiss="dismiss" @open-files="openFiles" @changed="load(false)" />

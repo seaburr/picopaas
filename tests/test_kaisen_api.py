@@ -277,6 +277,16 @@ def _deploy(c, bid, registry=None):
     return c.post(f"/kaisen/builds/{bid}/deploy")
 
 
+def test_manual_deploy_leaves_a_record_for_last_deployment(team):
+    _, a, _, _, pid = team
+    bid = _new_build(a, pid)
+    assert _deploy(a, bid).status_code == 200
+    second = _deploy(a, bid).json()
+    deploys = [i for i in second["inbox"] if i["kind"] == "deploy"]
+    assert len(deploys) == 2 and deploys[0]["id"] > deploys[1]["id"]  # newest first: the UI shows this one
+    assert all(d["text"].startswith("Deployment started") and d["status"] == "closed" for d in deploys)
+
+
 def test_deploy_creates_app_in_build_project_as_creator(team):
     _, a, b, c, pid = team
     bid = _new_build(a, pid)

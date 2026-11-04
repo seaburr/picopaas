@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ChevronRight } from 'lucide-vue-next'
 import AttachComposer from './AttachComposer.vue'
 import BuildRunDetails from './BuildRunDetails.vue'
@@ -79,12 +79,29 @@ const items = computed<Item[]>(() => {
   return out.sort((a, b) => a.at - b.at)
 })
 const open = ref<Record<string, boolean>>({})
+
+// The timeline scrolls inside a fixed-height panel. Jump to the START of the newest message, not the panel's bottom:
+// the latest run's details open by default and would otherwise push the message itself out of view.
+const timeline = ref<HTMLElement | null>(null)
+const lastTop = () => (timeline.value?.lastElementChild as HTMLElement | null)?.offsetTop ?? 0
+let following = true // false once the reader scrolls back through older messages
+function onScroll() {
+  if (timeline.value) following = timeline.value.scrollTop >= lastTop() - 80
+}
+async function showLatest() {
+  await nextTick()
+  if (timeline.value) timeline.value.scrollTop = lastTop()
+}
+onMounted(showLatest)
+watch(() => items.value.length, () => {
+  if (following) showLatest()
+})
 </script>
 
 <template>
   <section class="card card-pad" aria-labelledby="h-convo">
     <h2 id="h-convo" class="section-title mb-3">Conversation</h2>
-    <ol class="space-y-3">
+    <ol ref="timeline" class="relative max-h-[65vh] space-y-3 overflow-y-auto pr-1" tabindex="0" aria-label="Conversation messages" @scroll.passive="onScroll">
       <li v-for="it in items" :key="it.key" class="flex gap-2">
         <span class="mono mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px]" :class="it.who === 'you' ? 'bg-pico-card text-zinc-200' : 'bg-accent text-white'" aria-hidden="true">{{ it.who === 'you' ? 'Y' : 'K' }}</span>
         <div class="min-w-0 flex-1">
@@ -149,7 +166,7 @@ const open = ref<Record<string, boolean>>({})
       <AttachComposer
         v-model="text" :build-id="build.id" :summary="summary" label="Tell Kaisen what to change" placeholder="Tell Kaisen what to change. Drop, paste or attach files."
         submit-label="Send to Kaisen" :busy="busy" :locked="locked" :can-attach="canAttach" :unsent="unsent" :hint="hint || 'Kaisen edits the code and redeploys. About a minute.'"
-        @submit="emit('submit', $event)" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
+        @submit="following = true; emit('submit', $event)" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
       />
     </div>
   </section>

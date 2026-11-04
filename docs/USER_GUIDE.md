@@ -737,6 +737,8 @@ If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from
 
 The build page shows a **Conversation** timeline: your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run. The box at the bottom sends the next change request. Files you attached appear on the message they were sent with.
 
+The timeline scrolls inside a fixed-height panel and opens at the newest message, with the change box below it. The result of the latest deployment is on the **Live app** card under **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
+
 ### Ask for changes
 
 Type what to change (up to 4000 characters) in the Conversation box. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.

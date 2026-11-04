@@ -504,6 +504,11 @@ def deploy(build_id: int, request: Request, db: Session = Depends(get_db), user:
         deploy_mod.deploy_build(db, b, registry, force=True)
     except deploy_mod.DeployError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
+    # Without this, "Last deployment" on the build page would keep showing the previous deploy's result.
+    # Closed: it's a record to read, not a notice to act on.
+    db.add(KaisenInbox(build_id=b.id, kind="deploy", status="closed",
+                       text="Deployment started from the build page. Follow it on App health."))
+    db.commit()
     return _detail(db, b, request)
 
 
