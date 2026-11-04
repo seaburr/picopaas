@@ -36,5 +36,8 @@
     "typescript-eslint": "8.72.1",
     "vite": "^8.3.5",
     "vue-tsc": "^3.3.13"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }
