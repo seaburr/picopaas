@@ -100,7 +100,7 @@ Next: re-pin the runtime image so generated tests report; run-level undo and dif
 8. Per-app CPU/memory history on the app detail page — DONE.
 
 ## Backlog (free, common on other PaaS)
-- **Second-region backup copy (request 0008, deferred by Chas 2026-10-24).** Replicate `picopaas-backups` to a bucket in another
+- **Second-region backup copy (deferred 2026-10-24).** Replicate `picopaas-backups` to a bucket in another
   region (SFO3/TOR1/AMS3) so backups survive an ATL1 loss. About $0 inside the Spaces allowance. Not now.
 - **Scale-to-zero on idle (item 7, deferred 2026-10-20).** Sleeping idle apps to 0 replicas raises density
   (free capacity), but *transparent* wake-on-request needs an activator in the request path
@@ -132,8 +132,8 @@ Next: re-pin the runtime image so generated tests report; run-level undo and dif
 ## Persistent volumes (block storage): backend built, disabled (Chas, 2026-10-22)
 **Status 2026-10-23:** the backend is implemented behind `VOLUMES_ENABLED` (default off): `resources.volume` in the API and
 spec, PVC + `Recreate` + `fsGroup`, single replica enforced, ResourceQuota, grow-only admin override (1 to 10 GiB),
-`VOLUMES_MAX_TOTAL` capacity cap, RBAC for namespaced PVCs. Nothing is provisioned until `docs/requests/0007` is approved
-and the flag is turned on. Still open: frontend UI, snapshot backups, pentest pass, usage (`statfs`) in the health views.
+`VOLUMES_MAX_TOTAL` capacity cap, RBAC for namespaced PVCs. Nothing is provisioned until
+the flag is turned on. Still open: frontend UI, snapshot backups, pentest pass, usage (`statfs`) in the health views.
 Detaching is intentionally not supported (delete the app). The original plan follows.
 Today an app's only disk is its 250 MB scratch disk, which is wiped on every restart. Many self-hosted apps
 expect a persistent folder: SQLite apps (Uptime Kuma, Vaultwarden), n8n's user folder (binary data, community
@@ -159,8 +159,7 @@ volume per app.
   binary data and community nodes, not that.
 
 ## Managed PostgreSQL support: shipped 2026-10-22
-Per-app PostgreSQL databases (`resources.db_engine: pg`) now run alongside MySQL on a managed `picopaas-pg-nyc3` cluster. Original design notes follow. Full feasibility, protection-by-protection
-mapping, quota design, cost and the "ditch MySQL?" analysis: [docs/requests/0006-postgresql-support.md](requests/0006-postgresql-support.md).
+Per-app PostgreSQL databases (`resources.db_engine: pg`) now run alongside MySQL on a managed `picopaas-pg-nyc3` cluster. Original design notes follow.
 - Every isolation protection (per-app DB+role, `REVOKE ... FROM PUBLIC`, TLS, egress netpol, connection cap, rotation) maps
   cleanly to Postgres. The **50 MB size quota is the hard part**: no native cap and the tenant role owns its objects, so
   the recommended design is a two-stage hybrid (read-only default + session kill, then CONNECT lockout), weaker than

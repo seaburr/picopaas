@@ -77,16 +77,16 @@ no-op (the procedure sets the default at creation), so admin overrides are not a
 One Spaces subscription covers the platform bucket and one bucket plus key per blob-storage app (ATL1). DO limits an
 account to 100 buckets, so roughly 100 blob-storage apps is the wall (raising it is a support request). Credentials for
 provisioning (`SPACES_ACCESS_KEY_ID`, `SPACES_SECRET_ACCESS_KEY`) live in `picopaas-env`. Credential theft from Spaces is
-out of scope (request 0002).
+out of scope.
 
-Backups (request 0008 phase 1, enabled 2026-10-23): a dedicated bucket `picopaas-backups` in the same ATL1 Spaces subscription ($0 extra; counts toward the 100-bucket limit), created by bootstrap if missing, restic repos under `backups/`. The second-region bucket from request 0008 is deferred, so a regional ATL1 outage or loss of the Spaces account takes backups too. **Key**: decided 2026-10-23 to start on the platform Spaces key, on condition it is replaced by a bucket-scoped key before volume backups run in tenant namespaces. Bootstrap now does that: `BACKUP_ACCESS_KEY_*` are a Spaces key named `picopaas-backups-scoped-<hex>` granted `readwrite` on `picopaas-backups` only (created via the DO API, secret kept only in `picopaas-env`, reused on re-runs, `rotate_backup_key` input to rotate, superseded keys revoked after rollout). A leaked backup credential reaches the backup bucket (integrity and availability of repos; contents stay encrypted with per-app restic passwords), no tenant bucket and no other Spaces bucket.
+Backups (enabled 2026-10-23): a dedicated bucket `picopaas-backups` in the same ATL1 Spaces subscription ($0 extra; counts toward the 100-bucket limit), created by bootstrap if missing, restic repos under `backups/`. A second-region bucket is deferred, so a regional ATL1 outage or loss of the Spaces account takes backups too. **Key**: decided 2026-10-23 to start on the platform Spaces key, on condition it is replaced by a bucket-scoped key before volume backups run in tenant namespaces. Bootstrap now does that: `BACKUP_ACCESS_KEY_*` are a Spaces key named `picopaas-backups-scoped-<hex>` granted `readwrite` on `picopaas-backups` only (created via the DO API, secret kept only in `picopaas-env`, reused on re-runs, `rotate_backup_key` input to rotate, superseded keys revoked after rollout). A leaked backup credential reaches the backup bucket (integrity and availability of repos; contents stay encrypted with per-app restic passwords), no tenant bucket and no other Spaces bucket.
 
 ## DNS and domain
 
 The domain `picopaas.xyz` is a DO DNS domain. `bootstrap` upserts only the A records `*` and `picopaas` to the load
 balancer IP; TXT and every other record is never touched (leave Terraform `wildcard_lb_ip` empty). Platform host:
 `platform.picopaas.xyz`; the Ghost blog app uses the fixed host `blog.picopaas.xyz`. The old domain
-`raisehellpraisedale.xyz` was retired on 2026-10-21 (request 0004). The bootstrap check
+`raisehellpraisedale.xyz` was retired on 2026-10-21. The bootstrap check
 `doctl compute domain records list picopaas.xyz` fails unless the domain is added in DO under Networking > Domains.
 
 ## Cost
@@ -99,7 +99,7 @@ new paid resource go through `docs/requests/`.
 
 `MAX_NODES` (2) is set at bootstrap and is display-only; the real cap is `max_nodes` in Terraform.
 
-## Persistent volumes (request 0007, enabled 2026-10-23)
+## Persistent volumes (enabled 2026-10-23)
 
 `VOLUMES_ENABLED=1` is set at bootstrap in `picopaas-env`. Apps that ask for `resources.volume` get one RWO PVC on
 StorageClass `do-block-storage` (DOKS default, `dobs.csi.digitalocean.com`, reclaimPolicy Delete, allowVolumeExpansion

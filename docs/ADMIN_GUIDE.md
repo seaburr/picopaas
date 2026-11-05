@@ -69,7 +69,7 @@ required.
 | `METRICS_TOKEN` | Bearer token for `GET /metrics` (Prometheus). Unset: only a platform-admin browser session can read it. |
 | `CLOUD_PROVIDER` | Which provider set the platform builds: `digitalocean` (default), `generic` (self-hosted Garage object store, in-cluster databases; see `deploy/generic/README.md`), or `aws` / `gcp` (accepted, not implemented yet). Anything else stops startup. |
 
-**Persistent volumes** (off by default; a new paid resource, see `docs/requests/0007-persistent-volumes.md`)
+**Persistent volumes** (off by default; a new paid resource)
 
 | Variable | Purpose |
 |---|---|
@@ -195,7 +195,7 @@ automatically at start from the `BOOTSTRAP_*` variables.
   data size.
 - **Egress:** tenant NetworkPolicies allow the network of the database server(s) on the server port (see Security).
 - **Managed-provider quirks:** DigitalOcean managed MySQL defaults to `sql_require_primary_key=ON`, which breaks
-  migrations that create keyless tables (Ghost 6). Terraform turns it off for our cluster (`infra/database.tf`, request 0009);
+  migrations that create keyless tables (Ghost 6). Terraform turns it off for our cluster (`infra/database.tf`);
   other providers may still enforce it, so choose PostgreSQL there for such apps.
 - **In-cluster MySQL:** supported (`MYSQL_EGRESS_MODE=in-cluster`, `MYSQL_ADMIN_USE_PROCEDURES=1`); the manifests are in
   `deploy/mysql/`, including a nightly dump job. Prefer a managed server if your provider has one.
@@ -455,7 +455,7 @@ Apply `deploy/platform/rbac.yaml` before enabling (it adds namespaced `persisten
 
 Off by default (`BACKUPS_ENABLED=0`): with the flag off nothing runs, no namespace exists and every backup endpoint says so.
 Backs up **databases** (MySQL and PostgreSQL) and **blob storage buckets** of apps that have them, and gives admins a restore
-helper (below), owner downloads and **volume backups** (below, behind `BACKUP_KEY_SCOPED`). **One backup is one set**: a manual click, a scheduled slot or a final backup creates a `backup_sets` row and one run per kind (database, blob storage, volume); the owner sees, downloads (one `.tar.gz` package) and deletes the set as one. **Scheduled backups are opt-in per app** (`BACKUP_DEFAULT_ENABLED`, default `0`; set `1` to make new apps default to on): owners enable them with `PATCH /apps/{id}/backups` / `picopaas backup enable`, and an owner can always run a manual backup. Existing config rows keep their value. Design: `docs/design/backups.md`; paid-resource request: `docs/requests/0008-backups.md`.
+helper (below), owner downloads and **volume backups** (below, behind `BACKUP_KEY_SCOPED`). **One backup is one set**: a manual click, a scheduled slot or a final backup creates a `backup_sets` row and one run per kind (database, blob storage, volume); the owner sees, downloads (one `.tar.gz` package) and deletes the set as one. **Scheduled backups are opt-in per app** (`BACKUP_DEFAULT_ENABLED`, default `0`; set `1` to make new apps default to on): owners enable them with `PATCH /apps/{id}/backups` / `picopaas backup enable`, and an owner can always run a manual backup. Existing config rows keep their value. Design: `docs/design/backups.md`.
 
 How it works: a leader-only scheduler job (`BACKUP_TICK_SECONDS`, default 60) queues a run per app at its daily slot
 (`BACKUP_SCHEDULE_HOUR` UTC plus a per-app minute offset) and starts a Kubernetes Job in namespace `picopaas-backup`
@@ -472,7 +472,7 @@ Controls (Admin > Settings, `backup_*` keys; env vars are only the defaults): `b
 - **Deploy order.** The app image and `BACKUP_IMAGE` must move together: an export Job on an older backup image fails with "the repository is not configured" and the owner is told the platform tooling is out of date. Re-pin `BACKUP_IMAGE` (run the backup-image workflow) before or with the app rollout.
 
 Enable:
-1. Create the bucket and a key limited to it (request 0008; keep it separate from the tenant Spaces key and the platform
+1. Create the bucket and a key limited to it (keep it separate from the tenant Spaces key and the platform
    admin key). Put these in `picopaas-env`: `BACKUPS_ENABLED=1`, `BACKUP_BUCKET`, `BACKUP_REGION` (or `BACKUP_ENDPOINT`),
    `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY`. With any of bucket, endpoint or key missing the feature is
    "misconfigured": the API answers 503, nothing runs, and the Health and `/admin/backups` pages say so. The tenant

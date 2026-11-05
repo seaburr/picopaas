@@ -16,7 +16,7 @@ GCS through its XML API with HMAC keys. **Azure is deferred** because Blob Stora
 **Which cloud is tested first depends on where free credits are available** (Chas, 2026-11-01). So P1-P3 stay
 cloud-neutral, and the generic target (P2) is the proof that the seams are right before any credits are spent.
 
-**Status:** P1 done 2026-11-01. P2 (generic target: Garage + PG + MySQL) runs locally; the kind-based CI e2e is the remaining item (see "P2 status and follow-ups"). P4 (AWS) waits on request [0010](requests/0010-aws-test-environment.md).
+**Status:** P1 done 2026-11-01. P2 (generic target: Garage + PG + MySQL) runs locally; the kind-based CI e2e is the remaining item (see "P2 status and follow-ups"). P4 (AWS) waits on approval of its test environment.
 
 **Non-goals for now:** moving picopaas.xyz off DigitalOcean, running across several clouds at once, and
 spending money on AWS or GCP before a request in `docs/requests/` is approved (see Cost).

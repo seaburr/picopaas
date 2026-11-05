@@ -84,7 +84,7 @@ Rules that apply to every spec:
 | Verified | live, 2026-10-25 |
 
 > **Ghost 6.** Migration 6.61 creates a table without a primary key, so it needs the managed MySQL `sql_require_primary_key`
-> setting off (request 0009). Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms,
+> setting off. Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms,
 > outbound webmentions and update check off, 2-minute frontend cache). Upgrade runbook and rehearsal notes:
 > `examples/ghost/README.md`.
 
@@ -1468,7 +1468,7 @@ Not every popular app runs on PicoPaaS, and we'd rather tell you up front than h
 Two things define the shape of what fits: **images must run as a non-root numeric UID**, and the managed
 database is shared, so its settings are platform-wide. DigitalOcean's MySQL used to enforce
 `sql_require_primary_key=ON`; Ghost 6 (migration 6.61 creates a table without a primary key) and Wiki.js both
-collide with that, so the platform setting is turned off for our cluster (request 0009). We conform to the apps rather than
+collide with that, so the platform setting is turned off for our cluster. We conform to the apps rather than
 patch them. Here's where that landed for two apps we tried.
 
 ### Also ruled out for now
@@ -1496,7 +1496,7 @@ run here.
 [Wiki.js](https://js.wiki/) came much closer than most. It runs **non-root** out of the box and even does TLS to
 MySQL cleanly with a CA-verified connection (`DB_SSL_CA`). The only wall was in the database: its **first schema
 migration creates a table without a primary key**, and DigitalOcean's managed MySQL used to reject that
-(`sql_require_primary_key=ON`). That setting is being turned off cluster-wide (request 0009), so the blocker should be
+(`sql_require_primary_key=ON`). That setting is being turned off cluster-wide, so the blocker should be
 gone. Wiki.js was re-tested on PostgreSQL on 2026-11-01 and works; see the recipe above.
 Note the flip side: once the setting is off, tenants can create tables without primary keys, so apps no longer
 get that guarantee from the server.
@@ -1598,7 +1598,7 @@ container, port above 1024, no outbound SMTP, 384 MB RAM, 200m CPU default (over
 Superseded by "Wiki.js 2 on PostgreSQL" above (live-tested 2026-11-01). Kept for the research notes.
 
 **Why it was rejected:** its first schema migration creates a table without a primary key, and managed MySQL had
-`sql_require_primary_key=ON` (see "Apps we evaluated" above and request 0009). Nothing else blocked it: it runs non-root and does
+`sql_require_primary_key=ON` (see "Apps we evaluated" above). Nothing else blocked it: it runs non-root and does
 TLS with `DB_SSL_CA`.
 
 **What changed:** PostgreSQL is the officially recommended Wiki.js database and we now offer it (so the MySQL primary-key

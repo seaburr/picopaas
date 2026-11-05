@@ -1,6 +1,6 @@
 # PicoPaaS Architecture
 
-Status: hosting approved (managed variant, see `docs/requests/0001-core-infra.md`). This is a design record: §1 and `docs/deployment/` have the current numbers.
+Status: hosting approved (managed variant). This is a design record: §1 and `docs/deployment/` have the current numbers.
 Cost figures in §1 were checked on 2026-10-20.
 
 > **2026-10-19 cap change:** Chas lowered the platform caps to bucket 100 MB (was 250), DB 50 MB (was 100), image 256 MB
@@ -10,7 +10,7 @@ Cost figures in §1 were checked on 2026-10-20.
 ## 1. Hosting cost
 
 Prices checked 2026-10-20 (list prices, USD, before tax). History: this section used to plan a "lean" ~$30/mo setup
-(no load balancer, in-cluster MySQL). Chas approved the managed variant instead (request 0001, 2026-10-19), so the
+(no load balancer, in-cluster MySQL). Chas approved the managed variant instead (2026-10-19), so the
 numbers below are what actually runs. `infra/variables.tf` is the source of truth for sizes.
 
 | Item | What runs | Monthly |
@@ -125,8 +125,8 @@ staying public is fine for now. `control_plane_allowed_cidrs` exists in Terrafor
 - **Spaces: as private as DO allows on this budget.** The endpoint is inherently public (DO has no VPC
   endpoint for Spaces). Buckets are private and keys are per-bucket. Restricting by source IP would need
   bucket policies, which DO doesn't support with per-bucket keys, *and* a static egress IP (a DO NAT gateway,
-  extra monthly cost). Revisit if DO ships VPC-only Spaces access. Credential theft is out of scope
-  (request 0002, option A), and there's a credential-rotation action in the UI.
+  extra monthly cost). Revisit if DO ships VPC-only Spaces access. Credential theft is out of scope,
+  and there's a credential-rotation action in the UI.
 - **Nodes:** no inbound except 80/443, which come through the load balancer.
 - Pentest items 8 and 10 (use of stolen creds) are informational, not blockers.
 
@@ -238,7 +238,7 @@ Two replicas run (HA, 2026-10-19), so deploys and node drains don't take the API
 ## 4. Decisions on earlier open questions
 New questions go in `docs/QUESTIONS.md`. Decided so far:
 1. Hosting variant: managed MySQL and a load balancer (approved 2026-10-19), not the in-cluster "lean" setup.
-2. Domain: the throwaway `picopaas.xyz` (request 0003); never touch TXT records.
+2. Domain: the throwaway `picopaas.xyz`; never touch TXT records.
 3. Region: NYC3 for compute and MySQL (ATL1 had no DOKS capacity, 2026-10-19); Spaces stays in ATL1. The node is
    `s-2vcpu-4gb-amd` ($28/mo, confirmed from the DO bill 2026-10-20).
 4. Autoscaler `max_nodes = 2` (approved), so the worst case is +$28/mo over the static setup.

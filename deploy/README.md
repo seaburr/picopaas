@@ -1,10 +1,8 @@
 # deploy/
 
 Plain YAML manifests + two third-party Helm charts (Traefik, cert-manager — values files
-only, no templating of our own stuff in Helm). Nothing here has been `kubectl apply`d or `helm
-install`ed against real infra; per `infra-ops` rules that requires an APPROVED `docs/requests/`
-entry and this chunk didn't create one (no new paid resource — LB cost is already covered by
-`use_load_balancer` in `infra/variables.tf` / request 0001).
+only, no templating of our own stuff in Helm). Applying a new paid resource against real infra needs an
+approved entry in `docs/requests/` first (`infra-ops` rules).
 
 ## Automated bring-up (managed MySQL + LB variant)
 
@@ -18,13 +16,13 @@ below remain the reference (and the path for the in-cluster / no-LB variants).
 
 ## Bring-up runbook (in order)
 
-Steps marked **[0001]** wait on Chas's request-0001 checklist (approval/variant, DO token, Spaces key,
+Steps marked **[setup]** need something from the platform owner (approval/variant, DO token, Spaces key,
 Terraform Cloud workspace, GHCR package public). Everything else is already in the repo.
 
-1. **Terraform apply [0001: approval + variant + tokens]** - from `infra/`, with `TF_TOKEN_app_terraform_io`
-   set (or via Terraform Cloud UI). `terraform apply` only after request 0001 says APPROVED. Variant flags:
+1. **Terraform apply [setup: approval + variant + tokens]** - from `infra/`, with `TF_TOKEN_app_terraform_io`
+   set (or via Terraform Cloud UI). `terraform apply` only after the approved request. Variant flags:
    `use_load_balancer`, `use_managed_mysql`.
-2. **Kubeconfig [0001: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-nyc3`.
+2. **Kubeconfig [setup: DO token]** - `doctl kubernetes cluster kubeconfig save picopaas-nyc3`.
 3. **Traefik** (helm, Ingress API only; install the chart's CRDs, needed for the default TLSStore)
    ```
    helm repo add traefik https://traefik.github.io/charts && helm repo update
@@ -72,7 +70,7 @@ Terraform Cloud workspace, GHCR package public). Everything else is already in t
    kubectl apply -f deploy/platform/deployment.yaml -f deploy/platform/service.yaml -f deploy/platform/ingress.yaml
    ```
    After this, `deploy.yml` (GitHub Actions) rolls new images out automatically once `DIGITALOCEAN_TOKEN` exists.
-   The GHCR package must be public **[0001]** or the pull fails.
+   The GHCR package must be public **[setup]** or the pull fails.
 8. **DNS**
    - LB variant: Terraform owns the wildcard A record (step 3). `picopaas` is covered by the wildcard.
    - No-LB variant: install dns-sync, which keeps `*` and `picopaas` A records on the node IP(s):

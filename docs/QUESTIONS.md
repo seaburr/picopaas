@@ -7,6 +7,8 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Block `.env` and similar probes for every app? (2026-11-05)** Recommended: one catch-all Ingress in `deploy/` that sends a short list of paths to the existing error-pages service, so they get a 404 before reaching any app. No new cost. Apps that really serve such paths (Forgejo shows repo files like `/user/repo/src/branch/main/.env`) get a per-app opt-out. Please answer: build it? Default on for all apps? (I recommend yes to both.)
+
 
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below

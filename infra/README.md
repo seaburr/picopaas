@@ -1,12 +1,12 @@
 # PicoPaaS infra (Terraform, DigitalOcean)
 
-Status: **written, not applied.** Nothing here may run `terraform apply` or any `doctl`/`kubectl`
-create command against real infra until `docs/requests/0001-core-infra.md` says APPROVED by Chas.
+New paid resources need an approved entry in `docs/requests/` before any `terraform apply` or
+`doctl`/`kubectl` create command against real infra.
 See `.claude/agents/infra-ops.md` for the rule.
 
 ## What this is
 
-Terraform for request 0001 (`docs/requests/0001-core-infra.md`): a DOKS cluster, a platform Spaces
+Terraform for the core infrastructure: a DOKS cluster, a platform Spaces
 bucket, optional managed MySQL, and the DNS/firewall wiring needed depending on two flags:
 
 - `use_managed_mysql` (default `true`) — managed DO MySQL vs. in-cluster MySQL (the in-cluster
@@ -49,12 +49,12 @@ export TF_VAR_use_load_balancer=true
 
 cd infra
 terraform init
-terraform plan   # review only — do not apply without an APPROVED request 0001
+terraform plan   # review only — do not apply without an approved request
 ```
 
 ## Cost per flag combination
 
-From `docs/requests/0001-core-infra.md` / `docs/ARCHITECTURE.md` §1, ATL1, static monthly cost
+From `docs/ARCHITECTURE.md` §1, ATL1, static monthly cost
 (excludes per-app marginal cost, which is ~$0 for the first 8–10 apps then ~$2/app):
 
 | `use_managed_mysql` | `use_load_balancer` | Monthly | Notes |
@@ -101,7 +101,7 @@ actually ordering, and update this table once confirmed.
   API, since node IPs change on recycle/upgrade.
 
 - **Chas adds the domain in DO** (Networking > Domains) after moving the registrar nameservers to
-  `ns1/ns2/ns3.digitalocean.com` (request 0003). Terraform keeps it a data source, so `plan`/`apply`
+  `ns1/ns2/ns3.digitalocean.com`. Terraform keeps it a data source, so `plan`/`apply`
   fail until the domain exists in DO. Nothing here creates it.
 
 ## Validating locally (never applying)
@@ -115,5 +115,5 @@ terraform validate
 
 The `infra-ops` agent may run `fmt`/`init -backend=false`/`validate` locally. It must never run
 `terraform apply`, `terraform init` with the real backend against live state in an uncontrolled
-way, or any `doctl`/`kubectl` create command, unless `docs/requests/0001-core-infra.md` says
+way, or any `doctl`/`kubectl` create command, unless a request in `docs/requests/` says
 APPROVED.
