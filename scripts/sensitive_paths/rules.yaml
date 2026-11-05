@@ -1,0 +1,21 @@
+# Inputs for deploy/error-pages/sensitive-paths.yaml. After changing this file run: python scripts/sensitive_paths/build.py --write
+# Upstream: dotfile entries of OWASP CRS rules/restricted-files.data (see NOTICE). Its other entries are not used:
+# config.json, config.php, /package.json and the like are real paths of real apps.
+crsVersion: v4.30.0
+# CRS entries left out because the name is too generic to be sure no app uses it as a route or asset folder.
+skip:
+  - .cache/
+  - .cache/notify-osd.log
+  - .config/
+  - .settings/
+  - .tools/
+# Our own additions, as regex fragments that match one or more whole path segments, case-insensitively.
+extra:
+  - '\.env[^/]*'
+  - '\.bash_history'
+  - 'wp-config\.php[^/]*'
+  - 'id_(rsa|dsa|ecdsa|ed25519)'
+  - 'privkey\.pem'
+  - 'private\.(key|pem)'
+  - 'server\.key'
+  - '[^/]*\.(ppk|tfstate|tfvars)(\.[^/]*)?'

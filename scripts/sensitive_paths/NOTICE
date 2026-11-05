@@ -1,0 +1,4 @@
+crs-restricted-files.data is an unmodified copy of rules/restricted-files.data from the OWASP CRS project
+(https://github.com/coreruleset/coreruleset), licensed under the Apache License 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). The version is crsVersion in rules.yaml.
+deploy/error-pages/sensitive-paths.yaml is generated from a filtered subset of that file.

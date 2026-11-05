@@ -1,5 +1,6 @@
 """The edge block on /.env and similar paths: the rule in deploy/error-pages/sensitive-paths.yaml, its wiring, and the
 per-app opt-out. Traefik's behaviour itself was proven on a local cluster; these keep the rule and the opt-out from drifting."""
+import importlib.util
 import re
 from pathlib import Path
 
@@ -36,6 +37,34 @@ def test_rule_blocks(path):
 ])
 def test_rule_leaves_real_app_paths_alone(path):
     assert not _blocked(path)
+
+
+@pytest.mark.parametrize("path", [
+    "/.pgpass", "/.my.cnf", "/.mylogin.cnf", "/.kube/config", "/.terraform/x", "/.s3cfg", "/.bash_profile", "/backup.sql.gz",
+    "/a/dump.sql.tar", "/.oh-my-zsh/x", "/.htaccess", "/.secrets", "/.erlang.cookie", "/.gitlab-ci.yml", "/.aptitude/config",
+    "/.git;x/config", "/.env;x",
+])
+def test_rule_blocks_crs_entries(path):
+    assert _blocked(path)
+
+
+@pytest.mark.parametrize("path", [
+    "/.cache/x", "/.config/x", "/.settings/profile", "/.tools/x", "/settings", "/user/pass", "/sql.gz", "/manifest.json",
+    "/package.json", "/config.php", "/composer.json", "/robots.txt", "/sitemap.xml", "/favicon.ico", "/_nuxt/app.js",
+    "/.vite/x", "/.next/static/x", "/api/.status", "/profile", "/.profiles/x", "/.gitfoo", "/gitignore",
+])
+def test_rule_leaves_generic_names_alone(path):
+    assert not _blocked(path)
+
+
+def test_manifest_matches_its_generator():
+    spec = importlib.util.spec_from_file_location("sensitive_paths_build", ROOT / "scripts/sensitive_paths/build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    rules = yaml.safe_load(build.RULES.read_text())
+    assert build.build_manifest(build.DATA.read_text(), rules) == (ROOT / "deploy/error-pages/sensitive-paths.yaml").read_text()
+    assert int(RULE["metadata"]["annotations"][PRIORITY_KEY]) == build.PRIORITY
+    assert rules["crsVersion"] in (ROOT / "deploy/error-pages/sensitive-paths.yaml").read_text()
 
 
 def test_rule_is_a_hostless_catch_all_kubernetes_accepts():
