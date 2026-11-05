@@ -63,6 +63,7 @@ name: my-app
 image: ghcr.io/me/app:1.2
 port: 8080
 healthCheck: { enabled: true, path: /healthz }   # optional; off by default, path defaults to /healthz
+allowSensitivePaths: false                       # optional; true lets paths like /.env reach your app
 resources: { db: true, db_engine: pg, storage: false }   # db_engine: mysql (default) or pg; fixed once created
 env:
   LOG_LEVEL: info

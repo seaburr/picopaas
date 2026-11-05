@@ -7,8 +7,7 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Block `.env` and similar probes for every app? (2026-11-05)** Recommended: one catch-all Ingress in `deploy/` that sends a short list of paths to the existing error-pages service, so they get a 404 before reaching any app. No new cost. Apps that really serve such paths (Forgejo shows repo files like `/user/repo/src/branch/main/.env`) get a per-app opt-out. Please answer: build it? Default on for all apps? (I recommend yes to both.)
-
+- **Keep the sensitive-path rules current from OWASP CRS? (2026-11-05)** Today's list is hand-written. Recommended: a script builds it from the dotfile part of OWASP CRS `rules/restricted-files.data` (Apache-2.0, updated 2026-11-03) plus our additions, minus a skip list, and a scheduled job opens a PR when CRS releases, with CI tests guarding real app paths. No new runtime, RAM or cost. Build it? (I recommend yes.) Full WAF (Coraza) and IP banning (CrowdSec) are separate, bigger steps I'd leave for later.
 
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
@@ -75,6 +74,8 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- **Block `.env` and similar probes for every app? (2026-11-05)** Chas: yes, on by default. Ghost code patches removed, favicon documented, no version pin. Card-level actions stay icon-only.
 
 - [x] **Security review of Kaisen uploads (2026-11-03).** RESOLVED 2026-11-03 (Chas: "full send"): K79 embedded SVG bitmaps are re-encoded in the image pod (built, K79 FIXED); runtime P1b (nosniff, upload CSP, manifest check) built, needs image republish + re-pin. Details: docs/PENTEST.md K76 to K84. No HIGH/CRIT open; one MEDIUM (SVG CSS string-URL tracking beacon, K76) fixed. (a) K78: done, `sandbox` added to the SVG content CSP. (b) K79: embedded bitmaps inside SVG `<image>` are kept as-is (not re-encoded, not covered by the hash blocklist). Keep (simple) or strip/re-encode them (more code in the image pod)? Before enabling uploads on any project we still need: MySQL `max_allowed_packet` check (16 MiB), peak-RSS measurement on the imgproc pod, backup-size estimate.
 - [x] **App health / Settings text labels (2026-11-03, UX sweep P2).** The two pages are linked only by gear/heart-pulse icons;

@@ -220,6 +220,8 @@ Statuses: `pending, deploying, running, error, suspended, deleted`.
 | `health_check_timeout_seconds` | int or null | `null` | 1 to 90. Probe timeout for both probes (null = readiness 3 s, liveness 5 s). The probe period is raised to at least the timeout. In a YAML spec: `healthCheck.timeoutSeconds`. |
 | `auto_update` | bool | `true` | redeploy when the image tag changes (ignored for digest refs) |
 
+`allow_sensitive_paths` (bool, default `false`, also on `AppUpdate` and `AppOut`): lets paths like `/.env` reach the app; see USER_GUIDE.md "Sensitive paths are blocked".
+
 `AppUpdate`: optional `name, image, port, env, health_check_enabled, health_check_path, health_check_timeout_seconds (null resets), auto_update` (same constraints).
 `want_db`, `db_engine` and `want_storage` cannot be changed (and `replicas` is admin-only). `env`, when sent, replaces the whole list; send a secret back with
 value `********` to keep it.
@@ -249,7 +251,7 @@ Request: `{"spec": "<YAML, max 64KB>", "secrets": {"NAME": "value"}}` (`secrets`
 spec's `secrets` list).
 
 Spec fields: `apiVersion: picopaas/v1`, `name`, `image`, `port` (1024 to 65535), `resources{db, db_engine (mysql|pg), storage, volume{sizeGi (1 to 10, default 1), mountPath (default /data)}}`,
-`healthCheck{enabled, path, timeoutSeconds (1 to 90)}`, `env{}`, `secrets[]`.
+`healthCheck{enabled, path, timeoutSeconds (1 to 90)}`, `allowSensitivePaths` (bool), `env{}`, `secrets[]`.
 
 Response: 200 `App` plus `created: bool` (200 for both create and update). The app is matched by
 `(you, spec.name)`; if it exists it is updated, declaratively: env, secrets and health check become exactly what

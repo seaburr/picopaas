@@ -167,6 +167,7 @@ secrets:
 | `resources.db_engine` | string | no | `mysql` | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a blob storage bucket. Same removal rule. |
 | `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
+| `allowSensitivePaths` | boolean | no | `false` | Lets paths like `/.env` reach your app. See "Sensitive paths are blocked". |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
 | `healthCheck.timeoutSeconds` | integer | no | blank | 1 to 90. Probe timeout for both probes; blank uses the platform values (see section 8). `periodSeconds` is raised to at least the timeout. |
 | `healthCheck.path` | string | no | `/healthz` | Starts with `/`, at most 255 characters. Allowed: letters, digits and `._~!$&()*+,;=:@/%-`. No `..` segments (also `%2e%2e`), spaces or quotes. |
@@ -174,6 +175,14 @@ secrets:
 | `secrets` | list of strings | no | `[]` | Names only; values never go in the file. No duplicates, and a name may not also be in `env`. Names follow the same key rule as `env`. |
 
 Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
+
+### Sensitive paths are blocked
+
+Bots scan every website for files like `/.env` and `/.git/config`, hoping to find passwords. PicoPaaS answers 404 for these paths before the request reaches your app, on every hostname including custom domains. The block covers `.env*`, `.git`, `.svn`, `.hg`, `.aws`, `.ssh`, `.kube`, `.docker`, `.htpasswd`, `.npmrc`, `.pypirc`, `.netrc`, `.bash_history`, `wp-config.php`, private key names such as `id_rsa`, and Terraform state and variable files, at any folder depth.
+
+If your app really serves paths like these, such as a Git host showing repository files, turn on **Serve sensitive paths** in the app's settings (`allowSensitivePaths: true` in a spec, `allow_sensitive_paths` in the API). The Forgejo template does this for you.
+
+This is a safety net, not a guarantee: don't put secrets in files your app serves. Use env vars and secrets instead.
 
 `project` (optional string): the slug of a project you belong to, see section 15. Default: your personal project.
 
@@ -633,6 +642,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 | `OSError: No username set in the environment` | A non-root image running as a numeric UID with no passwd entry can hit this from `getpass` on Python 3.13+ (PyMySQL triggers it on import). Set `ENV USER=app HOME=/tmp` in your Dockerfile, or pass values explicitly. |
 | `User ... has exceeded the 'max_user_connections' resource` | MySQL: your pool is bigger than the per-app connection cap (10). Lower the pool's max size. |
 | PostgreSQL: `too many connections for role "app_<id>"` | Your pool is bigger than the per-app role's `CONNECTION LIMIT` (5). Lower the pool's max size. |
+| A URL like `/.env` or `/.git/config` answers 404 even though your app has it | The platform blocks these paths. See "Sensitive paths are blocked". |
 | MySQL: `Table must have a primary key` (`sql_require_primary_key`) | Should not happen on PicoPaaS: the managed MySQL no longer requires primary keys. If you see it, tell an admin; a different MySQL server may still enforce it. |
 | SMTP connection times out | SMTP is blocked on purpose. Use a mail provider's HTTPS API. |
 | "Your saved secrets can't be read" | The platform's encryption key changed. Re-enter your secret values and save, or rotate the credentials. |

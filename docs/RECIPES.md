@@ -84,8 +84,7 @@ Rules that apply to every spec:
 | Verified | live, 2026-10-25 |
 
 > **Ghost 6.** Migration 6.61 creates a table without a primary key, so it needs the managed MySQL `sql_require_primary_key`
-> setting off. Ghost 5 is retired. The image carries performance patches (image-size probe timeout 400 ms,
-> outbound webmentions and update check off, 2-minute frontend cache). Upgrade runbook and rehearsal notes:
+> setting off. Ghost 5 is retired. **Upload a site icon or logo in Ghost Admin (Settings > Design) right after the first start; without one, every page takes about 5 s.** The image turns the update check off and sets a 2-minute frontend cache. Upgrade runbook and rehearsal notes:
 > `examples/ghost/README.md`.
 
 ### Deploy on PicoPaaS
@@ -714,6 +713,8 @@ secrets:   # names only; set the values in the dashboard or API
 
 ## Forgejo (git forge)
 
+> The template sets `allowSensitivePaths: true`, because Forgejo shows repository files such as `.env`. Everything in Forgejo is then served without the platform block on paths like `/.env`.
+
 [Forgejo](https://forgejo.org/) is a git forge with issues and pull requests. Git works over HTTPS only (no SSH), with no email and no Actions.
 
 | | |
@@ -734,6 +735,7 @@ apiVersion: picopaas/v1
 name: forgejo
 image: codeberg.org/forgejo/forgejo:17.0.1-rootless
 port: 3000
+allowSensitivePaths: true
 healthCheck: { enabled: true, path: /api/healthz }
 resources:
   db: true

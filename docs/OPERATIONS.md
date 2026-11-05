@@ -47,6 +47,16 @@ When the API has no ready pods, Traefik would answer with its bare "no available
 - Test (rollout first, then): `kubectl -n picopaas-system scale deployment/picopaas --replicas=0`; `curl -si https://platform.picopaas.xyz/ | head -20` must show `HTTP/2 503` and the PicoPaaS page, in a browser too; then `scale --replicas=2` (the next deploy also restores it). Single-replica kill: `kubectl delete pod -l app=picopaas` leaves the other replica serving. Error pages themselves: `kubectl -n picopaas-system port-forward svc/error-pages 8081:80` then open `/platform.html` and `/app.html`.
 - If the platform host ever shows a 404 instead of the app: the Middleware is missing; `kubectl -n picopaas-system get middleware` and apply `deploy/error-pages/error-pages.yaml`.
 
+## Sensitive paths
+
+Traefik answers 404 for paths that hold secrets (`/.env*`, `/.git`, `/.aws`, `/.ssh`, `/wp-config.php`, private key names, `*.tfstate` and others) on every host, including custom domains and the platform itself, so scanners never reach an app. POST, PUT and DELETE get a 501, and they don't reach the app either.
+
+- The rule is one Ingress with no host: `deploy/error-pages/sensitive-paths.yaml`. Its regex matches a whole path segment at any depth, ignoring case. It is applied by `deploy.yml` and `bootstrap.yml`, and the requests go to the `error-pages` service.
+- Add a path: edit the regex and the path tables in `tests/test_sensitive_paths.py`. Only add names no real app serves: this runs in front of every app.
+- An app that really serves such paths turns on **Serve sensitive paths** in its settings (`allow_sensitive_paths`, spec `allowSensitivePaths`). Its Ingress then gets a higher `router.priority`, so its own route wins on its hosts. The Forgejo template does this.
+- Test: `curl -si https://<any-app-host>/.env` answers 404 with the plain busybox page. If `error-pages` is down, these paths answer 503 and still don't reach the app.
+- Limit: this stops known paths only. A secret at a path not on the list is still served. Kaisen's static runtime has its own broader guard (docs/design/kaisen.md 16.10).
+
 ## Reading platform logs
 
 Every platform line carries a UTC timestamp, level, logger, thread and the call site (`app/logging_setup.py`):
