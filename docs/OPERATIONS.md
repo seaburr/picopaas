@@ -70,6 +70,8 @@ The `frontend` CI job runs `npm run lint` (ESLint 9 flat config: eslint-plugin-v
 
 ## CI coverage floor
 
+Three CI jobs run live-server tests that `backend-tests` skips: `mysql-integration`, `postgres-integration` (PostgreSQL 16 and 17, TLS only, non-superuser admin; `tests/test_postgres_admin.py`) and `garage-integration` (the ObjectStore contract and generic backups; a skipped test fails the job). Run them locally with `scripts/dev/postgres-up.sh` or `scripts/dev/garage-up.sh`, then source the env file each one prints. Spaces has no CI job.
+
 The `backend-tests` CI job runs pytest with `--cov=app` and fails below `fail_under` in `.coveragerc` (93%; measured 95.25% on 2026-11-02, rule: measured total rounded down, minus 2). To raise it, run `python -m pytest tests/ -q --cov=app --cov-report=term`, apply the same rule to the new total and edit `.coveragerc`. The `mysql-integration` subset runs without `--cov`, so the floor does not apply to it.
 
 ## Kaisen image unit (kaisen-imgproc)

@@ -48,3 +48,4 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/e2e/.tmp/
 .garage-dev/
+.postgres-dev/

@@ -93,8 +93,8 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      # MYSQL_ADMIN_URL is unset here, so tests/test_mysql_admin.py
-      # (@pytest.mark.mysql) self-skips at module level — see mysql-integration below.
+      # MYSQL_ADMIN_URL, POSTGRES_ADMIN_URL and GARAGE_TEST_* are unset here, so the live tests self-skip:
+      # see mysql-integration, postgres-integration and garage-integration below.
       # Coverage floor (fail_under in .coveragerc) is enforced here only.
       # 3 workers: the cap agreed with Chas, on a 4-core runner. Tests must not depend on run order or shared state.
       - run: python -m pytest tests/ -q -n 3 --cov=app --cov-report=term-missing:skip-covered
@@ -164,6 +164,47 @@ jobs:
           MYSQL_TEST_ROOT_URL: mysql://root:test@127.0.0.1:3306
           MYSQL_ADMIN_USE_PROCEDURES: "1"
         run: python -m pytest tests/ -m mysql -q
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 16: the generic target (deploy/generic/data/postgres.yaml). 17: production (infra/variables.tf postgres_version).
+        postgres: ["16", "17"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Not a service container: the server needs TLS certificates and a non-superuser admin, like a managed one.
+      - run: scripts/dev/postgres-up.sh
+        env:
+          POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+      # -m postgres exits non-zero if the module skipped itself, because nothing else is selected.
+      - run: |
+          source .postgres-dev/postgres.env
+          python -m pytest tests/ -m postgres -q
+
+  garage-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: scripts/dev/garage-up.sh
+      - name: ObjectStore contract and backups on real Garage (a skipped test fails the job)
+        shell: bash
+        run: |
+          set -o pipefail
+          source .garage-dev/garage.env
+          python -m pytest tests/test_object_store_contract.py tests/test_backup_target_generic.py -q -rs | tee pytest.out
+          if grep -q '^SKIPPED' pytest.out; then echo "::error::live Garage tests were skipped"; exit 1; fi
 
   frontend:
     runs-on: ubuntu-latest

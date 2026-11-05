@@ -51,6 +51,8 @@ uvicorn app.main:app --reload
 source .venv/bin/activate
 python -m pytest tests/ -v
 ruff check .   # lint (config ruff.toml; also runs in CI with actionlint and shellcheck)
+# live-server tests (also CI jobs): scripts/dev/postgres-up.sh && source .postgres-dev/postgres.env && pytest tests/ -m postgres
+#                                   scripts/dev/garage-up.sh && source .garage-dev/garage.env && pytest tests/test_object_store_contract.py
 
 # migrations (DATABASE_URL / SECRET_KEY / FERNET_KEY come from the environment, see app/config.py)
 source .venv/bin/activate
