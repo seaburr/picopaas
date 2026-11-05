@@ -34,20 +34,7 @@ RUN set -eux; \
     cp -a content.orig/. content/; \
     # Only content/ must be writable by the runtime UID. chown of the WHOLE tree would duplicate all of
     # Ghost into a second image layer (~+100 MB); the code dirs stay root-owned and world-readable.
-    chown -R 10001:10001 /var/lib/ghost/content; \
-    # Perf patches (each fails the build if Ghost moves the anchor). Pods cannot reach their own public URL
-    # (LB hairpin, docs/PENTEST.md #11), and Ghost probes the site's own favicon/logo URL on EVERY page
-    # render, so each render waited out the 5000 ms image-size timeout (overrides.json cannot be set via env).
-    # Dimensions are only decoration (structured data), so fail fast: 400 ms.
-    C=/var/lib/ghost/current/core; \
-    grep -q '"getImageSizeTimeoutInMS": 5000' $C/shared/config/overrides.json; \
-    sed -i 's/"getImageSizeTimeoutInMS": 5000/"getImageSizeTimeoutInMS": 400/' $C/shared/config/overrides.json; \
-    grep -q '"getImageSizeTimeoutInMS": 400' $C/shared/config/overrides.json; \
-    # Outbound webmentions (sent on publish) fetch every linked URL with a 15 s timeout x3 retries; links to
-    # other apps on this platform hang on the same hairpin. Receiving webmentions is unaffected.
-    grep -q "isEnabled: () => !settingsCache.get('is_private')," $C/server/services/mentions/service.js; \
-    sed -i "s/isEnabled: () => !settingsCache.get('is_private'),/isEnabled: () => false,/" $C/server/services/mentions/service.js; \
-    grep -q 'isEnabled: () => false,' $C/server/services/mentions/service.js
+    chown -R 10001:10001 /var/lib/ghost/content
 
 COPY docker-entrypoint.sh /pico-entrypoint.sh
 RUN chmod +x /pico-entrypoint.sh

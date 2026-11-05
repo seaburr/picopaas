@@ -125,18 +125,10 @@ Also: restore into a rehearsal app only while it is suspended (admin suspend, re
   Verified on https://blog.chasberndt.com/: generator `Ghost 6.72`, homepage head unchanged, posts, RSS identical, `/ghost/` 200, images 200, Let's Encrypt cert valid to 2027-01-23, http redirects to https. Backup sets 21, 22 kept.
 - Both blogs now run Ghost 6. The Ghost 5 build row was retired afterwards.
 
-### Performance (2026-10-25): why Ghost 6 pages took ~5 s, and the fix
-- Measured before (curl, 4 samples each): `/` on blog.chasberndt.com TTFB 5.17 to 5.31 s, blog.picopaas.xyz 5.16 to 5.27 s; theme assets ~0.1 s
-  (brotli, `cache-control: max-age=31536000`); HTML `cache-control: public, max-age=0`. Ghost logged `GET / 200 5068ms` plus `IMAGE_SIZE_URL Probe unresponsive`.
-- Root cause: with no publication logo set, Ghost probes the site's own `/favicon.ico` URL (structured data `publisher.logo`) on EVERY
-  render. Pods cannot reach their own public URL (LB hairpin, docs/PENTEST.md #11), so each render waits out
-  `times.getImageSizeTimeoutInMS` (5000 ms, set in `overrides.json`, which env vars cannot override). Timeouts are not cached.
-- Webmentions: `Error fetching https://picopaas.xyz/ to discover webmention endpoint` is the same hairpin, but it is the background job that sends
-  webmentions when a post is published or edited (15 s timeout, 3 retries). It does not block renders; the image now turns it off (see the fix below).
-- Fix (in the image, verified locally against an unreachable site URL: 5.02 s before, 0.43 s after): the Dockerfile lowers the image-size
-  timeout to 400 ms and disables outbound webmentions (build fails if the anchors move; receiving is unaffected); ENV defaults
-  `privacy__useUpdateCheck=false`, `privacy__useRpcPing=false`, `caching__frontend__maxAge=120` (2 min browser cache for HTML; publish edits show after at most 2 min).
-- Better still: upload a **site icon or logo** in Ghost Admin (Settings > Design). It is stored in the bucket (public Spaces URL, reachable from the pod), the
-  probe succeeds once and is cached, and the 0.4 s disappears.
+### Performance: set a site icon, or pages take about 5 s
+- With no site icon or logo, Ghost checks the size of the site's own `/favicon.ico` on every page render. Pods can't reach their own public URL (LB hairpin, docs/PENTEST.md #11), so each render waits out Ghost's 5 s image-size timeout. Measured 2026-10-25: 5.16 to 5.31 s to first byte, with `IMAGE_SIZE_URL Probe unresponsive` in the log.
+- **Fix: upload a site icon or logo in Ghost Admin (Settings > Design) right after the first start.** It is stored in the bucket, which the pod can reach, so the check succeeds once and is cached. Measured 2026-11-05 on both blogs with a favicon: about 0.3 s.
+- The image doesn't modify Ghost's code. `Error fetching ... to discover webmention endpoint` in the log after publishing is the same hairpin in a background job: it doesn't slow pages and needs no action.
+- ENV defaults in the image: `privacy__useUpdateCheck=false`, `privacy__useRpcPing=false`, `caching__frontend__maxAge=120` (2 min browser cache for HTML; publish edits show after at most 2 min).
 - Not the cause: gzip/brotli (on, served by Ghost), asset caching (already 1 year).
 - UPPER_SNAKE env cannot set Ghost's lowercase `__` keys on a running app, so these defaults ship in the image rather than per-app env.
