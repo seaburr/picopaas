@@ -7,8 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Keep the sensitive-path rules current from OWASP CRS? (2026-11-05)** Today's list is hand-written. Recommended: a script builds it from the dotfile part of OWASP CRS `rules/restricted-files.data` (Apache-2.0, updated 2026-11-03) plus our additions, minus a skip list, and a scheduled job opens a PR when CRS releases, with CI tests guarding real app paths. No new runtime, RAM or cost. Build it? (I recommend yes.) Full WAF (Coraza) and IP banning (CrowdSec) are separate, bigger steps I'd leave for later.
-
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
@@ -74,6 +72,8 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- **Keep the sensitive-path rules current from OWASP CRS? (2026-11-05)** Chas: yes, built. Landing page and devlog: yes.
 
 - **Block `.env` and similar probes for every app? (2026-11-05)** Chas: yes, on by default. Ghost code patches removed, favicon documented, no version pin. Card-level actions stay icon-only.
 

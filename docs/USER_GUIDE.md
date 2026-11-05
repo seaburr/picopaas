@@ -178,7 +178,7 @@ Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
 
 ### Sensitive paths are blocked
 
-Bots scan every website for files like `/.env` and `/.git/config`, hoping to find passwords. PicoPaaS answers 404 for these paths before the request reaches your app, on every hostname including custom domains. The block covers `.env*`, `.git`, `.svn`, `.hg`, `.aws`, `.ssh`, `.kube`, `.docker`, `.htpasswd`, `.npmrc`, `.pypirc`, `.netrc`, `.bash_history`, `wp-config.php`, private key names such as `id_rsa`, and Terraform state and variable files, at any folder depth.
+Bots scan every website for files like `/.env` and `/.git/config`, hoping to find passwords. PicoPaaS answers 404 for these paths before the request reaches your app, on every hostname including custom domains. The block covers hundreds of names at any folder depth, such as `.env*`, `.git`, `.aws`, `.ssh`, `.htpasswd`, `.pgpass`, shell history files, database dumps like `backup.sql.gz`, `wp-config.php`, private key names such as `id_rsa`, and Terraform state files. The list is based on the [OWASP Core Rule Set](https://coreruleset.org/) and we review its updates. `/.well-known` and ordinary paths like `/wp-admin` or `/config.json` are not affected.
 
 If your app really serves paths like these, such as a Git host showing repository files, turn on **Serve sensitive paths** in the app's settings (`allowSensitivePaths: true` in a spec, `allow_sensitive_paths` in the API). The Forgejo template does this for you.
 
