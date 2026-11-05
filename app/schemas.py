@@ -241,6 +241,7 @@ class AppCreate(BaseModel):
     want_db: bool = False
     db_engine: Literal["mysql", "pg"] = "mysql"  # which engine hosts the database when want_db (immutable later)
     want_storage: bool = False
+    allow_sensitive_paths: bool = False
     env: List[EnvVarIn] = Field(default_factory=list)
     health_check_enabled: bool = False
     health_check_path: str = Field(default=DEFAULT_HEALTH_PATH, max_length=255)
@@ -268,6 +269,7 @@ class AppUpdate(BaseModel):
     health_check_timeout_seconds: Optional[int] = Field(
         default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: Optional[bool] = None
+    allow_sensitive_paths: Optional[bool] = None
     # Omit = unchanged. Adds a volume, or grows it / changes its mount path. Explicit null is rejected (no detaching).
     volume: Optional[VolumeIn] = None
 
@@ -361,6 +363,7 @@ class AppOut(BaseModel):
     want_db: bool
     db_engine: str = "mysql"
     want_storage: bool
+    allow_sensitive_paths: bool = False
     health_check_enabled: bool = False
     health_check_path: str = DEFAULT_HEALTH_PATH
     health_check_timeout_seconds: Optional[int] = None

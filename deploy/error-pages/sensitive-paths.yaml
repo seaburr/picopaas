@@ -1,0 +1,27 @@
+# Answers 404 at the edge for paths that hold secrets and that no public app should serve: scanners probe every host for
+# them. No host, so it covers every app, custom domains and the platform itself. Traefik sends these to the error-pages
+# service, whose static file server has no such file. Docs: docs/OPERATIONS.md "Sensitive paths".
+# An app that really serves such paths opts out (allow_sensitive_paths): its Ingress gets a higher router.priority
+# (SENSITIVE_PATHS_OPT_OUT_PRIORITY in app/k8s_manifests.py, keep it above the priority here).
+# The regex must start with "/" (Kubernetes validates that), and matches a whole path segment at any depth (a `;` path parameter ends it too, for Java servers that strip it), so
+# /repo.git, /.github and /.well-known are untouched. Keep the list to names no real app needs.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sensitive-paths
+  namespace: picopaas-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.pathmatcher: PathRegexp
+    traefik.ingress.kubernetes.io/router.priority: "100000"
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /(?i:\.env[^/]*|\.git|\.git-credentials|\.gitconfig|\.svn|\.hg|\.aws|\.ssh|\.kube|\.docker|\.htpasswd|\.npmrc|\.pypirc|\.netrc|\.bash_history|wp-config\.php[^/]*|id_(rsa|dsa|ecdsa|ed25519)|privkey\.pem|private\.(key|pem)|server\.key|[^/]*\.(ppk|tfstate|tfvars)(\.[^/]*)?)([/;]|$)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: error-pages
+                port:
+                  number: 80

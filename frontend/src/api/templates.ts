@@ -15,6 +15,7 @@ export interface AppTemplate {
   wants_db: boolean
   db_engine: 'mysql' | 'pg'
   wants_storage: boolean
+  allow_sensitive_paths?: boolean
   env: Record<string, string>
   secrets: TemplateSecret[]
   health_check: { path: string; timeout_seconds: number | null } | null

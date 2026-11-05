@@ -133,6 +133,7 @@ export interface App {
   want_db: boolean
   db_engine?: 'mysql' | 'pg'
   want_storage: boolean
+  allow_sensitive_paths?: boolean
   status: string
   status_detail: string | null
   // short machine code: image_pull | crash_loop | oom | not_ready | quota | root_image | unknown
@@ -210,6 +211,7 @@ export interface AppCreatePayload {
   want_db: boolean
   db_engine?: 'mysql' | 'pg'
   want_storage: boolean
+  allow_sensitive_paths?: boolean
   health_check_enabled?: boolean
   health_check_path?: string
   health_check_timeout_seconds?: number | null
@@ -224,6 +226,7 @@ export interface AppUpdatePayload {
   name?: string
   image?: string
   port?: number
+  allow_sensitive_paths?: boolean
   health_check_enabled?: boolean
   health_check_path?: string
   health_check_timeout_seconds?: number | null

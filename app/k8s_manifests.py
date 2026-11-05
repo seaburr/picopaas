@@ -765,14 +765,27 @@ def service_manifest(app_id: int, port: int) -> dict[str, Any]:
     }
 
 
-def ingress_manifest(app_id: int, hostname: str, port: int, platform_subdomain: str | None = None) -> dict[str, Any]:
+# Traefik router priority for an app that opts out of the edge block on /.env and similar paths: above the priority of
+# the catch-all Ingress in deploy/error-pages/sensitive-paths.yaml, so this app's own router wins on its hosts.
+SENSITIVE_PATHS_OPT_OUT_PRIORITY = 200000
+
+
+def _sensitive_paths_annotations(allow_sensitive_paths: bool) -> dict[str, str]:
+    return {"traefik.ingress.kubernetes.io/router.priority": str(SENSITIVE_PATHS_OPT_OUT_PRIORITY)} if allow_sensitive_paths else {}
+
+
+def ingress_manifest(app_id: int, hostname: str, port: int, platform_subdomain: str | None = None,
+                     allow_sensitive_paths: bool = False) -> dict[str, Any]:
     name = _resource_name(app_id)
     full_host = _full_hostname(hostname)
     hosts = [full_host] + ([_full_hostname(platform_subdomain)] if platform_subdomain else [])
     return {
         "apiVersion": "networking.k8s.io/v1",
         "kind": "Ingress",
-        "metadata": {"name": name, "namespace": namespace_name(app_id)},
+        "metadata": {
+            "name": name, "namespace": namespace_name(app_id),
+            **({"annotations": _sensitive_paths_annotations(True)} if allow_sensitive_paths else {}),
+        },
         "spec": {
             "ingressClassName": INGRESS_CLASS,
             # No `tls[].secretName`: Traefik's default certificate (TLSStore `default`)
@@ -809,7 +822,7 @@ def _custom_tls_secret_name(app_id: int) -> str:
     return f"{_resource_name(app_id)}-custom-tls"
 
 
-def custom_domain_ingress_manifest(app_id: int, custom_host: str, port: int) -> dict[str, Any]:
+def custom_domain_ingress_manifest(app_id: int, custom_host: str, port: int, allow_sensitive_paths: bool = False) -> dict[str, Any]:
     """An extra Ingress for a verified custom host. The cert-manager.io/cluster-issuer annotation makes
     cert-manager's ingress-shim issue a per-host cert (HTTP-01) into its own Secret, owned by this Ingress — so
     deleting this Ingress garbage-collects the Certificate and Secret too (custom-domain teardown)."""
@@ -820,7 +833,7 @@ def custom_domain_ingress_manifest(app_id: int, custom_host: str, port: int) -> 
         "metadata": {
             "name": name,
             "namespace": namespace_name(app_id),
-            "annotations": {"cert-manager.io/cluster-issuer": CUSTOM_DOMAIN_ISSUER},
+            "annotations": {"cert-manager.io/cluster-issuer": CUSTOM_DOMAIN_ISSUER, **_sensitive_paths_annotations(allow_sensitive_paths)},
         },
         "spec": {
             "ingressClassName": INGRESS_CLASS,
@@ -870,6 +883,7 @@ def render_app_manifests(
     db_ca_pem: str | None = None,
     db_peer: dict[str, Any] | None = None,
     storage_peer: dict[str, Any] | None = None,
+    allow_sensitive_paths: bool = False,
 ) -> dict[str, Any]:
     """Render every manifest for one app (ingress is None when include_ingress is False, e.g. suspended). Pure: takes already-resolved data, returns dicts. `custom_host` adds a second Ingress (+ cert) for a verified custom domain."""
     return {
@@ -897,9 +911,9 @@ def render_app_manifests(
         "db_ca_secret": db_ca_secret_manifest(app_id, db_ca_pem) if db_ca_pem else None,
         "pvc": pvc_manifest(app_id, volume) if volume else None,
         "service": service_manifest(app_id, port),
-        "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain) if include_ingress else None,
+        "ingress": ingress_manifest(app_id, hostname, port, platform_subdomain, allow_sensitive_paths) if include_ingress else None,
         "custom_ingress": (
-            custom_domain_ingress_manifest(app_id, custom_host, port)
+            custom_domain_ingress_manifest(app_id, custom_host, port, allow_sensitive_paths)
             if include_ingress and custom_host else None
         ),
     }

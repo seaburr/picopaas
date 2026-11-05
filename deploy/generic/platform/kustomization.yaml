@@ -10,6 +10,16 @@ resources:
   - ../../platform/deployment.yaml
   - ../../platform/service.yaml
   - ingress.yaml
+  - ../../error-pages/error-pages.yaml
+  - ../../error-pages/sensitive-paths.yaml
+configMapGenerator:
+  - name: error-pages
+    namespace: picopaas-system
+    files:
+      - platform.html=../../error-pages/platform.html
+      - app.html=../../error-pages/app.html
+    options:
+      disableNameSuffixHash: true
 patches:
   - target:
       kind: Deployment

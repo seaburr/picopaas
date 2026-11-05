@@ -42,6 +42,7 @@ class TemplateOut(BaseModel):
     secrets: List[TemplateSecret] = []  # prefilled as empty secret env vars; the user must set each value
     health_check: Optional[TemplateHealthCheck] = None  # None = health check off
     volume: Optional[TemplateVolume] = None
+    allow_sensitive_paths: bool = False  # True for apps that really serve paths like /.env (a Git host showing repo files)
     notes: str
     docs_url: str | None = None  # absolute https URL (example README on GitHub)
     upstream_docs_url: str | None = None  # absolute https URL of the app's official docs
@@ -78,7 +79,7 @@ CATALOG: List[TemplateOut] = [
             "S3_SECRET_KEY": "${{ storage.secret_key }}",
             "SITE_URL": "${{ app.url }}",
         },
-        notes="CPU-bound, so the first start is slow; bump CPU (up to 1000m) for sustained traffic. Sign-in verification email is off (SMTP is blocked).",
+        notes="Upload a site icon in Ghost Admin (Settings > Design) right after the first start: without one, every page takes about 5 seconds. CPU-bound, so the first start is slow; bump CPU (up to 1000m) for sustained traffic. Sign-in verification email is off (SMTP is blocked).",
         docs_url=f"{REPO_EXAMPLES}/ghost",
         upstream_docs_url="https://ghost.org/docs/",
     ),
@@ -378,6 +379,7 @@ CATALOG: List[TemplateOut] = [
         ],
         health_check=TemplateHealthCheck(path="/api/healthz"),
         volume=TemplateVolume(size_gi=1, mount_path="/var/lib/gitea", required=True),
+        allow_sensitive_paths=True,
         notes=(
             "Register your account right after the first start: the first account becomes the admin. "
             "Then set FORGEJO__SERVICE__DISABLE_REGISTRATION to true. Git repos live on the volume, the rest in MySQL. No SSH and no email."

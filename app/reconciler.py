@@ -519,6 +519,7 @@ def reconcile_app(
         include_ingress=not suspended,
         restart_nonce=app.restart_nonce,
         platform_subdomain=app.platform_subdomain,
+        allow_sensitive_paths=app.allow_sensitive_paths,
         custom_host=(app.custom_domain if app.custom_domain and app.custom_domain_status == "active" else None),
         volume=_volume_of(app),
         db_ca_pem=(app.database.server.ca_cert or None) if app.want_db and app.database is not None else None,

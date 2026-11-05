@@ -54,6 +54,7 @@ const form = reactive({
   want_db: false,
   db_engine: 'mysql' as 'mysql' | 'pg',
   want_storage: false,
+  allow_sensitive_paths: false,
   health_check_enabled: false,
   health_check_path: '/healthz',
   health_check_timeout: '' as number | string, // blank = platform default
@@ -157,6 +158,7 @@ onMounted(async () => {
       form.want_db = app.want_db
       form.db_engine = app.db_engine ?? 'mysql'
       form.want_storage = app.want_storage
+      form.allow_sensitive_paths = app.allow_sensitive_paths ?? false
       form.health_check_enabled = app.health_check_enabled ?? false
       form.health_check_path = app.health_check_path || '/healthz'
       form.health_check_timeout = app.health_check_timeout_seconds ?? ''
@@ -190,6 +192,7 @@ onMounted(async () => {
         form.want_db = t.wants_db && !dbOff.value
         form.db_engine = t.db_engine ?? 'mysql'
         form.want_storage = t.wants_storage && !storageOff.value
+        form.allow_sensitive_paths = t.allow_sensitive_paths ?? false
         form.health_check_enabled = !!t.health_check
         if (t.health_check) {
           form.health_check_path = t.health_check.path
@@ -305,6 +308,7 @@ async function onSubmit() {
         name: form.name.trim(),
         image: form.image.trim(),
         port,
+        allow_sensitive_paths: form.allow_sensitive_paths,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
@@ -323,6 +327,7 @@ async function onSubmit() {
         want_db: form.want_db,
         db_engine: form.db_engine,
         want_storage: form.want_storage,
+        allow_sensitive_paths: form.allow_sensitive_paths,
         health_check_enabled: form.health_check_enabled,
         health_check_path: form.health_check_path,
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
@@ -622,6 +627,13 @@ async function onSubmit() {
               </div>
             </div>
           </details>
+          <div class="mt-3">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="form.allow_sensitive_paths" type="checkbox" class="check" aria-describedby="sensitive-help" />
+              Serve sensitive paths
+            </label>
+            <p id="sensitive-help" class="help">The platform answers 404 for paths like <span class="mono">/.env</span> and <span class="mono">/.git/config</span> before they reach your app. Turn this on only if your app serves such paths on purpose, like a Git host showing repository files.</p>
+          </div>
         </fieldset>
 
         <div ref="errorBox">

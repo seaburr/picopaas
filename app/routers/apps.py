@@ -113,6 +113,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         want_db=app.want_db,
         db_engine=app.db_engine,
         want_storage=app.want_storage,
+        allow_sensitive_paths=app.allow_sensitive_paths,
         health_check_enabled=app.health_check_enabled,
         health_check_path=app.health_check_path,
         health_check_timeout_seconds=app.health_check_timeout_seconds,
@@ -192,6 +193,7 @@ def create_app(
         want_db=payload.want_db,
         db_engine=payload.db_engine,
         want_storage=payload.want_storage,
+        allow_sensitive_paths=payload.allow_sensitive_paths,
         health_check_enabled=payload.health_check_enabled,
         health_check_path=payload.health_check_path,
         health_check_timeout_seconds=payload.health_check_timeout_seconds,
@@ -342,6 +344,9 @@ def update_app(
             raise HTTPException(status_code=422, detail="A persistent volume can't be detached. Delete the app to remove its data.")
         if volumes.apply_request(db, app, payload.volume.size_gi, payload.volume.mount_path):
             workload_changed = True
+    if payload.allow_sensitive_paths is not None and payload.allow_sensitive_paths != app.allow_sensitive_paths:
+        app.allow_sensitive_paths = payload.allow_sensitive_paths
+        workload_changed = True
     health_changed = False
     if payload.health_check_enabled is not None and payload.health_check_enabled != app.health_check_enabled:
         app.health_check_enabled = payload.health_check_enabled

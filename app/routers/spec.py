@@ -150,6 +150,7 @@ def deploy_spec(
             want_db=spec.resources.db,
             db_engine=spec.resources.db_engine,
             want_storage=spec.resources.storage,
+            allow_sensitive_paths=spec.allowSensitivePaths,
             health_check_enabled=spec.healthCheck.enabled,
             health_check_path=spec.healthCheck.path,
             health_check_timeout_seconds=spec.healthCheck.timeoutSeconds,
@@ -162,9 +163,9 @@ def deploy_spec(
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
         changed = (
             (app.image, app.image_digest, app.run_as_uid, app.port, app.want_db, app.db_engine, app.want_storage, app.health_check_enabled, app.health_check_path,
-             app.health_check_timeout_seconds)
+             app.health_check_timeout_seconds, app.allow_sensitive_paths)
             != (spec.image, digest, run_as_uid, spec.port, spec.resources.db, spec.resources.db_engine, spec.resources.storage,
-                spec.healthCheck.enabled, spec.healthCheck.path, spec.healthCheck.timeoutSeconds)
+                spec.healthCheck.enabled, spec.healthCheck.path, spec.healthCheck.timeoutSeconds, spec.allowSensitivePaths)
         )
         if spec.resources.volume is not None and volumes.apply_request(
                 db, app, spec.resources.volume.sizeGi, spec.resources.volume.mountPath):
@@ -177,6 +178,7 @@ def deploy_spec(
         app.want_db = spec.resources.db
         app.db_engine = spec.resources.db_engine
         app.want_storage = spec.resources.storage
+        app.allow_sensitive_paths = spec.allowSensitivePaths
         app.health_check_enabled = spec.healthCheck.enabled
         app.health_check_path = spec.healthCheck.path
         app.health_check_timeout_seconds = spec.healthCheck.timeoutSeconds

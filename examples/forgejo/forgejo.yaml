@@ -5,6 +5,7 @@ name: forgejo
 # and 2026-11-03 (platform MySQL, CA-verified; see README).
 image: codeberg.org/forgejo/forgejo:17.0.1-rootless
 port: 3000
+allowSensitivePaths: true   # shows repository files such as .env, which the platform otherwise answers 404 for
 healthCheck:
   enabled: true
   path: /api/healthz

@@ -61,6 +61,7 @@ class AppSpec(BaseModel):
     port: StrictInt = Field(ge=1024, le=65535)
     resources: _Resources = Field(default_factory=_Resources)
     healthCheck: _HealthCheck = Field(default_factory=_HealthCheck)
+    allowSensitivePaths: StrictBool = False
     env: Dict[StrictStr, StrictStr] = Field(default_factory=dict)
     secrets: List[StrictStr] = Field(default_factory=list)
     project: Optional[StrictStr] = Field(default=None, min_length=1, max_length=80)  # project slug; default personal

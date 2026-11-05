@@ -165,6 +165,8 @@ class App(Base):
     # Which engine the app's database is placed on: 'mysql' (default) | 'pg'. Immutable once the database exists.
     db_engine: Mapped[str] = mapped_column(String(8), nullable=False, default="mysql", server_default="mysql")
     want_storage: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Opt out of the edge 404 on /.env and similar paths (deploy/error-pages/sensitive-paths.yaml).
+    allow_sensitive_paths: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     health_check_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     health_check_path: Mapped[str] = mapped_column(String(255), nullable=False, default="/healthz", server_default="/healthz")
     # Set by app/reconciler.py: 'pending' -> 'deploying' -> 'running', or 'error'
