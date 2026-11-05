@@ -34,14 +34,16 @@ jobs:
             echo "new=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          new=true
           if [ "$latest" = "$pinned" ] || git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
-            echo "new=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "new=true" >> "$GITHUB_OUTPUT"
+            new=false
           fi
+          {
+            echo "latest=$latest"
+            echo "pinned=$pinned"
+            echo "branch=$branch"
+            echo "new=$new"
+          } >> "$GITHUB_OUTPUT"
       - if: steps.crs.outputs.new == 'true'
         run: pip install -r requirements.txt
       - name: Regenerate and test
