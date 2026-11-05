@@ -37,3 +37,6 @@ you did not do.
 
 Rules: never commit or push (scm-security does). Never edit `CLAUDE.md`/`bootstrap.md`. Token thrift: read the one
 view/component you change plus its API module; do not re-read the whole `src/`. End with a 3-5 line summary.
+
+## UI consistency rule
+A visual pattern change is applied everywhere that pattern appears in the same change, never on one page. Actions at the top of a page use `IconButton` with `text` (icon and label); repeated actions in table rows stay icon-only. Before finishing, grep for other uses of the component you changed and list what you changed or why you left it.

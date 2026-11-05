@@ -14,7 +14,7 @@ const props = defineProps<{
   expanded?: boolean
   pressed?: boolean
   busy?: boolean // spinning icon, disabled
-  text?: string // visible label from sm up; icon-only below sm
+  text?: string // visible label from sm up; icon-only below sm. Rule: set it on every action at the top of a page; repeated row actions stay icon-only
   touch?: boolean // 44px hit area below sm
 }>()
 defineEmits<{ click: [e: MouseEvent] }>()

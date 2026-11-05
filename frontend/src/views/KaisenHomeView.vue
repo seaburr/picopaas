@@ -111,10 +111,10 @@ function askDelete(b: KaisenBuild) {
         </div>
         <div class="flex items-center gap-1">
           <span v-if="atLimit && store.builds.length" class="meta mr-2">App limit reached. Ask an administrator to raise it.</span>
-          <IconButton :icon="Settings" label="Kaisen settings" to="/kaisen/settings" />
+          <IconButton :icon="Settings" label="Kaisen settings" text="Settings" to="/kaisen/settings" />
           <template v-if="store.builds.length > 0">
-            <IconButton v-if="blocked" :icon="Plus" :label="`New build (${blockedWhy})`" disabled />
-            <IconButton v-else :icon="Plus" label="New build" to="/kaisen/new" />
+            <IconButton v-if="blocked" :icon="Plus" :label="`New build (${blockedWhy})`" text="New build" disabled />
+            <IconButton v-else :icon="Plus" label="New build" text="New build" to="/kaisen/new" />
           </template>
         </div>
       </div>

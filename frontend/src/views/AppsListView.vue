@@ -137,8 +137,8 @@ function meta(app: App) {
         </div>
         <div v-if="store.apps.length > 0" class="flex items-center gap-3">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
-          <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" disabled />
-          <IconButton v-else :icon="Plus" label="New app" to="/apps/new" />
+          <IconButton v-if="atLimit" :icon="Plus" label="New app (app limit reached)" text="New app" disabled />
+          <IconButton v-else :icon="Plus" label="New app" text="New app" to="/apps/new" />
         </div>
       </div>
 

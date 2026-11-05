@@ -380,8 +380,8 @@ async function doDelete() {
             <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
-            <IconButton :icon="Settings" label="Kaisen settings" to="/kaisen/settings" />
-            <IconButton :icon="Trash2" label="Delete build" danger @click="alsoApp = false; confirmDelete = true" />
+            <IconButton :icon="Settings" label="Kaisen settings" text="Settings" to="/kaisen/settings" />
+            <IconButton :icon="Trash2" label="Delete build" text="Delete" danger @click="alsoApp = false; confirmDelete = true" />
           </div>
         </header>
 

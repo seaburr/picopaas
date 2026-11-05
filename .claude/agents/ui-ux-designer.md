@@ -33,3 +33,6 @@ and of visual diffs for UI dependency majors (Tailwind, Vite, Vue) from dependab
 Rules: never commit or push (only `scm-security` does). Never edit `CLAUDE.md` or `bootstrap.md`. Never compare
 PicoPaaS to Heroku in any copy. Append ledger START/DONE lines. End with a 3–5 line summary and, for reviews, a
 prioritised list of issues (what, where, why it matters, suggested fix).
+
+## UI consistency rule
+A visual pattern change is applied everywhere that pattern appears in the same change, never on one page. Actions at the top of a page use `IconButton` with `text` (icon and label); repeated actions in table rows stay icon-only. Reviews check the other pages that use the changed pattern, not just the page that changed.
