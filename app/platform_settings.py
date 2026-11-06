@@ -111,7 +111,7 @@ REGISTRY: List[Setting] = [
             lambda: 14, 1, 365),
     Setting("backup_manual_per_hour", "On-demand backups per app per hour", "How many manual backups one app can start per hour.",
             G_BAK, "int", "per hour", lambda: 1, 1, 60),
-    Setting("backup_export_max_per_hour", "Backup downloads per app per hour", "How many download packages one app can prepare per hour.",
+    Setting("backup_export_max_per_hour", "Backup downloads per hour", "How many download packages one app can prepare per hour. The same limit applies separately to downloads of the platform database backup.",
             G_BAK, "int", "per hour", _c("BACKUP_EXPORT_MAX_PER_HOUR"), 1, 100),
     Setting("backups_enabled_default", "Scheduled backups on for new apps", "New apps start with scheduled backups turned on.",
             G_BAK, "bool", "", _c("BACKUP_DEFAULT_ENABLED")),
@@ -159,7 +159,7 @@ _SINGLES = [  # (group, row id, row label, key, column)
     (G_BAK, "backup_total", "Backup storage, platform total", "backup_max_bytes_total", "ceiling"),
     (G_BAK, "backup_held", "Backups kept per app", "backup_max_held_per_app", "default"),
     (G_BAK, "backup_manual", "On-demand backups per app per hour", "backup_manual_per_hour", "default"),
-    (G_BAK, "backup_export", "Backup downloads per app per hour", "backup_export_max_per_hour", "default"),
+    (G_BAK, "backup_export", "Backup downloads per hour", "backup_export_max_per_hour", "default"),
     (G_BAK, "backup_default_on", "Scheduled backups on for new apps", "backups_enabled_default", "default"),    (G_ACC, "kaisen", "Kaisen (Preview)", "kaisen_enabled", "default"),
     (G_ACC, "kaisen_uploads", "Kaisen file uploads (kill switch)", "kaisen_uploads_enabled", "default"),
 ]

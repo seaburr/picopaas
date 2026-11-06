@@ -262,6 +262,23 @@ def sample_app_metrics(db: Session, kube: KubeProvider) -> int:
 WORKLOAD_STATUSES = ("running", "deploying", "pending", "error", "suspended")
 
 
+def statistics(db: Session) -> dict[str, int]:
+    """Lifetime counters for Admin > Health. Soft-deleted rows still count and nothing in the app hard-deletes an App,
+    KaisenBuild or KaisenRun (user, project and build deletes only set deleted_at), so these never go down.
+    apps_ever_deployed: every App row, deleted ones and Kaisen previews included (a preview is a real deployed app).
+    kaisen_apps_ever_built: distinct Kaisen builds, deleted ones included, with at least one run that finished `done`."""
+    from sqlalchemy import func
+
+    apps = db.query(func.count(models.App.id)).scalar() or 0
+    try:
+        from app.kaisen.models import KaisenRun
+        built = db.query(func.count(func.distinct(KaisenRun.build_id))).filter(KaisenRun.status == "done").scalar() or 0
+    except Exception:  # noqa: BLE001 - Kaisen tables missing/unavailable: report 0 rather than break the Health page
+        db.rollback()
+        built = 0
+    return {"apps_ever_deployed": int(apps), "kaisen_apps_ever_built": int(built)}
+
+
 def db_counts(db: Session) -> dict[str, Any]:
     """Cheap DB-only platform counts; computed per request (never cached) so approvals show up immediately."""
     from sqlalchemy import func
@@ -285,6 +302,7 @@ def db_counts(db: Session) -> dict[str, Any]:
             by_status[status] = n
     live = A.deleted_at.is_(None)
     return {
+        "statistics": statistics(db),
         "users": users,
         "pending_users": [{"id": u.id, "email": u.email, "created_at": u.created_at.isoformat()} for u in pending],
         "workloads": {

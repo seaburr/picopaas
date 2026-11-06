@@ -15,15 +15,17 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import audit, backups, config, crypto, health, models, naming, platform_settings, projects, quota, resources, schemas, volumes
+from app import audit, backups, config, crypto, health, models, naming, platform_backup, platform_settings, projects, quota, ratelimit, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_admin_session, require_platform_admin
 from app.providers.db_flavor import DEFAULT_FLAVOR, FLAVOR_NAMES
 from app.providers.dbcheck import DbServerCheckError
 from app.schemas import ResourcesOut
+from app.providers.backup import BackupRunner, BackupRunnerError
 from app.routers.apps import get_mysql_admin_factory, get_object_store
-from app.security import hash_password
+from app.routers.backups import get_backup_runner
+from app.security import hash_password, verify_password
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
 
@@ -1084,3 +1086,82 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
                  + (f" flavor={payload.flavor}" if payload.flavor else "")
                  + (" admin_password=changed" if new_pw is not None else ""))
     return _server_out(db, server)
+
+
+# --- download a platform database backup ------------------------------------------------------
+# The dump holds every account's password hash, every encrypted tenant secret and all audit data, so: browser admin session only
+# (no API key, however scoped), the admin's CURRENT password re-entered on each request (same check, throttle and failure
+# handling as POST /auth/login), and every request, refusal and link issue is audited. The file is built by the same export Job
+# app backups use (app/platform_backup.py "admin download").
+
+class PlatformDownloadIn(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class PlatformDownloadOut(BaseModel):
+    export_id: int
+    run_id: int  # the backup (platform_backup_runs.id) this was made from; 0 once it has been pruned
+    status: Literal["queued", "running", "ready", "failed", "expired"]
+    created_at: datetime
+    filename: Optional[str] = None
+    available_until: Optional[datetime] = None  # while ready
+    url: Optional[str] = None  # only from GET .../exports/{id}, while ready: a fresh 10 minute link
+    size_bytes: Optional[int] = None
+    error: Optional[str] = None
+
+
+def _platform_export_out(db: Session, run: models.PlatformBackupRun, runner: Optional[BackupRunner]) -> PlatformDownloadOut:
+    state = platform_backup.export_state(run)
+    src = platform_backup.source_run(db, run)
+    out = PlatformDownloadOut(export_id=run.id, run_id=src.id if src is not None else 0, status=state, created_at=run.created_at,
+                              error=run.error if state == "failed" else None)
+    if state == "ready":
+        out.filename = platform_backup.export_filename(db, run)
+        out.available_until = platform_backup.export_available_until(run)
+        out.size_bytes = run.bytes_added
+        if runner is not None:
+            try:
+                out.url = runner.presign_export(platform_backup.export_key(run), config.BACKUP_EXPORT_URL_SECONDS, out.filename)
+            except BackupRunnerError:
+                raise HTTPException(status_code=503, detail="The download link couldn't be created. Try again in a moment.") from None
+    return out
+
+
+@router.post("/platform-backups/{run_id}/download", response_model=PlatformDownloadOut, status_code=202)
+def start_platform_backup_download(run_id: int, payload: PlatformDownloadIn, request: Request, db: Session = Depends(get_db),
+                                   admin: models.User = Depends(require_admin_session)):
+    """Queue the .sql.gz of one succeeded platform database backup. Needs the admin's current password. 202 then poll."""
+    ratelimit.check_login(db, request, admin.email)
+    if not verify_password(payload.password, admin.password_hash):
+        ratelimit.record_login_failure(db, request, admin.email)
+        audit.record(db, admin, "platform_backup.download_refused", "platform", "db", f"run={run_id} reason=wrong_password")
+        raise HTTPException(status_code=403, detail="That password is wrong. Enter your own current password to download the platform backup.")
+    ratelimit.clear_login_failures(db, admin.email)
+    src = db.get(models.PlatformBackupRun, run_id)
+    if src is None or src.trigger == platform_backup.EXPORT:
+        raise HTTPException(status_code=404, detail="We can't find that platform backup.")
+    try:
+        run, new = platform_backup.enqueue_export(db, src)
+    except backups.ExportRefused as exc:
+        db.rollback()
+        audit.record(db, admin, "platform_backup.download_refused", "platform", "db", f"run={run_id} reason={exc.status}")
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        raise HTTPException(status_code=exc.status, detail=str(exc), headers=headers) from None
+    db.commit()
+    if new:
+        audit.record(db, admin, "platform_backup.download", "platform", "db", f"run={src.id} export={run.id}")
+    return _platform_export_out(db, run, None)
+
+
+@router.get("/platform-backups/exports/{export_id}", response_model=PlatformDownloadOut)
+def get_platform_backup_download(export_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_session),
+                                 runner: BackupRunner = Depends(get_backup_runner)):
+    """Poll an export; when ready, `url` is a fresh 10 minute presigned link (audited as platform_backup.download_link)."""
+    run = db.get(models.PlatformBackupRun, export_id)
+    if run is None or run.trigger != platform_backup.EXPORT:
+        raise HTTPException(status_code=404, detail="We can't find that download.")
+    out = _platform_export_out(db, run, runner)
+    if out.url:
+        audit.record(db, admin, "platform_backup.download_link", "platform", "db",
+                     f"export={run.id} run={out.run_id} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
+    return out
