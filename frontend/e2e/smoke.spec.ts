@@ -80,6 +80,16 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(slider).toBeVisible()
     const max = await slider.getAttribute('max')
     await expect(page.getByLabel('Memory (MB)')).toHaveValue(max ?? '')
+    // Every thumb reaches the end of its track at the maximum, even when the ceiling isn't on the step grid.
+    const scratch = page.getByLabel('Scratch disk slider')
+    await expect(scratch).toHaveValue((await scratch.getAttribute('max')) ?? '')
+    await expect(page.getByLabel('Scratch disk (MB)')).toHaveValue('250')
+    // Sliding down one notch and back up returns to the real ceiling, not the track's end.
+    await scratch.focus()
+    await scratch.press('ArrowLeft')
+    await expect(page.getByLabel('Scratch disk (MB)')).toHaveValue('248')
+    await scratch.press('ArrowRight')
+    await expect(page.getByLabel('Scratch disk (MB)')).toHaveValue('250')
     await page.getByLabel('Memory (MB)').fill('128')
     await page.getByLabel('Memory (MB)').press('Tab')
     await expect(slider).toHaveValue('128')

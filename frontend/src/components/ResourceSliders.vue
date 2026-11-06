@@ -45,12 +45,12 @@ const val = (r: Row) => props.modelValue[r.key] ?? r.c.max
 function set(k: OwnerKey, n: number) {
   emit('update:modelValue', { ...props.modelValue, [k]: n })
 }
+// A range input only lands on min + k * step, so a ceiling off that grid (64 to 250 in steps of 8) would leave the thumb
+// short of the end. End the track on the next notch up and let that last notch mean "the ceiling".
+const trackMax = (r: Row) => r.c.min + Math.ceil((r.c.max - r.c.min) / r.step) * r.step
+const trackValue = (r: Row) => (val(r) >= r.c.max ? trackMax(r) : val(r))
 function onSlide(r: Row, e: Event) {
-  let n = Number((e.target as HTMLInputElement).value)
-  // The slider only lands on step multiples from min; make its last notch mean "the ceiling".
-  const lastSnap = r.c.min + Math.floor((r.c.max - r.c.min) / r.step) * r.step
-  if (n >= lastSnap) n = r.c.max
-  set(r.key, n)
+  set(r.key, Math.min(r.c.max, Number((e.target as HTMLInputElement).value)))
 }
 function onNumber(r: Row, e: Event) {
   const raw = (e.target as HTMLInputElement).value.trim()
@@ -122,9 +122,9 @@ const adminCeiling = (r: Row) => {
           type="range"
           class="range mt-1"
           :min="r.c.min"
-          :max="r.c.max"
+          :max="trackMax(r)"
           :step="r.step"
-          :value="val(r)"
+          :value="trackValue(r)"
           :disabled="disabled"
           :aria-label="`${r.label} slider`"
           :aria-valuetext="fmt(r, val(r))"
