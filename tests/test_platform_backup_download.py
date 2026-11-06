@@ -116,6 +116,11 @@ def test_happy_path_download_and_poll(pdb, admin, db_session, runner):
     runner.started.clear()
     backups.tick(db_session, runner, utcnow_naive())
     (spec,) = runner.started
+    # The Job's root filesystem is read-only, so the dump needs /work. Missing it failed live with "not a MySQL dump".
+    from app.providers.backup import job_manifests
+    pod = job_manifests(spec)[1]["spec"]["template"]["spec"]
+    assert {"name": "work", "mountPath": "/work"} in pod["containers"][0]["volumeMounts"]
+    assert any(v["name"] == "work" for v in pod["volumes"])
     e = spec.env
     assert e["MODE"] == "export" and e["KIND"] == "db" and e["SNAPSHOT"] == "aa11bb22" and e["EXPORT_BUCKET"] == config.BACKUP_BUCKET
     assert e["EXPORT_KEY"] == f"exports/platform/{row.id}.sql.gz" and e["RESTIC_REPOSITORY"].endswith("/platform/db")

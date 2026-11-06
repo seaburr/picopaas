@@ -30,6 +30,7 @@ KEPT_RUNS = 60
 ACTIVE = ("queued", "running")
 RETRY_AFTER_FAILURE = timedelta(hours=1)
 EXPORT = "export"  # trigger of an admin download of one snapshot (not a backup; see "admin download" below)
+EXPORT_SCRATCH_MIB = 256  # /work for the compressed dump: the Job's root filesystem is read-only (same size as an app's db export)
 EXPORT_ROW_KEEP = timedelta(days=1)  # finished export rows are dropped after this (the object itself is swept after the TTL)
 
 
@@ -181,7 +182,8 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
                                .order_by(models.PlatformBackupRun.id)).scalars().all():
         try:
             env = build_export_env(session, run) if run.trigger == EXPORT else build_env(session, run)
-            spec = BackupJobSpec(name=f"pbk-{run.id}", run_id=run.id, app_id=0, kind="db", env=env)
+            spec = BackupJobSpec(name=f"pbk-{run.id}", run_id=run.id, app_id=0, kind="db", env=env,
+                                 scratch_mib=EXPORT_SCRATCH_MIB if run.trigger == EXPORT else 0)
         except ValueError as exc:
             _finish(session, run, None, ok=False, error=str(exc), now=now)
             continue
