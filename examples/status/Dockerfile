@@ -1,6 +1,6 @@
 # Status / uptime page on PicoPaaS: Gatus with your config baked in (apps have no config-file mount).
 # The config contains only public URLs; pass secrets (e.g. webhook URLs) as app env vars, never bake them in.
-FROM twinproduction/gatus:v5.37.0
+FROM twinproduction/gatus:v5.38.0
 
 # Upstream image is FROM scratch and runs as root by default; PicoPaaS rejects root images.
 # A numeric USER works on scratch (no /etc/passwd needed) and matches the platform's forced UID 10001.
