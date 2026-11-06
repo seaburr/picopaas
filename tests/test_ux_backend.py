@@ -186,6 +186,7 @@ def test_me_features_and_limits(admin, db_session, monkeypatch):
         monkeypatch.delenv(k, raising=False)
     me = admin.get("/auth/me").json()
     assert me["features"] == {"databases": False, "storage": False, "volumes": False, "kaisen": True, "db_engines": []}
+    me["limits"].pop("owner_controls")  # covered in test_owner_resources.py
     assert me["limits"] == {
         "cpu_limit_m": config.DEFAULT_CPU_LIMIT_M, "mem_limit_mi": config.DEFAULT_MEM_LIMIT_MI,
         "cpu_request_m": config.DEFAULT_CPU_REQUEST_M, "mem_request_mi": config.DEFAULT_MEM_REQUEST_MI,

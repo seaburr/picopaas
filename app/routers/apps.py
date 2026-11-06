@@ -2,12 +2,12 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import audit, config, crypto, custom_domains, image_check, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
+from app import quota, audit, config, crypto, custom_domains, image_check, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.kaisen.models import KaisenBuild
@@ -143,6 +143,60 @@ def _forbid_if_suspended(app: models.App) -> None:
         raise HTTPException(status_code=403, detail="This app is suspended by an administrator, so it can't be changed. Contact an administrator to get it restored.")
 
 
+def get_mysql_admin_factory():
+    """Overridden in tests with a FakeMySQLAdmin factory."""
+    from app.providers.factory import db_admin_for
+
+    return db_admin_for
+
+
+def get_object_store() -> ObjectStore:
+    """Overridden in tests with a FakeObjectStore."""
+    from app.providers import cloud
+
+    return cloud.object_store()
+
+
+def _owner_changes(payload_resources: Optional[schemas.OwnerResources]) -> dict[str, Optional[int]]:
+    """The fields the caller sent (omitted = unchanged, null = back to the full ceiling)."""
+    if payload_resources is None:
+        return {}
+    return {f: getattr(payload_resources, f) for f in payload_resources.model_fields_set}
+
+
+def _check_owner_changes(app: models.App, changes: dict[str, Optional[int]], db: Session) -> None:
+    errors = resources.validate_owner_changes(app, changes, db)
+    if errors:  # same shape as pydantic field errors, so the form shows each one under its slider
+        raise HTTPException(status_code=422, detail=[
+            {"loc": ["body", "resources", f], "msg": msg, "type": "value_error"} for f, msg in errors.items()])
+
+
+def _check_owner_change_rate(db: Session, app: models.App, changes: dict[str, Optional[int]]) -> None:
+    """429 once an app has had OWNER_RESOURCE_CHANGES_PER_HOUR owner resource changes in the last hour. Only a change that alters
+    a stored value counts (a form re-sending the same sliders doesn't). Admin changes (their detail names db_quota_mb) don't."""
+    from datetime import timedelta
+
+    if not changes or not resources.would_change(app, changes, db):
+        return
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+    n = db.query(models.AuditLog).filter(
+        models.AuditLog.action == "app.resources", models.AuditLog.target_type == "app",
+        models.AuditLog.target_id == str(app.id), models.AuditLog.at >= since,
+        ~models.AuditLog.detail.like("%db_quota_mb%")).count()
+    if n >= config.OWNER_RESOURCE_CHANGES_PER_HOUR:
+        raise HTTPException(status_code=429, detail="This app's resources were changed too often in the last hour. Try again later.",
+                            headers={"Retry-After": "600"})
+
+
+def _object_store_or_none(request: Request):
+    """The object store, or None when Spaces isn't configured (the immediate quota check then skips storage)."""
+    factory = request.app.dependency_overrides.get(get_object_store, get_object_store)
+    try:
+        return factory()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _validate_env(env: List[schemas.EnvVarIn], want_db: bool, want_storage: bool) -> None:
     seen = set()
     for item in env:
@@ -201,6 +255,9 @@ def create_app(
     )
     if payload.volume is not None:
         volumes.apply_request(db, app, payload.volume.size_gi, payload.volume.mount_path, new_app=True)
+    owner_changes = _owner_changes(payload.resources)
+    _check_owner_changes(app, owner_changes, db)
+    resources.set_owner_values(app, owner_changes, db)
     for item in payload.env:
         app.env_vars.append(
             models.AppEnvVar(
@@ -314,9 +371,14 @@ def update_app(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_active_user),
     registry: Registry = Depends(get_registry),
+    mysql_admin_factory=Depends(get_mysql_admin_factory),
+    object_store=Depends(_object_store_or_none),
 ):
     app = _get_owned_app_or_404(db, app_id, current_user)
     _forbid_if_suspended(app)
+    owner_changes = _owner_changes(payload.resources)
+    _check_owner_changes(app, owner_changes, db)  # before any other change is applied
+    _check_owner_change_rate(db, app, owner_changes)
 
     workload_changed = False  # anything that changes the rendered Deployment/Secret
     if payload.name is not None:
@@ -382,6 +444,15 @@ def update_app(
         if new_env != old_env:
             workload_changed = True
 
+    quota_changed = False
+    owner_audit = None
+    if owner_changes:
+        old_owner = resources.owner_str(app)
+        pod_changed, quota_changed = resources.set_owner_values(app, owner_changes, db)
+        if pod_changed:  # Deployment resources / LimitRange / quota change, so the pods roll
+            workload_changed = True
+        if resources.owner_str(app) != old_owner:
+            owner_audit = f"{old_owner} -> {resources.owner_str(app)}"
     if workload_changed:
         # The reconciler only sweeps pending/deploying apps: re-render so the pod rolls
         # (the env-checksum annotation changes with env). Suspended apps can't reach here.
@@ -391,6 +462,11 @@ def update_app(
     db.commit()
     db.refresh(app)
     audit.record(db, current_user, "app.update", "app", app.id)
+    if owner_audit:
+        audit.record(db, current_user, "app.resources", "app", app.id, owner_audit)
+    if quota_changed:  # revoke (or restore) right away instead of at the next poll
+        quota.check_app_quota(db, app, mysql_admin_factory=mysql_admin_factory, object_store=object_store)
+        db.refresh(app)
     return _app_out(app)
 
 
@@ -415,20 +491,6 @@ def delete_app(
 class RotateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")  # unknown fields are rejected, never passed through (PENTEST #12)
     target: Literal["db", "storage"]
-
-
-def get_mysql_admin_factory():
-    """Overridden in tests with a FakeMySQLAdmin factory."""
-    from app.providers.factory import db_admin_for
-
-    return db_admin_for
-
-
-def get_object_store() -> ObjectStore:
-    """Overridden in tests with a FakeObjectStore."""
-    from app.providers import cloud
-
-    return cloud.object_store()
 
 
 @router.post("/{app_id}/rotate-credentials", response_model=schemas.AppOut)

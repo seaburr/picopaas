@@ -6,14 +6,14 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, projects, schemas, volumes
+from app import audit, crypto, models, projects, resources, schemas, volumes
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
 from app.providers.base import Registry
-from app.routers.apps import _app_out, _check_image_cap, _validate_env
+from app.routers.apps import _app_out, _check_image_cap, _check_owner_change_rate, _validate_env
 from app.schemas import MASKED_VALUE
-from app.spec import MAX_SPEC_BYTES, SpecError, parse_spec
+from app.spec import MAX_SPEC_BYTES, SPEC_OWNER_FIELDS, SpecError, parse_spec
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 
@@ -42,6 +42,12 @@ def _resolve_project(db: Session, user: models.User, ref: Optional[str]) -> mode
         raise HTTPException(status_code=404, detail=f"We can't find a project with the slug {ref}. Check `picopaas projects`.")
     projects.forbid_if_suspended(db, project)
     return project
+
+
+def _check_spec_owner_changes(app: models.App, changes: dict, db: Session) -> None:
+    errors = resources.validate_owner_changes(app, changes, db)
+    if errors:
+        raise HTTPException(status_code=422, detail="resources: " + " ".join(errors.values()))
 
 
 @router.post("/spec", response_model=SpecDeployOut)
@@ -81,6 +87,7 @@ def deploy_spec(
         .first()
     )
     created = app is None
+    owner_audit = None
     if app is not None and app.status == "suspended":
         raise HTTPException(status_code=403, detail="This app is suspended by an administrator, so it can't be changed. Contact an administrator to get it restored.")
 
@@ -136,6 +143,9 @@ def deploy_spec(
     run_as_uid, digest = _check_image_cap(registry, spec.image, app)
     _validate_env(items, want_db=spec.resources.db, want_storage=spec.resources.storage)
 
+    owner_changes = {SPEC_OWNER_FIELDS[f]: getattr(spec.resources, f)
+                     for f in spec.resources.model_fields_set if f in SPEC_OWNER_FIELDS}
+
     if created:
         app = models.App(
             owner_id=current_user.id,
@@ -158,6 +168,8 @@ def deploy_spec(
         )
         if spec.resources.volume is not None:
             volumes.apply_request(db, app, spec.resources.volume.sizeGi, spec.resources.volume.mountPath, new_app=True)
+        _check_spec_owner_changes(app, owner_changes, db)
+        resources.set_owner_values(app, owner_changes, db)
         db.add(app)
     else:
         old_env = {v.key: (crypto.try_decrypt(v.value_encrypted), v.is_secret) for v in app.env_vars}
@@ -182,6 +194,13 @@ def deploy_spec(
         app.health_check_enabled = spec.healthCheck.enabled
         app.health_check_path = spec.healthCheck.path
         app.health_check_timeout_seconds = spec.healthCheck.timeoutSeconds
+        old_owner = resources.owner_str(app)
+        _check_spec_owner_changes(app, owner_changes, db)
+        _check_owner_change_rate(db, app, owner_changes)
+        pod_changed, _quota = resources.set_owner_values(app, owner_changes, db)
+        changed = changed or pod_changed  # omitted resources leave the owner's values alone (Kaisen redeploys rely on it)
+        if resources.owner_str(app) != old_owner:
+            owner_audit = f"{old_owner} -> {resources.owner_str(app)}"
         app.env_vars.clear()
         db.flush()
 
@@ -207,4 +226,6 @@ def deploy_spec(
     db.refresh(app)
     audit.record(db, current_user, "app.create" if created else "app.update", "app", app.id,
                  f"name={app.name} via=spec")
+    if owner_audit:
+        audit.record(db, current_user, "app.resources", "app", app.id, owner_audit)
     return SpecDeployOut(**_app_out(app).model_dump(), created=created)

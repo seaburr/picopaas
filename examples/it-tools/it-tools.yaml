@@ -3,6 +3,11 @@ name: it-tools
 # examples/it-tools/Dockerfile: upstream static site on nginx-unprivileged (built by examples.yml once the matrix lists it).
 image: ghcr.io/seaburr/picopaas-example-it-tools:latest
 port: 8080
+# Static files only: matches the template's suggested sliders (app/routers/templates.py).
+resources:
+  cpuM: 100
+  memoryMi: 96
+  scratchMi: 64
 healthCheck:
   enabled: true
   path: /

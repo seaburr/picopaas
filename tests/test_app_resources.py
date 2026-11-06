@@ -14,6 +14,11 @@ _BASE = {"cpu_request_m": 64, "cpu_limit_m": 200, "mem_request_mi": 128, "mem_li
 DEFAULTS = {**_BASE, "overridden": False, "exceeds_platform_caps": False, "defaults": _BASE}
 
 
+def _core(res):
+    """The flat effective fields; controls/admin_values are covered in test_owner_resources.py."""
+    return {k: v for k, v in res.items() if k not in ("controls", "admin_values")}
+
+
 @pytest.fixture()
 def admin(make_client):
     c = make_client()
@@ -24,7 +29,7 @@ def admin(make_client):
 @pytest.fixture()
 def aid(admin):
     r = admin.post("/apps", json=APP)
-    assert r.json()["resources"] == DEFAULTS
+    assert _core(r.json()["resources"]) == DEFAULTS
     return r.json()["id"]
 
 
@@ -32,7 +37,7 @@ def test_set_and_response(admin, aid, db_session):
     r = admin.patch(f"/admin/apps/{aid}/resources", json={"cpu_limit_m": 500, "mem_limit_mi": 1024})
     assert r.status_code == 200
     d = r.json()
-    assert d["resources"] == {**DEFAULTS, "cpu_limit_m": 500, "mem_limit_mi": 1024,
+    assert _core(d["resources"]) == {**DEFAULTS, "cpu_limit_m": 500, "mem_limit_mi": 1024,
                               "overridden": True, "exceeds_platform_caps": True}
     assert d["exceeds_platform_caps"] is True
     assert admin.get(f"/apps/{aid}").json()["resources"]["cpu_limit_m"] == 500
@@ -53,7 +58,7 @@ def test_reset_to_default(admin, aid):
     assert r.json()["resources"]["cpu_limit_m"] == 200 and r.json()["resources"]["mem_request_mi"] == 256  # omitted = kept
     r = admin.patch(f"/admin/apps/{aid}/resources",
                     json={"cpu_request_m": None, "cpu_limit_m": None, "mem_request_mi": None, "mem_limit_mi": None})
-    assert r.json()["resources"] == DEFAULTS
+    assert _core(r.json()["resources"]) == DEFAULTS
 
 
 @pytest.mark.parametrize("body", [

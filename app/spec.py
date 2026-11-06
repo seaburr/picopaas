@@ -37,6 +37,17 @@ class _Resources(BaseModel):
     db_engine: Literal["mysql", "pg"] = "mysql"  # engine for `db: true`; immutable once the app has a database
     storage: StrictBool = False
     volume: Optional[_Volume] = None  # persistent volume (platform must have VOLUMES_ENABLED); can't be removed later
+    # Owner resource choices, at most the app's ceilings (range checked at deploy). Omitted = leave unchanged on re-apply;
+    # explicit null = back to the full ceiling. Maps to the API's resources.cpu_limit_m / mem_limit_mi / ephemeral_limit_mi /
+    # storage_quota_mb.
+    cpuM: Optional[StrictInt] = None
+    memoryMi: Optional[StrictInt] = None
+    scratchMi: Optional[StrictInt] = None
+    storageMb: Optional[StrictInt] = None
+
+
+SPEC_OWNER_FIELDS = {"cpuM": "cpu_limit_m", "memoryMi": "mem_limit_mi", "scratchMi": "ephemeral_limit_mi",
+                     "storageMb": "storage_quota_mb"}
 
 
 class _HealthCheck(BaseModel):

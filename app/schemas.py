@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictInt, field_validator, model_validator
 
 from app import config, platform_settings, volumes
 from app.health_path import DEFAULT_HEALTH_PATH, validate_health_path
@@ -122,11 +122,20 @@ class UserOut(BaseModel):
     created_at: datetime
     must_change_password: bool = False
     timezone: Optional[str] = None
+    theme: Literal["dark", "light"] = "dark"
 
 
 class ProfileUpdate(BaseModel):
+    """Omitted field = unchanged. timezone: explicit null = use the browser's. theme: 'dark' | 'light' (not nullable)."""
     model_config = ConfigDict(extra="forbid")
     timezone: Optional[str] = None
+    theme: Optional[Literal["dark", "light"]] = None
+
+    @model_validator(mode="after")
+    def _theme_not_null(self):
+        if "theme" in self.model_fields_set and self.theme is None:
+            raise ValueError("theme must be dark or light")
+        return self
 
     @field_validator("timezone")
     @classmethod
@@ -144,6 +153,28 @@ class Features(BaseModel):
     volumes: bool = False  # persistent volumes enabled (VOLUMES_ENABLED); hide the volume option when false
     kaisen: bool = False  # Kaisen (Preview) is on: KAISEN_ENABLED and the admin setting kaisen_enabled
     db_engines: List[str] = []  # engines with free capacity now: a subset of ["mysql", "pg"], for the deploy form's engine picker
+
+
+class ResourceControl(BaseModel):
+    """One owner slider. value = what runs now (min(owner, max)); owner = the owner's own choice (null = full ceiling);
+    min = lowest allowed (config floor, never above max); max = the ceiling (platform default or admin override)."""
+    value: int
+    owner: Optional[int] = None
+    min: int
+    max: int
+
+
+OWNER_RESOURCE_FIELDS = ("cpu_limit_m", "mem_limit_mi", "ephemeral_limit_mi", "storage_quota_mb")
+
+
+class OwnerResources(BaseModel):
+    """Owner-chosen resources. Omitted = unchanged; explicit null = back to the full ceiling. Range checks (which depend on
+    the app's ceilings) happen in the router and give a 422 naming the allowed range."""
+    model_config = ConfigDict(extra="forbid")
+    cpu_limit_m: Optional[StrictInt] = None
+    mem_limit_mi: Optional[StrictInt] = None
+    ephemeral_limit_mi: Optional[StrictInt] = None
+    storage_quota_mb: Optional[StrictInt] = None
 
 
 class LimitOverride(BaseModel):
@@ -168,6 +199,8 @@ class Limits(BaseModel):
     volume_override_max_gi: int = 10  # admin ceiling (grow-only override)
     volume_default_mount_path: str = "/data"
     override: LimitOverride
+    # Owner sliders for the new-app form (no admin override yet): value = max = the platform default, owner = null.
+    owner_controls: Optional[dict[str, ResourceControl]] = None
 
 
 class MeOut(UserOut):
@@ -249,6 +282,7 @@ class AppCreate(BaseModel):
         default=None, ge=config.HEALTH_TIMEOUT_MIN_S, le=config.HEALTH_TIMEOUT_MAX_S)
     auto_update: bool = True
     volume: Optional[VolumeIn] = None  # needs VOLUMES_ENABLED (else 422)
+    resources: Optional[OwnerResources] = None  # sliders below the platform default; omitted/null fields = full default
     project_id: Optional[int] = None  # default: the caller's personal project
 
     @field_validator("health_check_path")
@@ -272,6 +306,8 @@ class AppUpdate(BaseModel):
     allow_sensitive_paths: Optional[bool] = None
     # Omit = unchanged. Adds a volume, or grows it / changes its mount path. Explicit null is rejected (no detaching).
     volume: Optional[VolumeIn] = None
+    # Omit = unchanged. Inside, omit = unchanged, explicit null = back to the full ceiling.
+    resources: Optional[OwnerResources] = None
 
     @field_validator("health_check_path")
     @classmethod
@@ -293,6 +329,11 @@ class ResourcesOut(BaseModel):
     overridden: bool = False
     exceeds_platform_caps: bool = False
     defaults: Optional[dict[str, int]] = None  # platform default of every overridable field (for this app's engine)
+    # Owner sliders keyed cpu_limit_m / mem_limit_mi / ephemeral_limit_mi / storage_quota_mb (null for storage_quota_mb
+    # when the app has no bucket). The flat fields above are the EFFECTIVE values (min(owner, ceiling)).
+    controls: Optional[dict[str, Optional[ResourceControl]]] = None
+    # RAW admin override columns for every overridable field (null = platform default). Admin dialogs prefill from this.
+    admin_values: Optional[dict[str, Optional[int]]] = None
 
 
 class UsageOut(BaseModel):

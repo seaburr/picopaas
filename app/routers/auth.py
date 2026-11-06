@@ -157,11 +157,15 @@ def update_me(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Self-service profile change (currently the display timezone; null = browser's)."""
-    current_user.timezone = payload.timezone
+    """Self-service profile change: display timezone (null = browser's) and theme (dark | light). Omitted = unchanged."""
+    sent = payload.model_fields_set
+    if "timezone" in sent:
+        current_user.timezone = payload.timezone
+    if "theme" in sent:
+        current_user.theme = payload.theme
     db.commit()
     audit.record(db, current_user, "user.update_profile", "user", current_user.id,
-                 f"timezone={payload.timezone}")
+                 f"timezone={current_user.timezone} theme={current_user.theme}")
     return _me_out(current_user, db)
 
 
@@ -197,8 +201,15 @@ def _me_out(current_user: models.User, db: Session) -> schemas.MeOut:
                 cpu_min_m=resources.CPU_MIN_M, cpu_max_m=platform_settings.get(db, "cpu_limit_max_m"),
                 mem_min_mi=resources.MEM_MIN_MI, mem_max_mi=platform_settings.get(db, "mem_limit_max_mi"),
             ),
+            owner_controls=_new_app_controls(db),
         ),
     )
+
+
+def _new_app_controls(db: Session) -> dict:
+    """Slider ranges for the new-app form: no admin override exists yet, so max is the platform default."""
+    proto = type("NewApp", (), {"want_storage": True})
+    return resources.controls(proto, db)
 
 
 @router.post("/change-password", status_code=204)

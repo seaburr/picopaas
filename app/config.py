@@ -261,6 +261,16 @@ OVERRIDE_EPHEMERAL_MIN_MI, OVERRIDE_EPHEMERAL_MAX_MI = 64, 2048
 OVERRIDE_DB_QUOTA_MIN_MB, OVERRIDE_DB_QUOTA_MAX_MB = 1, 1024
 OVERRIDE_STORAGE_QUOTA_MIN_MB, OVERRIDE_STORAGE_QUOTA_MAX_MB = 1, 51200
 OVERRIDE_IMAGE_SIZE_MIN_MB, OVERRIDE_IMAGE_SIZE_MAX_MB = 1, 2048
+# Floors for the app OWNER's own resource sliders (PATCH /apps/{id} resources). The ceiling is the admin override or platform
+# default; the floor never exceeds the ceiling (resources.floors), so a low admin ceiling can't make an app unsavable.
+OWNER_CPU_MIN_M, OWNER_MEM_MIN_MI = 50, 64
+OWNER_EPHEMERAL_MIN_MI, OWNER_STORAGE_MIN_MB = 64, 1
+# Higher floors for an app with a persistent volume: its backup pod is clamped to the app's own limits
+# (k8s_manifests.backup_pod_resources), so restic would run out of memory at the plain floors.
+OWNER_VOLUME_MEM_MIN_MI, OWNER_VOLUME_EPHEMERAL_MIN_MI = 128, 128
+# Owner slider changes that actually alter a value, per app per hour (each rolls the pod and a storage change can swap the
+# bucket key, which is a call on the shared cloud API). Admin changes don't count.
+OWNER_RESOURCE_CHANGES_PER_HOUR = int(os.environ.get("OWNER_RESOURCE_CHANGES_PER_HOUR", 12))
 # Per-pod outbound bandwidth cap (Cilium bandwidth manager, pod annotation kubernetes.io/egress-bandwidth), in Mbit/s.
 # Applies to everything the pod sends, including HTTP responses to visitors. Ceiling 160 Mbit/s = 20 MB/s.
 EGRESS_BANDWIDTH_MBIT = int(os.environ.get("EGRESS_BANDWIDTH_MBIT", 20))
@@ -625,6 +635,31 @@ KAISEN_REVIEW_RESPONSE_ITEMS = 8  # review_response entries kept from the builde
 KAISEN_REVIEW_RESPONSE_CHARS = 300  # per entry
 KAISEN_STALE_IGNORE_PREFIXES = ("PLAN.MD", "README", "CONVERSATION")  # root files (upper-cased) that do not make a deploy stale
 KAISEN_REVIEWER_CONTEXT_CHARS = 6000  # of the brief / change request shown to the reviewer
+
+# Package steward (app/kaisen/packages.py): a pass after the builder's finish that checks dependency currency.
+KAISEN_PACKAGES_MODES = ("off", "on")  # per-project setting `package_steward`, default on
+KAISEN_PACKAGES_MAX_TURNS = 6  # model calls in one pass
+KAISEN_PACKAGES_MAX_FINDINGS = 8
+KAISEN_PACKAGES_FINDING_CHARS = 300
+KAISEN_PACKAGES_BATCH_MAX = 20  # names per latest_versions call
+KAISEN_PACKAGES_LOOKUPS_MAX = 40  # distinct names looked up in one pass
+KAISEN_PACKAGES_NAME_MAX = 214  # npm's own limit (scope included); PyPI names are capped at 100
+KAISEN_PACKAGES_CONNECT_SECONDS = 3.0
+KAISEN_PACKAGES_READ_SECONDS = 5.0
+KAISEN_PACKAGES_TOTAL_SECONDS = 20.0  # wall-clock cap on reading one registry answer
+KAISEN_PACKAGES_RESPONSE_MAX = 8 * 1024 * 1024  # bytes read from one registry answer, then the lookup is `unavailable`
+KAISEN_PACKAGES_CACHE_SECONDS = 300  # per-pass cache of registry answers
+KAISEN_PACKAGES_NPM_URL = "https://registry.npmjs.org/"  # the only hosts the worker contacts for this tool
+KAISEN_PACKAGES_PYPI_URL = "https://pypi.org/pypi/"
+KAISEN_PACKAGES_CDN_HOSTS = ("cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "esm.sh", "cdn.skypack.dev",
+                             "ajax.googleapis.com", "code.jquery.com", "stackpath.bootstrapcdn.com",
+                             "maxcdn.bootstrapcdn.com")
+KAISEN_PACKAGES_RESPONSE_ITEMS = 12  # package_response entries kept from the builder's finish in the fix round
+# Versions inside images/kaisen-runtime (its Dockerfile: FROM node:22-bookworm-slim + Debian bookworm's python3, 3.11.2).
+# tests/test_kaisen_packages.py fails when the Dockerfile moves; change these together with it.
+KAISEN_RUNTIME_NODE_MAJOR = 22  # floats to the newest 22.x, so ranges are checked against 22.<anything>
+KAISEN_RUNTIME_DEBIAN = "bookworm"
+KAISEN_RUNTIME_PYTHON = (3, 11, 2)
 # Retention (scheduler-free: the worker trims on its own cadence).
 KAISEN_TRANSCRIPT_DAYS = 14
 KAISEN_EVENT_DAYS = 90

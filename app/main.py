@@ -267,10 +267,12 @@ async def csrf_guard(request: Request, call_next):
 
 
 def _csp() -> str:
-    # Checked against the real build (static/): one module script, one stylesheet, no eval, no external fonts or
-    # scripts. style-src needs 'unsafe-inline' for the <style> blocks / style attributes on the static pages and
-    # Vue's style bindings. img-src: data: for the select-arrow SVG in the CSS; the platform host because the
-    # apex landing/privacy pages load icons from it.
+    # Checked against the real build (static/): one module script plus the classic same-origin theme-init.js (runs before
+    # first paint, no inline script), one stylesheet, no eval, no external fonts or scripts.
+    # style-src needs 'unsafe-inline' for the <style> blocks / style attributes on the static pages and
+    # Vue's style bindings.
+    # img-src: data: for the select-arrow SVG in the CSS; the platform host because the apex landing/privacy pages load
+    # icons from it.
     return (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         f"img-src 'self' data: https://{config.PLATFORM_HOST}; font-src 'self'; connect-src 'self'; "

@@ -31,6 +31,8 @@ class User(Base):
     must_change_password: Mapped[bool] = mapped_column(default=False, server_default="0", nullable=False)
     # IANA timezone name for display; NULL = use the browser's timezone.
     timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # UI colour scheme: 'dark' (default) | 'light'.
+    theme: Mapped[str] = mapped_column(String(8), nullable=False, default="dark", server_default="dark")
     # Why/when/by whom an admin suspended the account (cleared on unsuspend); shown in the admin Suspensions list.
     suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -217,6 +219,11 @@ class App(Base):
     storage_quota_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     image_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     egress_mbit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Owner-chosen values (the sliders), always <= the ceilings above; NULL = use the full ceiling (resources.effective).
+    owner_cpu_limit_m: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    owner_mem_limit_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    owner_ephemeral_limit_mi: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    owner_storage_quota_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # User-set probe timeout in seconds (1..90); NULL = readiness 3s / liveness 5s.
     health_check_timeout_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Platform-admin-set Deployment replica count (1..config.MAX_REPLICAS); 0 is applied separately when suspended.

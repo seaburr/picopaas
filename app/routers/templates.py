@@ -29,6 +29,20 @@ class TemplateSecret(BaseModel):
     hint: str  # how to generate / what to put in it
 
 
+class TemplateResources(BaseModel):
+    """Suggested owner resource choices (same field names as the API's `resources`), below the platform defaults.
+    Absent = the full platform default. The deploy form preselects these; the user can still move the sliders."""
+    cpu_limit_m: Optional[int] = None
+    mem_limit_mi: Optional[int] = None
+    ephemeral_limit_mi: Optional[int] = None
+    storage_quota_mb: Optional[int] = None
+
+
+# Static file servers (nginx-unprivileged serving prebuilt files): a few MB per worker and almost no CPU, so a quarter of
+# the default CPU and about a quarter of the memory is plenty. Scratch 64 MiB covers nginx temp files and logs.
+_STATIC_NGINX = TemplateResources(cpu_limit_m=100, mem_limit_mi=96, ephemeral_limit_mi=64)
+
+
 class TemplateOut(BaseModel):
     id: str
     name: str
@@ -42,6 +56,7 @@ class TemplateOut(BaseModel):
     secrets: List[TemplateSecret] = []  # prefilled as empty secret env vars; the user must set each value
     health_check: Optional[TemplateHealthCheck] = None  # None = health check off
     volume: Optional[TemplateVolume] = None
+    resources: Optional[TemplateResources] = None  # None = no suggestion (full platform default)
     allow_sensitive_paths: bool = False  # True for apps that really serve paths like /.env (a Git host showing repo files)
     notes: str
     docs_url: str | None = None  # absolute https URL (example README on GitHub)
@@ -523,6 +538,7 @@ CATALOG: List[TemplateOut] = [
         wants_db=False,
         wants_storage=False,
         env={},
+        resources=_STATIC_NGINX,
         health_check=TemplateHealthCheck(path="/"),
         notes="Nothing to configure. Everything runs client-side in the browser, so the app only serves static files and uses very little memory.",
         docs_url=f"{REPO_EXAMPLES}/it-tools",
@@ -537,6 +553,7 @@ CATALOG: List[TemplateOut] = [
         wants_db=False,
         wants_storage=False,
         env={},
+        resources=_STATIC_NGINX,
         health_check=TemplateHealthCheck(path="/"),
         notes="Nothing to configure. Drawing works fully in the browser. Live collaboration and the library browser call external services, which may not work from here.",
         docs_url=f"{REPO_EXAMPLES}/excalidraw",
@@ -620,6 +637,7 @@ CATALOG: List[TemplateOut] = [
         wants_db=False,
         wants_storage=False,
         env={},
+        resources=TemplateResources(cpu_limit_m=100, mem_limit_mi=64, ephemeral_limit_mi=64),  # serves one small default page
         notes="Runs as non-root UID 101.",
         upstream_docs_url="https://nginx.org/en/docs/",
     ),
