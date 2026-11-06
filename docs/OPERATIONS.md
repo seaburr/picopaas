@@ -9,9 +9,14 @@ The platform DB is backed up daily into restic repo `s3:<endpoint>/<BACKUP_BUCKE
 1. Stop writers: `kubectl -n picopaas-system scale deployment/picopaas --replicas=0`.
 2. From a machine with `restic` and `mariadb`: `export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... RESTIC_REPOSITORY=s3:<endpoint>/<bucket>/<prefix>platform/db RESTIC_PASSWORD=...`; `restic snapshots` and pick one (`latest` is fine).
 3. `restic dump latest db.sql > platform.sql` (the dump is stored as one plain SQL file named `db.sql`; confirm with `restic ls latest`).
+   - **Alternative source: a downloaded backup.** If you downloaded the backup in Admin > Health > Backups (see ADMIN_GUIDE "Download a platform backup"), you don't need the bucket key, the repository password or `restic`: run `gunzip -c picopaas-platform-db-<date>.sql.gz > platform.sql` and continue at step 4. The file is the same `db.sql` dump the repository holds, gzipped. This path has not been drilled end to end; verify the loaded database (step 6) before you rely on it. The file holds password hashes and encrypted secrets, so delete it afterwards. The prepared copy on the platform is removed after about an hour, so download it ahead of time and keep it somewhere safe: if the platform database is gone, the Download button is gone with it.
 4. Load into an empty database (create a fresh one rather than overwriting a live one): `mariadb -h <host> -P <port> -u <admin> -p --ssl-ca=ca.pem <dbname> < platform.sql`.
 5. Point `DATABASE_URL` at it if it is a new database, run `alembic upgrade head` (the dump may predate the newest migration), then scale the deployment back up.
 6. Check login, Admin > Health, and that tenant apps still reconcile. Backups of tenant apps are unaffected (their repos are separate).
+
+## Ghost log noise: IMAGE_SIZE_URL
+
+Ghost 6.72 and 6.75 (blog apps on `picopaas-example-ghost6`) log `IMAGE_SIZE_URL` with "non-permitted private IP block" on page renders when the site icon lives on Spaces. Pages still render (150 to 330 ms in Ghost's own log, 2026-11-05), so it is noise, not an outage. The cause has not been investigated. Don't confuse it with the 5 s self-fetch delay when no icon is set. Details: `examples/ghost/README.md`.
 
 ## Backups stuck or leaving leftovers
 

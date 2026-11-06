@@ -99,6 +99,8 @@ Errors follow the platform's plain-language style.
   instructions from the standalone app; Test buttons; spend this month and caps.
 ui-ux-designer produces a mockup first (memory: layout changes start with a mockup).
 
+**Package steward (2026-11-05).** Settings gets a **Package steward** card (a checkbox, on by default; API `package_steward` `off|on`), and each run's detail gets a **Package steward** block next to the Reviewer block (verdict badge: current, outdated or skipped; findings; the builder's `package_response`). It runs after the builder's finish and before the reviewer; the pass, its limits and the registry fetch are in `docs/KAISEN_OPS.md` section 2 (Package steward).
+
 ## 7. Migration from the standalone Kaisen
 
 Port `seaburr/kaisen/service/kaisen/{builder,llm,previews,export,github,redact,prompts}` into `app/kaisen/` adapted to

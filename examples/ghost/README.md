@@ -62,8 +62,8 @@ verification email can't be delivered and would lock the admin out. Trade-off: t
 
 ### Image tags
 `ghcr.io/seaburr/picopaas-example-ghost6:latest` and `:<sha>` (the Ghost 5 build and `GHOST_MAJOR` were removed 2026-10-25).
-The live blogs (apps 98 and 164) run `ghost6:14ac3a1` (pinned, `auto_update` off; cut over 2026-10-25 after fresh backups).
-Pin a sha, never a moving `:latest`; back up first. Revert image: `ghcr.io/seaburr/picopaas-example-ghost:6-bb61e2e`.
+The live blogs (apps 98 and 164) run `ghost6:72f3f07` (Ghost 6.75, pinned, `auto_update` off), moved on 2026-11-05 from `ghost6:14ac3a1` (Ghost 6.72) after a manual backup of each. That image no longer patches Ghost's code. Earlier cutovers are in the sections below.
+Pin a sha, never a moving `:latest`; back up first. To go back, restore the pre-upgrade backup and set the image to the previous tag (`:14ac3a1`). Don't revert to `ghcr.io/seaburr/picopaas-example-ghost:6-bb61e2e` once a blog has run a newer Ghost; migrations are one-way.
 
 ### Facts (checked 2026-10-25)
 - Ghost 6.0 shipped 2025-08-04 (ghost.org/changelog/6). Ghost 5 is now the LTS line and its end of life is January 2026 (docs.ghost.org/faq/major-versions-lts): treat 5 as unsupported and insecure.
@@ -124,6 +124,9 @@ Also: restore into a rehearsal app only while it is suspended (admin suspend, re
 - Cutover after a fresh backup (set 22, db run 76 + bucket run 77; manual backups are limited to 1 per hour per app): image set to `:6-bb61e2e`, auto_update turned off, booted, 0 restarts.
   Verified on https://blog.chasberndt.com/: generator `Ghost 6.72`, homepage head unchanged, posts, RSS identical, `/ghost/` 200, images 200, Let's Encrypt cert valid to 2027-01-23, http redirects to https. Backup sets 21, 22 kept.
 - Both blogs now run Ghost 6. The Ghost 5 build row was retired afterwards.
+
+### Known log noise: IMAGE_SIZE_URL private IP block
+Both Ghost 6.72 and 6.75 log `IMAGE_SIZE_URL` with "non-permitted private IP block" when a page renders and the site icon is stored on Spaces (the bucket URL). Pages still render and are fast (150 to 330 ms in Ghost's log on 2026-11-05). The cause hasn't been investigated, so treat the line as noise, not as a fault, unless pages also slow down or the icon stops showing. It is not the 5 s self-fetch below.
 
 ### Performance: set a site icon, or pages take about 5 s
 - With no site icon or logo, Ghost checks the size of the site's own `/favicon.ico` on every page render. Pods can't reach their own public URL (LB hairpin, docs/PENTEST.md #11), so each render waits out Ghost's 5 s image-size timeout. Measured 2026-10-25: 5.16 to 5.31 s to first byte, with `IMAGE_SIZE_URL Probe unresponsive` in the log.

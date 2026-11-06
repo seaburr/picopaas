@@ -65,6 +65,7 @@ port: 8080
 healthCheck: { enabled: true, path: /healthz }   # optional; off by default, path defaults to /healthz
 allowSensitivePaths: false                       # optional; true lets paths like /.env reach your app
 resources: { db: true, db_engine: pg, storage: false }   # db_engine: mysql (default) or pg; fixed once created
+                                                   # optional lowered limits: cpuM, memoryMi, scratchMi, storageMb (below)
 env:
   LOG_LEVEL: info
   DATABASE_URL: ${{ db.url }}
@@ -75,6 +76,8 @@ secrets:
 `image` above is a placeholder. Use your own public image (or start from a template on the Templates page).
 Otherwise `apply` fails with `error: Couldn't find that image, or it's private. Check the name and tag, and make
 the image public in your registry.` Env values must be strings (quote numbers and booleans). `port` is 1024-65535.
+
+`resources.cpuM`, `memoryMi`, `scratchMi` and `storageMb` (all optional integers) lower the app's CPU (millicores), memory (MiB), scratch disk (MiB) and bucket quota (MB) below the platform maximum; for example `resources: { memoryMi: 256, cpuM: 100 }`. A value outside the allowed range makes `apply` fail with a `resources:` error that names the range. Leaving a key out of the file keeps the app's current value, and `null` goes back to the maximum. An app accepts 12 changes per hour (`429`; `apply` prints the server's message). `picopaas export` does not write these keys, so applying an exported file leaves them unchanged. Details: [USER_GUIDE.md](USER_GUIDE.md), "Lowering resources".
 
 `healthCheck.enabled` (default false) turns on HTTP readiness and liveness probes against `path` on your app's port;
 a 2xx or 3xx response is healthy. `path` must start with `/` and be at most 255 characters, using only letters, digits

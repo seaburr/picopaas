@@ -26,6 +26,8 @@ administrator restores the account.
 
 **Timezone.** On the **Account** page you can pick your timezone so times show in local time; leave it unset to use your browser's. Server-written text (audit CSV, notices) stays in UTC.
 
+**Theme.** Also on **Account**, **Theme** switches the app between **Dark** (the default) and **Light**. The choice is saved on your account, so it follows you to other browsers. Each browser also keeps a copy, so the page loads in your theme without a flash, including the sign-in page; the copy stays after you sign out and your account's value replaces it the next time you sign in.
+
 ## 2. Platform rules
 
 | Rule | Value |
@@ -62,12 +64,13 @@ You can deploy four ways. All of them save the same app record; the platform the
 3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
 5. Optional: open **Advanced: health check**, turn it on, and set the path and (optionally) a timeout.
-6. Click **Create app**.
+6. Optional: open **Resources** to lower CPU, memory, scratch disk or the bucket size (see "Lowering resources").
+7. Click **Create app**.
 
 Each app has two pages. **App health** (`/apps/:id`) shows status, resource usage, quotas, logs, recent events and
 versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, health check) plus **Custom domain**,
 the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button on each page links to
-the other. Saving the deployment form redeploys the app.
+the other. Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
 
 ### 3b. YAML in the UI
 
@@ -139,6 +142,26 @@ Check progress: picopaas status my-app
 On update, a secret without `--secret` keeps its stored value. To free an over-cap bucket, run
 `picopaas storage-delete my-app --all` (see section 10).
 
+### Lowering resources
+
+Every app gets the platform's CPU, memory, scratch disk and (with a bucket) storage limits. The **Resources** section of the new-app form and of **Settings** has a slider and a number box for each. Each starts at its maximum, which is the platform default, or a higher value an administrator has granted that app. Move a slider down when your app needs less: a static site runs fine on a fraction of the default, and a lower limit leaves more of your project's quota for other apps.
+
+| Slider | What it limits | Lowest value you can pick |
+|---|---|---|
+| CPU | Processor time the app can use (millicores, `m`; 1000m is one CPU). | 50m |
+| Memory | RAM. Too little makes the app crash and restart in a loop; if you see that, raise it. | 64 MB |
+| Scratch disk | Temporary files on the container filesystem and `/tmp`. Cleared on every restart. | 64 MB |
+| Object storage quota | Size cap of the bucket (only when the app has a bucket). Lowering it never deletes files. | 1 MB |
+
+- **Volume floor.** An app with a persistent volume cannot go below 128 MB of memory or 128 MB of scratch disk, so its backups can run. The form says so when you try.
+- **Restart rules.** Saving a new CPU, memory or scratch value restarts the app (the form warns you). Changing only the storage quota does not.
+- **Storage below usage is refused.** You cannot set the bucket quota under what it already holds; the error tells you how much to free first, or the lowest value that works.
+- **Administrator ceilings.** An administrator can lower or raise an app's limits. Your choice never exceeds the ceiling, and the smaller of the two wins. If an administrator lowers a ceiling under your choice, the lower one applies. If they raise it, your own choice stays unless you left the slider at its maximum, in which case the app follows the new ceiling. The form shows "Your limit on this app is ..." when an administrator has changed the ceiling. App health shows a **custom** badge on Resources when you have lowered something.
+- **Reset.** **Reset all to maximum** returns every slider to its ceiling.
+- **Rate limit.** Each change that alters a value rolls the pod and may swap the bucket key, so an app accepts at most 12 owner resource changes per hour (`OWNER_RESOURCE_CHANGES_PER_HOUR`). The 13th gets `429` with a `Retry-After` header. Saving a form without moving a slider does not count, and administrator changes are separate.
+- **Templates.** Static-file templates come with lowered sliders (IT-Tools and Excalidraw 100m CPU, 96 MB memory, 64 MB scratch; the static nginx site 100m, 64 MB, 64 MB). You can move them before you create the app.
+- **From a spec or the API.** Use `resources.cpuM`, `memoryMi`, `scratchMi` and `storageMb` in a spec (section 4), or `resources` in `POST`/`PATCH /apps` (see [API.md](API.md)).
+
 ## 4. YAML spec reference
 
 Unknown keys are rejected anywhere. No YAML anchors or aliases. Maximum 64 KB.
@@ -149,7 +172,7 @@ name: my-app
 image: ghcr.io/me/app:1.2
 port: 8080
 healthCheck: { enabled: true, path: /healthz }
-resources: { db: true, storage: false }
+resources: { db: true, storage: false, memoryMi: 256 }
 env:
   LOG_LEVEL: info
   DATABASE_URL: ${{ db.url }}
@@ -162,11 +185,15 @@ secrets:
 | `apiVersion` | string | yes | | Exactly `picopaas/v1`. |
 | `name` | string | yes | | 1 to 255 chars. Identifies the app: applying the same name again updates it. The name is display only; the hostname is generated and does not change. |
 | `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
-| `port` | integer | **yes** | none | 1 to 65535. There is no default. |
+| `port` | integer | **yes** | none | 1024 to 65535 (non-root containers cannot bind lower ports). There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
 | `resources.db_engine` | string | no | `mysql` | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a blob storage bucket. Same removal rule. |
 | `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
+| `resources.cpuM` | integer | no | platform default | CPU limit in millicores, from the floor up to the app's ceiling (section 3, "Lowering resources"). Omitted on a re-apply leaves the current value; `null` goes back to the ceiling. Out of range is a `422` naming the allowed range. |
+| `resources.memoryMi` | integer | no | platform default | Memory limit in MiB. Same rules. |
+| `resources.scratchMi` | integer | no | platform default | Scratch disk limit in MiB. Same rules. |
+| `resources.storageMb` | integer | no | platform default | Bucket quota in MB; needs `resources.storage: true`. Same rules. |
 | `allowSensitivePaths` | boolean | no | `false` | Lets paths like `/.env` reach your app. See "Sensitive paths are blocked". |
 | `healthCheck.enabled` | boolean | no | `false` | Turns on HTTP readiness and liveness probes. |
 | `healthCheck.timeoutSeconds` | integer | no | blank | 1 to 90. Probe timeout for both probes; blank uses the platform values (see section 8). `periodSeconds` is raised to at least the timeout. |
@@ -521,6 +548,8 @@ overshoot a little before the next check). Both are shown on the app page (**Usa
 | Image | 512 MB | Deploy is rejected. |
 | Scratch disk | 250 MB | The pod is evicted and restarted. Kubernetes starts a replacement pod within seconds, so the app usually stays **Running**; a "Restarted" notice appears on the app page (see "Recent events"). Files on the container filesystem or in `/tmp` are lost on restart. |
 
+These are the maximums. CPU, memory, scratch disk and the bucket quota can be lowered per app; see "Lowering resources" in section 3.
+
 ### Recovering from over-cap
 
 Find out which resource is over with the **Usage** section on the app page, `picopaas status <app>` or `GET /apps/{id}` (`quota`).
@@ -653,7 +682,7 @@ The **Templates** page (`/templates`, or **Deploy from a template** on the New a
 
 Each card has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. Cards warn when the instance has volumes, databases or blob storage turned off.
 
-**Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
+**Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
 
 ## 15. Projects (teams)
 
@@ -727,7 +756,7 @@ Also in settings:
 - **Effort.** Low, medium (default) or high.
 - **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap. The Kaisen home, settings and build pages also show what the project has spent over the **last 30 days** (a rolling window, not the calendar month).
 - **Member limits.** Owners can cap what each person spends. See "Kaisen limits".
-- **Web access** (off by default) and **Reviewer** (off by default). See "Web access" and "Reviewer step". An administrator can turn web search off for a project; Web access is then grayed out with "Web search isn't enabled for this project."
+- **Web access** (off by default), **Reviewer** (off by default) and **Package steward** (on by default). See "Web access", "Reviewer step" and "Package steward". An administrator can turn web search off for a project; Web access is then grayed out with "Web search isn't enabled for this project."
 - **GitHub token (optional).** See "Download or push to GitHub".
 
 ### Your first build
@@ -865,6 +894,14 @@ Kaisen edits files in place (one exact piece of text at a time) and can search a
 
 Off by default. With **Reviewer** on, a second, cheaper model (default `claude-haiku-5-5`, any listed model allowed) reads the finished files and approves, or reports up to five findings. Findings trigger exactly one fix round by the builder; there is never a second review. In that fix round the builder must answer each finding ("fixed: ..." or "disagree: ..."); if it finishes without changing a file and without an answer it is sent back once. The run shows the verdict, findings, the builder's answer ("no files changed after review" when nothing but PLAN.md changed) and a "Reviewer" label in its transcript. The review is a model call, so it adds at least one extra call per run and is billed to your key and counted in the caps. If a cap stops it, the verdict is "skipped".
 
+### Package steward
+
+On by default. When the builder finishes a run, a small model checks that the packages your app depends on are on the newest stable versions that run on the preview runtime. It looks at `package.json`, `requirements*.txt` and `pyproject.toml` (lockfiles show what is really installed) and at CDN `<script>` and `<link>` tags that carry a version, and compares them with the npm and PyPI registries. If anything is behind, unpinned (a range, `latest` or `*`) or unknown to the registry, the builder gets exactly one automatic fix round and must answer each finding with "upgraded: ..." or "kept: <reason>". The pass runs before the reviewer, so the reviewer sees the upgraded files. The run page shows a **Package steward** block with the verdict (current, outdated or skipped), the findings and the builder's answers. Turn it off with **Package steward** in **Kaisen > Settings** ("Check packages after each run").
+
+- **Cost.** It is a model call or a few per run, billed to your key, counted in every cap, and it uses the reviewer's model setting. Each registry lookup is free. If a cap is reached mid-pass, the pass is skipped and the run does not fail.
+- **Skipped.** An app with no dependency file and no versioned CDN tag has nothing to check, so there is no model call and no cost. The check is also skipped when the model is unavailable, the registries can't be reached, or it never got to look anything up. It only reports packages that really exist in those registries.
+- **Limits.** Up to 8 findings per run, 6 model calls and 40 distinct package names looked up per pass, and one fix round, never a second check.
+
 ### Restore points
 
 Kaisen saves a restore point of the files each time a run starts (a first build, a change request or a resume), as long as the files differ from the last restore point. The newest 5 per build are kept; older ones are dropped. The **Restore points** card lists them with the run they belong to, and each run can show **what changed** as a diff (secrets are hidden).
@@ -883,7 +920,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 
 - Model cost is billed to your Anthropic account; the project's caps stop a build early. Defaults: $2 per run, $8 per day, $30 per build; each can be set from 0 to $1000. A cap that is reached stops the run and leaves a note in the inbox; raise the cap and resume.
 - **Member limits.** In **Kaisen > Settings > Member limits** an owner sets, for each person, a daily and a per-build limit; blank means no limit. These apply on top of the project caps. Spend is counted against the person who started the run. The daily amount counts all builds in the project and resets at 00:00 UTC. Members see only their own row and can't edit it. A run that would exceed a limit isn't started, or stops mid-run, with a message naming the limit.
-- **Costs that are extra.** Web search is $0.01 per search. The reviewer adds at least one model call per run. Every call counts toward all caps.
+- **Costs that are extra.** Web search is $0.01 per search. The reviewer adds at least one model call per run, and the package steward a few more when the app has dependencies. Every call counts toward all caps.
 
 **Builds and files**
 
@@ -909,6 +946,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 - Web access: 20 allowed domains; up to 5 searches and 5 page reads per model request; a page read is capped at about 20,000 tokens.
 - Tests: the command is up to 300 characters, runs for up to 120 seconds, and only the last part of its output (about 4 KB) is kept. The test can't see database, bucket or platform variables.
 - Reviewer: up to 5 findings of 400 characters and 8 model calls per review; one fix round.
+- Package steward: up to 8 findings of 300 characters, 6 model calls and 40 package names per pass; one fix round.
 - Previews are one web process: no background workers or cron, and no email.
 
 ### Not supported yet

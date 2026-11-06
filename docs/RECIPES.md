@@ -136,6 +136,7 @@ No secrets are needed: every value is a platform ref.
   verification email could not send and would lock you out.
 - **CPU-bound.** The first start is slow. Ask an admin for more CPU (up to 1000m) for sustained traffic.
 - **Set a Publication icon** in Ghost Admin > Settings > Design so pages don't wait on a self-fetch.
+- **Log noise.** Ghost 6.72 and 6.75 both log `IMAGE_SIZE_URL` "non-permitted private IP block" for an icon stored on Spaces. Pages still render and stay fast; the cause has not been investigated. It is not the 5 s self-fetch above. See `examples/ghost/README.md`.
 
 The image is `FROM ghost:6-alpine` plus:
 
@@ -1301,6 +1302,10 @@ apiVersion: picopaas/v1
 name: it-tools
 image: ghcr.io/seaburr/picopaas-example-it-tools:latest
 port: 8080
+resources:               # lowered sliders, as the template preselects
+  cpuM: 100
+  memoryMi: 96
+  scratchMi: 64
 healthCheck: { enabled: true, path: / }
 ```
 
@@ -1311,6 +1316,7 @@ None. Nothing to configure.
 ### Gotchas
 
 - The upstream image may be stale. The wrapper inherits that: pin or build from a newer source tag to refresh.
+- The `resources` block lowers CPU, memory and scratch disk to a fraction of the platform maximum (a static file server needs little). It is optional; drop it to get the full defaults, or see USER_GUIDE "Lowering resources".
 
 ### After the first boot
 
@@ -1338,6 +1344,10 @@ apiVersion: picopaas/v1
 name: excalidraw
 image: ghcr.io/seaburr/picopaas-example-excalidraw:latest
 port: 8080
+resources:               # lowered sliders, as the template preselects
+  cpuM: 100
+  memoryMi: 96
+  scratchMi: 64
 healthCheck: { enabled: true, path: / }
 ```
 
@@ -1426,6 +1436,10 @@ apiVersion: picopaas/v1
 name: static-site
 image: nginxinc/nginx-unprivileged:alpine
 port: 8080
+resources:               # lowered sliders, as the template preselects
+  cpuM: 100
+  memoryMi: 64
+  scratchMi: 64
 ```
 
 ### Env vars

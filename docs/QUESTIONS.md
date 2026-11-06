@@ -56,6 +56,9 @@ background on each item if you want it.
   for password/CA changes but not for a flavor change, so a wrong flavor (wrong admin DB) breaks provisioning until fixed.
   Recommend verifying on flavor change too (one line). Admin-only, availability only. OK to add?
 
+### Platform DB download: who may fetch the link? (security-reviewer, 2026-11-05)
+The password gate covers starting a download, but the export then stays fetchable (new 10 minute link on each GET, no password) for up to an hour by any admin session, so a stolen admin session right after your own download could take the file. Recommendation: make the file available for 15 minutes only and tie it to the admin who started it (needs one small column). Fine to ship without it first. See PENTEST K108. Your answer:
+
 ## To-dos (only you can do these)
 
 - [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** (1) ~~managed MySQL `max_allowed_packet`~~ DONE 2026-11-03 (qa-tester, live via a throwaway Adminer app, deleted): `@@global.max_allowed_packet` = 67108864 (64 MiB, well above the 16 MiB needed), MySQL 8.4.11, node `picopaas-mysql-nyc3-2`, host = the `primary` db-server (`private-picopaas-mysql-nyc3-do-user-1298308-0...`); (2) ~~kaisen-imgproc running~~ and (3) ~~node room~~ confirmed by the successful rollout of kaisen-imgproc in deploy 41716416534 (still worth a glance at `kubectl top pod` for peak memory with an ~8 MP image). Remaining for you: turn it on in Admin, Projects, Kaisen uploads.

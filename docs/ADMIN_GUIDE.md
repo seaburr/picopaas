@@ -225,7 +225,8 @@ Open **Admin** (tabs: Users, Apps, Projects, Suspensions, Database servers, Sett
   `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`, `user.reset_password`,
   `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`, `apikey.revoke`,
   `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`, `app.resources`,
-  `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`, `platform_logs.download`.
+  `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`, `platform_logs.download`, `platform_backup.download`, `platform_backup.download_link`, `platform_backup.download_refused`, `platform_backup.export_succeeded`, `platform_backup.export_failed`.
+- **Health > Statistics:** two lifetime counters that never go down. **Apps ever deployed** is every app ever created: deleted apps and Kaisen previews are included (a preview is a real deployed app), and so is an app that never became healthy. **Kaisen apps ever built** is the number of Kaisen builds, deleted ones included, that have at least one run finished `done`; a build whose runs all failed or stopped doesn't count, and a build counts once however many runs it had. Nothing hard-deletes these rows, so deleting an app or build does not lower either number. Both are in `GET /admin/health` under `statistics`.
 - **Health:** nodes, per-app readiness, restarts, CPU and memory against capacity (needs metrics-server), platform
   pods, and database server capacity. Managed databases usually do not expose host CPU or disk externally; use your
   provider's console for those.
@@ -352,6 +353,17 @@ Clear a field to return to the default. Changing CPU, memory, scratch disk or ou
 Changing a quota runs that app's check immediately, so raising it restores a read-only database or bucket at once.
 Connection caps apply immediately and on each reconcile sweep (not in MySQL procedure mode).
 
+### Admin ceilings and owner choices
+
+Owners can lower CPU, memory, scratch disk and bucket size on their own apps with sliders (USER_GUIDE "Lowering resources"). The values above, and the defaults in Admin > Settings, are the **ceilings** for those sliders. The app runs with the smaller of the owner's choice and the ceiling, so an owner can never exceed what you granted.
+
+- **Raising a ceiling** (a per-app override) moves the slider maximum. An owner who left a slider at its maximum follows the new value; one who chose a lower value keeps it.
+- **Lowering a ceiling** under an owner's choice applies at once (min wins) and rolls the pod; the owner's stored choice is kept, so raising the ceiling again brings it back.
+- **Floors** are fixed in code (`OWNER_*_MIN_*` in `app/config.py`), higher for memory and scratch on an app with a volume, and are never above the ceiling, so a very low ceiling can't leave an app unsavable.
+- **The admin dialog** (Apps > sliders icon) shows and saves only your overrides (API `resources.admin_values`), not the owner's choice, so saving it can't turn an owner's lower value into an override. The flat values in `resources` are what actually runs; `controls` has each slider's range.
+- **Rate limit.** Owner resource changes that alter a value are limited per app (`OWNER_RESOURCE_CHANGES_PER_HOUR`, 12). Your changes are not counted. Each owner change is audited as `app.resources` with the old and new owner values.
+- **Exceeds caps.** The "exceeds platform caps" flag looks at ceilings only, so an owner choosing less never hides a raise you made.
+
 **Replicas** are an admin setting. The ResourceQuota is sized for the replicas plus one rolling-update surge pod; each
 replica gets the full per-pod limits and all replicas share the app's one database and bucket, not local disk. An
 extra NetworkPolicy lets an app's own pods talk to each other. Replicas must be stateless: an app has one ClusterIP
@@ -373,6 +385,19 @@ configured and a MySQL `DATABASE_URL` (`PLATFORM_BACKUP_ENABLED=1` is the defaul
 `PLATFORM_BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` (7 / 4 / 3). The repository password is random and stored Fernet-encrypted in `platform_settings`
 (`platform_backup_repo_password`): keep `FERNET_KEY` safe elsewhere, or the repo can't be opened. Admin > Health > Backups shows the runs, last success,
 repository size and a stale warning; "Back up now" is `POST /admin/health/backups/platform-db/run`. Restore: docs/OPERATIONS.md.
+
+### Download a platform backup
+
+On **Admin > Health > Backups**, each succeeded platform run has a download icon button. It exists so you can keep a copy off the platform or restore without needing the backup bucket key (see OPERATIONS "Restoring the platform database", alternative source).
+
+1. Press the download icon on a run. A dialog asks for **your own current admin password** (every time; a wrong one is refused, audited as `platform_backup.download_refused` and counts toward the login throttle). Downloads need a browser session as a platform admin; an API key, whatever its scope, gets 403.
+2. The platform prepares the file in the background (how long depends on the database size) and the dialog turns into a **Download** button. You can close the dialog; the run keeps showing its state and you can come back to it.
+3. The link works for **10 minutes** (`BACKUP_EXPORT_URL_SECONDS`); opening the dialog again while the file exists issues a fresh link, each audited as `platform_backup.download_link` (never the URL). The prepared file is **removed after about an hour** (`BACKUP_EXPORT_TTL_SECONDS`, 3600); after that the run offers a new download.
+4. **Limit.** `backup_export_max_per_hour` (Admin > Settings > Backups; default `BACKUP_EXPORT_MAX_PER_HOUR`, 3) new downloads per hour for the whole platform, counted separately from the same limit on app downloads. Failed downloads don't count; one is prepared at a time (a second request gets a 409 to wait). Asking again for a snapshot that already has a live file just reuses it.
+
+**What is inside.** `picopaas-platform-db-<date>.sql.gz`: a gzipped SQL dump of the entire platform database. That includes every account's email and **password hash**, API key hashes, every app's environment values (secrets are Fernet-encrypted, but the dump is useless to an attacker only while `FERNET_KEY` stays private), invites and the full audit log. Treat it like the database itself: save it only on an encrypted disk or in a password manager's file store, don't email or commit it, don't leave it in Downloads, and delete it when done. The file as a whole is not encrypted by PicoPaaS. The link is bearer access for its 10 minutes, so don't paste it anywhere.
+
+**Restoring from it.** `gunzip` the file to get the same plain SQL a `restic dump` produces, then follow OPERATIONS "Restoring the platform database" from the load step. Restoring from a downloaded file has not been drilled end to end yet; the steps are the same SQL load as from the repository.
 
 ## Kaisen (Preview)
 
