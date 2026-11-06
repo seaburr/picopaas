@@ -7,7 +7,7 @@ const toast = useToastStore()
 const tone = {
   success: 'border-emerald-500/50 text-emerald-200',
   error: 'border-danger/60 text-red-200',
-  info: 'border-accent/60 text-blue-100',
+  info: 'border-info/60 text-blue-100',
 } as const
 const glyph = { success: '✓', error: '!', info: 'i' } as const
 </script>

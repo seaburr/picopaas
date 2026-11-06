@@ -421,6 +421,23 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
           </div>
         </section>
 
+        <section v-if="data.statistics" id="sec-statistics" class="scroll-mt-4" aria-label="Statistics">
+          <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Statistics</h2>
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div :class="card">
+              <div class="text-xs text-zinc-400">Apps ever deployed</div>
+              <div class="text-lg font-semibold text-white">{{ data.statistics.apps_ever_deployed }}</div>
+              <div class="text-xs text-zinc-400">includes Kaisen previews</div>
+            </div>
+            <div :class="card">
+              <div class="text-xs text-zinc-400">Kaisen apps ever built</div>
+              <div class="text-lg font-semibold text-white">{{ data.statistics.kaisen_apps_ever_built }}</div>
+              <div class="text-xs text-zinc-400">builds with a finished run</div>
+            </div>
+          </div>
+          <p class="help">Deleted apps and builds still count.</p>
+        </section>
+
         <HealthBackups />
         <HealthLogs />
       </template>

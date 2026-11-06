@@ -23,7 +23,7 @@ name: my-app              # display name only; hostname is generated
 image: ghcr.io/stefanprodan/podinfo:6.15.0
 port: 9898
 # healthCheck: { enabled: true, path: /healthz, timeoutSeconds: 3 }   # opt-in; default off; timeout 1-90s, optional
-resources: { db: false, storage: false }
+resources: { db: false, storage: false }   # optional limits here too, each up to your maximum: cpuM, memoryMi, scratchMi, storageMb
 env:
   LOG_LEVEL: info
 secrets:                  # values are entered below, never in the file

@@ -38,6 +38,7 @@ const form = reactive({
   effort: '',
   reviewer: false,
   reviewer_model: '',
+  package_steward: true,
   cap_run: 0,
   cap_day: 0,
   cap_build: 0,
@@ -55,7 +56,7 @@ function fill(v: KaisenSettings) {
   s.value = v
   Object.assign(form, {
     anthropic_key: '', clear_anthropic_key: false, github_token: '', clear_github_token: false,
-    model: v.model, effort: v.effort, reviewer: v.reviewer === 'on', reviewer_model: v.reviewer_model || v.reviewer_default_model || v.model, cap_run: v.cap_run, cap_day: v.cap_day, cap_build: v.cap_build,
+    model: v.model, effort: v.effort, reviewer: v.reviewer === 'on', reviewer_model: v.reviewer_model || v.reviewer_default_model || v.model, package_steward: v.package_steward !== 'off', cap_run: v.cap_run, cap_day: v.cap_day, cap_build: v.cap_build,
     web_access: v.web_access, web_domains: (v.web_allowed_domains ?? []).join('\n'),
   })
 }
@@ -95,6 +96,7 @@ async function save() {
   const payload: KaisenSettingsPayload = {
     model: form.model, effort: form.effort,
     reviewer: form.reviewer ? 'on' : 'off', reviewer_model: form.reviewer_model,
+    package_steward: form.package_steward ? 'on' : 'off',
     cap_run: Number(form.cap_run) || 0, cap_day: Number(form.cap_day) || 0, cap_build: Number(form.cap_build) || 0,
     web_access: form.web_access,
     web_allowed_domains: form.web_domains.split('\n').map((d) => d.trim()).filter(Boolean),
@@ -193,6 +195,12 @@ async function test(which: 'anthropic') {
             <select id="ks-reviewer-model" v-model="form.reviewer_model" class="input" :disabled="readOnly" :aria-invalid="!!fieldErr.reviewer_model"><option v-for="m in s.models" :key="m" :value="m">{{ m }}</option></select>
             <p v-if="fieldErr.reviewer_model" class="field-error" role="alert">{{ fieldErr.reviewer_model }}</p>
           </div>
+        </section>
+
+        <section class="card card-pad space-y-3" aria-labelledby="ks-steward">
+          <h2 id="ks-steward" class="section-title">Package steward</h2>
+          <p class="help">Checks that packages are on the latest stable versions at the end of each run and has the builder upgrade them. Uses a small amount of your model budget. Skipped when an app has no packages.</p>
+          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.package_steward" type="checkbox" class="check" :disabled="readOnly" /> Check packages after each run<span v-if="readOnly" class="meta">({{ s.package_steward === 'off' ? 'off' : 'on' }})</span></label>
         </section>
 
         <section class="card card-pad" aria-labelledby="ks-caps">

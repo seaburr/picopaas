@@ -197,7 +197,7 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
         <div v-for="b in [{ id: 'asset', label: 'Site images', used: quota.asset_bytes, limit: quota.asset_limit_bytes }, { id: 'ref', label: 'Reference files', used: quota.ref_bytes, limit: quota.ref_limit_bytes }]" :key="b.id">
           <div class="flex justify-between text-xs text-zinc-300"><span>{{ b.label }}</span><span>{{ fmtSize(b.used) }} of {{ fmtSize(b.limit) }}</span></div>
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-pico-card" role="progressbar" :aria-label="b.label" aria-valuemin="0" :aria-valuemax="b.limit" :aria-valuenow="b.used">
-            <div class="h-full rounded-full" :class="pct(b.used, b.limit) >= 80 ? 'bg-amber-400' : 'bg-accent-light'" :style="{ width: `${pct(b.used, b.limit)}%` }" />
+            <div class="h-full rounded-full" :class="pct(b.used, b.limit) >= 80 ? 'bg-warn-solid' : 'bg-accent-light'" :style="{ width: `${pct(b.used, b.limit)}%` }" />
           </div>
         </div>
       </div>

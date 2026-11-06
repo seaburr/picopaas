@@ -2,14 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getBackupHealth, runPlatformDbBackup } from '../api/admin'
 import { ApiError } from '../api/client'
-import { stamp, stampTitle } from '../utils/format'
+import { formatBytes, stamp, stampTitle } from '../utils/format'
 import { parseTs } from '../composables/appUi'
 import { fmt } from '../utils/tz'
 import IconButton from './IconButton.vue'
 import { useToastStore } from '../stores/toast'
-import { DatabaseBackup } from 'lucide-vue-next'
+import { DatabaseBackup, Download, X } from 'lucide-vue-next'
+import PlatformBackupDownloadDialog from './PlatformBackupDownloadDialog.vue'
 import AdminAppBackups from './AdminAppBackups.vue'
-import type { BackupFailure } from '../types'
+import type { BackupFailure, PlatformBackupRun } from '../types'
 
 const toast = useToastStore()
 const running = ref(false)
@@ -28,6 +29,14 @@ async function runNow() {
 const pdb = computed(() => data.value?.platform_db ?? null)
 const lastRun = computed(() => pdb.value?.runs?.[0] ?? null)
 const openApp = ref<number | null>(null)
+// Download dialog: a snapshot of the run taken on click, so the 60s refresh never resets an open dialog.
+const dlRun = ref<PlatformBackupRun | null>(null)
+const dismissedFail = ref<number | null>(null)
+const failedDl = computed(() => (pdb.value?.failed_download && pdb.value.failed_download.id !== dismissedFail.value ? pdb.value.failed_download : null))
+const exportLabel = (r: PlatformBackupRun) => {
+  const s = r.export?.status
+  return s === 'queued' || s === 'running' ? 'preparing download' : s === 'ready' ? 'download ready' : ''
+}
 
 const data = ref<Awaited<ReturnType<typeof getBackupHealth>> | null>(null)
 const error = ref('')
@@ -46,9 +55,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.clearInterval(timer))
 
-const MB = 1048576
-const GB = 1024 * MB
-const size = (n: number) => (n >= GB ? `${(n / GB).toFixed(2)} GB` : n >= MB ? `${(n / MB).toFixed(1)} MB` : n > 0 ? `${Math.max(1, Math.round(n / 1024))} KB` : '0')
+const size = formatBytes
 const st = computed(() => data.value?.storage)
 const pct = computed(() => Math.min(100, st.value?.used_pct ?? 0))
 // Deleted apps with retained backups that fell outside the top-N table above.
@@ -96,6 +103,21 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
           Last run: {{ lastRun.status }} ({{ lastRun.trigger }}) <span class="mono" :title="stampTitle(lastRun.finished_at ?? lastRun.created_at)">{{ stamp(lastRun.finished_at ?? lastRun.created_at) }}</span><template v-if="lastRun.error">: {{ lastRun.error }}</template>
         </p>
         <p v-else class="mt-1 text-xs text-zinc-400">No runs yet.</p>
+        <div v-if="failedDl" class="alert-warn mt-2 flex items-start justify-between gap-2 text-xs" role="status">
+          <span class="min-w-0 wrap-break-word">A download of backup {{ failedDl.snapshot_id ?? '' }} failed<template v-if="failedDl.failed_at"> at {{ stamp(failedDl.failed_at) }}</template><template v-if="failedDl.error">: {{ failedDl.error }}</template></span>
+          <IconButton :icon="X" label="Dismiss" sm @click="dismissedFail = failedDl.id" />
+        </div>
+        <ul v-if="pdb.runs.length" class="mt-2 divide-y divide-pico-border border-t border-pico-border text-xs text-zinc-300" aria-label="Recent platform backups">
+          <li v-for="r in pdb.runs" :key="r.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5">
+            <span class="min-w-0 wrap-break-word">
+              <span class="mono" :title="stampTitle(r.finished_at ?? r.created_at)">{{ stamp(r.finished_at ?? r.created_at) }}</span>
+              · {{ r.status }} ({{ r.trigger }})<template v-if="r.bytes_added"> · +{{ size(r.bytes_added) }}</template>
+              <span v-if="exportLabel(r)" class="badge-info ml-1">{{ exportLabel(r) }}</span>
+            </span>
+            <IconButton v-if="r.downloadable" :icon="Download" :label="`Download backup from ${stamp(r.finished_at ?? r.created_at)}`" sm @click="dlRun = r" />
+          </li>
+        </ul>
+        <p v-if="pdb.download_per_hour" class="mt-1 text-xs text-zinc-500">Up to {{ pdb.download_per_hour }} {{ pdb.download_per_hour === 1 ? 'download' : 'downloads' }} per hour.</p>
       </div>
 
       <div class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3" :class="st?.warning ? 'border-amber-500/40' : ''">
@@ -198,5 +220,6 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
         </div>
       </div>
     </div>
+    <PlatformBackupDownloadDialog :run="dlRun" @close="dlRun = null" @changed="load" />
   </section>
 </template>

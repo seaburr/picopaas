@@ -133,7 +133,7 @@ const offHelp = computed(() => (props.summary && !props.summary.uploads_enabled 
         <Paperclip :size="14" aria-hidden="true" />Attach
       </button>
       <button v-if="summary && buildId !== null && summary.max_files !== undefined" type="button" class="btn-secondary btn-sm" @click="emit('open-files')">
-        Files<span class="meta ml-1">{{ count }} of {{ summary.max_files }}</span><span v-if="summary.changed_since_deploy" class="ml-1.5 inline-block h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" /><span v-if="summary.changed_since_deploy" class="sr-only">, changed since deploy</span>
+        Files<span class="meta ml-1">{{ count }} of {{ summary.max_files }}</span><span v-if="summary.changed_since_deploy" class="ml-1.5 inline-block h-2 w-2 rounded-full bg-warn-solid" aria-hidden="true" /><span v-if="summary.changed_since_deploy" class="sr-only">, changed since deploy</span>
       </button>
       <span v-if="attachOff" class="help min-w-0 basis-full sm:basis-0 sm:flex-1">{{ offHelp }}</span>
       <span v-else class="flex-1" />

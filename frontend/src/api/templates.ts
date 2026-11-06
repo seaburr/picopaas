@@ -21,6 +21,7 @@ export interface AppTemplate {
   health_check: { path: string; timeout_seconds: number | null } | null
   volume: { size_gi: number; mount_path: string; required: boolean } | null
   notes: string
+  resources?: Partial<Record<'cpu_limit_m' | 'mem_limit_mi' | 'ephemeral_limit_mi' | 'storage_quota_mb', number>> | null
   docs_url?: string | null
   upstream_docs_url?: string | null
 }

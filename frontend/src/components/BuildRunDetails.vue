@@ -16,6 +16,11 @@ const VERDICT: Record<string, { label: string; cls: string }> = {
   changes: { label: 'Changes requested', cls: 'badge-warn' },
   skipped: { label: 'Review skipped', cls: 'badge-neutral' },
 }
+const PKG_VERDICT: Record<string, { label: string; cls: string }> = {
+  current: { label: 'Packages current', cls: 'badge-ok' },
+  outdated: { label: 'Packages outdated', cls: 'badge-warn' },
+  skipped: { label: 'Package check skipped', cls: 'badge-neutral' },
+}
 const isReviewer = (t: { role: string; text: string }) => t.role === 'user' && t.text.startsWith('[reviewer]')
 const body = (t: { role: string; text: string }) => (isReviewer(t) ? t.text.replace(/^\[reviewer\]\s*/, '') : t.text)
 const label = (t: { role: string; text: string }) => (isReviewer(t) ? 'Reviewer' : t.role)
@@ -31,7 +36,7 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
             <button v-for="s in run.suggestions" :key="s" type="button" class="btn-secondary btn-sm text-left" @click="emit('pick', s)">{{ s }}</button>
           </div>
           <div v-if="run.review" class="text-sm">
-            <p class="flex flex-wrap items-center gap-2"><span :class="['badge', VERDICT[run.review.verdict]?.cls ?? 'badge-neutral']">{{ VERDICT[run.review.verdict]?.label ?? run.review.verdict }}</span><span v-if="run.review.model" class="meta mono">{{ run.review.model }}</span></p>
+            <p class="flex flex-wrap items-center gap-2"><span class="meta">Reviewer</span><span :class="['badge', VERDICT[run.review.verdict]?.cls ?? 'badge-neutral']">{{ VERDICT[run.review.verdict]?.label ?? run.review.verdict }}</span><span v-if="run.review.model" class="meta mono">{{ run.review.model }}</span></p>
             <p v-if="run.review.note" class="help mt-1">{{ run.review.note }}</p>
             <div v-if="run.review.files_changed !== undefined" class="mt-1">
               <p class="help">Reviewer asked for changes; builder answered{{ run.review.files_changed ? '' : ' (no files changed after review)' }}{{ run.review.response && run.review.response.length ? ':' : ' without a response.' }}</p>
@@ -40,6 +45,23 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
             <details v-if="run.review.findings && run.review.findings.length" class="mt-1">
               <summary class="cursor-pointer">Findings ({{ run.review.findings.length }})</summary>
               <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(f, k) in run.review.findings" :key="k" class="whitespace-pre-wrap break-words">{{ f }}</li></ul>
+            </details>
+          </div>
+          <div v-if="run.packages" class="text-sm">
+            <p class="flex flex-wrap items-center gap-2">
+              <span class="meta">Package steward</span>
+              <span :class="['badge', PKG_VERDICT[run.packages.verdict]?.cls ?? 'badge-neutral']">{{ PKG_VERDICT[run.packages.verdict]?.label ?? run.packages.verdict }}</span>
+              <span v-if="run.packages.model" class="meta mono">{{ run.packages.model }}</span>
+              <span v-if="run.packages.verdict !== 'skipped'" class="meta">{{ run.packages.checked }} {{ run.packages.checked === 1 ? 'package' : 'packages' }} checked</span>
+            </p>
+            <p v-if="run.packages.note" class="help mt-1">{{ run.packages.note }}</p>
+            <div v-if="run.packages.files_changed !== undefined" class="mt-1">
+              <p class="help">Steward asked for upgrades; builder answered{{ run.packages.files_changed ? '' : ' (no files changed after the check)' }}{{ run.packages.response && run.packages.response.length ? ':' : ' without a response.' }}</p>
+              <ul v-if="run.packages.response && run.packages.response.length" class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(x, k) in run.packages.response" :key="k" class="whitespace-pre-wrap break-words">{{ x }}</li></ul>
+            </div>
+            <details v-if="run.packages.findings && run.packages.findings.length" class="mt-1">
+              <summary class="cursor-pointer">Findings ({{ run.packages.findings.length }})</summary>
+              <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(f, k) in run.packages.findings" :key="k" class="whitespace-pre-wrap break-words">{{ f }}</li></ul>
             </details>
           </div>
           <div v-if="run.has_diff">

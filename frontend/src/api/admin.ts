@@ -1,4 +1,4 @@
-import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, AdminBackupSets, BackupExport, PlatformPods, PlatformLogs } from '../types'
+import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, AdminBackupSets, BackupExport, PlatformBackupExport, PlatformPods, PlatformLogs } from '../types'
 import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -67,6 +67,10 @@ export const adminDownloadBackupSet = (appId: number, setId: number) =>
   apiFetch<BackupExport>(`/admin/apps/${appId}/backup-sets/${setId}/download`, { method: 'POST' })
 export const adminGetBackupExport = (appId: number, exportId: number) =>
   apiFetch<BackupExport>(`/admin/apps/${appId}/backup-exports/${exportId}`)
+// Admin browser session only; the password is re-entered every time and never kept.
+export const startPlatformBackupDownload = (runId: number, password: string) =>
+  apiFetch<PlatformBackupExport>(`/admin/platform-backups/${runId}/download`, { method: 'POST', body: JSON.stringify({ password }) })
+export const getPlatformBackupExport = (exportId: number) => apiFetch<PlatformBackupExport>(`/admin/platform-backups/exports/${exportId}`)
 export const getPlatformPods = () => apiFetch<PlatformPods>('/admin/health/logs/pods')
 export interface LogQuery { namespace: string; pod: string; container: string; tail: number; since_seconds?: number | null; previous: boolean }
 const logQs = (q: LogQuery) => {

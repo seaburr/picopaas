@@ -26,6 +26,95 @@
   --color-status-running: #6a9e4a;
   --color-status-error: #d95555;
   --color-status-stopped: #7a7a8c;
+
+  /* Role tokens that only differ in the light theme (the dark values equal today's literals). */
+  --color-on-solid: #ffffff; /* text on solid primary/danger buttons: white in both themes */
+  --color-pico-inset: color-mix(in oklab, #000 40%, transparent); /* log/diff wells */
+  --color-info: #4a78c2; /* info alerts/badges; dark: same as accent */
+  --color-info-light: #7aa0d4;
+  --color-warn-solid: oklch(82.8% 0.189 84.429); /* solid amber chips/dots (== amber-400), text on it is black */
+}
+
+/*
+ * Theming. Dark is the default and is defined by the @theme tokens above. Light is a second set of VALUES for the
+ * same tokens, set on <html data-theme="light"> (frontend/public/theme-init.js applies it before first paint; the
+ * auth store applies the server value). Tailwind 4 utilities read these as var(--color-*) at runtime (no `inline`),
+ * so every text-zinc-*, text-amber-*, bg-pico-* utility keeps its ROLE and just resolves to a light-theme value:
+ *   zinc 100..500  = text from strongest to quietest ink (inverted ramp), 600 = quiet separators,
+ *   zinc 700/800   = subtle borders / disabled fills (they are lights here),
+ *   amber/emerald/red 200..400 = dark, readable tints of the same hue (they were pale on dark),
+ *   white          = the page ink (headings, values); buttons use --color-on-solid instead.
+ * Contrast of every pairing is listed in docs/ledger notes; all text >= 4.5:1 on bg, panel and card.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-pico-bg: #e7e0d0; /* tan */
+  --color-pico-panel: #f1eee6; /* warm light gray */
+  --color-pico-card: #f9f7f1; /* raised: inputs, nested rows */
+  --color-pico-border: #cbc3ae;
+  --color-pico-muted: #c3baa4;
+  --color-pico-inset: #ebe6d8;
+
+  --color-white: #1b1912; /* page ink */
+  --color-black: #000;
+
+  --color-zinc-100: #1b1912;
+  --color-zinc-200: #2a271d;
+  --color-zinc-300: #3c382b;
+  --color-zinc-400: #4f4a3a;
+  --color-zinc-500: #645e4a;
+  --color-zinc-600: #645e4a;
+  --color-zinc-700: #bdb49d;
+  --color-zinc-800: #ddd6c4;
+
+  /* sage: chrome, links, focus, bars. "light" here means the text/ring shade (it is the dark one on this theme). */
+  --color-accent: #4b7253;
+  --color-accent-dark: #2f4a36;
+  --color-accent-light: #37573f;
+  --color-primary: #486a4f;
+  --color-primary-hover: #3e5d44;
+  --color-primary-active: #34503a;
+
+  /* info is deliberately NOT sage: a slate blue, so "needs you" never reads as "ready". */
+  --color-info: #4f6f8f;
+  --color-info-light: #27425d;
+  --color-warn-solid: #e3a008;
+
+  --color-danger: #b8342b;
+  --color-danger-light: #9f1f1f;
+  --color-danger-dark: #9e2424;
+
+  --color-status-pending: #7c5200;
+  --color-status-running: #136a30;
+  --color-status-error: #a3231b;
+  --color-status-stopped: #5f5a49;
+
+  --color-amber-200: #5f3e04;
+  --color-amber-300: #704a06;
+  --color-amber-400: #724a00;
+  --color-amber-500: #a76a12;
+
+  --color-emerald-200: #075a3a;
+  --color-emerald-300: #095e3d;
+  --color-emerald-400: #0b6e47;
+
+  --color-red-200: #8c1c1c;
+  --color-red-300: #9a2020;
+  --color-red-400: #a82323;
+
+  --color-blue-100: #1b1912;
+
+  --doc-text: #3c382b;
+  --doc-subtle: #4f4a3a;
+  --doc-anchor: #8f8670;
+}
+
+:root {
+  --doc-text: #d4d4d8;
+  --doc-subtle: #a1a1aa;
+  --doc-anchor: var(--color-pico-muted);
+  --doc-link: var(--color-accent-light);
 }
 
 /*
@@ -78,7 +167,7 @@
 }
 
 @utility btn-primary {
-  @apply btn bg-primary text-white hover:bg-primary-hover active:bg-primary-active;
+  @apply btn bg-primary text-on-solid hover:bg-primary-hover active:bg-primary-active;
   @apply disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
   @apply aria-disabled:border-zinc-700 aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
 }
@@ -95,7 +184,7 @@
 }
 
 @utility btn-danger-solid {
-  @apply btn bg-danger-dark text-white hover:bg-[#b32b2b] active:bg-[#8a1f1f];
+  @apply btn bg-danger-dark text-on-solid hover:bg-[#b32b2b] active:bg-[#8a1f1f];
   @apply disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
 }
 
@@ -135,6 +224,25 @@
   @apply h-4 w-4 rounded-sm border-zinc-500 accent-primary;
 }
 
+@utility range {
+  @apply h-8 w-full cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50;
+  &::-webkit-slider-runnable-track {
+    @apply h-1.5 rounded-full bg-pico-muted;
+  }
+  &::-moz-range-track {
+    @apply h-1.5 rounded-full bg-pico-muted;
+  }
+  &::-webkit-slider-thumb {
+    @apply -mt-2 h-5.5 w-5.5 appearance-none rounded-full border-2 border-accent-light bg-primary;
+  }
+  &::-moz-range-thumb {
+    @apply h-5 w-5 rounded-full border-2 border-accent-light bg-primary;
+  }
+  &:focus-visible {
+    @apply outline-hidden ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
+  }
+}
+
 @utility card {
   @apply rounded-lg border border-pico-border bg-pico-panel;
 }
@@ -155,7 +263,7 @@
 
 @utility alert-info {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-accent/40 bg-accent/10 text-accent-light;
+  @apply border-info/40 bg-info/10 text-info-light;
 }
 
 @utility alert-success {
@@ -184,7 +292,7 @@
 }
 
 @utility badge-info {
-  @apply badge border-accent/40 bg-accent/10 text-accent-light;
+  @apply badge border-info/40 bg-info/10 text-info-light;
 }
 
 @utility nav-link {
@@ -332,5 +440,20 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/* Light-theme details that variables can't express. */
+:root[data-theme='light'] {
+  & select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23645e4a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+  /* Text links sit in ink-coloured prose where sage vs ink is < 3:1, so they carry an underline. */
+  & .link,
+  & .doc a {
+    text-decoration: underline;
+  }
+  & dialog::backdrop {
+    background-color: rgb(40 34 20 / 0.45);
   }
 }

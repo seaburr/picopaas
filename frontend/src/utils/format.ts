@@ -51,3 +51,10 @@ export function stampTitle(iso: string): string {
   const rel = ago(iso)
   return rel ? `${fullDate(iso)} (${rel})` : fullDate(iso)
 }
+
+// Binary sizes for backups and exports: KB under 1 MB, then MB, then GB.
+export function formatBytes(n: number): string {
+  const MB = 1048576
+  const GB = 1024 * MB
+  return n >= GB ? `${(n / GB).toFixed(2)} GB` : n >= MB ? `${(n / MB).toFixed(1)} MB` : n > 0 ? `${Math.max(1, Math.round(n / 1024))} KB` : '0'
+}

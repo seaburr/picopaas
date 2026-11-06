@@ -74,6 +74,17 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'New app', level: 1 })).toBeVisible()
   })
 
+  await test.step('new app has collapsed resource sliders at their maximum', async () => {
+    await page.getByText('Resources', { exact: false }).first().click()
+    const slider = page.getByLabel('Memory slider')
+    await expect(slider).toBeVisible()
+    const max = await slider.getAttribute('max')
+    await expect(page.getByLabel('Memory (MB)')).toHaveValue(max ?? '')
+    await page.getByLabel('Memory (MB)').fill('128')
+    await page.getByLabel('Memory (MB)').press('Tab')
+    await expect(slider).toHaveValue('128')
+  })
+
   await test.step('kaisen page renders', async () => {
     await page.goto('/kaisen')
     await expect(page.getByRole('heading', { name: 'Kaisen', level: 1 })).toBeVisible()
@@ -89,6 +100,8 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
   await test.step('admin health page renders', async () => {
     await page.goto('/admin/health')
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Health' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible()
+    await expect(page.getByText('Apps ever deployed')).toBeVisible()
   })
 
   await test.step('log out returns to login', async () => {

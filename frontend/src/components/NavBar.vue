@@ -67,7 +67,7 @@ function skip(e: Event) {
           <RouterLink to="/guide" class="nav-link" active-class="nav-active" exact-active-class="nav-active">Docs</RouterLink>
           <div v-if="isAdmin" class="ml-2 flex items-center gap-0.5 border-l border-pico-border pl-2" role="group" aria-label="Administration">
             <RouterLink to="/admin" class="nav-link" active-class="" exact-active-class="nav-active">
-              Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black" :aria-label="`${pending} pending`">{{ pending }}</span>
+              Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-warn-solid px-1.5 text-xs font-semibold text-black" :aria-label="`${pending} pending`">{{ pending }}</span>
             </RouterLink>
             <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
           </div>
@@ -116,7 +116,7 @@ function skip(e: Event) {
         <template v-if="isAdmin">
           <p class="mt-2 px-2.5 text-xs font-medium uppercase tracking-wide text-zinc-400">Administration</p>
           <RouterLink to="/admin" class="nav-link" active-class="" exact-active-class="nav-active">
-            Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-black">{{ pending }} pending</span>
+            Admin<span v-if="pending > 0" class="ml-1.5 rounded-full bg-warn-solid px-1.5 text-xs font-semibold text-black">{{ pending }} pending</span>
           </RouterLink>
           <RouterLink to="/admin/health" class="nav-link" active-class="" exact-active-class="nav-active">Health</RouterLink>
         </template>

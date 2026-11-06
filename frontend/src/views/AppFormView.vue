@@ -7,6 +7,7 @@ import { HeartPulse } from 'lucide-vue-next'
 import BackupSettings from '../components/BackupSettings.vue'
 import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
+import ResourceSliders from '../components/ResourceSliders.vue'
 import HostLink from '../components/HostLink.vue'
 import KaisenChooser from '../components/KaisenChooser.vue'
 import NavBar from '../components/NavBar.vue'
@@ -22,7 +23,7 @@ import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
-import type { App, EnvVar } from '../types'
+import type { App, EnvVar, OwnerControls, OwnerKey, OwnerResourcesPayload } from '../types'
 
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
@@ -77,6 +78,9 @@ const fieldErrors = ref<Record<string, string>>({})
 const errorBox = ref<HTMLElement | null>(null)
 
 const limits = computed(() => auth.user?.limits)
+onMounted(() => {
+  if (!isEdit.value && typeof route.query.template !== 'string') seedResources(limits.value?.owner_controls)
+})
 const dbOff = computed(() => auth.user?.features?.databases === false)
 const storageOff = computed(() => auth.user?.features?.storage === false)
 const dbLabel = computed(() => `${limits.value?.db_mb ?? 50} MB`)
@@ -101,6 +105,48 @@ watch(
     }
   },
 )
+// Owner resource sliders: values per key; original = what the app has now (edit). Default is the ceiling.
+const OWNER_KEYS: OwnerKey[] = ['cpu_limit_m', 'mem_limit_mi', 'ephemeral_limit_mi', 'storage_quota_mb']
+const ownerControls = computed<OwnerControls | null>(() => (isEdit.value ? loadedApp.value?.resources?.controls : limits.value?.owner_controls) ?? null)
+const resVals = ref<Partial<Record<OwnerKey, number>>>({})
+const resOriginal = ref<Partial<Record<OwnerKey, number>>>({})
+const resOpen = ref(false)
+const showStorageSlider = computed(() => (isEdit.value ? !!loadedApp.value?.want_storage : form.want_storage && !storageOff.value))
+function seedResources(c: OwnerControls | null | undefined) {
+  if (!c) return
+  const orig: Partial<Record<OwnerKey, number>> = {}
+  for (const k of OWNER_KEYS) {
+    const e = c[k]
+    if (e) orig[k] = e.value
+  }
+  resOriginal.value = orig
+  resVals.value = { ...orig }
+  resOpen.value = OWNER_KEYS.some((k) => c[k] && c[k]!.value < c[k]!.max)
+}
+function resourcesPayload(): OwnerResourcesPayload | undefined {
+  const c = ownerControls.value
+  if (!c) return undefined
+  const out: OwnerResourcesPayload = {}
+  for (const k of OWNER_KEYS) {
+    const e = c[k]
+    if (!e || (k === 'storage_quota_mb' && !showStorageSlider.value)) continue
+    const v = resVals.value[k] ?? e.max
+    if (isEdit.value) {
+      if (v !== (resOriginal.value[k] ?? e.max)) out[k] = v >= e.max ? null : v // at the ceiling = reset
+    } else if (v < e.max) out[k] = v
+  }
+  return Object.keys(out).length ? out : undefined
+}
+const resInvalid = computed(() => {
+  const c = ownerControls.value
+  if (!c) return false
+  return OWNER_KEYS.some((k) => {
+    const e = c[k]
+    const v = resVals.value[k]
+    if (!e || v === undefined || (k === 'storage_quota_mb' && !showStorageSlider.value)) return false
+    return !Number.isInteger(v) || v < e.min || v > e.max
+  })
+})
 const volumesOn = computed(() => auth.user?.features?.volumes === true)
 const volMax = computed(() => limits.value?.volume_max_gi ?? 1)
 const vol = reactive({ enabled: false, size: 1 as number | string, mount: '/data' })
@@ -144,6 +190,7 @@ const formError = computed(() => (error.value && !error.value.toLowerCase().star
 const templateNote = ref<{ name: string; notes: string; docs: string } | null>(null)
 const templateSecrets = ref<{ key: string; hint: string }[]>([])
 const templateHints = ref<string[]>([])
+const OWNER_LABEL: Record<OwnerKey, string> = { cpu_limit_m: 'CPU', mem_limit_mi: 'memory', ephemeral_limit_mi: 'scratch disk', storage_quota_mb: 'object storage' }
 
 onMounted(async () => {
   if (isEdit.value && appId.value !== null) {
@@ -164,6 +211,7 @@ onMounted(async () => {
       form.health_check_timeout = app.health_check_timeout_seconds ?? ''
       form.auto_update = app.auto_update ?? true
       env.value = app.env
+      seedResources(app.resources?.controls)
       if (app.volume) {
         vol.enabled = true
         volAttached.value = true
@@ -207,7 +255,24 @@ onMounted(async () => {
           ...Object.entries(t.env).map(([key, value]) => ({ key, value, is_secret: false })),
           ...(t.secrets ?? []).map((s) => ({ key: s.key, value: '', is_secret: true })),
         ]
+        seedResources(limits.value?.owner_controls)
         const hints: string[] = []
+        const oc = limits.value?.owner_controls
+        if (oc && t.resources) {
+          for (const k of OWNER_KEYS) {
+            const want = t.resources[k]
+            const e = oc[k]
+            if (want === undefined || !e) continue
+            if (k === 'storage_quota_mb' && !form.want_storage) continue
+            const v = Math.min(e.max, Math.max(e.min, want))
+            resVals.value = { ...resVals.value, [k]: v }
+            if (v !== want) hints.push(`This template suggests ${want} ${k === 'cpu_limit_m' ? 'm CPU' : 'MB'} for ${OWNER_LABEL[k]}, which is outside your allowed range. We used ${v}.`)
+          }
+          if (OWNER_KEYS.some((k) => oc[k] && (resVals.value[k] ?? oc[k]!.max) < oc[k]!.max)) {
+            resOpen.value = true
+            hints.push('This template uses less than the maximum resources. Open Resources below to adjust.')
+          }
+        }
         if (t.volume && !volumesOn.value) hints.push('This instance has persistent volumes turned off, so the volume was skipped.')
         if (t.wants_db && dbOff.value) hints.push('Databases are turned off here, so the database was skipped.')
         if (t.wants_storage && storageOff.value) hints.push('Blob storage is turned off here, so the bucket was skipped.')
@@ -295,6 +360,10 @@ async function onSubmit() {
     error.value = 'Fix the persistent volume settings.'
     return showError()
   }
+  if (resInvalid.value) {
+    error.value = 'Fix the resource values.'
+    return showError()
+  }
   if (envInvalid.value) {
     error.value = 'Fix the highlighted environment variable names.'
     return showError()
@@ -314,6 +383,7 @@ async function onSubmit() {
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
         ...(volumePayload() ? { volume: volumePayload() } : {}),
+        ...(resourcesPayload() ? { resources: resourcesPayload() } : {}),
         env: envOut,
       })
       toast.success(app.status === 'pending' || app.status === 'deploying' ? `Saved. Redeploying ${app.name}…` : 'Saved.')
@@ -333,6 +403,7 @@ async function onSubmit() {
         health_check_timeout_seconds: form.health_check_enabled ? timeoutValue.value : null,
         auto_update: form.auto_update,
         ...(volumePayload() ? { volume: volumePayload() } : {}),
+        ...(resourcesPayload() ? { resources: resourcesPayload() } : {}),
         env: envOut,
       })
       toast.success(`${app.name} created. Deploying, usually about a minute.`)
@@ -572,6 +643,17 @@ async function onSubmit() {
               </div>
             </div>
           </fieldset>
+
+          <ResourceSliders
+            v-if="ownerControls"
+            v-model="resVals"
+            :controls="ownerControls"
+            :show-storage="showStorageSlider"
+            :original="isEdit ? resOriginal : undefined"
+            :baseline="limits?.owner_controls"
+            :open="resOpen"
+            :errors="fieldErrors"
+          />
 
           <div>
             <p class="label">Environment variables</p>

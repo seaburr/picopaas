@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watchEffect } from 'vue'
 import { userZone } from '../utils/tz'
+import { applyTheme } from '../utils/theme'
 import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { User } from '../types'
@@ -10,6 +11,10 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const loaded = ref(false)
   watchEffect(() => (userZone.value = user.value?.timezone ?? null))
+  // The server value wins once /auth/me answers. Logged out: keep whatever the cache applied before first paint.
+  watchEffect(() => {
+    if (user.value) applyTheme(user.value.theme === 'light' ? 'light' : 'dark')
+  })
 
   async function load() {
     try {

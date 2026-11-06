@@ -306,7 +306,7 @@ const res = computed(() => {
   return {
     cpu: r?.cpu_limit_m ?? limits.value?.cpu_limit_m ?? 200,
     mem: r?.mem_limit_mi ?? limits.value?.mem_limit_mi ?? 384,
-    custom: !!r?.overridden,
+    custom: !!r?.overridden || Object.values(r?.controls ?? {}).some((c) => !!c && c.owner !== null && c.owner < c.max),
   }
 })
 const hasAddons = computed(() => !!app.value && (app.value.want_db || app.value.want_storage))
@@ -459,7 +459,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 ref="logBox"
                 tabindex="0"
                 aria-label="Application logs"
-                class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md border border-pico-border bg-black/40 p-3 mono leading-relaxed text-zinc-200"
+                class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-md border border-pico-border bg-pico-inset p-3 mono leading-relaxed text-zinc-200"
               >{{ logText }}</pre>
               <p v-else class="rounded-md border border-dashed border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
                 {{ logs.note || 'No log output yet. Logs appear once your app is running.' }}

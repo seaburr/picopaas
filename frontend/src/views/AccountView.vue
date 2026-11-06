@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { Settings2, UserPlus } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import { useProjectsStore } from '../stores/projects'
 import NavBar from '../components/NavBar.vue'
 import ApiKeysCard from '../components/ApiKeysCard.vue'
 import PasswordField from '../components/PasswordField.vue'
-import { changePassword, setTimezone } from '../api/auth'
+import { changePassword, setTheme, setTimezone } from '../api/auth'
+import { applyTheme, type Theme } from '../utils/theme'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -37,6 +38,36 @@ async function onZone(e: Event) {
   } finally {
     zoneBusy.value = false
   }
+}
+
+const themeBusy = ref(false)
+const themes: { id: Theme; label: string }[] = [
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+]
+const theme = computed<Theme>(() => (auth.user?.theme === 'light' ? 'light' : 'dark'))
+// Applied immediately (optimistic), saved to the profile; on failure the previous theme comes back with a toast.
+async function onTheme(next: Theme) {
+  const prev = theme.value
+  if (next === prev || themeBusy.value) return
+  applyTheme(next)
+  themeBusy.value = true
+  try {
+    const u = await setTheme(next)
+    if (auth.user) auth.user.theme = u?.theme ?? next
+  } catch (err) {
+    applyTheme(prev)
+    toast.error(err instanceof ApiError ? err.message : "Couldn't save the theme.")
+  } finally {
+    themeBusy.value = false
+  }
+}
+// Arrow keys move between the two options (radio-group behaviour); each move selects.
+function onThemeKey(e: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+  e.preventDefault()
+  void onTheme(theme.value === 'dark' ? 'light' : 'dark')
+  void nextTick(() => (document.querySelector('[data-theme-opt][aria-checked="true"]') as HTMLElement | null)?.focus())
 }
 
 const auth = useAuthStore()
@@ -86,6 +117,25 @@ async function onSubmit() {
             <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
             <dt class="text-zinc-400">Joined</dt>
             <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
+            <dt id="theme-label" class="text-zinc-400">Theme</dt>
+            <dd class="min-w-0">
+              <div role="radiogroup" aria-labelledby="theme-label" class="inline-flex rounded-md border border-zinc-500 p-0.5">
+                <button
+                  v-for="t in themes"
+                  :key="t.id"
+                  type="button"
+                  role="radio"
+                  data-theme-opt
+                  :aria-checked="theme === t.id"
+                  :tabindex="theme === t.id ? 0 : -1"
+                  :disabled="themeBusy"
+                  :class="['min-h-[28px] rounded-sm px-3 text-sm transition-colors disabled:cursor-wait', theme === t.id ? 'bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60' : 'text-zinc-300 hover:bg-pico-card hover:text-white']"
+                  @click="onTheme(t.id)"
+                  @keydown="onThemeKey"
+                >{{ t.label }}</button>
+              </div>
+              <p class="mt-1 text-xs text-zinc-400">Saved to your profile; used on every device.</p>
+            </dd>
             <dt class="text-zinc-400"><label for="tz">Time zone</label></dt>
             <dd class="min-w-0 space-y-1">
               <input v-model="zoneFilter" type="search" class="input" placeholder="Filter zones…" aria-label="Filter time zones" />
@@ -119,8 +169,7 @@ async function onSubmit() {
               </div>
             </li>
           </ul>
-          <p v-if="projects.loaded && !projects.projects.some((p) => !p.is_personal)" class="meta mt-2">No shared projects yet. Create one, then invite people from it.</p>
-          <RouterLink to="/projects/new" class="btn-secondary mt-2 inline-flex">New project</RouterLink>
+          <p v-if="projects.loaded && !projects.projects.some((p) => !p.is_personal)" class="meta mt-2">No shared projects yet. Create one from the <RouterLink to="/projects" class="link">Projects page</RouterLink>, then invite people from it.</p>
         </section>
 
         <section class="card card-pad" aria-labelledby="pw-title">

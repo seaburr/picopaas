@@ -11,6 +11,7 @@ export interface User {
   status: UserStatus
   created_at: string
   timezone?: string | null // IANA name; null/absent = browser zone
+  theme?: 'dark' | 'light' // colour theme; absent (older backend) = dark
   must_change_password?: boolean // true after an admin password reset
   // GET /auth/me only (optional until the backend ships them; treat undefined as "unknown, allow").
   features?: Features
@@ -39,7 +40,25 @@ export interface Limits {
   volume_override_max_gi?: number
   volume_default_mount_path?: string
   override: { cpu_min_m: number; cpu_max_m: number; mem_min_mi: number; mem_max_mi: number }
+  owner_controls?: OwnerControls // GET /auth/me: slider ranges for a new app
 }
+
+// One owner-adjustable limit: value = effective now, owner = the owner's own choice (null = full ceiling).
+export interface OwnerControl {
+  value: number
+  owner: number | null
+  min: number
+  max: number
+}
+export type OwnerKey = 'cpu_limit_m' | 'mem_limit_mi' | 'ephemeral_limit_mi' | 'storage_quota_mb'
+export interface OwnerControls {
+  cpu_limit_m: OwnerControl
+  mem_limit_mi: OwnerControl
+  ephemeral_limit_mi: OwnerControl
+  storage_quota_mb: OwnerControl | null
+}
+export type OwnerResourcesPayload = Partial<Record<OwnerKey, number | null>>
+
 
 export interface AppVolume {
   size_gi: number
@@ -180,6 +199,9 @@ export interface AppResources extends ResourceValues {
   overridden: boolean
   exceeds_platform_caps: boolean
   defaults: ResourceValues
+  controls?: OwnerControls
+  // Raw admin columns (null = platform default). The admin dialog prefills from these, never from the effective values.
+  admin_values?: { [K in keyof ResourceValues]: number | null }
 }
 
 export interface ResourcesPatch {
@@ -217,6 +239,7 @@ export interface AppCreatePayload {
   health_check_timeout_seconds?: number | null
   auto_update?: boolean
   volume?: { size_gi?: number; mount_path?: string }
+  resources?: OwnerResourcesPayload
   env: EnvVar[]
 }
 
@@ -232,6 +255,7 @@ export interface AppUpdatePayload {
   health_check_timeout_seconds?: number | null
   auto_update?: boolean
   volume?: { size_gi?: number; mount_path?: string }
+  resources?: OwnerResourcesPayload // PATCH: omitted = unchanged, null = full ceiling
   env?: EnvVar[]
 }
 
@@ -394,6 +418,7 @@ export interface ClusterHealth {
   apps: HealthApp[]
   platform: HealthPlatform[]
   db_servers: DbServer[]
+  statistics?: { apps_ever_deployed: number; kaisen_apps_ever_built: number }
   users?: { total: number; active: number; pending: number; suspended: number; admins?: number }
   pending_users?: { id: number; email: string; created_at: string }[]
   workloads?: {
@@ -551,11 +576,28 @@ export interface BackupFailure {
 export interface PlatformBackupRun {
   id: number; trigger: string; status: string; error: string | null; created_at: string; finished_at: string | null
   bytes_added: number | null; repo_bytes: number | null; snapshot_id: string | null
+  downloadable?: boolean
+  export?: { id: number; status: PlatformExportStatus; available_until: string | null } | null
+}
+export type PlatformExportStatus = 'queued' | 'running' | 'ready' | 'failed' | 'expired'
+// POST /admin/platform-backups/{run_id}/download (202) and GET .../exports/{export_id}. url only on GET while ready.
+export interface PlatformBackupExport {
+  export_id: number
+  run_id: number
+  status: PlatformExportStatus
+  created_at: string
+  filename?: string | null
+  available_until?: string | null
+  url?: string | null
+  size_bytes?: number | null
+  error?: string | null
 }
 export interface PlatformDbBackup {
   enabled: boolean; active: boolean; interval_hours: number
   keep: { daily: number; weekly: number; monthly: number }
   last_success_at: string | null; repo_bytes: number | null; stale: boolean; runs: PlatformBackupRun[]
+  download_per_hour?: number
+  failed_download?: { id: number; snapshot_id: string | null; error: string | null; failed_at: string | null } | null
 }
 export interface BackupHealth {
   platform_db?: PlatformDbBackup
@@ -703,7 +745,8 @@ export interface KaisenRun {
   transcript: { role: string; text: string }[] | null
   transcript_trimmed: boolean
   suggestions?: string[]
-  review?: KaisenReview | null
+  review?: KaisenReview | null // null when only the package steward ran
+  packages?: KaisenPackages | null
   has_diff?: boolean
   hang_retries?: number
   error_reason?: string | null
@@ -717,6 +760,16 @@ export interface KaisenReview {
   note: string | null
   response?: string[] // the builder's answer to the findings (fix round); present once it finished
   files_changed?: boolean // any file other than PLAN.md changed after the review
+}
+
+export interface KaisenPackages {
+  verdict: 'current' | 'outdated' | 'skipped'
+  model: string | null
+  checked: number
+  findings: string[]
+  note: string | null
+  response?: string[]
+  files_changed?: boolean
 }
 
 export interface KaisenTests {
@@ -930,6 +983,8 @@ export interface KaisenSettings {
   reviewer_model?: string
   reviewer_modes?: string[]
   reviewer_default_model?: string
+  package_steward?: 'off' | 'on'
+  package_steward_modes?: string[]
   cap_run: number
   cap_day: number
   cap_build: number
@@ -960,6 +1015,7 @@ export interface KaisenSettingsPayload {
   effort: string
   reviewer?: 'off' | 'on'
   reviewer_model?: string
+  package_steward?: 'off' | 'on'
   cap_run: number
   cap_day: number
   cap_build: number

@@ -53,15 +53,32 @@ const visibleX = computed(() =>
   xFields.filter((f) => f.show === 'all' || (f.show === 'db' ? props.app?.want_db : props.app?.want_storage)),
 )
 
+function adminVal(a: AdminApp, k: Key | XKey): string {
+  const raw = a.resources.admin_values?.[k]
+  return raw === null || raw === undefined ? '' : String(raw)
+}
+// What the admin currently has stored for a field (null = default); used to decide whether saving restarts the app.
+const stored = (k: Key | XKey): number | null => props.app?.resources.admin_values?.[k] ?? null
 const vals = reactive<Record<Key, string>>({ cpu_request_m: '', cpu_limit_m: '', mem_request_mi: '', mem_limit_mi: '' })
 const xvals = reactive<Record<XKey, string>>({ ephemeral_limit_mi: '', db_max_connections: '', db_quota_mb: '', storage_quota_mb: '', image_size_mb: '', egress_mbit: '' })
 const replicasVal = ref('')
 const volumeVal = ref('')
+// Owner-chosen values below the app's limit, shown read-only so a low usage doesn't look like a fault.
+const ownerNotes = computed(() => {
+  const c = props.app?.resources.controls
+  if (!c) return []
+  const rows: [string, string, string | null][] = [['CPU', 'm', 'cpu_limit_m'], ['Memory', 'MB', 'mem_limit_mi'], ['Scratch disk', 'MB', 'ephemeral_limit_mi'], ['Blob storage quota', 'MB', 'storage_quota_mb']]
+  return rows.flatMap(([label, unit, key]) => {
+    const e = c[key as keyof typeof c]
+    return e && e.owner !== null && e.owner < e.max ? [`${label}: owner chose ${human(e.owner, unit)} (limit ${human(e.max, unit)})`] : []
+  })
+})
 watch(
   () => props.app,
   (a) => {
-    for (const k of keys) vals[k] = a && a.resources[k] !== a.resources.defaults[k] ? String(a.resources[k]) : ''
-    for (const f of xFields) xvals[f.key] = a && a.resources[f.key] !== a.resources.defaults[f.key] ? String(a.resources[f.key]) : ''
+    // Prefill from the raw admin columns (null = default = blank), never the effective values: those include the owner's own lower choice.
+    for (const k of keys) vals[k] = a ? adminVal(a, k) : ''
+    for (const f of xFields) xvals[f.key] = a ? adminVal(a, f.key) : ''
     replicasVal.value = a ? String(a.replicas) : ''
     volumeVal.value = a?.volume ? String(a.volume.size_gi) : ''
   },
@@ -105,12 +122,8 @@ const exceeds = computed(
 )
 // cpu/memory/scratch-disk/bandwidth changes roll the app's pods.
 const restarts = computed(() => {
-  const r = props.app?.resources
-  if (!r) return false
-  const cpuMem = keys.some((k) => (num(k) ?? r.defaults[k]) !== r[k])
-  const eph = (xnum('ephemeral_limit_mi') ?? r.defaults.ephemeral_limit_mi) !== r.ephemeral_limit_mi
-  const bw = (xnum('egress_mbit') ?? r.defaults.egress_mbit) !== r.egress_mbit
-  return cpuMem || eph || bw
+  if (!props.app) return false
+  return keys.some((k) => num(k) !== stored(k)) || xnum('ephemeral_limit_mi') !== stored('ephemeral_limit_mi') || xnum('egress_mbit') !== stored('egress_mbit')
 })
 
 function save() {
@@ -140,6 +153,10 @@ function reset() {
     <form v-if="app" class="p-4" @submit.prevent="save">
       <h2 :id="`${uid}-title`" class="section-title">Limits: {{ app.name }}</h2>
       <p class="help">Blank = platform default (shown as placeholder).</p>
+      <p v-if="ownerNotes.length" class="alert-info mt-2 text-xs" role="note">
+        The owner chose lower values than these limits, so the app may use less:
+        <span v-for="n in ownerNotes" :key="n" class="block">{{ n }}</span>
+      </p>
       <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div v-for="f in fields" :key="f.key">
           <label :for="`${uid}-${f.key}`" class="label">{{ f.label }} ({{ f.unit }})</label>

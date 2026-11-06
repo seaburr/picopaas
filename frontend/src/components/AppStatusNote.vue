@@ -55,7 +55,7 @@ const busy = computed(() => props.app.status === 'deploying')
   position: absolute;
   inset: 0 auto 0 0;
   width: 35%;
-  background: #7aa0d4;
+  background: var(--color-accent-light);
   border-radius: 2px;
   animation: indet 1.4s ease-in-out infinite;
 }

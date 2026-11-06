@@ -79,7 +79,7 @@ details{background:var(--panel);border:1px solid var(--border);border-radius:8px
 <h2>Kaisen: describe it, then use it<span class="tag">Preview</span></h2>
 <p class="pre" style="margin-top:0">Kaisen is an AI builder that lives inside PicoPaaS. You describe a small app, it builds and runs it, and you keep steering in plain language. What it makes is an ordinary PicoPaaS app, with the same address, database and backups as any other.</p>
 <div class="grid grid-4" style="margin-top:16px">
-<div class="card"><h3>Built, tested, live</h3><p>Kaisen writes tests for what it builds and runs them before your app starts. You see the results with each build.</p></div>
+<div class="card"><h3>Built, tested, live</h3><p>Kaisen writes tests for what it builds and runs them before your app starts. Each run ends with a package check that pushes the build onto the latest stable versions. You see the results with each build.</p></div>
 <div class="card"><h3>Data when you need it</h3><p>Ask for a PostgreSQL or MySQL database, Object Storage or Block Storage and it&rsquo;s wired in for you.</p></div>
 <div class="card"><h3>You hold the reins</h3><p>Use your own Anthropic key and cap what a run, a day or a build can spend. Web access is off until you turn it on.</p></div>
 <div class="card"><h3>The code is yours</h3><p>Download it any time, or have each build pushed to GitHub. Roll back to an earlier version if a change goes sideways.</p></div>
@@ -110,7 +110,7 @@ details{background:var(--panel);border:1px solid var(--border);border-radius:8px
 <tr><td>Outbound bandwidth</td><td>20 Mbit/s</td></tr>
 <tr><td>Backup storage</td><td>2 GB</td></tr>
 </table>
-<p class="pre">These are small on purpose. PicoPaaS is for things you can afford to lose, not for anything you depend on.</p>
+<p class="pre">These are the defaults, and they&rsquo;re small on purpose. You can set an app's CPU, memory, temporary disk and bucket size lower to suit it, and an admin can raise the ceiling for an app that needs more. PicoPaaS is for things you can afford to lose, not for anything you depend on.</p>
 </section>
 <section>
 <h2>Good to know</h2>
