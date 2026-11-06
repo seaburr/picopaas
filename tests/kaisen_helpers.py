@@ -91,3 +91,28 @@ def app_env(app_id):
     s.expire_all()
     a = s.get(models.App, app_id)
     return {v.key: (crypto.decrypt(v.value_encrypted), v.is_secret) for v in a.env_vars}
+
+
+class FakeIndex:
+    """Stands in for pkgindex.PackageIndex: answers from a table, `unavailable` for anything else (default), no network."""
+
+    def __init__(self, table=None, default="unavailable"):
+        self.table, self.default, self.calls = dict(table or {}), default, []
+
+    def latest_versions(self, items, on_item=None):
+        from app.kaisen import pkgindex
+        out = []
+        for it in items:
+            eco = it.get("ecosystem") if isinstance(it, dict) else None
+            name = pkgindex.valid_name(eco, it.get("name")) if eco in pkgindex.ECOSYSTEMS else None
+            if name is None:
+                out.append({"status": "invalid"})
+                continue
+            self.calls.append((eco, name))
+            out.append({"ecosystem": eco, "name": name, **self.table.get((eco, name), {"status": self.default})})
+        return out
+
+
+def ok(latest, compatible=True, latest_compatible=None):
+    return {"status": "ok", "latest": latest, "published": "2026-01-01", "compatible": compatible,
+            "latest_compatible": latest_compatible or (latest if compatible else None)}

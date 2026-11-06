@@ -18,7 +18,7 @@ from app.main import app as fastapi_app
 from app.providers.fake import FakeRegistry
 from app.routers.kaisen import get_github_factory, get_model_factory
 from tests.conftest import register_and_login
-from tests.kaisen_helpers import KEY, TOKEN, FakeRuntime, Fakes, Keep, app_env, db
+from tests.kaisen_helpers import KEY, TOKEN, FakeIndex, FakeRuntime, Fakes, Keep, app_env, db
 
 IMG = "ghcr.io/example/kaisen-runtime:1"
 _P = config.KAISEN_PRICES[config.KAISEN_DEFAULT_MODEL]
@@ -45,6 +45,7 @@ def env(make_client, monkeypatch):
 def go(model, runtime=None, **kw):
     """One worker tick with scripted model replies; returns whether work was attempted."""
     kw.setdefault("gh_fn", lambda token: Fakes().github)
+    kw.setdefault("package_index", FakeIndex())  # always unavailable: no test touches a real registry
     now = [0.0]  # fake clock that only sleep() moves, so deploy_preview's waits cost no real time
 
     def sleep(n):

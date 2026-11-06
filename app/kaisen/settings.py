@@ -27,6 +27,7 @@ class RuntimeSettings:
     web_project_enabled: bool = True  # projects.kaisen_web_search_enabled (a platform admin's switch)
     web_allowed_domains: list = field(default_factory=list)
     reviewer: str = "off"
+    package_steward: str = "on"
     reviewer_model: str = config.KAISEN_REVIEWER_DEFAULT_MODEL  # the effective model (row value or the config default)
     build_token: str = ""  # the build's own GitHub token, only set by load_for_build (kept for redaction)
     build_secrets: list = field(default_factory=list)  # the build's secret values, only set by load_for_build (redaction)
@@ -86,6 +87,7 @@ def load(db: Session, project_id: int) -> RuntimeSettings:
         web_access=bool(row.web_access) and web_ok, web_project_enabled=web_ok,
         web_allowed_domains=list(row.web_allowed_domains or []),
         reviewer=row.reviewer or "off", reviewer_model=row.reviewer_model or config.KAISEN_REVIEWER_DEFAULT_MODEL,
+        package_steward=row.package_steward or "on",
     )
 
 
@@ -222,6 +224,7 @@ def describe(db: Session, project_id: int, can_edit: bool) -> dict:
         "reviewer": rs.reviewer, "reviewer_model": rs.reviewer_model,
         "reviewer_modes": list(config.KAISEN_REVIEWER_MODES),
         "reviewer_default_model": config.KAISEN_REVIEWER_DEFAULT_MODEL,
+        "package_steward": rs.package_steward, "package_steward_modes": list(config.KAISEN_PACKAGES_MODES),
         "can_edit": can_edit,
         **uploads.availability(db, project_id),
         "updated_at": row.updated_at.isoformat() if row is not None else None,
@@ -254,6 +257,9 @@ def save(db: Session, project_id: int, user_id: int, data: dict) -> None:
     reviewer = cur.reviewer if data.get("reviewer") is None else data["reviewer"]
     if reviewer not in config.KAISEN_REVIEWER_MODES:
         raise ValueError(f"reviewer must be one of: {', '.join(config.KAISEN_REVIEWER_MODES)}.")
+    steward = cur.package_steward if data.get("package_steward") is None else data["package_steward"]
+    if steward not in config.KAISEN_PACKAGES_MODES:
+        raise ValueError(f"package_steward must be one of: {', '.join(config.KAISEN_PACKAGES_MODES)}.")
     rmodel = data.get("reviewer_model") or cur.reviewer_model
     if rmodel not in config.KAISEN_PRICES:
         raise ValueError(f"Unknown reviewer model. Choose one of: {', '.join(config.KAISEN_PRICES)}.")
@@ -276,6 +282,7 @@ def save(db: Session, project_id: int, user_id: int, data: dict) -> None:
     row.cap_run, row.cap_day, row.cap_build = caps["cap_run"], caps["cap_day"], caps["cap_build"]
     row.web_access, row.web_allowed_domains = web_access, domains
     row.reviewer = reviewer
+    row.package_steward = steward
     row.reviewer_model = None if rmodel == config.KAISEN_REVIEWER_DEFAULT_MODEL else rmodel
     row.updated_by = user_id
     row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)

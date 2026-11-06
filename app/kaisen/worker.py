@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import delete, select, text, update
 
 from app import config, db as appdb
-from . import builder, deploy as deploy_mod, httptool, pushing, testresults, watchdog
+from . import builder, deploy as deploy_mod, httptool, pkgindex, pushing, testresults, watchdog
 from .github import GitHubError, RealGitHub
 from .llm import AnthropicClient, ModelError
 from .models import KaisenBuild, KaisenEvent, KaisenInbox, KaisenRun
@@ -220,7 +220,7 @@ def push_on_finish(S, run_id, gh_factory) -> None:
 
 def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_factory=None, runtime=None,
          wait_s: float = config.KAISEN_PREVIEW_WAIT_TOOL, clock=time.monotonic, sleep=time.sleep,
-         threaded: bool = False, poll_s: float | None = None) -> bool:
+         threaded: bool = False, poll_s: float | None = None, package_index=None) -> bool:
     """Run one queued step if we hold the lease. Returns True if work was attempted. `threaded` (the production
     worker) runs the step on its own thread so a hung step can be abandoned and the run retried."""
     watchdog.bump()
@@ -251,7 +251,8 @@ def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_fac
         builder.stop_run(S, run_id, "error", "error", str(e))
         return True
     deployer = make_deployer(S, registry_factory, runtime, wait_s, clock, sleep)
-    outcome = guarded_step(S, run_id, client, lease, deployer, make_requester(runtime), threaded, poll_s)
+    outcome = guarded_step(S, run_id, client, lease, deployer, make_requester(runtime), threaded, poll_s,
+                           package_index if package_index is not None else pkgindex.PackageIndex())
     if outcome == "done":
         if lease.check():
             deploy_on_finish(S, run_id, registry_factory, runtime, wait_s, sleep)
@@ -260,13 +261,14 @@ def tick(S, lease, *, model_fn=model_factory, gh_fn=github_factory, registry_fac
     return True
 
 
-def guarded_step(S, run_id, client, lease, deployer, requester, threaded: bool, poll_s: float | None = None) -> str:
+def guarded_step(S, run_id, client, lease, deployer, requester, threaded: bool, poll_s: float | None = None,
+                 package_index=None) -> str:
     """builder.run_step, optionally on a thread this function watches. The watcher abandons the step (daemon thread,
     fenced by the run's attempt counter, so whatever it does later is discarded) when the run was interrupted from
     elsewhere (manual Interrupt, another detector) or a tool call outlives KAISEN_TOOL_SECONDS, then returns so the
     worker can pick the requeued run up. Model calls are bounded inside run_step itself."""
     if not threaded:
-        return builder.run_step(S, run_id, client, lease, deployer=deployer, requester=requester)
+        return builder.run_step(S, run_id, client, lease, deployer=deployer, requester=requester, package_index=package_index)
     with S() as s:
         attempt = s.scalar(select(KaisenRun.attempt).where(KaisenRun.id == run_id))
         s.rollback()
@@ -276,7 +278,7 @@ def guarded_step(S, run_id, client, lease, deployer, requester, threaded: bool, 
     def _go():
         try:
             box["r"] = builder.run_step(S, run_id, client, lease, deployer=deployer, requester=requester,
-                                        expect_attempt=attempt)
+                                        expect_attempt=attempt, package_index=package_index)
         except BaseException as e:  # noqa: BLE001 - re-raised in the waiter
             box["e"] = e
         finally:

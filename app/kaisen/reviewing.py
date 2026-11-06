@@ -51,7 +51,7 @@ def add_note(run: KaisenRun, text: str) -> None:
 
 def view(run: KaisenRun, secrets_) -> dict | None:
     r = run.review
-    if not r:
+    if not r or "verdict" not in r:  # run.review may hold only the package steward's result (key "packages")
         return None
     out = {"verdict": r.get("verdict"), "model": r.get("model"),
            "findings": [redact(x, secrets_) for x in r.get("findings") or []],
@@ -262,26 +262,27 @@ def clean_response(inp) -> list[str]:
     return [i for i in items if i][:config.KAISEN_REVIEW_RESPONSE_ITEMS]
 
 
-def _after_note(messages) -> list:
+def _after_note(messages, mark: str = MARK) -> list:
     for i, m in enumerate(messages or []):
         c = m.get("content")
         if m.get("role") == "user" and isinstance(c, list) and any(
-                b.get("type") == "text" and str(b.get("text", "")).startswith(MARK) for b in c):
+                b.get("type") == "text" and str(b.get("text", "")).startswith(mark) for b in c):
             return list(messages[i + 1:])
     return []
 
 
-def changed_files_since_review(messages) -> bool:
+def changed_files_since_review(messages, mark: str = MARK, path_ok=None) -> bool:
     """True when a write_file / edit_file / delete_file succeeded after the reviewer's note (PLAN.md alone does not
-    count: ticking a checklist is not answering a finding)."""
-    after = _after_note(messages)
+    count: ticking a checklist is not answering a finding). The package steward reuses this with its own `mark` and a
+    `path_ok(path)` predicate (only dependency files count)."""
+    after = _after_note(messages, mark)
     failed = {b.get("tool_use_id") for m in after if m.get("role") == "user" and isinstance(m.get("content"), list)
               for b in m["content"] if b.get("type") == "tool_result" and b.get("is_error")}
     for m in after:
         for b in m.get("content") if m.get("role") == "assistant" and isinstance(m.get("content"), list) else []:
             if b.get("type") == "tool_use" and b.get("name") in _WRITE_TOOLS and b.get("id") not in failed:
                 p = b.get("input", {}).get("path") if isinstance(b.get("input"), dict) else None
-                if str(p).upper() != "PLAN.MD":
+                if str(p).upper() != "PLAN.MD" and (path_ok is None or path_ok(str(p))):
                     return True
     return False
 

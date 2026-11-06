@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import audit, config, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
-from app.kaisen import builder, buildsecrets, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, reviewing, settings as ksettings, snapshots, testresults, watchdog
+from app.kaisen import builder, buildsecrets, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, packages, reviewing, settings as ksettings, snapshots, testresults, watchdog
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError
 from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenPush, KaisenRun, KaisenSecret, KaisenSnapshot)
@@ -64,6 +64,7 @@ class SettingsIn(BaseModel):
     web_access: Optional[bool] = None
     reviewer: Optional[str] = Field(default=None, max_length=8)
     reviewer_model: Optional[str] = Field(default=None, max_length=64)
+    package_steward: Optional[str] = Field(default=None, max_length=8)
     web_allowed_domains: Optional[list[str]] = Field(default=None, max_length=config.KAISEN_WEB_DOMAINS_MAX)
 
 
@@ -282,6 +283,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
             "error_reason": r.error_reason,
             "notes": [{"text": redact(n.text, sec), "at": n.created_at.isoformat()} for n in hang_notes.get(r.id, [])],
             "review": reviewing.view(r, sec),
+            "packages": packages.view(r, sec),
             "started_at": r.created_at.isoformat(),
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
             "transcript": [{"role": role, "text": text} for role, text in transcript_lines(r.messages, sec)] if r.messages else None,

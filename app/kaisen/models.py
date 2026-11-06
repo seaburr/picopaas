@@ -33,6 +33,7 @@ class KaisenSettings(Base):
     web_allowed_domains: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # None/[] = any domain
     reviewer: Mapped[str] = mapped_column(String(8), nullable=False, default="off", server_default="off")  # off | on
     reviewer_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # None = config default
+    package_steward: Mapped[str] = mapped_column(String(8), nullable=False, default="on", server_default="on")  # off | on
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
@@ -89,7 +90,7 @@ class KaisenRun(Base):
     pending: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     suggestions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # "Next: ..." chips parsed from the summary
-    review: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # reviewer verdict: {verdict, findings, model, note}
+    review: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # reviewer verdict: {verdict, findings, model, note}; the package steward's result is under key "packages"
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     lease_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

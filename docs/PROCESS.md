@@ -17,6 +17,7 @@ Use exactly these in `[role]`. No ad-hoc names (`backend`, `frontend`, `main`, `
 | security-reviewer | agent | review/pentest of risky diffs, `docs/PENTEST.md` |
 | scm-security | agent | the ONLY committer/pusher; secret gate; CI watch |
 | dependabot-steward | agent | Dependabot PR queue (merge via `gh pr merge` or hand to scm-security) |
+| package-steward | agent | dependency currency while code is written: latest stable or a recorded reason, incl. template images Dependabot misses; never commits |
 | tech-writer | agent | `docs/*` audits and guides, recipes docs |
 | marketing-writer | agent (old `marketing`) | landing page, README tagline, meta copy |
 | release-blogger | agent | devlog posts on the Ghost blog |
@@ -59,7 +60,8 @@ Run when Chas hands over a review/feedback doc. The manager drives it; each phas
 2. **Grouping.** Cluster findings by area (backend, frontend, infra, docs, copy) and by file overlap; items touching the
    same files go to the same worker or run serially. Mark risky ones `NEEDS-SECURITY-REVIEW`; queue Dependabot work for
    dependabot-steward. *Gate:* no two parallel workers share a file; max 3 workers at once.
-3. **Parallel dev.** Dispatch workers (backend-dev, frontend-dev, infra-ops, marketing-writer, dependabot-steward);
+3. **Parallel dev.** Dispatch workers (backend-dev, frontend-dev, infra-ops, marketing-writer, dependabot-steward;
+   package-steward after any worker that adds or touches a dependency);
    backend contract first when the frontend depends on it. Each worker: START line, tests, DONE line.
    *Gate:* pytest full suite green; `npm run typecheck && npm run build` green; DONE lines present.
 4. **Coverage.** qa-tester adds tests for the changed code and reports before/after %. *Gate:* coverage not below the

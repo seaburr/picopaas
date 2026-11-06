@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import config
 from app import models as app_models
-from . import buildsecrets, checks, httptool, members, reviewing, secretscan, snapshots, uploads, watchdog
+from . import buildsecrets, checks, httptool, members, packages, reviewing, secretscan, snapshots, uploads, watchdog
 from .llm import ModelError, ModelTimeout, parse_suggestions, web_supported
 from .models import KaisenBuild, KaisenEvent, KaisenFile, KaisenInbox, KaisenRun
 from .paths import ToolError, check_write_name, is_reserved_upload_path, normalize_path
@@ -548,7 +548,7 @@ def _hung(S, run_id: int, attempt: int, why: str) -> str:
 
 
 def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None, requester=None,
-             expect_attempt: int | None = None) -> str:
+             expect_attempt: int | None = None, package_index=None) -> str:
     """Run one step (until ask_human, finish, a stop, or MAX_TURNS). Returns the outcome."""
     started, recent = clock(), []
     attempt = 0
@@ -594,6 +594,8 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
                 return "lease_lost"
             messages, model, effort = model_view(run.messages), rs.model, rs.effort
             want_review = rs.reviewer == "on" and not reviewing.reviewed(run.messages)
+            # the package steward needs a registry client (the worker supplies one; direct callers without one skip it)
+            want_pkg = rs.package_steward == "on" and package_index is not None and not packages.stewarded(run.messages)
             # web tools only when the project turned them on AND the model supports them, and never for a build
             # with secrets: injected page text could otherwise make the builder write code that sends the
             # preview's env out, and the deploy runs it (pentest K16; Chas chose "off" over an allow-list).
@@ -634,14 +636,14 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
                 stop_run(S, run_id, "error", "error", "Metering failed; run stopped.", attempt)
                 return "error"
             watchdog.stamp(run)
-            outcome = _handle_response(s, run, resp, recent, deployer, review=want_review, requester=http)
+            outcome = _handle_response(s, run, resp, recent, deployer, review=want_review or want_pkg, requester=http)
             if _fenced(s, run_id, attempt):  # a hung tool returned after the watchdog requeued the run: write nothing
                 s.rollback()
                 return "stopped"
             watchdog.stamp(run)
             s.commit()
             if outcome == "review":
-                outcome = _review_round(S, run_id, client, lease, requester, attempt)
+                outcome = _finish_rounds(S, run_id, client, lease, requester, attempt, want_pkg, want_review, package_index)
             if outcome != "continue":
                 return outcome
 
@@ -666,6 +668,45 @@ def run_step(S, run_id: int, client, lease, clock=time.monotonic, deployer=None,
     return "stopped"
 
 
+def _finish_rounds(S, run_id: int, client, lease, requester, attempt, want_pkg: bool, want_review: bool, package_index) -> str:
+    """After finish: the package steward first, then the reviewer (so it sees the upgraded result). Either may hand the
+    builder its one fix round ("continue"); the run is done when neither wants anything more."""
+    if want_pkg:
+        outcome = _package_round(S, run_id, client, lease, attempt, package_index)
+        if outcome != "next":
+            return outcome
+    if want_review:
+        return _review_round(S, run_id, client, lease, requester, attempt)
+    with S() as s:
+        run = s.get(KaisenRun, run_id)
+        if not _still_active(s, run, attempt):
+            return "stopped"
+        set_status(s, run, "done")
+        s.commit()
+        return "done"
+
+
+def _package_round(S, run_id: int, client, lease, attempt, package_index) -> str:
+    """Returns "next" (current, skipped or nothing to check), "continue" (findings: the builder gets its one fix round)
+    or a stop outcome."""
+    try:
+        state, res = packages.check(S, run_id, client, lease, package_index, attempt)
+    except ModelTimeout:
+        return _hung(S, run_id, attempt, "Package check model call timed out") if attempt is not None else "stopped"
+    if state != "ok":
+        return "stopped" if state == "stopped" else "lease_lost"
+    if res is None:
+        return "next"
+    with S() as s:
+        run = s.get(KaisenRun, run_id)
+        if not _still_active(s, run, attempt):
+            return "stopped"
+        packages.save(run, res)
+        packages.add_note(run, res)
+        s.commit()
+        return "continue" if res["verdict"] == "outdated" else "next"
+
+
 def _review_round(S, run_id: int, client, lease, requester=None, attempt: int | None = None) -> str:
     """The builder has called finish and the project wants a review. Returns "done" (approved, or the review was
     skipped), "continue" (findings: the builder gets its one fix round), or a stop outcome."""
@@ -679,7 +720,7 @@ def _review_round(S, run_id: int, client, lease, requester=None, attempt: int | 
         run = s.get(KaisenRun, run_id)
         if not _still_active(s, run, attempt):
             return "stopped"
-        run.review = rv
+        run.review = {**rv, **({"packages": run.review["packages"]} if run.review and "packages" in run.review else {})}
         if rv["verdict"] == "changes":
             reviewing.add_note(run, reviewing.findings_note(rv["findings"]))
             s.commit()
@@ -750,8 +791,15 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
                 if gate:
                     results.append(_result(tid, gate, True))
                     continue
+                presp = packages.clean_response(inp)
+                gate = packages.response_gate(run, presp, so_far)
+                if gate:
+                    results.append(_result(tid, gate, True))
+                    continue
                 if reviewing.in_fix_round(run):
                     reviewing.record_response(run, response, so_far)
+                if packages.in_fix_round(run):
+                    packages.record_response(run, presp, so_far)
                 finished = summary
                 results.append(_result(tid, "ok"))
                 continue

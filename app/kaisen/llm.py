@@ -12,6 +12,7 @@ from app import config
 
 _TEMPLATE = (Path(__file__).parent / "prompts" / "builder.md").read_text()
 _REVIEWER_TEMPLATE = (Path(__file__).parent / "prompts" / "reviewer.md").read_text()
+_PACKAGES_TEMPLATE = (Path(__file__).parent / "prompts" / "packages.md").read_text()
 
 
 _WEB_INTRO_OFF = " You have no network access."
@@ -63,6 +64,16 @@ def reviewer_system() -> str:
     return text.rstrip("\n") + "\n"
 
 
+def packages_system() -> str:
+    text = _PACKAGES_TEMPLATE
+    py = ".".join(str(x) for x in config.KAISEN_RUNTIME_PYTHON[:2])
+    for k, v in {"MAX_FINDINGS": config.KAISEN_PACKAGES_MAX_FINDINGS, "BATCH": config.KAISEN_PACKAGES_BATCH_MAX,
+                 "LOOKUPS": config.KAISEN_PACKAGES_LOOKUPS_MAX, "NODE": config.KAISEN_RUNTIME_NODE_MAJOR,
+                 "PYTHON": py}.items():
+        text = text.replace("{{" + k + "}}", str(v))
+    return text.rstrip("\n") + "\n"
+
+
 SEARCH_DESC = ("Search all project files for a case-sensitive literal string (or a Python regex with regex=true). "
                "Returns path:line: text for each matching line, capped. Use it to find where something lives before "
                "reading files.")
@@ -88,6 +99,27 @@ REVIEWER_TOOLS = [
          "verdict": {"type": "string", "enum": ["approve", "changes"]},
          "findings": {"type": "array", "items": {"type": "string"},
                       "description": "Concrete problems to fix (only with verdict changes)."}},
+         "required": ["verdict"]}},
+]
+
+# Read-only plus the registry lookup: the steward cannot write, deploy, see logs or secrets, or reach any other host.
+PACKAGES_TOOLS = [
+    REVIEWER_TOOLS[0], REVIEWER_TOOLS[1], REVIEWER_TOOLS[2],
+    {"name": "latest_versions", "description": "Look up the latest stable version of npm / PyPI packages. Returns per package "
+     "status (ok, unknown, unavailable, invalid), latest, published (date), compatible (runs on the preview runtime) and "
+     "latest_compatible. Only data from the registries, no text.",
+     "input_schema": {"type": "object", "properties": {"packages": {"type": "array", "items": {
+         "type": "object", "properties": {"ecosystem": {"type": "string", "enum": ["npm", "pypi"]},
+                                          "name": {"type": "string"}}, "required": ["ecosystem", "name"]}}},
+         "required": ["packages"]}},
+    {"name": "submit_package_report", "description": "Give your verdict. Call it exactly once, when you are done.",
+     "input_schema": {"type": "object", "properties": {
+         "verdict": {"type": "string", "enum": ["current", "outdated"]},
+         "findings": {"type": "array", "items": {"type": "object", "properties": {
+             "kind": {"type": "string", "enum": ["outdated", "unpinned", "unknown"]},
+             "ecosystem": {"type": "string", "enum": ["npm", "pypi"]}, "name": {"type": "string"},
+             "current": {"type": "string", "description": "The version or range the project uses, as written."}},
+             "required": ["kind", "ecosystem", "name"]}}},
          "required": ["verdict"]}},
 ]
 
@@ -133,7 +165,10 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {
          "summary": {"type": "string"},
          "review_response": {"type": "array", "items": {"type": "string"}, "description":
-             "Only after the reviewer asked for changes: one entry per finding, 'fixed: <what>' or 'disagree: <why>'."}},
+             "Only after the reviewer asked for changes: one entry per finding, 'fixed: <what>' or 'disagree: <why>'."},
+         "package_response": {"type": "array", "items": {"type": "string"}, "description":
+             "Only after the package steward asked for upgrades: one entry per finding, 'upgraded: <what>' or "
+             "'kept: <real reason>'."}},
          "required": ["summary"]}},
 ]
 
@@ -226,6 +261,12 @@ def _with_cache_mark(messages: list) -> list:
 def build_request(model: str, messages: list, effort: str, web: dict | None = None, role: str = "builder") -> dict:
     """The kwargs for messages.stream, minus effort plumbing. At most 3 cache breakpoints (limit is 4): the last tool
     definition, the system prompt, and the last block of the latest turn."""
+    if role == "packages":
+        tools = [dict(t) for t in PACKAGES_TOOLS]
+        tools[-1]["cache_control"] = {"type": "ephemeral"}
+        return dict(model=model, max_tokens=4000,
+                    system=[{"type": "text", "text": packages_system(), "cache_control": {"type": "ephemeral"}}],
+                    tools=tools, messages=_with_cache_mark(messages))
     if role == "reviewer":
         tools = [dict(t) for t in REVIEWER_TOOLS]
         tools[-1]["cache_control"] = {"type": "ephemeral"}
@@ -372,7 +413,7 @@ class FakeModelClient:
         self.script = list(script)
         self.calls: list[list] = []
         self.webs: list[dict | None] = []  # the `web` argument of each call
-        self.roles: list[str] = []  # "builder" | "reviewer" for each call
+        self.roles: list[str] = []  # "builder" | "reviewer" | "packages" for each call
         self.models: list[str] = []
         self.model_ok = model_ok
 
