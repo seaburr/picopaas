@@ -98,6 +98,8 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
   })
 
   await test.step('admin health page renders', async () => {
+    // Listing platform pods needs a cluster, and without one the endpoint answers 502 by design. Stub only this call.
+    await page.route('**/admin/health/logs/pods', (r) => r.fulfill({ json: { namespaces: [], pods: [] } }))
     await page.goto('/admin/health')
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Health' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible()
