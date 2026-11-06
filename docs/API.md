@@ -456,7 +456,7 @@ temporary password once and sets `must_change_password`). They use the app's `DA
 max_nodes, pods_total}, nodes[], apps[] (per app: status, pods, restarts, CPU and memory used, per-pod limits,
 replicas, aggregate capacity, pod_usage[]), platform[] (pods in the platform namespaces), db_servers[] (`DbServer`
 plus live metrics), users{total, active, pending, suspended, admins} (all non-deleted accounts, admins included; `admins` is a subset), pending_users[], workloads{apps_total, by_status, with_db,
-with_storage, by_db_engine{mysql, postgres}}, statistics{apps_ever_deployed, kaisen_apps_ever_built}`. `statistics` are lifetime counters that never go down: `apps_ever_deployed` is every app ever created, deleted ones and Kaisen previews included; `kaisen_apps_ever_built` is the number of Kaisen builds, deleted ones included, that have at least one run finished `done`. The cluster snapshot is cached about 15 seconds; `warming` is true until the first one lands.
+with_storage, by_db_engine{mysql, postgres}}, statistics{apps_ever_deployed, kaisen_apps_ever_built, kaisen_runs_ever}`. `statistics` are lifetime counters that never go down: `apps_ever_deployed` is every app ever created, deleted ones and Kaisen previews included; `kaisen_apps_ever_built` is the number of Kaisen builds, deleted ones included, that have at least one run finished `done`; `kaisen_runs_ever` is every Kaisen run started, whatever its outcome. The cluster snapshot is cached about 15 seconds; `warming` is true until the first one lands.
 
 ### Health: backups and logs
 

@@ -418,7 +418,7 @@ export interface ClusterHealth {
   apps: HealthApp[]
   platform: HealthPlatform[]
   db_servers: DbServer[]
-  statistics?: { apps_ever_deployed: number; kaisen_apps_ever_built: number }
+  statistics?: { apps_ever_deployed: number; kaisen_apps_ever_built: number; kaisen_runs_ever: number }
   users?: { total: number; active: number; pending: number; suspended: number; admins?: number }
   pending_users?: { id: number; email: string; created_at: string }[]
   workloads?: {

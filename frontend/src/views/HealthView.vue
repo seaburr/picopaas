@@ -434,6 +434,11 @@ const card = 'min-w-0 rounded-md border border-pico-border bg-pico-panel p-3'
               <div class="text-lg font-semibold text-white">{{ data.statistics.kaisen_apps_ever_built }}</div>
               <div class="text-xs text-zinc-400">builds with a finished run</div>
             </div>
+            <div :class="card">
+              <div class="text-xs text-zinc-400">Kaisen runs</div>
+              <div class="text-lg font-semibold text-white">{{ data.statistics.kaisen_runs_ever }}</div>
+              <div class="text-xs text-zinc-400">every run started, including retries and changes</div>
+            </div>
           </div>
           <p class="help">Deleted apps and builds still count.</p>
         </section>

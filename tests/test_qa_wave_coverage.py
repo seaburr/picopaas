@@ -326,7 +326,7 @@ def test_statistics_falls_back_to_zero_when_the_kaisen_count_fails(db_session):
         return real_query(*a, **k)
     db_session.query = flaky
     try:
-        assert health.statistics(db_session) == {"apps_ever_deployed": 0, "kaisen_apps_ever_built": 0}
+        assert health.statistics(db_session) == {"apps_ever_deployed": 0, "kaisen_apps_ever_built": 0, "kaisen_runs_ever": 0}
     finally:
         del db_session.query
     assert health.statistics(db_session)["apps_ever_deployed"] == 0

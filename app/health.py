@@ -266,17 +266,19 @@ def statistics(db: Session) -> dict[str, int]:
     """Lifetime counters for Admin > Health. Soft-deleted rows still count and nothing in the app hard-deletes an App,
     KaisenBuild or KaisenRun (user, project and build deletes only set deleted_at), so these never go down.
     apps_ever_deployed: every App row, deleted ones and Kaisen previews included (a preview is a real deployed app).
-    kaisen_apps_ever_built: distinct Kaisen builds, deleted ones included, with at least one run that finished `done`."""
+    kaisen_apps_ever_built: distinct Kaisen builds, deleted ones included, with at least one run that finished `done`.
+    kaisen_runs_ever: every Kaisen run started, whatever its outcome (a build usually takes several)."""
     from sqlalchemy import func
 
     apps = db.query(func.count(models.App.id)).scalar() or 0
     try:
         from app.kaisen.models import KaisenRun
         built = db.query(func.count(func.distinct(KaisenRun.build_id))).filter(KaisenRun.status == "done").scalar() or 0
+        runs = db.query(func.count(KaisenRun.id)).scalar() or 0
     except Exception:  # noqa: BLE001 - Kaisen tables missing/unavailable: report 0 rather than break the Health page
         db.rollback()
-        built = 0
-    return {"apps_ever_deployed": int(apps), "kaisen_apps_ever_built": int(built)}
+        built = runs = 0
+    return {"apps_ever_deployed": int(apps), "kaisen_apps_ever_built": int(built), "kaisen_runs_ever": int(runs)}
 
 
 def db_counts(db: Session) -> dict[str, Any]:

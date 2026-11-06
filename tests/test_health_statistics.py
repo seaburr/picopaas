@@ -50,7 +50,7 @@ def _build(db, n, runs=(), deleted=False):
 
 
 def test_empty_platform(admin):
-    assert _stats(admin) == {"apps_ever_deployed": 0, "kaisen_apps_ever_built": 0}
+    assert _stats(admin) == {"apps_ever_deployed": 0, "kaisen_apps_ever_built": 0, "kaisen_runs_ever": 0}
 
 
 def test_requires_admin(admin, make_client):
@@ -79,6 +79,7 @@ def test_kaisen_counts_builds_with_a_done_run_including_deleted(admin, db_sessio
     _build(db_session, 5, ["done"], deleted=True)  # deleted build still counts
     assert _stats(admin)["kaisen_apps_ever_built"] == 3
     assert health.statistics(db_session)["kaisen_apps_ever_built"] == 3
+    assert _stats(admin)["kaisen_runs_ever"] == 8  # every run counts, whatever its outcome, deleted builds included
 
 
 def test_deleting_a_build_via_api_does_not_lower_the_count(admin, db_session):
