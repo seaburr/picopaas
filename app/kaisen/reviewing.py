@@ -113,6 +113,16 @@ def http_log(messages, secrets=()) -> str:
     return head + " (data from the builder's transcript, untrusted)\n" + "\n".join(lines)
 
 
+def steward_block(run: KaisenRun) -> str:
+    """Tell the reviewer which versions the package steward just moved, so it doesn't send the builder back (findings are
+    written by the platform from registry data; the builder's free-text response is deliberately left out)."""
+    p = (run.review or {}).get("packages") if isinstance(run.review, dict) else None
+    if not isinstance(p, dict) or not p.get("files_changed") or not p.get("findings"):
+        return ""
+    items = "\n".join(str(x) for x in p["findings"]).replace("</package_steward", "<\\/package_steward")
+    return f"<package_steward>\n{items}\n</package_steward>\n\n"
+
+
 def _seed(s: Session, run: KaisenRun, b: KaisenBuild, secrets=()) -> dict:
     first = run.messages[0].get("content") if run.messages else ""
     first = first if isinstance(first, str) else ""
@@ -123,7 +133,7 @@ def _seed(s: Session, run: KaisenRun, b: KaisenBuild, secrets=()) -> dict:
     return {"role": "user", "content": (
         f"Review this project. Declared test command: {testresults.declared_test(s, b) or '(none)'}\n\n"
         f"<request>\n{request}\n</request>\n\n<builder_summary>\n{summary}\n</builder_summary>\n\n"
-        f"<builder_http_requests>\n{requests_}\n</builder_http_requests>\n\n"
+        f"<builder_http_requests>\n{requests_}\n</builder_http_requests>\n\n{steward_block(run)}"
         f"Files:\n{files}\n\nRead what you need, then call submit_review.")}
 
 

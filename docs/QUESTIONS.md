@@ -7,6 +7,9 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Package steward vs a version the brief asks for (2026-11-05).** If a brief says "use express 4.18.2", the steward still upgrades it to the latest stable, and the reviewer now leaves that alone. I took "insists" literally. The alternative is to honour a version a brief names on purpose and only report it. Say if you'd prefer that. Turning the steward off per project also keeps the requested version.
+- **To-do: try one platform backup download.** It needs your admin password, so nobody else can test it end to end. Admin > Health > Backups, the download icon on a recent run. I checked the access rules live (API keys and non-admins get 403) and the export logic in tests, but no real export has run yet.
+
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
