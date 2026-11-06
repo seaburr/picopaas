@@ -11,6 +11,8 @@ Zero cost when there is nothing to check: no dependency manifest and no versione
 Everything the steward reads is untrusted data and its only output is a verdict. Even that is not free text: a finding
 names a package the steward really looked up, and the sentence the builder sees is written HERE from the registry data
 (versions that passed a strict regex), so a prompt-injected steward can at worst flag or miss a package."""
+from __future__ import annotations  # builder imports this module, so builder.Workspace can't be evaluated at import
+
 import json
 import re
 
