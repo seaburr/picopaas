@@ -35,4 +35,4 @@ PicoPaaS to Heroku in any copy. Append ledger START/DONE lines. End with a 3–5
 prioritised list of issues (what, where, why it matters, suggested fix).
 
 ## UI consistency rule
-A visual pattern change is applied everywhere that pattern appears in the same change, never on one page. Actions at the top of a page use `IconButton` with `text` (icon and label); repeated actions in table rows stay icon-only. Reviews check the other pages that use the changed pattern, not just the page that changed.
+A visual pattern change is applied everywhere that pattern appears in the same change, never on one page. Actions are text: page-top actions use `IconButton` with `text` (outlined text button); repeated actions in table rows are quiet text links (`.row-act`, no `text`; `verb` picks the word when the label names the row). No decorative icons. Design rules: no gradients; radii 4-6px; monospace only for technical values, identifiers and resource quantities, sans-serif otherwise; tables, dividers and aligned columns over nested cards; colour only for state; high density. Reviews check the other pages that use the changed pattern, not just the page that changed.

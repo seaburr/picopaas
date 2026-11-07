@@ -26,6 +26,8 @@ administrator restores the account.
 
 **Timezone.** On the **Account** page you can pick your timezone so times show in local time; leave it unset to use your browser's. Server-written text (audit CSV, notices) stays in UTC.
 
+**The left tree.** Everything is reached from the tree on the left; on a phone it sits behind the **Menu** button. **Projects** holds each project you belong to, with its app count; open a project to list its apps and click one to see its **Health** and **Settings** links. **Kaisen** (when it is on for you) has **Builds** and **Settings**. Below those are **Templates** and **Docs**, and at the bottom your **Account** and **Log out**. A small triangle opens or closes a node; clicking a name goes to that page. The tree remembers which nodes you opened or closed in this browser, and it always opens the path to the page you are on. Clicking a project in the tree also makes it the project you work in (the Apps page, the new-app form and Kaisen new build follow it). Administrators also see an **Administration** node.
+
 **Theme.** Also on **Account**, **Theme** switches the app between **Dark** (the default) and **Light**. The choice is saved on your account, so it follows you to other browsers. Each browser also keeps a copy, so the page loads in your theme without a flash, including the sign-in page; the copy stays after you sign out and your account's value replaces it the next time you sign in.
 
 ## 2. Platform rules
@@ -59,7 +61,7 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 ### 3a. UI form
 
-1. Open **Apps**, then press **+** (New app). A chooser offers three ways to start: **Image** (this form), **Template** (section 14) and, when an administrator has Kaisen on, **Kaisen** (section 16). Pick Image; the form shows **In project: X** (change the project with the picker on Apps). Stay on the **Form** tab.
+1. Open **Apps**, then press **New app**. A chooser offers three ways to start: **Deploy an image** (this form), **Deploy from a template** (section 14) and, when an administrator has Kaisen on, **Build with Kaisen** (section 16). Pick **Deploy an image**; the form shows **In project: X** (to change the project, pick another one in the left tree first). Stay on the **Form** tab.
 2. Enter a name, image and container port.
 3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
@@ -69,8 +71,10 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 Each app has two pages. **App health** (`/apps/:id`) shows status, resource usage, quotas, logs, recent events and
 versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, health check) plus **Custom domain**,
-the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button on each page links to
-the other. Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
+the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button at the top of each page links to
+the other (**Settings** on the health page, **App health** on Settings). Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
+
+The **Apps** list is a table with these columns: Name, Status, Image, Port, **Memory limit**, **CPU limit** (the limits the app runs with, not its current use), Database and Bucket (use against the cap), Host and Created. Each row ends with the text actions **Health**, **Restart**, **Settings** and **Delete**.
 
 ### 3b. YAML in the UI
 
@@ -424,7 +428,7 @@ In the UI and API the same thing is `volume: {size_gi, mount_path}`. Rules to kn
   under `mountPath` (default `/data`). Don't mount over directories your image needs to start, unless it copies them in.
 - **Size.** 1 GiB by default; an administrator can grow it. Volumes only grow, never shrink. Growing a volume after it's created is supported by the API (DigitalOcean's CSI driver expands the filesystem online) but is not yet tested live on this platform, so plan the size up front.
 - **No detaching.** To drop a volume, delete the app; the data is destroyed with it.
-- **Backed up when your administrator allows it.** A volume is part of your backups once the platform has volume backups turned on (they need a bucket-scoped backup key; see Backups, section 7b). If the Backups card says "Volume backups need a bucket-scoped backup key; ask the admin", the volume is not backed up yet: treat it as one copy of the data.
+- **Backed up when your administrator allows it.** A volume is part of your backups once the platform has volume backups turned on (they need a bucket-scoped backup key; see Backups, section 7b). If the Backups section says "Volume backups need a bucket-scoped backup key; ask the admin", the volume is not backed up yet: treat it as one copy of the data.
 
 ## 7b. Backups
 
@@ -440,9 +444,9 @@ weekly and one monthly copy. A backup you start by hand replaces that day's dail
   it sees exactly what your app sees.
 - DigitalOcean also backs up the database servers themselves; that is the platform's safety net, not something you restore from.
 
-On the app's health page, the **Backups** card shows the schedule status (daily, weekly or off, and the next run), a **Back up now** button, a "Last backup" line, and one row per backup: its date, an **automatic**, **manual** or **before delete** label, and a status: **running**, **succeeded**, **partial** (some parts failed; the row names the failed part and its error) or **failed**. Small chips under it list the parts (database, blob storage, volume) with the new data each added. If your app has a volume but volume backups are off, the card says so. Click the download icon on a finished backup (automatic backups too); you can leave the page while it prepares, then come back and click it again within an hour (3 downloads per hour, counted per backup). The trash icon deletes the whole backup for good: it is marked "deleting" for a minute or two, then disappears (or comes back with an event if part of the delete failed). You can't delete or download a backup while it is still being taken or while another backup, restore or download of the same kind is running, and a download you already prepared from it is removed too. Deleting is also `DELETE /apps/{id}/backups/sets/{id}`; the older per-part `DELETE /apps/{id}/backups/{run_id}` still works. Turn scheduled backups on or off and choose daily or weekly under **Settings**, in the **Backups** section of "Other settings" (the **Backup settings** button on the card jumps there); changes save immediately.
+On the app's health page, the **Backups** section shows the schedule status (daily, weekly or off, and the next run), a **Back up now** button, a "Last backup" line, and one row per backup: its date, an **automatic**, **manual** or **before delete** label, and a status: **running**, **succeeded**, **partial** (some parts failed; the row names the failed part and its error) or **failed**. Small chips under it list the parts (database, blob storage, volume) with the new data each added. If your app has a volume but volume backups are off, the section says so. Press **Download** on a finished backup (automatic backups too); you can leave the page while it prepares, then come back and press it again within an hour (3 downloads per hour, counted per backup). **Delete** removes the whole backup for good: it is marked "deleting" for a minute or two, then disappears (or comes back with an event if part of the delete failed). You can't delete or download a backup while it is still being taken or while another backup, restore or download of the same kind is running, and a download you already prepared from it is removed too. Deleting is also `DELETE /apps/{id}/backups/sets/{id}`; the older per-part `DELETE /apps/{id}/backups/{run_id}` still works. Turn scheduled backups on or off and choose daily or weekly under **Settings**, in the **Backups** section of "Other settings" (the **Backup settings** button in the Backups section jumps there); changes save immediately.
 
-**Turning backups on or off, and limits.** You can turn scheduled backups on or off for your app at any time (Settings, or `PATCH /apps/{id}/backups`). New apps start with them on or off depending on a platform setting. A platform admin can also **disable backups for an app**: then no scheduled or manual backup runs and you cannot turn them back on ("Backups for this app were disabled by a platform admin"); the reason is shown, and your existing backups are kept and stay downloadable. The platform keeps at most a set number of backups per app (default 14, manual ones included) and has a storage ceiling per app: when you reach either, the oldest backups roll off, failed or partial backups first, and the newest good backup is never removed to make room. If the app's storage is still full, a new backup is refused with "Backup storage for this app is full (X of Y)" and a scheduled one is skipped and listed as failed with that reason; delete a backup you no longer need. You can start one backup per app per hour ("You can start 1 backup per hour"), and prepare 3 backup downloads per hour ("You can prepare 3 backup downloads per hour"); a download that failed does not count, and the reason it failed is shown on the Backups card.
+**Turning backups on or off, and limits.** You can turn scheduled backups on or off for your app at any time (Settings, or `PATCH /apps/{id}/backups`). New apps start with them on or off depending on a platform setting. A platform admin can also **disable backups for an app**: then no scheduled or manual backup runs and you cannot turn them back on ("Backups for this app were disabled by a platform admin"); the reason is shown, and your existing backups are kept and stay downloadable. The platform keeps at most a set number of backups per app (default 14, manual ones included) and has a storage ceiling per app: when you reach either, the oldest backups roll off, failed or partial backups first, and the newest good backup is never removed to make room. If the app's storage is still full, a new backup is refused with "Backup storage for this app is full (X of Y)" and a scheduled one is skipped and listed as failed with that reason; delete a backup you no longer need. You can start one backup per app per hour ("You can start 1 backup per hour"), and prepare 3 backup downloads per hour ("You can prepare 3 backup downloads per hour"); a download that failed does not count, and the reason it failed is shown in the Backups section.
 
 Check the status with `GET /apps/{id}/backups` (last backup, size, recent runs). Start one now with `POST /apps/{id}/backups`
 (one per hour; it works whether or not scheduled backups are on). Turn scheduled backups on or off, or switch to weekly, with
@@ -577,7 +581,7 @@ Find out which resource is over with the **Usage** section on the app page, `pic
   weekly and 1 monthly restore point per repository are kept). When it is full, new backups are refused and the **Back up now**
   button is disabled; a scheduled backup is skipped and shows as a failed backup with the reason. The platform clears this
   on its own: every minute or so it deletes the app's failed and partial backups first, then the oldest successful ones,
-  but never the newest successful one. You can do it yourself by clicking the trash icon on old backups (or
+  but never the newest successful one. You can do it yourself by pressing **Delete** on old backups (or
   `DELETE /apps/{id}/backups/sets/{id}`). **Free up space** does not apply here; it only deletes blob storage objects.
   Space is freed when the delete finishes, which takes a minute or two (the backup shows "deleting"); a failed backup
   holds nothing and disappears at once. Backups share unchanged data, so deleting one frees only what no other backup uses. If one backup is simply larger than the ceiling, ask an administrator to raise
@@ -632,7 +636,7 @@ Deleting an app removes its namespace, database and blob storage bucket. The UI 
 
 **App page details.** Each app's URLs (the generated one and any custom domain) are listed, with the primary one marked. The
 page shows how long the app has been up (`uptime_seconds` in the API). A restart or image-update notice can be dismissed with
-its X button; it stays hidden until a new restart or a different update error occurs (`POST /apps/{id}/alerts/{kind}/dismiss`,
+its **Dismiss** button; it stays hidden until a new restart or a different update error occurs (`POST /apps/{id}/alerts/{kind}/dismiss`,
 see API.md). Database and storage sizes are shown in MB.
 
 ### Viewing logs
@@ -678,19 +682,19 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 ## 14. Templates
 
-The **Templates** page (`/templates`, or **Deploy from a template** on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (MySQL or PostgreSQL card), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo (MySQL, volume) and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card.
+The **Templates** page (`/templates`, or **Deploy from a template** on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (a MySQL and a PostgreSQL entry), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo (MySQL, volume) and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card.
 
-Each card has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. Cards warn when the instance has volumes, databases or blob storage turned off.
+Each template has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. A template warns when the instance has volumes, databases or blob storage turned off.
 
 **Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
 
 ## 15. Projects (teams)
 
 A project owns apps; its members manage them together. Everyone has a **personal project** (your apps until you choose
-otherwise). Open **Projects** in the nav (`/projects`) to see every project you belong to with your role, member count and apps used against the limit. **New project** there creates a shared one; then invite people.
+otherwise). Open **Projects** in the left tree (`/projects`) to see every project you belong to with your role, member count and apps used against the limit. **New project** there creates a shared one; then invite people.
 
-- **Opening a project.** Click its name to open `/projects/<id>` for settings and members (rename, invite, roles, danger zone). **Apps** and **Kaisen** in a row jump to that project's apps or builds.
-- **Picking a project.** If you belong to more than one project, the Apps and Kaisen pages show an **Apps in** (or **Kaisen builds in**) select in the header; it is hidden while you only have your personal project. The new-app form and the Kaisen new build page have no selector: they show **In project: X** for the project picked on Apps or Kaisen. To create something elsewhere, change the project there first.
+- **Opening a project.** On the **Projects** page, click its name to open `/projects/<id>` for settings and members (rename, invite, roles, danger zone). **Apps** and **Kaisen** in a row jump to that project's apps or builds.
+- **Picking a project.** There is no project selector. Open **Projects** in the left tree and click a project's name: its apps show under it, and the Apps and Kaisen pages follow it. The new-app form and the Kaisen new build page show **In project: X** for the project you picked last. To create something elsewhere, pick that project in the tree first. In the **Projects** list, **Apps** and **Kaisen** on a row do the same and jump to that page.
 
 - **Roles.** A *member* can deploy, edit, restart, back up and delete the project's apps. An *owner* can also invite, remove people,
   change roles, rename and delete the project, and move apps. A project always keeps at least one owner.
@@ -714,8 +718,8 @@ otherwise). Open **Projects** in the nav (`/projects`) to see every project you 
 
 ### Invite someone to a project
 
-1. Open **Projects** in the nav (the **Projects** card on **Account** lists the same projects). Shared projects you own show an invite (person) button and a manage (gear) button; members see only manage.
-2. Pick the invite button, or open the project and go to **Invite people to this project** (`/projects/<id>#invite`). Your personal project cannot be shared: choose **New project** first.
+1. Open **Projects** in the left tree (the **Projects** section on **Account** lists the same projects). On the Account list, shared projects you own show **Invite** and **Manage**; members see only **View**.
+2. Press **Invite**, or open the project and go to **Invite people to this project** (`/projects/<id>#invite`). Your personal project cannot be shared: choose **New project** first.
 3. Optionally enter the person's email. With an email you can also choose the role (*Member* or *Owner*); without one the link is a member link that any approved account can use.
 4. Press **Create invite** and copy the link now; it is shown once. No email is sent, so paste it into a message yourself.
 5. The person logs in with an approved account (register first if needed) and opens the link. It works once and expires after 7 days. If you entered an email, they must use that account.
@@ -754,19 +758,19 @@ Also in settings:
 
 - **Model.** `claude-haiku-5-5` (default: in our evals it built every starter brief, including a login-gated CRM, at about a fifth of Sonnet's cost), `claude-sonnet-5-5` (fewer steps, faster on bigger builds) or `claude-opus-5-5`. Existing projects keep the model they saved.
 - **Effort.** Low, medium (default) or high.
-- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in its inbox. Resume it after raising the cap. The Kaisen home, settings and build pages also show what the project has spent over the **last 30 days** (a rolling window, not the calendar month).
+- **Spend caps (US dollars).** Per run (default $2), per day (default $8) and per build in total (default $30); each can be raised up to $1000. A build that reaches a cap stops and says so in the thread. Resume it after raising the cap. The Kaisen home, settings and build pages also show what the project has spent over the **last 30 days** (a rolling window, not the calendar month).
 - **Member limits.** Owners can cap what each person spends. See "Kaisen limits".
 - **Web access** (off by default), **Reviewer** (off by default) and **Package steward** (on by default). See "Web access", "Reviewer step" and "Package steward". An administrator can turn web search off for a project; Web access is then grayed out with "Web search isn't enabled for this project."
 - **GitHub token (optional).** See "Download or push to GitHub".
 
 ### Your first build
 
-1. Press **+** (New app) on the Apps page, which opens a chooser: *Image*, *Template* or *Kaisen*. Pick Kaisen, or go to **Kaisen > New build**.
+1. Press **New app** on the Apps page, which opens a chooser: *Deploy an image*, *Deploy from a template* or *Build with Kaisen*. Pick **Build with Kaisen**, or open **Kaisen** in the left tree and press **New build**.
 2. Give it a name (up to 60 characters) and a brief (up to 8000 characters). The page shows **In project: X**; a project holds at most 20 builds. You can attach files to the brief (see "Attach files").
 3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why. If you attached files, the build is first saved as a draft, each file is uploaded, then the run starts (see "Attach files").
 4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off; after a long run, Resume starts a fresh model context from `PLAN.md` and the files instead of the whole conversation. Work happens in steps of up to 15 minutes and 40 model calls; a long build continues on its own in a fresh context (the plan, brief and files carry over) for up to 4 steps before it stops and waits for you; the transcript is redacted and trimmed 14 days after a run ends.
-5. If Kaisen has a question, it appears in the build's inbox with the status `waiting`. Answer it (up to 4000 characters) and the build continues.
-6. When it is `done`, open the app from the **Live app** card.
+5. If Kaisen has a question, it appears in the conversation with the status `waiting`. Answer it in the box at the bottom (up to 4000 characters) and press **Send answer**; the build continues. Files can't go with an answer: attach them to your next message.
+6. When it is `done`, open the app from **Live app and preview** in the panel beside the conversation.
 
 ### Interrupt and retry
 
@@ -774,17 +778,17 @@ If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from
 
 ### Conversation
 
-The build page shows a **Conversation** timeline: your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run. The box at the bottom sends the next change request. Files you attached appear on the message they were sent with.
+The build page is a chat. The thread holds your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run (**Run details**). The box at the bottom is pinned, so it stays in view while the thread scrolls; it sends the next change request, or your answer when Kaisen has asked a question. In it, **Enter** adds a line; **Ctrl+Enter** (Cmd+Enter on a Mac) or the **Send to Kaisen** button sends. Files you attached appear on the message they were sent with.
 
-The timeline scrolls inside a fixed-height panel and opens at the newest message, with the change box below it. The result of the latest deployment is on the **Live app** card under **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
+On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
 
 ### Ask for changes
 
-Type what to change (up to 4000 characters) in the Conversation box. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.
+Type what to change (up to 4000 characters) in the box under the thread. Kaisen edits the files and redeploys the same app. Feedback needs a first run to have happened. One change per message works best; every message is a run, and runs cost money. A hint under the box shows what earlier runs on this build cost (for example "Usually $0.04-$0.09 on claude-haiku-5-5 (capped at $2.00 per run)"), or just the cap before the first run.
 
 - **Next ideas.** When a run finishes, up to three suggestion chips ("Next: ...") appear for the latest run. Pressing one copies it into the box so you can edit and send it; nothing runs until you send.
-- **Fix it.** When the preview app is in `error` or `retrying`, the Live app card shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
-- **Starter cards.** On **New build**, the starter chips fill the name and brief from the examples below. Press **Undo** to get your text back.
+- **Fix it.** When the preview app is in `error` or `retrying`, **Live app and preview** shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
+- **Starters.** On **New build**, the starter buttons fill the name and brief from the examples below. Press **Undo** to get your text back.
 
 ### Write a good brief
 
@@ -835,8 +839,8 @@ Build a recipe scaler as a static page with no server and nothing saved. I paste
 ### Download or push to GitHub
 
 - **Download** (`.tar.gz`) is always available from the build page. It holds the files plus `CONVERSATION.md`: your brief, feedback and answers, and Kaisen's replies, questions and summaries for every run (no internal agent detail; saved keys are redacted).
-- **Push**: each build has its own **Output** card (also an optional section on New build). Choose *Download and push to GitHub*, enter the repository (`https://github.com/owner/repo`) and a branch (optional; blank = `kaisen/<build>`), then pick the auth: *Use the project's GitHub token* or *Use a token for this build only*. Options: push when a build finishes, and open a pull request. **Test** checks push access to that repository with the chosen token; **Push now** pushes immediately. The download's `CONVERSATION.md` is not pushed.
-- **Pushing runs in the background.** The button changes to "Pushing to GitHub..." and you can leave the page; the result shows in the Output card and as a message when it finishes. If it fails, the card says why in plain words and offers **Try again** and **Test connection**. The reasons: the token was rejected (expired or revoked); the token has no write permission on the repository (needs Contents: Read and write); GitHub's rate limit was reached (wait a few minutes); the repository or branch wasn't found; the branch already has commits Kaisen doesn't have (pick another branch or delete it on GitHub); the branch is protected; the repository is empty and GitHub refused the first commit; a file is too large; GitHub is having trouble (try in a minute) or could not be reached; the repository name isn't `owner/name`; or the push was interrupted because the platform restarted (press Try again).
+- **Push**: each build has its own **Output** section in the side panel (also an optional section on New build). Choose *Download and push to GitHub*, enter the repository (`https://github.com/owner/repo`) and a branch (optional; blank = `kaisen/<build>`), then pick the auth: *Use the project's GitHub token* or *Use a token for this build only*. Options: push when a build finishes, and open a pull request. **Test** checks push access to that repository with the chosen token; **Push now** pushes immediately. The download's `CONVERSATION.md` is not pushed.
+- **Pushing runs in the background.** The button changes to "Pushing to GitHub..." and you can leave the page; the result shows in the Output section and as a message when it finishes. If it fails, the section says why in plain words and offers **Try again** and **Test connection**. The reasons: the token was rejected (expired or revoked); the token has no write permission on the repository (needs Contents: Read and write); GitHub's rate limit was reached (wait a few minutes); the repository or branch wasn't found; the branch already has commits Kaisen doesn't have (pick another branch or delete it on GitHub); the branch is protected; the repository is empty and GitHub refused the first commit; a file is too large; GitHub is having trouble (try in a minute) or could not be reached; the repository name isn't `owner/name`; or the push was interrupted because the platform restarted (press Try again).
 - Files that look like secrets (`.env*`, private keys) are never pushed, even in older builds. The result message lists the names it left out.
 - The project token is shared: anyone who can run builds in the project can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean.
 
@@ -853,19 +857,19 @@ Off by default, and an administrator can turn web search off for a whole project
 
 ### Build secrets
 
-The **Secrets** card on the build page holds environment values the built app needs, such as an API key. Anyone in the project who can run the build can add one.
+The **Secrets** section in the build page's side panel holds environment values the built app needs, such as an API key. Anyone in the project who can run the build can add one.
 
-1. Enter a name (UPPER_SNAKE_CASE) and a value, then save. Saving an existing name replaces its value.
-2. Press **Deploy now**. Secrets reach the running app on its next deploy. Deleting a secret removes it from the running app at once.
+1. Enter a name (UPPER_SNAKE_CASE) and a value, then press **Add or replace secret**. Saving an existing name replaces its value.
+2. Press **Deploy now to apply**. Secrets reach the running app on its next deploy. Deleting a secret removes it from the running app at once.
 
 Kaisen sees the names only and is told to read them from the environment; values are encrypted, masked in the page and API and redacted from transcripts, logs and downloads. Limits are under "Kaisen limits".
 
 ### Attach files
 
-You can attach files to the brief on **New build**, to each change request in the Conversation box and to each answer in the inbox. An administrator turns file uploads on per project; until then attaching is grayed out with a note "Not enabled for this project yet" (you can still delete files you uploaded earlier).
+You can attach files to the brief on **New build**, to each change request in the box under the thread. Answers can't carry files. An administrator turns file uploads on per project; until then attaching is grayed out with a note "Not enabled for this project yet" (you can still delete files you uploaded earlier).
 
-- **How.** Press the paperclip (**Attach**), drag files onto the box, or paste an image. Each file shows as a chip with its progress; a refused file shows the reason with **Try again** and a remove button, and sending waits until uploads finish or you remove the refused ones. Files are sent with the message, and Kaisen is told they came with it.
-- **Files N of 20** opens the **Files** drawer: every file on the build, with its description, replace, delete, quota bars, and **Deploy now** when files changed since the live app. Files not yet sent are marked "Not sent yet" and come back as chips if you reload. Clicking a file on a message opens it in the drawer.
+- **How.** Press **Attach**, drag files onto the box, or paste an image. Each file shows as a chip with its progress; a refused file shows the reason with **Try again** and a remove button, and sending waits until uploads finish or you remove the refused ones. Files are sent with the message, and Kaisen is told they came with it.
+- **Files N of 20** (next to **Attach**) opens the **Files for this build** drawer: every file on the build, with its description, replace, delete, quota bars, and **Deploy now** when files changed since the live app. Files not yet sent are marked "Not sent yet" and come back as chips if you reload. Clicking a file on a message opens it in the drawer.
 - **New build with files.** The build is saved as a draft, files upload one by one, then the run starts. If some fail, the draft is kept and you can **Retry failed files**, **Start building without them** or **Open the draft** (its page has a **Start building** button).
 - **Error messages state the limit and your file's value**, for example "That image is 9.4 megapixels (4000 x 2350). The most allowed is 8 megapixels; resize it and try again." Quota messages give what is used, the limit and the size of this file.
 
@@ -878,9 +882,9 @@ What happens to your files:
 
 - Images are decoded and re-encoded on the platform, so metadata (such as camera and location data) is removed, animation isn't kept and large images are scaled down to 2560 px on the long side. SVGs are sanitized: scripts, embedded HTML, animation, external links and CSS that fetches anything are removed, so an SVG can look slightly different from the original. A file that can't be processed is refused with a reason.
 - **Files used in the site are public** once the app is deployed, and also appear in the download and in a GitHub push (references don't). Don't upload anything private as a site image.
-- Kaisen gives each file a generated name under `uploads/` (or `references/`); your original name is only shown in the list. You can edit the description, replace a file (same type) and delete it. Replace and delete wait until no run is active, and the card offers **Deploy now** when uploads changed since the live app.
+- Kaisen gives each file a generated name under `uploads/` (or `references/`); your original name is only shown in the list. You can edit the description, replace a file (same type) and delete it. Replace and delete wait until no run is active, and the drawer offers **Deploy now** when uploads changed since the live app.
 - **Files that look like secrets are never accepted, served or pushed.** Uploads (text references, SVGs and descriptions) are scanned, and a file with a private key, an API token (Anthropic, OpenAI-style, GitHub, AWS, Slack, Stripe, Google, DigitalOcean), a JWT, a database URL with a password or a `password = "..."` line is refused with "That file looks like it contains a credential (line N: kind). Remove it and upload again; put secrets in Build secrets instead." Kaisen itself won't write `.env*` or key files, or content like that, and the preview answers "not found" for dotfiles, `.env*`, keys, databases, dumps, backups, logs, server source files (`.php`, `.py`, `.sh` and similar), `kaisen.json` and directory listings. If a file you meant to offer for download is blocked, rename it. Use **Build secrets** for values the app needs. The scan is a heuristic and can have false alarms. Python and Node apps serve their own files, so for them this relies on Kaisen following its rule to serve one static folder. The preview guards apply once the platform's runtime image has been updated.
-- Limits: 4 MiB per file; images up to 8 megapixels; SVG up to 512 KiB; a text reference up to 100 KiB; 20 files per build, 6 MiB of site images and 1 MiB of references per build, 40 MiB per project and 100 MiB per person; 30 uploads per hour (refused tries count). Quota bars on the card show what you've used.
+- Limits: 4 MiB per file; images up to 8 megapixels; SVG up to 512 KiB; a text reference up to 100 KiB; 20 files per build, 6 MiB of site images and 1 MiB of references per build, 40 MiB per project and 100 MiB per person; 30 uploads per hour (refused tries count). Quota bars in the drawer show what you've used.
 
 ### Generated tests
 
@@ -904,7 +908,7 @@ On by default. When the builder finishes a run, a small model checks that the pa
 
 ### Restore points
 
-Kaisen saves a restore point of the files each time a run starts (a first build, a change request or a resume), as long as the files differ from the last restore point. The newest 5 per build are kept; older ones are dropped. The **Restore points** card lists them with the run they belong to, and each run can show **what changed** as a diff (secrets are hidden).
+Kaisen saves a restore point of the files each time a run starts (a first build, a change request or a resume), as long as the files differ from the last restore point. The newest 5 per build are kept; older ones are dropped. The **Restore points** section lists them with the run they belong to, and **View changes** on a restore point shows what changed as a diff (secrets are hidden).
 
 **Restore** puts the files of a restore point back. It is allowed for any project member and only while no run is queued, running or waiting (stop the run first). It never deploys: the live app keeps running the old version until you press **Deploy**, and the build page then shows the preview as out of date. Restoring is undoable: just before replacing the files, Kaisen saves the current ones as a "before restore" point, and restoring that point brings them back. The next change request starts from the restored files.
 
@@ -918,7 +922,7 @@ Everything that caps what Kaisen can do, in one place. Defaults come from the pl
 
 **Spend (US dollars)**
 
-- Model cost is billed to your Anthropic account; the project's caps stop a build early. Defaults: $2 per run, $8 per day, $30 per build; each can be set from 0 to $1000. A cap that is reached stops the run and leaves a note in the inbox; raise the cap and resume.
+- Model cost is billed to your Anthropic account; the project's caps stop a build early. Defaults: $2 per run, $8 per day, $30 per build; each can be set from 0 to $1000. A cap that is reached stops the run and leaves a note in the thread; raise the cap and resume.
 - **Member limits.** In **Kaisen > Settings > Member limits** an owner sets, for each person, a daily and a per-build limit; blank means no limit. These apply on top of the project caps. Spend is counted against the person who started the run. The daily amount counts all builds in the project and resets at 00:00 UTC. Members see only their own row and can't edit it. A run that would exceed a limit isn't started, or stops mid-run, with a message naming the limit.
 - **Costs that are extra.** Web search is $0.01 per search. The reviewer adds at least one model call per run, and the package steward a few more when the app has dependencies. Every call counts toward all caps.
 

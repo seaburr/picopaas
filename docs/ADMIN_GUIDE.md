@@ -182,7 +182,7 @@ automatically at start from the `BOOTSTRAP_*` variables.
 - **Connection check:** on create (and when the admin password or CA changes) the platform connects with the given
   credentials and runs `SELECT 1` (5 s timeout) before saving. A failure returns a short reason (authentication failed,
   timed out, refused, TLS handshake failed, host not found) and nothing is saved.
-- **Rotate the admin password:** change it on the database server first, then use the lock button on the server row
+- **Rotate the admin password:** change it on the database server first, then use the **Password** button on the server row
   (Admin > Database servers) or `PATCH /admin/db-servers/{id}` with `{"admin_password": "..."}`. The platform verifies
   the new password and only then stores it (encrypted); if the check fails the old password stays. Running apps are
   unaffected (they use their own per-app credentials); the reconciler reads the stored password on every use.
@@ -208,13 +208,13 @@ one and the app restarts, and owners free space with **Free up space**. Raising 
 
 ## The admin UI
 
-Open **Admin** (tabs: Users, Apps, Projects, Suspensions, Database servers, Settings, Audit) and **Health** from the nav bar.
+Open **Admin** (tabs: Users, Apps, Projects, Suspensions, Database servers, Settings, Audit) and **Health** from the **Administration** node in the left tree (the Admin entry shows a pending-approvals count).
 
 - **Users:** approve `pending` signups; suspend or unsuspend (suspending scales all the user's apps to zero); reset a
   password (shown once, the user must change it); delete; set the per-user app limit. The hard max is
   `MAX_APPS_PER_USER` active apps per account (platform admins have their own pair, `ADMIN_DEFAULT_APP_LIMIT` 5 and `MAX_APPS_PER_ADMIN` 10). The per-user `app_limit` defaults to 1 and
   can be raised up to that max, never above. The platform administrator cannot be suspended or deleted.
-- **Apps:** suspend, unsuspend, delete, open the app, change limits (sliders icon, below) and set replicas.
+- **Apps:** suspend, unsuspend, delete, open the app, change limits (the **Limits** button, below) and set replicas.
 - **Platform host:** give an app a fixed short address `<label>.<your-domain>` besides its generated one. It is served
   by the wildcard certificate. Reserved labels (`platform`, `www`, `api`, `lb`, `admin`, ...) are refused and a label
   can belong to one app.
@@ -334,7 +334,7 @@ Defaults come from `app/config.py`; an admin can override most per app.
 | Outbound bandwidth | Per-pod cap through the `kubernetes.io/egress-bandwidth` annotation and Cilium. It covers everything the pod sends, HTTP responses included. |
 | Apps per account | `MAX_APPS_PER_USER` hard max (admins: `MAX_APPS_PER_ADMIN`), with a lower per-user `app_limit`. |
 
-**Per-app overrides** (Apps tab, sliders icon, or `PATCH /admin/apps/{id}/resources`). Ceilings are constants in
+**Per-app overrides** (Apps tab, **Limits** button, or `PATCH /admin/apps/{id}/resources`). Ceilings are constants in
 `app/config.py` (`OVERRIDE_*`):
 
 | Setting | Range |
@@ -360,7 +360,7 @@ Owners can lower CPU, memory, scratch disk and bucket size on their own apps wit
 - **Raising a ceiling** (a per-app override) moves the slider maximum. An owner who left a slider at its maximum follows the new value; one who chose a lower value keeps it.
 - **Lowering a ceiling** under an owner's choice applies at once (min wins) and rolls the pod; the owner's stored choice is kept, so raising the ceiling again brings it back.
 - **Floors** are fixed in code (`OWNER_*_MIN_*` in `app/config.py`), higher for memory and scratch on an app with a volume, and are never above the ceiling, so a very low ceiling can't leave an app unsavable.
-- **The admin dialog** (Apps > sliders icon) shows and saves only your overrides (API `resources.admin_values`), not the owner's choice, so saving it can't turn an owner's lower value into an override. The flat values in `resources` are what actually runs; `controls` has each slider's range.
+- **The admin dialog** (Apps > **Limits**) shows and saves only your overrides (API `resources.admin_values`), not the owner's choice, so saving it can't turn an owner's lower value into an override. The flat values in `resources` are what actually runs; `controls` has each slider's range.
 - **Rate limit.** Owner resource changes that alter a value are limited per app (`OWNER_RESOURCE_CHANGES_PER_HOUR`, 12). Your changes are not counted. Each owner change is audited as `app.resources` with the old and new owner values.
 - **Exceeds caps.** The "exceeds platform caps" flag looks at ceilings only, so an owner choosing less never hides a raise you made.
 
@@ -388,9 +388,9 @@ repository size and a stale warning; "Back up now" is `POST /admin/health/backup
 
 ### Download a platform backup
 
-On **Admin > Health > Backups**, each succeeded platform run has a download icon button. It exists so you can keep a copy off the platform or restore without needing the backup bucket key (see OPERATIONS "Restoring the platform database", alternative source).
+On **Admin > Health > Backups**, each succeeded platform run has a **Download** button. It exists so you can keep a copy off the platform or restore without needing the backup bucket key (see OPERATIONS "Restoring the platform database", alternative source).
 
-1. Press the download icon on a run. A dialog asks for **your own current admin password** (every time; a wrong one is refused, audited as `platform_backup.download_refused` and counts toward the login throttle). Downloads need a browser session as a platform admin; an API key, whatever its scope, gets 403.
+1. Press **Download** on a run. A dialog asks for **your own current admin password** (every time; a wrong one is refused, audited as `platform_backup.download_refused` and counts toward the login throttle). Downloads need a browser session as a platform admin; an API key, whatever its scope, gets 403.
 2. The platform prepares the file in the background (how long depends on the database size) and the dialog turns into a **Download** button. You can close the dialog; the run keeps showing its state and you can come back to it.
 3. The file is available for **15 minutes** after it is prepared (`PLATFORM_EXPORT_READY_SECONDS`), **only to the admin who started it**: another admin gets "not found" (audited as `platform_backup.download_refused`, reason `other_admin`) and can start their own download instead. Each link lasts up to **10 minutes** (`BACKUP_EXPORT_URL_SECONDS`) and never past the 15 minutes; opening the dialog again issues a fresh one, each audited as `platform_backup.download_link` (never the URL). After the 15 minutes the run offers a new download. The prepared object itself is removed by the hourly cleanup of the export prefix, so it can sit in storage for up to **about an hour** (`BACKUP_EXPORT_TTL_SECONDS`) even though it can no longer be fetched.
 4. **Limit.** `backup_export_max_per_hour` (Admin > Settings > Backups; default `BACKUP_EXPORT_MAX_PER_HOUR`, 3) new downloads per hour for the whole platform, counted separately from the same limit on app downloads. Failed downloads don't count; one is prepared at a time (a second request gets a 409 to wait). Asking again for a snapshot for which you already have a live file just reuses it.
@@ -403,7 +403,7 @@ On **Admin > Health > Backups**, each succeeded platform run has a download icon
 
 Kaisen builds apps from a brief and deploys them into the user's project; see the User Guide section 16.
 
-- **On/off.** Two switches must both be on: env `KAISEN_ENABLED` (default `1`) and **Admin > Settings > Accounts > Kaisen (Preview)** (`kaisen_enabled`). Off hides the nav entry and makes `/kaisen*` return 404. Running builds are not killed by the switch; scale the worker to 0 for that.
+- **On/off.** Two switches must both be on: env `KAISEN_ENABLED` (default `1`) and **Admin > Settings > Accounts > Kaisen (Preview)** (`kaisen_enabled`). Off hides Kaisen in the left tree and makes `/kaisen*` return 404. Running builds are not killed by the switch; scale the worker to 0 for that.
 - **Worker.** Builds run in the `kaisen-worker` Deployment (1 replica, same image as the API, `python -m app.kaisen.worker`), not in the API pods, so a long build cannot starve the API. It needs no cluster access. See `OPERATIONS.md` for logs, heartbeat and restart.
 - **Runtime image.** Previews run the generic image in `KAISEN_RUNTIME_IMAGE`, pinned by digest like `BACKUP_IMAGE`. When empty, deploys are refused with a plain message. To re-pin after a new image is published, run the `bootstrap` workflow (optional `kaisen_runtime_image_digest`); existing previews keep the old image until redeployed. `PLATFORM_PUBLIC_URL` (default `https://PLATFORM_HOST`) is where preview pods download their code.
 - **Spend is the project's own.** Each project saves its own Anthropic key (encrypted, write-only), and its caps (default $2 per run, $8 per day, $30 per build) apply per project. PicoPaaS pays nothing. Any project member can spend a team project's key.
@@ -416,7 +416,7 @@ Kaisen builds apps from a brief and deploys them into the user's project; see th
 
 Builders can attach images to use in the site ("assets") and CSS/HTML/TXT/MD files for Kaisen to read ("references"); the user view is User Guide section 16. It ships **switched off**: nobody can upload until you enable a project, and the feature needs the image pod (`kaisen-imgproc`, see `OPERATIONS.md`). Design and security review: `design/kaisen.md` section 16 and `PENTEST.md` (K76 to K84).
 
-- **Per-project switch.** **Admin > Projects > Kaisen file uploads**: the **File uploads** switch in the row's **Features** dropdown (personal projects are found with the search box). API: `GET/PUT /admin/projects/{id}/features` (`kaisen_uploads`); the older `GET/PUT /admin/projects/{id}/kaisen-uploads` with `{"enabled": bool}` still works; audit `kaisen.uploads_flag`. Project owners can't change it. While it is off, the build page shows the Uploads card grayed out with "Not enabled for this project yet"; existing files can still be deleted.
+- **Per-project switch.** **Admin > Projects > Kaisen file uploads**: the **File uploads** switch in the row's **Features** dropdown (personal projects are found with the search box). API: `GET/PUT /admin/projects/{id}/features` (`kaisen_uploads`); the older `GET/PUT /admin/projects/{id}/kaisen-uploads` with `{"enabled": bool}` still works; audit `kaisen.uploads_flag`. Project owners can't change it. While it is off, the build page shows attaching grayed out with "Not enabled for this project yet"; existing files can still be deleted.
 - **Global kill switch.** Platform setting `kaisen_uploads_enabled` (Admin > Settings > Accounts and volumes, "Kaisen file uploads (kill switch)"; default from env `KAISEN_UPLOADS_ENABLED`, `1`). Off blocks adding and replacing everywhere at once; listing, reading and deleting keep working. A project needs both the switch and its own flag.
 - **Image pod.** `KAISEN_IMGPROC_URL` (default `http://kaisen-imgproc:8080`, the same-namespace Service) is where the API sends images to be decoded and re-encoded. `KAISEN_IMGPROC_ROLE=1` is set only on that pod (it lets the process start without `FERNET_KEY`; never set it on the API). If the pod is down, uploads answer 503 and nothing else is affected.
 - **Limits** (all `app/config.py`; change by env or code, not in the UI): `KAISEN_UPLOAD_MAX_BYTES_IN` (4 MiB request body), `_MAX_BYTES_OUT` (8 MiB back from the pod), `_MAX_PIXELS` (8 MP), `_MAX_EDGE_IN` (8000 px), `_MAX_EDGE` (stored images are downscaled to 2560 px), `_JPEG_QUALITY`, `_WEBP_QUALITY`, `_MIN_LIBWEBP`, `_SVG_BYTES` (512 KiB), `_SVG_MAX_ELEMENTS` (5000), `_SVG_MAX_DEPTH` (40), `_SVG_MAX_IMAGES` (16 embedded bitmaps per SVG, each re-encoded like an upload), `_SVG_MAX_IMAGE_PIXELS` (16 MP decoded in total per SVG), `_MAX_FILES` (20 per build), `_BUILD_BYTES` (6 MiB of assets per build), `_REF_BYTES` (1 MiB of references per build), `_PROJECT_BYTES` (40 MiB), `_USER_BYTES` (100 MiB), `_PLATFORM_BYTES` (2 GiB) with `_PLATFORM_WARN_PERCENT` (80), `_TEXT_BYTES` (100 KiB per reference), `_READ_BYTES` (20 KiB the model reads per call), `_DESC_MAX` (200), `_NAME_MAX` (40), `_ORIG_MAX` (100), `_KINDS`, `_ASSET_TYPES` (png, jpeg, webp, svg), `_REF_EXTS` (css, html, txt, md), `_RATE_MAX` and `_RATE_WINDOW_SECONDS` (30 uploads per hour per user, project and client IP; rejected tries count), `_IMG_TIMEOUT` (15 s), `_IMG_QUEUE` (2 conversions in flight per API pod, then 503), `_IMG_MEM_MB` (the image process's address-space limit) and `_ORPHAN_DAYS` (1: assets of a deleted build are swept after a day). Every name above is prefixed `KAISEN_UPLOAD_`.

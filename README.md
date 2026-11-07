@@ -146,7 +146,7 @@ sequenceDiagram
 | API | FastAPI, SQLAlchemy 2, Alembic, PyMySQL | Small, typed, easy to test; migrations on startup (`entrypoint.sh`) |
 | Background jobs | APScheduler, in the API process | No separate operator. Reconcile every 15s, DB quota every 60s, bucket quota every 5 min, image watcher every 10 min. A MySQL `GET_LOCK` picks one leader among replicas |
 | Auth | bcrypt, JWT session cookie, `pp_sk_` API keys | UI sessions plus keys for CLI and CI |
-| Frontend | Vue 3, Vite, Pinia, Vue Router, Tailwind, lucide icons | Built into the API image and served as static files |
+| Frontend | Vue 3, Vite, Pinia, Vue Router, Tailwind | Built into the API image and served as static files |
 | Compute | Kubernetes on DigitalOcean (DOKS) | Namespaces, quotas and NetworkPolicy give per-app isolation; free control plane |
 | Ingress | Traefik (standard Ingress API) | ingress-nginx is retired; one default TLS store serves the wildcard cert |
 | TLS | cert-manager, Let's Encrypt, DNS-01 via DO | One wildcard cert, so no per-app issuance or rate limits |

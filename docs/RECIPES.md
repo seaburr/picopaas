@@ -6,7 +6,7 @@ image come after the recipes.
 
 Recipes with a one-click template: Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden,
 Wiki.js, Vikunja, Umami, ntfy, IT-Tools, Excalidraw, Gatus and a static site. Planka is a recipe only (a spec in
-`examples/planka/`, no template card; licence decision). All specs are in [`examples/`](../examples/).
+`examples/planka/`, no template; licence decision). All specs are in [`examples/`](../examples/).
 
 ## Contents
 
@@ -339,7 +339,7 @@ The health check is off on purpose. See Gotchas.
 ## Grafana (dashboards)
 
 [Grafana](https://grafana.com/) with its state in the platform database. MySQL and PostgreSQL are equal choices, and the
-Templates page has one card per engine.
+The Templates page lists one entry per engine.
 
 | | |
 |---|---|
@@ -1132,7 +1132,7 @@ secrets:   # names only; set the values in the dashboard or API
 
 ## Planka (kanban boards)
 
-[Planka](https://planka.app/) is a kanban board app on PostgreSQL, with attachments in the bucket. It is a recipe only: there is no template card (licence decision).
+[Planka](https://planka.app/) is a kanban board app on PostgreSQL, with attachments in the bucket. It is a recipe only: there is no template (licence decision).
 
 | | |
 |---|---|

@@ -81,6 +81,13 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $75
 ### Platform service (Python + Vue, modeled on seaburr/tribal)
 - FastAPI, SQLAlchemy 2, Alembic, PyMySQL, bcrypt + JWT session cookie, plus API keys for CLI/YAML use.
 - Vue 3 + Vite + Pinia + Tailwind, built into the same image (same layout as tribal).
+- **UI conventions** (the 2026-11 redesign; keep new screens to these): a collapsible left tree is the only navigation
+  (Projects > project > app, Kaisen, Templates, Docs, Administration; it is a top bar with a Menu button under 760px)
+  and the tree selects the project, so there is no project picker; every action is a text button or link, no icons;
+  content is flat sections and tables, not cards; row actions are short text links (Health, Settings, Delete);
+  dark and light themes via CSS variables; page width comes from `page-main`, never a per-page `max-w-*`.
+  Kaisen's build page is a chat with a right rail and a pinned composer (Enter adds a line, Ctrl/Cmd+Enter sends).
+  The user-facing description is in `USER_GUIDE.md`.
 - Tests use pytest with the real login flow and no auth mocks. K8s, MySQL-admin, and Spaces clients sit
   behind thin interfaces with fake implementations for unit tests. CI also runs a MySQL integration job.
 - Two replicas serve the API; the one holding a MySQL `GET_LOCK` also runs the in-process reconcile
