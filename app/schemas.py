@@ -123,6 +123,7 @@ class UserOut(BaseModel):
     must_change_password: bool = False
     timezone: Optional[str] = None
     theme: Literal["dark", "light"] = "dark"
+    onboarding_dismissed: bool = False
 
 
 class ProfileUpdate(BaseModel):
@@ -130,11 +131,14 @@ class ProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     timezone: Optional[str] = None
     theme: Optional[Literal["dark", "light"]] = None
+    onboarding_dismissed: Optional[bool] = None
 
     @model_validator(mode="after")
     def _theme_not_null(self):
         if "theme" in self.model_fields_set and self.theme is None:
             raise ValueError("theme must be dark or light")
+        if "onboarding_dismissed" in self.model_fields_set and self.onboarding_dismissed is None:
+            raise ValueError("onboarding_dismissed must be true or false")
         return self
 
     @field_validator("timezone")

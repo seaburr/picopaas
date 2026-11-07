@@ -163,9 +163,12 @@ def update_me(
         current_user.timezone = payload.timezone
     if "theme" in sent:
         current_user.theme = payload.theme
+    if "onboarding_dismissed" in sent:
+        current_user.onboarding_dismissed = payload.onboarding_dismissed
     db.commit()
     audit.record(db, current_user, "user.update_profile", "user", current_user.id,
-                 f"timezone={current_user.timezone} theme={current_user.theme}")
+                 f"timezone={current_user.timezone} theme={current_user.theme} "
+                 f"onboarding_dismissed={current_user.onboarding_dismissed}")
     return _me_out(current_user, db)
 
 

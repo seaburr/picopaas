@@ -33,6 +33,7 @@ class User(Base):
     timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # UI colour scheme: 'dark' (default) | 'light'.
     theme: Mapped[str] = mapped_column(String(8), nullable=False, default="dark", server_default="dark")
+    onboarding_dismissed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())
     # Why/when/by whom an admin suspended the account (cleared on unsuspend); shown in the admin Suspensions list.
     suspended_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

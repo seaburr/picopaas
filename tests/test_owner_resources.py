@@ -445,6 +445,43 @@ def test_theme_requires_login(env):
     assert env.make().patch("/auth/me", json={"theme": "light"}).status_code == 401
 
 
+# --- onboarding_dismissed ------------------------------------------------------------------------
+
+def test_onboarding_dismissed_default_false(env):
+    assert env.owner.get("/auth/me").json()["onboarding_dismissed"] is False
+
+
+def test_onboarding_dismissed_set_persists_and_audited(env):
+    r = env.owner.patch("/auth/me", json={"onboarding_dismissed": True})
+    assert r.status_code == 200 and r.json()["onboarding_dismissed"] is True
+    assert env.owner.get("/auth/me").json()["onboarding_dismissed"] is True
+    env.db.expire_all()
+    assert env.db.query(models.User).filter_by(email="owner@example.com").one().onboarding_dismissed is True
+    assert any("onboarding_dismissed=True" in e.detail for e in _audit(env, "user.update_profile"))
+
+
+def test_onboarding_dismissed_omitted_unchanged(env):
+    env.owner.patch("/auth/me", json={"onboarding_dismissed": True})
+    r = env.owner.patch("/auth/me", json={"theme": "light"})
+    assert r.json()["onboarding_dismissed"] is True and r.json()["theme"] == "light"
+    r = env.owner.patch("/auth/me", json={"onboarding_dismissed": False})
+    assert r.json()["onboarding_dismissed"] is False and r.json()["theme"] == "light"
+
+
+@pytest.mark.parametrize("bad", [None, "maybe", [1]])
+def test_onboarding_dismissed_validated(env, bad):
+    assert env.owner.patch("/auth/me", json={"onboarding_dismissed": bad}).status_code == 422
+
+
+def test_onboarding_dismissed_other_user_unaffected(env):
+    env.owner.patch("/auth/me", json={"onboarding_dismissed": True})
+    assert env.admin.get("/auth/me").json()["onboarding_dismissed"] is False
+
+
+def test_onboarding_dismissed_requires_login(env):
+    assert env.make().patch("/auth/me", json={"onboarding_dismissed": True}).status_code == 401
+
+
 # --- migration -----------------------------------------------------------------------------------
 
 def test_migration_defaults(tmp_path):
@@ -466,5 +503,6 @@ def test_migration_defaults(tmp_path):
     assert set(resources.OWNER_COLUMNS.values()) <= cols
     with create_engine(url).connect() as c:
         assert c.execute(text("SELECT theme FROM users")).scalar() == "dark"
+        assert not c.execute(text("SELECT onboarding_dismissed FROM users")).scalar()
     alembic("downgrade", "a7f2c9d41b36")
     assert "owner_cpu_limit_m" not in {c["name"] for c in inspect(create_engine(url)).get_columns("apps")}
