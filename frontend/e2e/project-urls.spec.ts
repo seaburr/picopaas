@@ -27,6 +27,10 @@ async function patchJson(page: Page, glob: string, patch: (j: Record<string, unk
     return route.fulfill({ response: res, json: j })
   })
 }
+// A patched request still in flight when a test ends must not fail it (CI race on 7397475: "route.fetch: Test ended").
+test.afterEach(async ({ page }) => {
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
 
 test('old URLs redirect to the current project, query kept; unknown project is not found', async ({ page }) => {
   await login(page)
