@@ -17,7 +17,9 @@ def _restic(tmp_path, calls, forget_stderr):
         "#!/bin/sh\n"
         f'echo "restic $@" >> {calls}\n'
         'for a in "$@"; do case "$a" in\n'
-        '  backup) echo \'{"message_type":"summary","snapshot_id":"cafe0123456789","data_added":1}\'; exit 0;;\n'
+        # Like real restic, drain a --stdin backup before answering: exiting first would SIGPIPE the dump under load.
+        '  backup) case " $* " in *" --stdin "*) cat >/dev/null;; esac\n'
+        '    echo \'{"message_type":"summary","snapshot_id":"cafe0123456789","data_added":1}\'; exit 0;;\n'
         '  stats) echo \'{"total_size":1}\'; exit 0;;\n'
         f'  forget) cat <<\'EOF\' >&2\n{forget_stderr}\nEOF\n    exit 1;;\n'
         "esac; done\nexit 0\n")
