@@ -42,9 +42,7 @@ const shell = computed(() => ready.value && !BARE.has(route.path))
       <div v-else class="flex-1"><RouterView /></div>
       <!-- Pages without the sidebar (account status): the legal links the sidebar foot would carry. -->
       <footer v-if="!shell && auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-400">
-        <a href="/privacy" class="hover:text-white hover:underline">Privacy</a>
-        <a href="/privacy#terms" class="hover:text-white hover:underline">Terms</a>
-        <a href="/privacy#report-abuse" class="hover:text-white hover:underline">Report abuse</a>
+        <a href="/privacy" class="hover:text-white hover:underline" title="Privacy, terms of use and how to report abuse">Legal</a>
         <RouterLink to="/guide" class="hover:text-white hover:underline">Docs</RouterLink>
         <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-white hover:underline">Blog</a>
       </footer>

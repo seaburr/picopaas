@@ -2,12 +2,14 @@
 import KaisenKeyHelp from './KaisenKeyHelp.vue'
 import PasswordField from './PasswordField.vue'
 import type { KaisenOutputForm, KaisenSecretState } from '../types'
+import { projectKaisen } from '../utils/paths'
 
 // Output fields shared by the build page (edit in place) and New build. Secrets are write-only.
 defineProps<{
   idPrefix: string
   tokenState?: KaisenSecretState | null // saved per-build token, when there is one
   projectTokenSet: boolean
+  projectId: number // whose Kaisen settings hold the project GitHub token
   disabled?: boolean
   errors?: Record<string, string>
 }>()
@@ -44,7 +46,7 @@ const form = defineModel<KaisenOutputForm>({ required: true })
           <label class="flex items-center gap-2 text-sm" :class="projectTokenSet ? 'text-zinc-200' : 'text-zinc-500'">
             <input v-model="form.github_auth" type="radio" :name="`${idPrefix}-auth`" value="project" class="check" :disabled="!projectTokenSet" /> Use the project's GitHub token
           </label>
-          <p v-if="!projectTokenSet" class="help ml-6">The project has no GitHub token. <RouterLink to="/kaisen/settings" class="link">Add one in Kaisen settings</RouterLink></p>
+          <p v-if="!projectTokenSet" class="help ml-6">The project has no GitHub token. <RouterLink :to="projectKaisen(projectId, '/settings')" class="link">Add one in Kaisen settings</RouterLink></p>
           <label class="flex items-center gap-2 text-sm text-zinc-200">
             <input v-model="form.github_auth" type="radio" :name="`${idPrefix}-auth`" value="build" class="check" /> Use a token for this build only
           </label>

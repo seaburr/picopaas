@@ -5,48 +5,55 @@
  * inherits the look, but the VALUES now come from ten raw variables and nothing else:
  *   neutrals: --bg --raise --line --fg --mut         state (the only hues): --ok --warn --err --off
  * Rules: no gradients; radii 4-6px; no decorative cards or icons; monospace only for technical values (.mono);
- * tables, dividers and aligned columns over nested boxes; colour means state, never decoration; dense (13px body).
+ * tables, dividers and aligned columns over nested boxes; colour means state, never decoration; dense (14px body, 15px on phones).
  * No accent colour: the primary button is solid ink (--fg on --bg), links are ink and underlined.
  * Dark is the default; light (tan and warm gray) redefines the same ten variables on <html data-theme="light">
  * (frontend/public/theme-init.js applies it before first paint, the auth store applies the server value).
- * Contrast (text on --bg / --raise, from the approved mock; none changed): dark fg 15.2/13.9, mut 7.7/7.1, ok 8.2/7.5,
- * warn 9.2/8.4, err 7.1/6.5; light fg 15.2/13.6, mut 6.4/5.8, ok 5.5/5.0, warn 5.8/5.2, err 6.2/5.6. All >= 4.5:1.
+ * Contrast (on --bg / --raise): dark fg 15.2/13.9, mut 9.4/8.7, ok 8.2/7.5, warn 9.2/8.4, err 7.1/6.5;
+ * light fg 15.2/13.6, mut 8.0/7.2, ok 5.5/5.0, warn 5.8/5.2, err 6.2/5.6. All text >= 4.5:1.
+ * Boundaries: --edge (control borders: secondary/danger buttons, badges, alerts) dark 3.8/3.5, light 4.1/3.7, all >= 3:1;
+ * --line (section and table hairlines) dark 2.1/1.9, light 2.4/2.1: visible dividers, not controls.
  */
 :root {
   --bg: #121417;
   --raise: #1a1d21;
-  --line: #2b2f35;
+  --line: #454b53;
+  --edge: #6b727b;
   --fg: #e7e9ec;
-  --mut: #a2a8b0;
+  --mut: #b4bac1;
   --ok: #62c07f;
   --warn: #e0b040;
   --err: #f47d7a;
-  --off: #a2a8b0;
+  --off: #b4bac1;
 }
 :root[data-theme='light'] {
   color-scheme: light;
   --bg: #f1eee6;
   --raise: #e7e2d5;
-  --line: #cbc3ae;
+  --line: #a49b82;
+  --edge: #7a735f;
   --fg: #1b1912;
-  --mut: #5a5546;
+  --mut: #4b4739;
   --ok: #2c6b3a;
   --warn: #7d5300;
   --err: #a8231d;
-  --off: #5a5546;
+  --off: #4b4739;
 }
 
 @theme {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Dense type scale: body 13px/1.45. text-sm is the body size, text-base is one step up. */
-  --text-xs: 0.75rem;
+  /* Type scale (desktop): body/text-sm 14px, labels/meta/text-xs 13px, text-base 15px. Below 760px every step is +1px
+     (see the :root override after this block). */
+  --text-xs: 0.8125rem;
   --text-xs--line-height: 1.4;
-  --text-sm: 0.8125rem;
+  --text-sm: 0.875rem;
   --text-sm--line-height: 1.45;
-  --text-base: 0.875rem;
+  --text-base: 0.9375rem;
   --text-base--line-height: 1.45;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.35;
 
   /* Radii 4 to 6px, flat surfaces. (rounded-full stays a circle; only dots and bars use it.) */
   --radius-xs: 2px;
@@ -65,7 +72,8 @@
   --color-pico-panel: var(--bg);
   --color-pico-card: var(--raise);
   --color-pico-border: var(--line);
-  --color-pico-muted: color-mix(in oklab, var(--mut) 35%, var(--bg)); /* slider/bar tracks */
+  --color-pico-edge: var(--edge);
+  --color-pico-muted: color-mix(in oklab, var(--mut) 40%, var(--bg)); /* slider/bar tracks */
   --color-pico-inset: var(--raise); /* log/diff wells */
 
   /* Ink. 100-300 = --fg, 400-600 = --mut, 700 = hairline, 800 = disabled fill. */
@@ -115,6 +123,15 @@
   --color-status-stopped: var(--off);
 }
 
+@media (max-width: 759px) {
+  :root {
+    --text-xs: 0.875rem;
+    --text-sm: 0.9375rem;
+    --text-base: 1rem;
+    --text-lg: 1.25rem;
+  }
+}
+
 :root {
   --doc-text: var(--fg);
   --doc-subtle: var(--mut);
@@ -145,7 +162,7 @@
  *   Buttons : .btn-primary .btn-secondary .btn-danger .btn-danger-solid .btn-ghost  (+ .btn-sm, .btn-block)
  *   Row acts: .row-acts (container) .row-act (+ .row-act-danger): quiet text links in table rows
  *   Forms   : .input .label .help .field-error .check
- *   Surfaces: .sec (flat section with a top hairline) .sec-pad .alert-error .alert-warn .alert-info .alert-success
+ *   Surfaces: .sec (flat section with a top hairline) .sec-pad .sec-danger (destructive section) .alert-error .alert-warn .alert-info .alert-success
  *   Tables  : .tbl (hairlines, 4px rows) .table-th
  *   State   : .dot + .dot-ok|warn|err|off, .st + .tone-ok|warn|err|off (dot + text in the state colour), .badge-*
  *   Disclose: .disc on <details> (CSS triangle on the summary; the tree reuses it)
@@ -182,13 +199,13 @@
 }
 
 @utility btn-secondary {
-  @apply btn border-pico-border bg-transparent text-white hover:bg-pico-card;
+  @apply btn border-pico-edge bg-transparent text-white hover:bg-pico-card;
   @apply disabled:border-dashed disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
   @apply aria-disabled:border-dashed aria-disabled:text-zinc-500;
 }
 
 @utility btn-danger {
-  @apply btn border-danger/50 bg-transparent text-danger-light hover:bg-danger/10;
+  @apply btn border-danger bg-transparent text-danger-light hover:bg-danger/10;
   @apply disabled:border-dashed disabled:border-pico-border disabled:text-zinc-500 disabled:hover:bg-transparent;
 }
 
@@ -209,8 +226,8 @@
 
 @utility row-act {
   /* Quiet text link for repeated row actions (Restart, Settings, Delete). Works on <a>, <button>, RouterLink. */
-  @apply inline-flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent p-0 text-sm text-zinc-400 hover:text-white hover:underline max-md:min-h-[44px];
-  @apply disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-zinc-400 disabled:hover:no-underline aria-disabled:cursor-not-allowed aria-disabled:opacity-60;
+  @apply inline-flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent p-0 text-sm text-[color-mix(in_oklab,var(--fg)_75%,var(--mut))] hover:text-white hover:underline max-md:min-h-[44px];
+  @apply disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-[color-mix(in_oklab,var(--fg)_75%,var(--mut))] disabled:hover:no-underline aria-disabled:cursor-not-allowed aria-disabled:opacity-60;
   &[aria-busy='true'] {
     @apply cursor-wait opacity-70;
   }
@@ -235,7 +252,7 @@ select.input {
   appearance: none;
   background-repeat: no-repeat;
   padding-right: 2rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a2a8b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4bac1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-position: right 0.5rem center;
   background-size: 14px 14px;
 }
@@ -259,10 +276,10 @@ select.input {
 @utility range {
   @apply h-8 w-full cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50;
   &::-webkit-slider-runnable-track {
-    @apply h-1.5 rounded-sm bg-pico-muted;
+    @apply h-2 rounded-sm bg-pico-muted;
   }
   &::-moz-range-track {
-    @apply h-1.5 rounded-sm bg-pico-muted;
+    @apply h-2 rounded-sm bg-pico-muted;
   }
   &::-webkit-slider-thumb {
     @apply -mt-2 h-5.5 w-3 appearance-none rounded-md border-2 border-accent-light bg-primary;
@@ -285,25 +302,39 @@ select.input {
   @apply pt-2 pb-4;
 }
 
+@layer components {
+  /* Destructive section ("Danger zone"). Markup: <section class="sec-danger" aria-labelledby="h-x"><h2 id="h-x"
+     class="section-title">Danger zone</h2> ...rows... </section>. Use it INSTEAD of .sec (it draws its own top rule).
+     The heading, whatever its level, is coloured --err automatically; put the rows (text + .btn-danger) below it.
+     State colour only: 1px --err border, 6px radius, no fill. */
+  .sec-danger {
+    margin-top: 1.5rem;
+    padding: 0.75rem 0.875rem 0.875rem;
+    border: 1px solid var(--err);
+    border-radius: 6px;
+  }
+  .sec-danger > :is(h2, h3, .section-title) { color: var(--err) }
+}
+
 @utility alert-error {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-danger/60 text-danger-light;
+  @apply border-danger text-danger-light;
 }
 
 @utility alert-warn {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-amber-500/60 text-amber-300;
+  @apply border-amber-500 text-amber-300;
 }
 
 @utility alert-info {
   /* Neutral: information is not a state. */
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-pico-border bg-pico-card text-white;
+  @apply border-pico-edge bg-pico-card text-white;
 }
 
 @utility alert-success {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-emerald-500/60 text-emerald-300;
+  @apply border-emerald-500 text-emerald-300;
 }
 
 @utility badge {
@@ -312,23 +343,23 @@ select.input {
 }
 
 @utility badge-ok {
-  @apply badge border-emerald-500/40 text-emerald-300;
+  @apply badge border-emerald-500/70 text-emerald-300;
 }
 
 @utility badge-warn {
-  @apply badge border-amber-500/40 text-amber-300;
+  @apply badge border-amber-500/70 text-amber-300;
 }
 
 @utility badge-error {
-  @apply badge border-danger/50 text-danger-light;
+  @apply badge border-danger/70 text-danger-light;
 }
 
 @utility badge-neutral {
-  @apply badge border-pico-border text-zinc-400;
+  @apply badge border-pico-edge text-zinc-400;
 }
 
 @utility badge-info {
-  @apply badge border-pico-border text-zinc-400;
+  @apply badge border-pico-edge text-zinc-400;
 }
 
 @utility page-title {
@@ -360,7 +391,7 @@ select.input {
 @utility tbl {
   /*
    * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. Hairlines between rows, 4px row padding,
-   * first column flush left. Right-align numeric columns with .text-right on BOTH th and td. Technical values: add
+   * cells padded 10px on every side. Right-align numeric columns with .text-right on BOTH th and td. Technical values: add
    * .mono, and .truncate + title on the td.
    */
   @apply w-full table-fixed border-collapse text-sm;
@@ -370,14 +401,8 @@ select.input {
   & td {
     @apply border-b border-pico-border px-2.5 py-1 align-middle;
   }
-  & th:first-child,
-  & td:first-child {
-    padding-left: 0;
-  }
-  & th:last-child,
-  & td:last-child {
-    padding-right: 0;
-  }
+  /* First and last cells keep the full cell padding so text (and the last character of a row action) never touches the
+     edge of the table or a scroll box. */
   & th.text-right {
     text-align: right;
   }
@@ -395,7 +420,7 @@ select.input {
     &, & tbody, & tr, & td { display: block; width: 100%; }
     & colgroup, & thead { display: none; }
     & tr { border-bottom: 1px solid var(--line); padding: 0.5rem 0; }
-    & td { border: 0; padding: 0.125rem 0; }
+    & td { border: 0; padding: 0.125rem 0.625rem; }
     & .row-acts { justify-content: flex-start; }
   }
 }
@@ -464,17 +489,18 @@ select.input {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    width: 216px;
+    width: 232px;
     padding: 10px 8px;
     position: sticky;
     top: 0;
     height: 100vh;
     overflow-y: auto;
     border-right: 1px solid var(--line);
-    font-size: 13px;
+    font-size: 14px;
   }
   .side-top, .side-head { display: none }
-  .side-brand { padding: 2px 6px 10px; font-size: 14px; font-weight: 600 }
+  .side-brand { display: flex; align-items: center; gap: 8px; padding: 2px 6px 10px; font-size: 16px; font-weight: 600 }
+  .side-brand img { width: 20px; height: 20px; flex: none; border-radius: 4px }
   .side a { text-decoration: none; color: inherit }
   .tree, .tree ul { list-style: none; margin: 0; padding: 0 }
   .tree ul { margin-left: 11px; padding-left: 6px; border-left: 1px solid var(--line) }
@@ -482,18 +508,19 @@ select.input {
   .tree a:hover { background: var(--raise); text-decoration: none }
   .tree a.cur { background: var(--raise); font-weight: 600 }
   .tree .n { margin-left: auto; color: var(--mut) }
+  .tree .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .tree li > a { margin-left: 14px }
   .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
   .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
   .tree.adm { margin-top: 14px }
-  .tree .lbl { padding: 2px 6px; color: var(--mut); font-size: 12px }
-  .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; color: var(--mut); font-weight: 400 }
-  .tree .sub-note { margin: 0 0 0 14px; padding: 2px 6px; color: var(--mut); font-size: 12px }
+  .tree .lbl { padding: 2px 6px; color: var(--mut); font-size: 13px }
+  .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; color: var(--mut); font-weight: 400 }
+  .tree .sub-note { margin: 0 0 0 14px; padding: 2px 6px; color: var(--mut); font-size: 13px }
   .tree .sub-note button { text-decoration: underline; color: inherit; cursor: pointer }
   .side-foot { margin-top: auto; padding: 16px 6px 2px; color: var(--mut); display: flex; flex-direction: column; gap: 2px }
   .side-foot .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .side-foot .links { display: flex; flex-wrap: wrap; gap: 2px 10px }
-  .side-foot .links.fine { font-size: 12px; margin-top: 6px }
+  .side-foot .links.fine { font-size: 12px; margin-top: 8px; color: color-mix(in oklab, var(--mut) 80%, var(--bg)) }
   .side-foot a, .side-foot button { color: inherit; text-decoration: none; cursor: pointer }
   .side-foot a.cur { color: var(--fg); font-weight: 600 }
   .side-foot a:hover, .side-foot button:hover { color: var(--fg); text-decoration: underline }
@@ -509,7 +536,7 @@ select.input {
       padding: 0 14px;
       border-bottom: 1px solid var(--line);
     }
-    .side-head .side-brand, .side-top .side-brand { padding: 0; font-size: 14px }
+    .side-head .side-brand, .side-top .side-brand { padding: 0; font-size: 16px }
     .side-brand-desk { display: none }
     .side {
       display: none;
@@ -521,7 +548,7 @@ select.input {
       padding: 0;
       border-right: 0;
       background: var(--bg);
-      font-size: 14px;
+      font-size: 15px;
     }
     .side[data-open='true'] { display: flex }
     .tree { padding: 4px 8px 0 }
@@ -533,12 +560,12 @@ select.input {
     .tree ul summary::before { left: 8px }
     .tree li > a { margin-left: 32px }
     .tree ul li > a { margin-left: 0 }
-    .tree .lbl { padding: 0 8px; font-size: 13px }
+    .tree .lbl { padding: 0 8px; font-size: 14px }
     .tree.adm { margin-top: 0 }
-    .side-foot { margin-top: auto; border-top: 1px solid var(--line); padding: 0 16px; min-height: 48px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 14px; font-size: 13px }
+    .side-foot { margin-top: auto; border-top: 1px solid var(--line); padding: 0 16px; min-height: 48px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 14px; font-size: 14px }
     .side-foot .who { flex: 1 1 100%; padding-top: 8px }
     .side-foot .links a, .side-foot .links button { display: inline-flex; align-items: center; min-height: 44px }
-    .side-foot .links.fine { margin-top: 0; flex: 1 1 100% }
+    .side-foot .links.fine { margin-top: 0; flex: 1 1 100%; font-size: 13px }
   }
 }
 
@@ -567,7 +594,7 @@ select.input {
   html,
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
-    font-size: 13px;
+    font-size: var(--text-sm);
     line-height: 1.45;
     /* Belt-and-suspenders against stray page-level horizontal overflow on small screens
        (e.g. a non-shrinking flex child). `clip` doesn't create a scroll container, so
@@ -601,7 +628,7 @@ select.input {
 /* Light-theme details that variables can't express. */
 :root[data-theme='light'] {
   & select.input {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a5546' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b4739' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   & dialog::backdrop {
     background-color: rgb(40 34 20 / 0.45);

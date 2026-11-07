@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useProjectsStore } from '../stores/projects'
 
 const auth = useAuthStore()
+const projects = useProjectsStore()
 const route = useRoute()
 </script>
 
@@ -15,7 +17,7 @@ const route = useRoute()
         There's nothing at <code class="mono text-white">{{ route.path }}</code>. The link may be old or mistyped.
       </p>
       <div class="mt-4 flex gap-2">
-        <RouterLink v-if="auth.user" to="/apps" class="btn-primary">Go to your apps</RouterLink>
+        <RouterLink v-if="auth.user" :to="projects.appsHome" class="btn-primary">Go to your apps</RouterLink>
         <RouterLink v-else to="/login" class="btn-primary">Log in</RouterLink>
         <RouterLink to="/guide/user" class="btn-secondary">Read the docs</RouterLink>
       </div>

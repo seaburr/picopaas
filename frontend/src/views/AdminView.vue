@@ -397,7 +397,7 @@ const overrideSummary = (a: AdminApp) => {
       </section>
 
       <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -- roving tabindex: the tab buttons inside are the focusable elements -->
-      <div role="tablist" aria-label="Admin sections" class="flex gap-x-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
+      <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-x-1 border-b border-pico-border" @keydown="onTabKey">
         <button
           v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'suspensions', label: 'Suspensions', n: suspensionCount }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"

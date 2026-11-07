@@ -54,19 +54,20 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await expect(page.getByRole('link', { name: 'New project' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Personal' }).first()).toBeVisible()
     await page.getByRole('button', { name: 'Apps in Personal' }).click()
-    await expect(page).toHaveURL(/\/apps$/)
+    await expect(page).toHaveURL(/\/projects\/\d+\/apps$/)
   })
 
   await test.step('apps list renders (empty state)', async () => {
-    await page.goto('/apps')
-    await expect(page.getByRole('heading', { name: /apps/i, level: 1 })).toBeVisible()
+    await page.goto('/apps') // old URL: redirects to the current project's list
+    await expect(page).toHaveURL(/\/projects\/\d+\/apps$/)
+    await expect(page.getByRole('heading', { name: /Apps in Personal/, level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Deploy your first app' })).toBeVisible()
   })
 
   await test.step('new app shows the chooser, then the image form', async () => {
     await page.goto('/apps')
     await page.getByRole('link', { name: 'New app' }).first().click()
-    await expect(page).toHaveURL(/\/apps\/new$/)
+    await expect(page).toHaveURL(/\/projects\/\d+\/apps\/new$/)
     await expect(page.getByRole('heading', { name: 'Deploy from a template' })).toBeVisible()
     await page.getByRole('link', { name: /Deploy an image/ }).click()
     await expect(page.getByLabel('Image', { exact: true })).toBeVisible()
@@ -97,7 +98,8 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
 
   await test.step('kaisen page renders', async () => {
     await page.goto('/kaisen')
-    await expect(page.getByRole('heading', { name: 'Kaisen', level: 1 })).toBeVisible()
+    await expect(page).toHaveURL(/\/projects\/\d+\/kaisen$/)
+    await expect(page.getByRole('heading', { name: 'Kaisen builds in Personal', level: 1 })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Build your first app with Kaisen/ })).toBeVisible()
   })
 
@@ -112,7 +114,7 @@ test('smoke: login, browse main pages, log out', async ({ page }) => {
     await page.route('**/admin/health/logs/pods', (r) => r.fulfill({ json: { namespaces: [], pods: [] } }))
     await page.goto('/admin/health')
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Health' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Statistics' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Lifetime statistics' })).toBeVisible()
     await expect(page.getByText('Apps ever deployed')).toBeVisible()
   })
 

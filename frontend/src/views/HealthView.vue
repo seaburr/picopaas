@@ -239,29 +239,27 @@ function jump(id: string) {
       <section id="sec-nodes" class="sec scroll-mt-4 pt-2">
         <h2 class="section-title mb-1">Nodes</h2>
         <div class="overflow-x-auto">
-          <table class="tbl min-w-[56rem]">
-            <colgroup><col class="w-52" /><col class="w-24" /><col class="w-52" /><col class="w-52" /><col /><col class="w-20" /><col class="w-16" /></colgroup>
+          <table class="tbl min-w-[50rem]">
+            <colgroup><col /><col class="w-24" /><col class="w-52" /><col class="w-52" /><col class="w-20" /><col class="w-16" /></colgroup>
             <thead>
               <tr>
                 <th scope="col">Node</th><th scope="col">Status</th>
                 <th scope="col" class="text-right">CPU used / req / alloc</th><th scope="col" class="text-right">Memory used / req / alloc</th>
-                <th scope="col">Conditions</th><th scope="col" class="text-right">Pods</th><th scope="col" class="text-right">Age</th>
+                <th scope="col" class="text-right">Pods</th><th scope="col" class="text-right">Age</th>
               </tr>
             </thead>
             <tbody class="text-zinc-300">
-              <tr v-for="n in data.nodes" :key="n.name">
+              <template v-for="n in data.nodes" :key="n.name"><tr>
                 <td class="mono truncate" :title="n.name">{{ n.name }}</td>
                 <td><span class="st" :class="n.ready ? 'tone-ok' : 'tone-err'"><span class="dot" :class="n.ready ? 'dot-ok' : 'dot-err'" aria-hidden="true" />{{ n.ready ? 'Ready' : 'Not ready' }}</span></td>
                 <td class="mono whitespace-nowrap text-right" :class="hot(pct(n.cpu_used_m, n.cpu_allocatable_m)) ? 'text-amber-400' : ''" :aria-label="`CPU: used ${num(n.cpu_used_m, 'm')}, requested ${n.cpu_requested_m}m, allocatable ${n.cpu_allocatable_m}m`">{{ n.cpu_used_m === null ? 'n/a' : n.cpu_used_m + 'm' }} / {{ n.cpu_requested_m }}m / {{ n.cpu_allocatable_m }}m</td>
                 <td class="mono whitespace-nowrap text-right" :class="hot(pct(n.mem_used_mi, n.mem_allocatable_mi)) ? 'text-amber-400' : ''" :aria-label="`Memory: used ${num(n.mem_used_mi, 'Mi')}, requested ${n.mem_requested_mi}Mi, allocatable ${n.mem_allocatable_mi}Mi`">{{ n.mem_used_mi === null ? 'n/a' : n.mem_used_mi + 'Mi' }} / {{ n.mem_requested_mi }}Mi / {{ n.mem_allocatable_mi }}Mi</td>
-                <td class="mono text-zinc-400">
-                  <span v-for="c in ['DiskPressure', 'MemoryPressure', 'PIDPressure']" :key="c" class="mr-2 whitespace-nowrap" :class="n.conditions?.[c] ? 'font-semibold text-status-error' : ''">{{ c }} {{ n.conditions ? (n.conditions[c] ? 'YES' : 'no') : 'n/a' }}</span>
-                  <span v-if="n.disk_allocatable_mi != null" class="whitespace-nowrap">Disk alloc {{ n.disk_allocatable_mi }}Mi / cap {{ n.disk_capacity_mi }}Mi</span>
-                </td>
                 <td class="mono text-right">{{ n.pods }}/{{ n.pods_capacity }}</td>
                 <td class="mono text-right">{{ age(n.age_s) }}</td>
               </tr>
-              <tr v-if="data.nodes.length === 0"><td colspan="7" class="text-zinc-400">No nodes reported.</td></tr>
+              <tr><td colspan="6" class="mono !pt-0 text-zinc-400">                  <span v-for="c in ['DiskPressure', 'MemoryPressure', 'PIDPressure']" :key="c" class="mr-2 whitespace-nowrap" :class="n.conditions?.[c] ? 'font-semibold text-status-error' : ''">{{ c }} {{ n.conditions ? (n.conditions[c] ? 'YES' : 'no') : 'n/a' }}</span>
+                  <span v-if="n.disk_allocatable_mi != null" class="whitespace-nowrap">Disk alloc {{ n.disk_allocatable_mi }}Mi / cap {{ n.disk_capacity_mi }}Mi</span></td></tr></template>
+              <tr v-if="data.nodes.length === 0"><td colspan="6" class="text-zinc-400">No nodes reported.</td></tr>
             </tbody>
           </table>
         </div>
@@ -269,16 +267,6 @@ function jump(id: string) {
           <span class="mono">{{ n.name }}</span>: requested {{ pressure(n).c }}% CPU, {{ pressure(n).m }}% memory: next app may trigger a new node
         </p>
         <p class="help">Requested drives scheduling; used is the live reading; allocatable is the node's ceiling.</p>
-      </section>
-
-      <section v-if="data.statistics" id="sec-statistics" class="sec scroll-mt-4 pt-2" aria-label="Statistics">
-        <h2 class="section-title">Statistics</h2>
-        <dl class="mt-1 flex flex-wrap gap-x-8 gap-y-1 text-sm">
-          <div class="flex items-baseline gap-2"><dt class="meta">Apps ever deployed</dt><dd class="mono">{{ data.statistics.apps_ever_deployed }}</dd><span class="meta">(includes Kaisen previews)</span></div>
-          <div class="flex items-baseline gap-2"><dt class="meta">Kaisen apps ever built</dt><dd class="mono">{{ data.statistics.kaisen_apps_ever_built }}</dd><span class="meta">(builds with a finished run)</span></div>
-          <div class="flex items-baseline gap-2"><dt class="meta">Kaisen runs</dt><dd class="mono">{{ data.statistics.kaisen_runs_ever }}</dd><span class="meta">(every run started, including retries and changes)</span></div>
-        </dl>
-        <p class="help">Deleted apps and builds still count.</p>
       </section>
 
       <div class="grid gap-x-7 gap-y-4 min-[1100px]:grid-cols-2">
@@ -395,6 +383,16 @@ function jump(id: string) {
 
       <HealthBackups />
       <HealthLogs />
+
+      <section v-if="data.statistics" id="sec-statistics" class="sec scroll-mt-4 pt-2" aria-label="Lifetime statistics">
+        <h2 class="section-title">Lifetime statistics</h2>
+        <dl class="mt-1 flex flex-wrap gap-x-8 gap-y-1 text-sm">
+          <div class="flex items-baseline gap-2"><dt class="meta">Apps ever deployed</dt><dd class="mono">{{ data.statistics.apps_ever_deployed }}</dd><span class="meta">(includes Kaisen previews)</span></div>
+          <div class="flex items-baseline gap-2"><dt class="meta">Kaisen apps ever built</dt><dd class="mono">{{ data.statistics.kaisen_apps_ever_built }}</dd><span class="meta">(builds with a finished run)</span></div>
+          <div class="flex items-baseline gap-2"><dt class="meta">Kaisen runs</dt><dd class="mono">{{ data.statistics.kaisen_runs_ever }}</dd><span class="meta">(every run started, including retries and changes)</span></div>
+        </dl>
+        <p class="help">Deleted apps and builds still count.</p>
+      </section>
     </template>
     <p v-else-if="!error" class="text-sm text-zinc-400" role="status">Querying cluster…</p>
   </main>

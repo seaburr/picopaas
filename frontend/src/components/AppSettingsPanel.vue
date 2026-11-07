@@ -6,6 +6,7 @@ import CopyButton from './CopyButton.vue'
 import DeleteAppDialog from './DeleteAppDialog.vue'
 import { moveApp } from '../api/projects'
 import { useProjectsStore } from '../stores/projects'
+import { projectApps } from '../utils/paths'
 import { clearCustomDomain, rotateCredentials, setCustomDomain, verifyCustomDomain } from '../api/apps'
 import { clearPlatformHost, setPlatformHost } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -210,7 +211,7 @@ async function confirmDelete() {
   try {
     await store.remove(app.value.id)
     toast.success(`Deleted ${name}.`)
-    await router.push('/apps')
+    await router.push(projectApps(app.value.project_id ?? projects.current?.id ?? 0))
   } catch (e) {
     toast.error(`Couldn't delete ${name}: ${e instanceof ApiError ? e.message : 'unknown error'}`)
     deleteOpen.value = false
@@ -329,8 +330,8 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
           <!-- Extra settings sections go in this slot; the Danger zone must stay the last element. -->
           <slot />
 
-          <section class="sec sec-pad border-danger/40" aria-labelledby="h-danger">
-            <h2 id="h-danger" class="section-title text-danger-light">Danger zone</h2>
+          <section class="sec-danger" aria-labelledby="h-danger">
+            <h2 id="h-danger" class="section-title">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">
                 Delete this app{{ hasAddons ? ', its database and blob storage bucket' : '' }}. This can't be undone.

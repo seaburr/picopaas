@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useProjectsStore } from '../stores/projects'
+import { projectApps, projectLabel, projectNewApp } from '../utils/paths'
 import { ApiError } from '../api/client'
 import { dbEngineLabel } from '../composables/appUi'
 import { listTemplates, type AppTemplate } from '../api/templates'
@@ -24,7 +27,14 @@ const offNotes = computed(() => {
 const DOCS_NAME: Record<string, string> = { grafana: 'Grafana', 'grafana-pg': 'Grafana', status: 'Gatus', 'static-site': 'nginx' }
 const docsName = (t: AppTemplate) => DOCS_NAME[t.id] ?? t.name.replace(/\s*\(.*\)$/, '')
 
+const projects = useProjectsStore()
+const route = useRoute()
+// The project a template deploys into: ?project= from the New app chooser, else the current project (named on the page).
+const target = computed(() => projects.projects.find((x) => x.id === Number(route.query.project)) ?? projects.current)
+const newAppPath = computed(() => (target.value ? projectNewApp(target.value.id) : '/apps/new'))
+
 onMounted(async () => {
+  if (!projects.loaded) await projects.load()
   try {
     templates.value = await listTemplates()
   } catch (e) {
@@ -38,9 +48,10 @@ onMounted(async () => {
 <template>
   <main id="main" tabindex="-1" class="page-main">
     <nav class="meta mb-2" aria-label="Breadcrumb">
-      <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
+      <RouterLink :to="target ? projectApps(target.id) : projects.appsHome" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
     </nav>
     <h1 class="page-title">Templates</h1>
+    <p v-if="target" class="help">New apps from a template go in <strong class="font-medium text-zinc-200">{{ projectLabel(target) }}</strong>.</p>
     <p class="help mb-3 max-w-3xl">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
 
     <p v-if="offNotes.length" class="alert-warn mb-3 max-w-3xl">Off on this instance: {{ offNotes.join(', ') }}. Templates that need them are marked below; templates with an optional volume deploy without it, and data on scratch disk is lost on restart.</p>
@@ -49,7 +60,7 @@ onMounted(async () => {
     <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>
     <p v-else-if="!templates.length" class="meta">No templates are available.</p>
     <table v-else class="tbl tbl-stack">
-      <colgroup><col class="w-[14%]"><col><col class="w-[12%]"><col class="w-[22%]"><col class="w-56"></colgroup>
+      <colgroup><col class="w-[14%]"><col><col class="w-[12%]"><col class="w-[22%]"><col class="w-72"></colgroup>
       <thead><tr><th>Template</th><th>Description</th><th>Add-ons</th><th>Image</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
         <tr v-for="t in templates" :key="t.id" class="align-top">
@@ -66,10 +77,10 @@ onMounted(async () => {
             <span v-if="t.volume" class="block">Block Storage{{ t.volume.required ? '' : ' (optional)' }}</span>
             <span v-if="t.secrets.length" class="meta block">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }}</span>
           </td>
-          <td class="mono"><span class="break-all">{{ t.image }}</span><span class="block text-zinc-400">port {{ t.port }}</span></td>
+          <td class="mono"><span class="block truncate" :title="t.image">{{ t.image }}</span></td>
           <td>
             <div class="row-acts flex-wrap gap-x-4 md:flex-nowrap md:whitespace-nowrap [&>*]:ml-0!">
-              <RouterLink :to="{ path: '/apps/new', query: { template: t.id } }" class="row-act text-white">Use this template</RouterLink>
+              <RouterLink :to="{ path: newAppPath, query: { template: t.id } }" class="row-act text-white">Use this template</RouterLink>
               <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="row-act">Setup guide</a>
               <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="row-act" :title="`${docsName(t)} documentation`">Docs<span class="sr-only"> ({{ docsName(t) }})</span></a>
             </div>

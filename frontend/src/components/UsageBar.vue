@@ -20,7 +20,7 @@ const tone = computed(() => (props.usage.over_quota ? 'text-danger-light' : warn
     <td class="mono text-right" :class="tone">{{ Math.round(pct) }}%<span v-if="usage.over_quota" class="sr-only"> over cap</span><span v-else-if="warn" class="sr-only"> near cap</span></td>
     <td class="max-md:hidden">
       <div
-        class="h-1 overflow-hidden rounded-sm bg-pico-muted"
+        class="h-2 overflow-hidden rounded-sm bg-pico-muted"
         role="progressbar"
         :aria-label="`${label} usage`"
         aria-valuemin="0"

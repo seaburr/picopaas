@@ -51,7 +51,7 @@ async function load() {
     data.value = await listUploads(props.buildId)
     loadError.value = ''
   } catch (e) {
-    loadError.value = e instanceof ApiError ? e.message : "Couldn't load files."
+    loadError.value = e instanceof ApiError ? e.message : "Couldn't load uploads."
   } finally {
     loading.value = false
     if (props.focusId) nextTick(() => document.getElementById(`fd-u-${props.focusId}`)?.scrollIntoView({ block: 'center' }))
@@ -176,15 +176,15 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
   >
   <section class="space-y-3 p-4">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 id="h-uploads" class="section-title">Files for this build</h2>
+      <h2 id="h-uploads" class="section-title">Uploads for this build</h2>
       <button type="button" class="btn-secondary btn-sm" data-autofocus @click="emit('close')">Close</button>
     </div>
-    <p v-if="quota" class="meta">{{ quota.count }} of {{ quota.max_files }} files · project {{ fmtSize(quota.project_bytes) }} of {{ fmtSize(quota.project_limit_bytes) }} · per file {{ fmtSize(quota.max_upload_bytes) }}</p>
+    <p v-if="quota" class="meta">{{ quota.count }} of {{ quota.max_files }} uploads · project {{ fmtSize(quota.project_bytes) }} of {{ fmtSize(quota.project_limit_bytes) }} · per file {{ fmtSize(quota.max_upload_bytes) }}</p>
     <p v-if="!enabled" class="alert-info" role="status">{{ offReason.replace(/[.\s]+$/, '') }}. You can still remove files you uploaded earlier.</p>
     <p v-else-if="!canEdit" class="help">You can't change files while a run is active or in a read-only state.</p>
     <p v-if="notice" class="help">{{ notice }}</p>
 
-    <p v-if="loading" class="meta" aria-busy="true">Loading files…</p>
+    <p v-if="loading" class="meta" aria-busy="true">Loading uploads…</p>
     <div v-else-if="loadError" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
       <span>{{ loadError }}</span>
       <button type="button" class="btn-secondary btn-sm" @click="load">Retry</button>
@@ -194,7 +194,7 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
       <div v-if="quota" class="grid gap-2 sm:grid-cols-2">
         <div v-for="b in [{ id: 'asset', label: 'Site images', used: quota.asset_bytes, limit: quota.asset_limit_bytes }, { id: 'ref', label: 'Reference files', used: quota.ref_bytes, limit: quota.ref_limit_bytes }]" :key="b.id">
           <div class="flex justify-between text-xs text-zinc-300"><span>{{ b.label }}</span><span>{{ fmtSize(b.used) }} of {{ fmtSize(b.limit) }}</span></div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-card" role="progressbar" :aria-label="b.label" aria-valuemin="0" :aria-valuemax="b.limit" :aria-valuenow="b.used">
+          <div class="mt-1 h-2 overflow-hidden rounded-sm bg-pico-card" role="progressbar" :aria-label="b.label" aria-valuemin="0" :aria-valuemax="b.limit" :aria-valuenow="b.used">
             <div class="h-full rounded-sm" :class="pct(b.used, b.limit) >= 80 ? 'bg-warn-solid' : 'bg-accent-light'" :style="{ width: `${pct(b.used, b.limit)}%` }" />
           </div>
         </div>
@@ -203,7 +203,7 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
       <p v-if="error" ref="errorEl" tabindex="-1" class="field-error whitespace-pre-wrap focus:outline-none" role="alert">{{ error }}</p>
       <span class="sr-only" aria-live="polite">{{ busy ? 'Working' : '' }}</span>
 
-      <p v-if="items.length === 0" class="meta">No files yet.</p>
+      <p v-if="items.length === 0" class="meta">No uploads yet.</p>
       <ul v-else class="divide-y divide-pico-border">
         <li v-for="u in items" :id="`fd-u-${u.id}`" :key="u.id" class="flex flex-wrap items-start gap-3 py-2" :class="focusId === u.id ? 'rounded-md bg-pico-card px-2' : ''">
           <img v-if="u.kind === 'asset'" :src="uploadContentUrl(buildId, u.id, u.version)" alt="" class="h-12 w-12 shrink-0 rounded-sm bg-pico-card object-contain" loading="lazy" />
@@ -232,7 +232,7 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
       <input ref="replaceInput" type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".png,.jpg,.jpeg,.webp,.svg,.css,.html,.htm,.txt,.md" @change="onReplace" />
 
       <div v-if="changed" class="alert-info flex flex-wrap items-center justify-between gap-2" role="status">
-        <span>Files changed, deploy to publish them.</span>
+        <span>Uploads changed, deploy to publish them.</span>
         <button v-if="canDeploy" type="button" class="btn-secondary btn-sm" :disabled="deploying" @click="emit('deploy')">{{ deploying ? 'Deploying…' : 'Deploy now' }}</button>
       </div>
     </template>

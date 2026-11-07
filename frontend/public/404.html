@@ -4,20 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f1eee6" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121417">
 <title>No app lives here - PicoPaaS</title>
 <link rel="icon" href="https://platform.picopaas.xyz/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="https://platform.picopaas.xyz/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="https://platform.picopaas.xyz/static/icon-180.png">
 <style>
-:root{--bg:#121417;--raise:#1a1d21;--line:#2b2f35;--fg:#e7e9ec;--mut:#a2a8b0;--ok:#62c07f;--warn:#e0b040;--err:#f47d7a;color-scheme:dark}
-:root[data-theme=light]{--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}
-@media(prefers-color-scheme:light){:root:not([data-theme]){--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}}
+:root{--bg:#121417;--raise:#1a1d21;--line:#454b53;--edge:#6b727b;--fg:#e7e9ec;--mut:#b4bac1;--ok:#62c07f;--warn:#e0b040;--err:#f47d7a;color-scheme:dark}
+:root[data-theme=light]{--bg:#f1eee6;--raise:#e7e2d5;--line:#a49b82;--edge:#7a735f;--fg:#1b1912;--mut:#4b4739;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}
 /* Fonts: the app's Inter and JetBrains Mono are hashed files that only the built app knows, so these pages name them (used when installed) and fall back to the system stack. No webfont is loaded (CSP font-src 'self'). */
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 "Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--fg);text-decoration:underline;text-underline-offset:2px}a:hover{text-decoration-thickness:2px}
 a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:4px}
 code,.mono{font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
@@ -25,22 +23,22 @@ h1,h2,h3{line-height:1.25;font-weight:600;overflow-wrap:anywhere}
 .w{max-width:960px;margin:0 auto;padding:0 20px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:8px;top:-60px;z-index:10;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px 10px}.skip:focus{top:8px}
-.dev{border-bottom:1px solid var(--line);color:var(--warn);text-align:center;font-size:13px;line-height:1.45;padding:6px 20px}
+.dev{border-bottom:2px solid var(--warn);color:var(--warn);text-align:center;font-size:14px;line-height:1.45;padding:6px 20px}
 header.t{border-bottom:1px solid var(--line)}header.t .w{display:flex;justify-content:space-between;align-items:center;height:48px;gap:12px}
-.logo{font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
+.logo{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
 nav.r{display:flex;align-items:center;gap:14px}nav.r a.l{color:var(--mut);text-decoration:none}nav.r a.l:hover{color:var(--fg);text-decoration:underline}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:13px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
-.btn.s{background:transparent;color:var(--fg);border-color:var(--line)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
-footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:13px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:14px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
+.btn.s{background:transparent;color:var(--fg);border-color:var(--edge)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:14px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
 @media(max-width:480px){.w{padding:0 16px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
-.logo{margin-bottom:28px}.code{margin:0;font-size:13px;letter-spacing:.1em;color:var(--mut);font-weight:500}
+.logo{margin-bottom:28px}.code{margin:0;font-size:14px;letter-spacing:.1em;color:var(--mut);font-weight:500}
 h1{font-size:clamp(22px,5vw,28px);margin:6px 0 10px}p.m{color:var(--mut);max-width:460px;margin:0 auto 22px}.cta{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
-<a class="logo" href="https://picopaas.xyz">PicoPaaS</a>
+<a class="logo" href="https://picopaas.xyz"><img src="/static/icon-64.png" alt="" width="20" height="20" style="border-radius:2px">PicoPaaS</a>
 <main>
 <p class="code" aria-hidden="true">404</p>
 <h1>No app lives here (yet).</h1>

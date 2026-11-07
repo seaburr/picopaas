@@ -78,7 +78,7 @@ const onSchedule = (e: Event) => save(info.value!.enabled, (e.target as HTMLSele
           <span>Backup storage<template v-if="info.cap_override"> (ceiling set by an administrator)</template></span>
           <span class="mono">{{ size(used) }} of {{ size(info.cap_bytes) }}</span>
         </div>
-        <div class="relative mt-1 h-1 overflow-hidden rounded-sm bg-pico-muted" role="img" :aria-label="`Backup storage ${size(used)} of ${size(info.cap_bytes)}`">
+        <div class="relative mt-1 h-2 overflow-hidden rounded-sm bg-pico-muted" role="img" :aria-label="`Backup storage ${size(used)} of ${size(info.cap_bytes)}`">
           <div :class="['absolute inset-y-0 left-0', info.storage_full ? 'bg-danger' : pct >= 80 ? 'bg-amber-500' : 'bg-accent']" :style="{ width: pct + '%' }" />
         </div>
         <p v-if="info.storage_full" class="mt-1 text-xs text-amber-300">Backup storage is full. New backups are refused until older ones are deleted or roll off.</p>

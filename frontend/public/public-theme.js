@@ -1,10 +1,11 @@
-// Public pages (landing, privacy). Applies a saved theme when this origin has one (the platform host does; the apex does not),
-// otherwise the CSS follows the system setting. A same-origin file because the CSP is script-src 'self'. Key matches theme-init.js.
+// Public pages (landing, privacy). Dark by default, like the app. Applies a saved choice when this origin has one (the
+// platform host does; the apex does not). The system colour scheme is deliberately ignored. A same-origin file because
+// the CSP is script-src 'self'. Key matches theme-init.js.
 (function () {
   try {
     var t = localStorage.getItem('picopaas-theme')
-    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark')
   } catch {
-    /* storage blocked: follow the system */
+    document.documentElement.setAttribute('data-theme', 'dark')
   }
 })()

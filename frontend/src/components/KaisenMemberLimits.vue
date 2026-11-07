@@ -67,7 +67,7 @@ async function save(id: number) {
 }
 const cap = (v: number | null) => (v === null ? 'No limit' : fmtUsd(v))
 const cols = computed(() => (canEdit.value
-  ? 'sm:grid-cols-[minmax(0,2fr)_5rem_6rem_7rem_7rem_2.5rem]'
+  ? 'sm:grid-cols-[minmax(0,2fr)_5rem_6rem_7rem_7rem_4.5rem]'
   : 'sm:grid-cols-[minmax(0,2fr)_5rem_6rem_7rem_7rem]'))
 </script>
 

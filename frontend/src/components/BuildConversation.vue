@@ -65,7 +65,7 @@ async function loadUploads() {
   try {
     uploads.value = (await listUploads(props.build.id)).uploads
   } catch {
-    // chips are an extra; the Files drawer still reports errors
+    // chips are an extra; the Uploads drawer still reports errors
   }
 }
 onMounted(loadUploads)
@@ -174,7 +174,7 @@ watch(() => props.build.id, () => stickNow())
                 <p v-if="it.text" class="whitespace-pre-wrap [overflow-wrap:anywhere]">{{ it.text }}</p>
                 <ul v-if="it.files.length" class="flex flex-wrap gap-1.5" :class="it.text ? 'mt-2' : ''" aria-label="Attached files">
                   <li v-for="u in it.files" :key="u.id" class="min-w-0 max-w-full">
-                    <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-bg max-md:min-h-[44px]" :title="u.description || undefined" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
+                    <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-bg max-md:min-h-[44px]" :title="u.description || undefined" :aria-label="`Open ${u.name_orig} in Uploads`" @click="emit('open-files', u.id)">
                       <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-7 w-7 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
                       <span v-else class="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-[10px] text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
                       <span class="min-w-0">
@@ -190,7 +190,7 @@ watch(() => props.build.id, () => stickNow())
 
             <!-- an open notice (spend cap, refusal, error) -->
             <div v-else-if="it.notice" class="max-w-3xl">
-              <BuildInbox :item="it.notice" :can-run="canRun" :spend-cap="build.spend.cap_build" @resume="emit('resume')" @dismiss="emit('dismiss', $event)" />
+              <BuildInbox :item="it.notice" :can-run="canRun" :spend-cap="build.spend.cap_build" :project-id="build.project_id" @resume="emit('resume')" @dismiss="emit('dismiss', $event)" />
             </div>
 
             <!-- Kaisen: plain text across the left -->
@@ -238,9 +238,9 @@ watch(() => props.build.id, () => stickNow())
       </div>
       <div v-if="unsent.length">
         <p class="meta">Sent when you start building:</p>
-        <ul class="mt-1 flex flex-wrap gap-1.5" aria-label="Files sent when you start building">
+        <ul class="mt-1 flex flex-wrap gap-1.5" aria-label="Uploads sent when you start building">
           <li v-for="u in unsent" :key="u.id" class="min-w-0 max-w-full">
-            <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-card max-md:min-h-[44px]" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
+            <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-card max-md:min-h-[44px]" :aria-label="`Open ${u.name_orig} in Uploads`" @click="emit('open-files', u.id)">
               <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-7 w-7 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
               <span v-else class="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-[10px] text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
               <span class="min-w-0"><span class="block truncate text-xs text-zinc-100">{{ u.name_orig }}</span><span class="meta block truncate"><span class="mono">{{ dims(u) }}{{ fmtSize(u.size) }}</span> · {{ u.kind === 'asset' ? 'Use in the site' : 'Reference only' }}</span></span>

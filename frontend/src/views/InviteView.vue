@@ -47,7 +47,7 @@ onMounted(accept)
         <p role="alert" class="alert-error mt-3">{{ error }}</p>
         <div class="mt-3 flex gap-2">
           <button type="button" class="btn-secondary" @click="accept">Try again</button>
-          <RouterLink to="/apps" class="btn-primary">Go to apps</RouterLink>
+          <RouterLink :to="projects.appsHome" class="btn-primary">Go to apps</RouterLink>
         </div>
       </template>
     </div>

@@ -130,7 +130,7 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
           <span class="mono">{{ size(st!.used_bytes) }} of {{ size(st!.cap_bytes) }}<template v-if="st!.used_pct !== null"> ({{ st!.used_pct }}%)</template> · {{ st!.apps_with_backups }} {{ st!.apps_with_backups === 1 ? 'app' : 'apps' }}</span>
         </div>
         <div
-          class="relative h-1.5 overflow-hidden rounded-sm bg-pico-card" role="img"
+          class="relative h-2 overflow-hidden rounded-sm bg-pico-card" role="img"
           :aria-label="`Backup storage ${size(st!.used_bytes)} of ${size(st!.cap_bytes)}`"
         >
           <div :class="['absolute inset-y-0 left-0', hot ? 'bg-amber-500' : 'bg-accent']" :style="{ width: pct + '%' }" />

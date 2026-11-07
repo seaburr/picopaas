@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import CodeReader, { type ReaderContent, type ReaderItem } from './CodeReader.vue'
 import IconButton from './IconButton.vue'
 import { ApiError } from '../api/client'
 import type { KaisenDiff } from '../types'
@@ -23,12 +24,22 @@ async function fetchDiff() {
 }
 onMounted(fetchDiff)
 
-// Plain text lines only, never HTML. Colour by first character.
-const lineCls = (l: string) =>
-  l.startsWith('+') && !l.startsWith('+++') ? 'text-status-running'
-  : l.startsWith('-') && !l.startsWith('---') ? 'text-danger-light'
-  : l.startsWith('@@') ? 'text-accent-light' : 'text-zinc-300'
-const lines = (d: string) => d.replace(/\n$/, '').split('\n')
+const reading = ref(false)
+const start = ref('')
+const items = computed<ReaderItem[]>(() => !diff.value ? [] : [
+  ...diff.value.changed.map((c) => ({ path: c.path, tag: 'changed' })),
+  ...diff.value.added.map((p) => ({ path: p, tag: 'added' })),
+  ...diff.value.removed.map((p) => ({ path: p, tag: 'removed' })),
+])
+// Plain text only, never HTML. Added and removed files have no diff body, so say so.
+async function loadOne(path: string): Promise<ReaderContent> {
+  const d = diff.value
+  if (!d) return { text: null }
+  const c = d.changed.find((x) => x.path === path)
+  if (c) return c.diff ? { text: c.diff } : { text: null, note: 'Diff not shown (too large).' }
+  return { text: null, note: d.added.includes(path) ? 'This file was added. Open it in Project files to read it.' : 'This file was removed.' }
+}
+function read(path: string) { start.value = path; reading.value = true }
 </script>
 
 <template>
@@ -56,15 +67,16 @@ const lines = (d: string) => d.replace(/\n$/, '').split('\n')
       </div>
       <div v-if="diff.changed.length" class="space-y-1">
         <p class="meta">Changed</p>
-        <details v-for="c in diff.changed" :key="c.path" class="disc rounded-md border border-pico-border">
-          <summary class="py-1 pr-2 text-sm">
-            <span class="mono break-all">{{ c.path }}</span>
-          </summary>
-          <p v-if="!c.diff" class="border-t border-pico-border px-2 py-1 text-sm text-zinc-300">Diff not shown (too large).</p>
-          <pre v-else class="mono max-h-96 overflow-auto border-t border-pico-border p-2 text-xs" tabindex="0" :aria-label="`Diff of ${c.path}`"><template v-for="(l, i) in lines(c.diff)" :key="i"><span :class="['block w-max min-w-full', lineCls(l)]">{{ l || ' ' }}</span></template></pre>
-        </details>
+        <ul class="divide-y divide-pico-border border-y border-pico-border">
+          <li v-for="c in diff.changed" :key="c.path" class="flex items-center gap-2 py-0.5">
+            <span class="mono min-w-0 flex-1 break-all text-sm">{{ c.path }}</span>
+            <span v-if="!c.diff" class="meta shrink-0">too large</span>
+            <button type="button" class="row-act shrink-0" :aria-label="`Read diff of ${c.path}`" @click="read(c.path)">Read diff</button>
+          </li>
+        </ul>
       </div>
-      <p v-if="diff.truncated" class="help">Too many changes to show them all. Files marked "Diff not shown" are listed without their changes.</p>
+      <p v-if="diff.truncated" class="help">Too many changes to show them all. Files marked "too large" are listed without their changes.</p>
     </template>
+    <CodeReader :open="reading" :title="title || 'Changes'" :items="items" :load="loadOne" diff :initial-path="start" @close="reading = false" />
   </div>
 </template>

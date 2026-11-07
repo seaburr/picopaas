@@ -4,9 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f1eee6" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121417">
 <script src="/static/public-theme.js"></script>
 <title>PicoPaaS: put a small project on the internet today</title>
 <meta name="description" content="Bring a container or describe an app and let Kaisen (in preview) build it. Get an HTTPS address, an optional PostgreSQL or MySQL database, file storage and backups. A small, approval-only platform for demos, side projects and class work.">
@@ -15,12 +14,11 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
 <link rel="manifest" href="/static/site.webmanifest">
 <style>
-:root{--bg:#121417;--raise:#1a1d21;--line:#2b2f35;--fg:#e7e9ec;--mut:#a2a8b0;--ok:#62c07f;--warn:#e0b040;--err:#f47d7a;color-scheme:dark}
-:root[data-theme=light]{--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}
-@media(prefers-color-scheme:light){:root:not([data-theme]){--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}}
+:root{--bg:#121417;--raise:#1a1d21;--line:#454b53;--edge:#6b727b;--fg:#e7e9ec;--mut:#b4bac1;--ok:#62c07f;--warn:#e0b040;--err:#f47d7a;color-scheme:dark}
+:root[data-theme=light]{--bg:#f1eee6;--raise:#e7e2d5;--line:#a49b82;--edge:#7a735f;--fg:#1b1912;--mut:#4b4739;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}
 /* Fonts: the app's Inter and JetBrains Mono are hashed files that only the built app knows, so these pages name them (used when installed) and fall back to the system stack. No webfont is loaded (CSP font-src 'self'). */
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 "Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--fg);text-decoration:underline;text-underline-offset:2px}a:hover{text-decoration-thickness:2px}
 a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:4px}
 code,.mono{font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
@@ -28,19 +26,19 @@ h1,h2,h3{line-height:1.25;font-weight:600;overflow-wrap:anywhere}
 .w{max-width:960px;margin:0 auto;padding:0 20px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:8px;top:-60px;z-index:10;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px 10px}.skip:focus{top:8px}
-.dev{border-bottom:1px solid var(--line);color:var(--warn);text-align:center;font-size:13px;line-height:1.45;padding:6px 20px}
+.dev{border-bottom:2px solid var(--warn);color:var(--warn);text-align:center;font-size:14px;line-height:1.45;padding:6px 20px}
 header.t{border-bottom:1px solid var(--line)}header.t .w{display:flex;justify-content:space-between;align-items:center;height:48px;gap:12px}
-.logo{font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
+.logo{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
 nav.r{display:flex;align-items:center;gap:14px}nav.r a.l{color:var(--mut);text-decoration:none}nav.r a.l:hover{color:var(--fg);text-decoration:underline}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:13px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
-.btn.s{background:transparent;color:var(--fg);border-color:var(--line)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
-footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:13px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:14px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
+.btn.s{background:transparent;color:var(--fg);border-color:var(--edge)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:14px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
 @media(max-width:480px){.w{padding:0 16px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 .w.hd{max-width:960px}
 h2{font-size:15px;margin:44px 0 0;padding-top:12px;border-top:1px solid var(--line)}
-.hero{padding:44px 0 8px}.hero h1{font-size:clamp(26px,5.5vw,40px);margin:0 0 14px;letter-spacing:-.02em;max-width:720px}.hero p{max-width:640px;margin:0 0 20px;color:var(--mut);font-size:16px}.hero p.eyebrow{margin:0 0 10px;font-size:13px}
-.cta{display:flex;gap:10px;flex-wrap:wrap}.hero p.sub{margin:10px 0 0;font-size:13px}
+.hero{padding:44px 0 8px}.hero h1{font-size:clamp(26px,5.5vw,40px);margin:0 0 14px;letter-spacing:-.02em;max-width:720px}.hero p{max-width:640px;margin:0 0 20px;color:var(--mut);font-size:16px}.hero p.eyebrow{margin:0 0 10px;font-size:14px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}.hero p.sub{margin:10px 0 0;font-size:14px}
 .tag{display:inline-block;margin-left:8px;padding:0 6px;border:1px solid var(--line);border-radius:4px;color:var(--mut);font-size:11px;font-weight:400;vertical-align:middle}
 .paths .grid{display:grid;gap:0 40px;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));margin-top:20px}
 .paths .card{border-top:1px solid var(--line);padding:12px 0}.paths h2{margin:0 0 8px;padding:0;border:0;font-size:15px}.paths p{margin:0;color:var(--mut)}.paths p+p{margin-top:8px}.paths a.go{display:inline-block;margin-top:10px}
@@ -49,8 +47,8 @@ h2{font-size:15px;margin:44px 0 0;padding-top:12px;border-top:1px solid var(--li
 .rows h3{margin:0;font-size:14px}.rows p{margin:0;color:var(--mut)}.rows .n{color:var(--mut);margin-right:8px}
 @media(max-width:600px){.rows .card{grid-template-columns:1fr}}
 .pre{margin:12px 0 0;color:var(--mut)}.pre strong{color:var(--fg)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;list-style:none}.chips li{padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--fg);font-size:13px}
-table{width:100%;border-collapse:collapse;margin-top:12px}td{padding:6px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}tr:first-child td{border-top:0}td:first-child{color:var(--mut)}td:last-child{text-align:right;font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;padding-left:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;list-style:none}.chips li{padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--fg);font-size:14px}
+table{width:100%;border-collapse:collapse;margin-top:12px}td{padding:6px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}tr:first-child td{border-top:0}td:first-child{color:var(--mut)}td:last-child{text-align:right;font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;padding-left:16px}
 details{border-top:1px solid var(--line);padding:9px 0}details:first-of-type{margin-top:12px}summary{cursor:pointer;font-weight:600}details p{margin:8px 0 0;color:var(--mut)}
 .cp{margin-top:6px}.fin{padding:32px 0 0}
 </style>
@@ -58,7 +56,7 @@ details{border-top:1px solid var(--line);padding:9px 0}details:first-of-type{mar
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="dev" role="note"><strong>Dev/test platform.</strong> Sign up, and if your account is approved, a PicoPaaS platform admin will reach out. No uptime guarantees; don&rsquo;t store personal data.</div>
-<header class="t"><div class="w hd"><a class="logo" href="/">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.picopaas.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.picopaas.xyz/login">Log in</a></nav></div></header>
+<header class="t"><div class="w hd"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="20" height="20" style="border-radius:2px">PicoPaaS</a><nav class="r" aria-label="Main"><a class="l" href="https://platform.picopaas.xyz/guide">Docs</a><a class="btn s sm" href="https://platform.picopaas.xyz/login">Log in</a></nav></div></header>
 <main class="w" id="main">
 <section class="hero">
 <p class="eyebrow">small hosting for small projects</p>

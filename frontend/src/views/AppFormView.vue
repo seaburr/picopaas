@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useProjectTitle } from '../composables/projectTitle'
 import { useRoute, useRouter } from 'vue-router'
 import AppNotFound from '../components/AppNotFound.vue'
 import IconButton from '../components/IconButton.vue'
@@ -20,26 +21,28 @@ import { envKeyError } from '../composables/envKeys'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
+import { projectApps, projectLabel } from '../utils/paths'
 import { useToastStore } from '../stores/toast'
 import type { App, EnvVar, OwnerControls, OwnerKey, OwnerResourcesPayload } from '../types'
 
-const props = defineProps<{ id?: string }>()
+const props = defineProps<{ id?: string; pid?: string }>()
 const router = useRouter()
 const route = useRoute()
 const store = useAppsStore()
 const auth = useAuthStore()
 const toast = useToastStore()
 const projects = useProjectsStore()
-const projectId = ref<number | null>(null) // new apps only; the Apps picker's project (null = backend default, personal)
-const projectName = computed(() => {
-  const p = projects.projects.find((x) => x.id === projectId.value)
-  return p ? (p.is_personal ? 'Personal' : p.name) : ''
-})
+// New apps: the project in the URL. Settings: the app's own project.
+const projectId = computed<number | null>(() => (props.pid !== undefined ? Number(props.pid) : (loadedApp.value?.project_id ?? null)))
+const projectRef = computed(() => projects.projects.find((x) => x.id === projectId.value) ?? null)
+const projectName = computed(() => projectLabel(projectRef.value))
+// Settings pages keep their own app-name title (set below); only the new-app page is titled by project.
+if (props.id === undefined) useProjectTitle('New app', projectName)
+const appsPath = computed(() => (projectId.value !== null ? projectApps(projectId.value) : projects.appsHome))
 // /apps/new with no deep-link query is the first step: pick how to create the app.
 const chooserStep = computed(() => !isEdit.value && !route.query.sample && typeof route.query.template !== 'string' && route.query.from !== 'image')
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
-  projectId.value = projects.current?.id ?? null
 })
 
 const isEdit = computed(() => props.id !== undefined)
@@ -428,28 +431,30 @@ async function onSubmit() {
 
 <template>
   <main id="main" tabindex="-1" class="page-main">
-    <div class="max-w-3xl">
+    <div>
       <SuspendedBanner v-if="isEdit" :project="appProject" />
       <nav v-if="isEdit && !gone" class="meta mb-2" aria-label="Breadcrumb">
-        <RouterLink to="/apps" class="link">Apps</RouterLink>
+        <RouterLink v-if="projectRef" :to="`/projects/${projectRef.id}`" class="link">{{ projectName }}</RouterLink><span v-if="projectRef" aria-hidden="true"> / </span>
+        <RouterLink :to="appsPath" class="link">Apps</RouterLink>
         <span aria-hidden="true"> / </span>
         <RouterLink v-if="loadedApp" :to="`/apps/${loadedApp.id}`" class="link">{{ loadedApp.name }}</RouterLink>
         <span aria-hidden="true"> / </span>Settings
       </nav>
       <nav v-else-if="!isEdit" class="meta mb-2" aria-label="Breadcrumb">
-        <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
+        <RouterLink v-if="projectRef" :to="`/projects/${projectRef.id}`" class="link">{{ projectName }}</RouterLink><span v-if="projectRef" aria-hidden="true"> / </span>
+        <RouterLink :to="appsPath" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>New app
       </nav>
 
       <template v-if="chooserStep">
-        <h1 class="page-title mb-1">New app</h1>
+        <h1 class="page-title mb-1">New app<template v-if="projectName"> in {{ projectName }}</template></h1>
         <p class="help mb-3">How do you want to create it?<template v-if="projectName"> It goes in <strong class="font-medium text-zinc-200">{{ projectName }}</strong>.</template></p>
-        <KaisenChooser :kaisen="!!auth.user?.features?.kaisen" />
+        <KaisenChooser :kaisen="!!auth.user?.features?.kaisen" :project-id="projectId" />
       </template>
       <template v-else>
       <div v-if="!gone" class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
-            <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : 'New app' }}</h1>
+            <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : projectName ? `New app in ${projectName}` : 'New app' }}</h1>
             <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
           </div>
           <HostLink v-if="loadedApp" :hostname="primaryHost(loadedApp)" class="mt-1" />
@@ -502,6 +507,8 @@ async function onSubmit() {
       <AppNotFound v-else-if="isEdit && !loadedApp" />
 
       <template v-else>
+      <div :class="isEdit ? 'grid items-start gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]' : ''">
+      <div class="min-w-0">
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
       <form class="sec sec-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="appSuspended && !projSuspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
@@ -524,7 +531,7 @@ async function onSubmit() {
             <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
           </div>
 
-          <p v-if="!isEdit && projectName" class="help">In project: <strong class="font-medium text-zinc-200">{{ projectName }}</strong>. Everyone in the project can manage this app. Change the project in the sidebar.</p>
+          <p v-if="!isEdit && projectName" class="help">In project: <strong class="font-medium text-zinc-200">{{ projectName }}</strong>. Everyone in the project can manage this app.</p>
 
           <div>
             <label for="f-image" class="label">Image</label>
@@ -656,8 +663,8 @@ async function onSubmit() {
             <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" :errors="envErrors" />
           </div>
 
-          <details class="disc border-y border-pico-border py-2" :open="form.health_check_enabled || !!pathError || !!timeoutError">
-            <summary class="text-sm font-semibold text-white">Advanced: health check</summary>
+          <details class="disc border-y border-pico-border py-2" :open="form.health_check_enabled || form.allow_sensitive_paths || !!pathError || !!timeoutError">
+            <summary class="text-sm font-semibold text-white">Advanced options</summary>
             <div class="mt-3 space-y-3">
               <div>
                 <label class="flex items-center gap-2 text-sm text-zinc-200">
@@ -703,15 +710,15 @@ async function onSubmit() {
                 <p v-if="timeoutError" class="field-error" role="alert">{{ timeoutError }}</p>
                 <p id="hc-timeout-help" class="help">How long a single probe may take before it counts as failed (max 90s). Blank = default (3s readiness, 5s liveness).</p>
               </div>
+              <div>
+                <label class="flex items-center gap-2 text-sm">
+                  <input v-model="form.allow_sensitive_paths" type="checkbox" class="check" aria-describedby="sensitive-help" />
+                  Serve sensitive paths
+                </label>
+                <p id="sensitive-help" class="help">The platform answers 404 for paths like <span class="mono">/.env</span> and <span class="mono">/.git/config</span> before they reach your app. Turn this on only if your app serves such paths on purpose, like a Git host showing repository files.</p>
+              </div>
             </div>
           </details>
-          <div class="mt-3">
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="form.allow_sensitive_paths" type="checkbox" class="check" aria-describedby="sensitive-help" />
-              Serve sensitive paths
-            </label>
-            <p id="sensitive-help" class="help">The platform answers 404 for paths like <span class="mono">/.env</span> and <span class="mono">/.git/config</span> before they reach your app. Turn this on only if your app serves such paths on purpose, like a Git host showing repository files.</p>
-          </div>
         </fieldset>
 
         <div ref="errorBox">
@@ -722,20 +729,22 @@ async function onSubmit() {
         <div class="sticky bottom-0 flex items-center justify-between gap-2 border-t border-pico-border bg-pico-bg py-2">
           <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
           <div class="flex w-full gap-2 sm:w-auto">
-            <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>
+            <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : appsPath" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>
             <button type="submit" class="btn-primary flex-1 sm:flex-none" :disabled="saving || suspended" :title="projSuspended ? SUSPENDED_TITLE : undefined" :aria-busy="saving">
               {{ saving ? busyLabel : isEdit ? 'Save changes' : 'Create app' }}
             </button>
           </div>
         </div>
       </form>
+      </div>
 
-      <section v-if="isEdit && loadedApp" class="mt-4" aria-labelledby="h-other">
+      <section v-if="isEdit && loadedApp" class="min-w-0" aria-labelledby="h-other">
         <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
         <AppSettingsPanel :app="loadedApp" :project-suspended="projSuspended" @update:app="onPanelUpdate">
           <BackupSettings :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />
         </AppSettingsPanel>
       </section>
+      </div>
       </template>
       </template>
     </div>
