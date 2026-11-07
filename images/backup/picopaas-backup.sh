@@ -3,7 +3,7 @@
 # shellcheck disable=SC2086  # RESTIC, TAGARG, SSL, FLAGS and FILES are deliberately word-split option lists
 # shellcheck disable=SC2016  # single quotes are deliberate: the sed expression has literal backticks
 # Entry point of the backup image. One run = one app repo (KIND) = one Job.
-#   MODE=backup   KIND=db      dump the app's database into a restic repo, then `forget --prune` with the retention policy
+#   MODE=backup   KIND=db      dump the app's database into a restic repo, then `unlock` (stale locks only) and `forget --prune` with the retention policy
 #   MODE=backup   KIND=bucket  copy the app's bucket objects to $WORK/bucket (s5cmd, the app's own key), restic that dir
 #   MODE=backup   KIND=volume  restic backup $VOLUME_DIR (the app's PVC mounted read-only; this one Job runs in the app's own
 #                              namespace). No retention here: `restic prune` is memory-hungry, so MODE=prune runs afterwards in the
@@ -27,7 +27,8 @@
 # AWS_DEFAULT_REGION (the backup repo's key only), SNAPSHOT (restore), KEEP_DAILY KEEP_WEEKLY KEEP_MONTHLY, TAG,
 # EXPORT_ENDPOINT EXPORT_BUCKET EXPORT_KEY (export), LIMIT_UPLOAD_KIB (optional), WORK_DIR (scratch, default /work; tests override).
 # Output: the LAST stdout line is `PICOPAAS_RESULT {json}`; failures print `PICOPAAS_ERROR <short fixed text>` and exit
-# non-zero. Nothing here ever prints credentials, object keys, the repository URL or restic's own output on failure.
+# non-zero. Nothing here ever prints credentials, object keys or the repository URL; a failed retention step adds only
+# safe_reason's fixed phrase (repository locked, access denied, ...), never restic's own text.
 # The app's bucket key reaches s5cmd only through that one command's environment (s3 below), never through arguments.
 # Progress: `PICOPAAS_STEP <name>` lines (fixed text, never credentials, keys or restic output) so a stuck Job's logs show
 # where it is. Every network step runs under `timeout` (restic retries connection errors for ~15 minutes per command and
@@ -70,6 +71,33 @@ WORK="${WORK_DIR:-/work}"
 TMP="${TMP_DIR:-/tmp}"
 export PGCONNECT_TIMEOUT=20
 
+# Why a retention step failed, as ONE fixed phrase chosen by matching restic's stderr (all lines, case-insensitive) against
+# known patterns. No restic text is ever copied out, so nothing in it (hosts, IPs, buckets, keys, URLs) can reach the log.
+# Order matters: the first group that matches wins. Empty stderr prints nothing (the caller keeps the plain message).
+safe_reason() {
+  grep -q '[^[:space:]]' "$1" 2>/dev/null || return 0
+  if grep -qiE 'unable to create lock|already locked|repository is locked' "$1" 2>/dev/null; then echo "repository locked"
+  elif grep -qiE 'no space left|quota|disk full' "$1" 2>/dev/null; then echo "out of space"
+  elif grep -qiE '403|accessdenied|access denied|permission denied|forbidden|wrong password|no key found|authentication failed|invalidaccesskey|signaturedoesnotmatch' "$1" 2>/dev/null; then echo "access denied"
+  elif grep -qiE 'dial tcp|connection refused|connection reset|no such host|timeout|timed out|tls|x509|i/o error|eof' "$1" 2>/dev/null; then echo "connection failed"
+  elif grep -qiE 'does not exist|not found|no repository|nosuchbucket|nosuchkey|404' "$1" 2>/dev/null; then echo "repository not found"
+  else echo "other"
+  fi
+}
+
+# `forget --prune` by the KEEP_* policy. restic's stderr is kept only in a private temp file; only safe_reason's fixed phrase is printed.
+apply_retention() {
+  local err="$TMP/forget.err" why
+  if $RESTIC forget --keep-daily "${KEEP_DAILY:-1}" --keep-weekly "${KEEP_WEEKLY:-1}" --keep-monthly "${KEEP_MONTHLY:-1}" \
+      --group-by host,paths --prune >/dev/null 2>"$err"; then
+    rm -f "$err"
+    return 0
+  fi
+  why="$(safe_reason "$err")"
+  rm -f "$err"
+  fail "retention cleanup failed${why:+: $why}"
+}
+
 step "start mode=$MODE kind=$KIND"
 if [ "$MODE" != "package" ]; then
   # Create the repo on first use ("cat config" succeeds only when it exists). Nothing but a backup ever creates one.
@@ -93,8 +121,7 @@ fi
 
 if [ "$MODE" = "prune" ]; then
   step "applying retention"
-  $RESTIC forget --keep-daily "${KEEP_DAILY:-1}" --keep-weekly "${KEEP_WEEKLY:-1}" --keep-monthly "${KEEP_MONTHLY:-1}" \
-    --group-by host,paths --prune >/dev/null 2>&1 || fail "retention cleanup failed"
+  apply_retention
   REPO="$($RQ stats --mode raw-data --json 2>/dev/null | jq -r '.total_size // 0')"
   echo "PICOPAAS_RESULT {\"pruned\":true,\"repo_bytes\":${REPO:-0}}"
   exit 0
@@ -454,9 +481,10 @@ if [ "$KIND" = "volume" ]; then  # no prune in the tenant namespace: the platfor
   exit 0
 fi
 
+# A lock left by a killed Job would fail the forget below; remove only locks restic itself considers stale (never --remove-all).
+$RQ unlock >/dev/null 2>&1 || true
 step "applying retention"
-$RESTIC forget --keep-daily "${KEEP_DAILY:-1}" --keep-weekly "${KEEP_WEEKLY:-1}" --keep-monthly "${KEEP_MONTHLY:-1}" \
-  --group-by host,paths --prune >/dev/null 2>&1 || fail "retention cleanup failed"
+apply_retention
 
 REPO="$($RQ stats --mode raw-data --json 2>/dev/null | jq -r '.total_size // 0')"
 echo "PICOPAAS_RESULT {\"snapshot_id\":\"$SNAP\",\"bytes_added\":${ADDED:-0},\"repo_bytes\":${REPO:-0}}"
