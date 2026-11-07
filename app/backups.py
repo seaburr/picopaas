@@ -337,6 +337,7 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
     result = result or {}
     run.status = "succeeded" if ok else "failed"
     run.finished_at = now
+    retention_failed = "retention cleanup failed" in (error or "")  # looked up before redact() shortens the text
     run.error = None if ok else (redact(error) or "the backup failed")[:255]
     if not ok and run.trigger == "export" and "repository is not configured" in (run.error or "").lower():
         run.error = ("The backup tooling on the platform is older than this download needs. An administrator has to update it; "
@@ -387,6 +388,10 @@ def _finish(session: Session, run: models.BackupRun, runner: Optional[BackupRunn
         # Retention prune never runs inside the tenant namespace (restic prune is the memory-hungry part): queue it here, in the
         # platform namespace, now that the volume Job is done with the repo.
         enqueue(session, models_app(session, run), "volume", "prune", now)
+    if (not ok and run.kind in ("db", "bucket") and run.trigger in BACKUP_TRIGGERS and retention_failed):
+        # The snapshot is safe but its in-Job `forget --prune` failed (usually a restic lock, and MODE=backup never unlocks).
+        # MODE=prune removes stale locks first, so queue one; it cannot loop (a failed prune run queues nothing).
+        enqueue(session, models_app(session, run), run.kind, "prune", now)
     session.commit()
     if runner is not None and run.job_name:
         try:

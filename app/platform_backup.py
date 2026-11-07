@@ -30,13 +30,15 @@ KEPT_RUNS = 60
 ACTIVE = ("queued", "running")
 RETRY_AFTER_FAILURE = timedelta(hours=1)
 EXPORT = "export"  # trigger of an admin download of one snapshot (not a backup; see "admin download" below)
+PRUNE = "prune"  # trigger of the follow-up that applies retention after a backup's own retention step failed (not a backup)
+RETENTION_FAILED = "retention cleanup failed"  # the image's message when `forget --prune` fails (followed by ": <sanitized restic reason>" when there is one)
 EXPORT_SCRATCH_MIB = 256  # /work for the compressed dump: the Job's root filesystem is read-only (same size as an app's db export)
 EXPORT_ROW_KEEP = timedelta(days=1)  # finished export rows are dropped after this (the object itself is swept after the TTL)
 
 
 def _backups_only():
     """SQL filter: real backups, not admin-download export rows (which share this table, see enqueue_export)."""
-    return models.PlatformBackupRun.trigger != EXPORT
+    return models.PlatformBackupRun.trigger.notin_((EXPORT, PRUNE))
 
 
 def _now(now: Optional[datetime] = None) -> datetime:
@@ -105,8 +107,9 @@ def active_job_names(session: Session) -> set[str]:
 def enqueue(session: Session, trigger: str, now: Optional[datetime] = None) -> Optional[models.PlatformBackupRun]:
     """Queue a run unless one is already in flight (returns None then)."""
     now = _now(now)
-    if session.execute(select(models.PlatformBackupRun.id).where(models.PlatformBackupRun.status.in_(ACTIVE), _backups_only())
-                       .limit(1)).first():  # a download in flight never blocks a backup
+    if session.execute(select(models.PlatformBackupRun.id).where(models.PlatformBackupRun.status.in_(ACTIVE),
+                                                                 models.PlatformBackupRun.trigger != EXPORT)
+                       .limit(1)).first():  # a download in flight never blocks a backup; a retention prune does (it needs the repo alone)
         return None
     run = models.PlatformBackupRun(trigger=trigger, status="queued", created_at=now)
     session.add(run)
@@ -119,9 +122,12 @@ def _finish(session: Session, run: models.PlatformBackupRun, runner: Optional[Ba
     result = result or {}
     run.status = "succeeded" if ok else "failed"
     run.finished_at = now
+    retention_failed = RETENTION_FAILED in (error or "")  # looked up before redact() shortens the text
     run.error = None if ok else (backups.redact(error) or "the backup failed")[:255]
     if ok and run.trigger == EXPORT:  # snapshot_id stays: it names the snapshot that was exported
         run.bytes_added = backups._int(result.get("bytes"))
+    elif ok and run.trigger == PRUNE:
+        run.repo_bytes = backups._int(result.get("repo_bytes"))
     elif ok:
         run.snapshot_id = str(result.get("snapshot_id") or "")[:64] or None
         run.bytes_added = backups._int(result.get("bytes_added"))
@@ -132,12 +138,22 @@ def _finish(session: Session, run: models.PlatformBackupRun, runner: Optional[Ba
             runner.cleanup(run.job_name, None)
         except Exception as exc:  # noqa: BLE001 - the Secret sweep retries
             log.warning("platform backup %s: cleanup failed (%s)", run.id, type(exc).__name__)
-    if run.trigger == EXPORT:
+    if run.trigger == PRUNE:
+        audit.record(session, None, "platform_backup.pruned" if ok else "platform_backup.prune_failed", "platform", "db",
+                     f"run={run.id}" + ("" if ok else f": {run.error}"), actor_email="system")
+    elif run.trigger == EXPORT:
         audit.record(session, None, "platform_backup.export_succeeded" if ok else "platform_backup.export_failed", "platform", "db",
                      f"export={run.id}" + ("" if ok else f": {run.error}"), actor_email="system")
     else:
         audit.record(session, None, "platform_backup.succeeded" if ok else "platform_backup.failed", "platform", "db",
                      f"run={run.id} trigger={run.trigger}" + ("" if ok else f": {run.error}"), actor_email="system")
+    if not ok and run.trigger not in (EXPORT, PRUNE) and retention_failed:
+        # The snapshot is safe but old ones were not removed. The usual cause is a restic lock (another Job has the repo open,
+        # or a killed Job left one) and MODE=backup never unlocks, so every later run would fail the same way. Queue a MODE=prune
+        # Job, which removes stale locks first and then applies the policy.
+        run.error = (run.error or "")[:200] + " (repository busy or locked; a clean-up run was queued)"
+        session.add(models.PlatformBackupRun(trigger=PRUNE, status="queued", created_at=now))
+        session.commit()
     # Retention counts real backups only; export rows are kept for a day (long enough for the hourly limit and the 1 h TTL),
     # so a burst of downloads can't push backup history out and a live download is never pruned.
     old = session.execute(select(models.PlatformBackupRun.id).where(_backups_only())
@@ -145,7 +161,7 @@ def _finish(session: Session, run: models.PlatformBackupRun, runner: Optional[Ba
     if old:
         session.query(models.PlatformBackupRun).filter(models.PlatformBackupRun.id.in_(old)).delete(synchronize_session=False)
     session.query(models.PlatformBackupRun).filter(
-        models.PlatformBackupRun.trigger == EXPORT, models.PlatformBackupRun.status.notin_(ACTIVE),
+        models.PlatformBackupRun.trigger.in_((EXPORT, PRUNE)), models.PlatformBackupRun.status.notin_(ACTIVE),
         models.PlatformBackupRun.created_at < now - EXPORT_ROW_KEEP).delete(synchronize_session=False)
     session.commit()
 
@@ -181,7 +197,7 @@ def _start_queued(session: Session, runner: BackupRunner, now: datetime) -> None
     for run in session.execute(select(models.PlatformBackupRun).where(models.PlatformBackupRun.status == "queued")
                                .order_by(models.PlatformBackupRun.id)).scalars().all():
         try:
-            env = build_export_env(session, run) if run.trigger == EXPORT else build_env(session, run)
+            env = (build_export_env if run.trigger == EXPORT else build_prune_env if run.trigger == PRUNE else build_env)(session, run)
             spec = BackupJobSpec(name=f"pbk-{run.id}", run_id=run.id, app_id=0, kind="db", env=env,
                                  scratch_mib=EXPORT_SCRATCH_MIB if run.trigger == EXPORT else 0)
         except ValueError as exc:
@@ -335,6 +351,15 @@ def _export_brief(e: Optional[models.PlatformBackupRun], now: Optional[datetime]
 
 def _failure(e: Optional[models.PlatformBackupRun]) -> Optional[dict[str, Any]]:
     return None if e is None else {"id": e.id, "snapshot_id": e.snapshot_id, "error": e.error, "failed_at": _iso(e.finished_at or e.created_at)}
+
+
+def build_prune_env(session: Session, run: models.PlatformBackupRun) -> dict[str, str]:
+    """MODE=prune clears stale restic locks first, then applies the same policy as a backup (MODE=backup never unlocks)."""
+    return {
+        **_repo_env(session), "MODE": "prune", "KIND": "db",
+        "KEEP_DAILY": str(config.PLATFORM_BACKUP_KEEP_DAILY), "KEEP_WEEKLY": str(config.PLATFORM_BACKUP_KEEP_WEEKLY),
+        "KEEP_MONTHLY": str(config.PLATFORM_BACKUP_KEEP_MONTHLY),
+    }
 
 
 def build_export_env(session: Session, run: models.PlatformBackupRun) -> dict[str, str]:
