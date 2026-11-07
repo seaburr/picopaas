@@ -7,9 +7,6 @@ background on each item if you want it.
 
 ## Open questions
 
-- **Package steward vs a version the brief asks for (2026-11-05).** If a brief says "use express 4.18.2", the steward still upgrades it to the latest stable, and the reviewer now leaves that alone. I took "insists" literally. The alternative is to honour a version a brief names on purpose and only report it. Say if you'd prefer that. Turning the steward off per project also keeps the requested version.
-- **To-do: try one platform backup download.** It needs your admin password, so nobody else can test it end to end. Admin > Health > Backups, the download icon on a recent run. I checked the access rules live (API keys and non-admins get 403) and the export logic in tests, but no real export has run yet.
-
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
@@ -59,9 +56,6 @@ background on each item if you want it.
   for password/CA changes but not for a flavor change, so a wrong flavor (wrong admin DB) breaks provisioning until fixed.
   Recommend verifying on flavor change too (one line). Admin-only, availability only. OK to add?
 
-### Platform DB download: who may fetch the link? (security-reviewer, 2026-11-05)
-The password gate covers starting a download, but the export then stays fetchable (new 10 minute link on each GET, no password) for up to an hour by any admin session, so a stolen admin session right after your own download could take the file. Recommendation: make the file available for 15 minutes only and tie it to the admin who started it (needs one small column). Fine to ship without it first. See PENTEST K108. Your answer:
-
 ## To-dos (only you can do these)
 
 - [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** (1) ~~managed MySQL `max_allowed_packet`~~ DONE 2026-11-03 (qa-tester, live via a throwaway Adminer app, deleted): `@@global.max_allowed_packet` = 67108864 (64 MiB, well above the 16 MiB needed), MySQL 8.4.11, node `picopaas-mysql-nyc3-2`, host = the `primary` db-server (`private-picopaas-mysql-nyc3-do-user-1298308-0...`); (2) ~~kaisen-imgproc running~~ and (3) ~~node room~~ confirmed by the successful rollout of kaisen-imgproc in deploy 41716416534 (still worth a glance at `kubectl top pod` for peak memory with an ~8 MP image). Remaining for you: turn it on in Admin, Projects, Kaisen uploads.
@@ -78,6 +72,12 @@ The password gate covers starting a download, but the export then stays fetchabl
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- **To-do: try one platform backup download (2026-11-06).** Chas tried it twice. The first failed ("the snapshot is not a MySQL dump": the export Job had no writable scratch disk), and after the fix in 2e4c7a0 the download worked and Chas checked that the contents looked good.
+
+- **Version the brief asks for vs the package steward (2026-11-05).** Chas 2026-11-06: a version the request names wins, and it is flagged. Built: the platform (not the model) leaves such a package out of the fix round and lists it as "Kept as your request names" with the latest stable version.
+
+- **Platform DB download: who may fetch the link? (K108, 2026-11-05).** Chas 2026-11-06: yes. Built: available for 15 minutes (`PLATFORM_EXPORT_READY_SECONDS`), only to the admin who started it; the stored object is still swept with the other exports within about an hour. PENTEST K108 FIXED.
 
 - **Keep the sensitive-path rules current from OWASP CRS? (2026-11-05)** Chas: yes, built. Landing page and devlog: yes.
 
