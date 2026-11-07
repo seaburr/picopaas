@@ -6,10 +6,9 @@ import AppNotFound from '../components/AppNotFound.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import FreeStorageDialog from '../components/FreeStorageDialog.vue'
-import UsageBar from '../components/UsageBar.vue'
+import UsageGauge from '../components/UsageGauge.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
-import Sparkline from '../components/Sparkline.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { dismissAlert, deleteStorageObjects, getAppEvents, downloadPodEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
@@ -22,7 +21,7 @@ import { useAppsStore } from '../stores/apps'
 import { projectApps, projectLabel } from '../utils/paths'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
-import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion, type MetricsHistory } from '../types'
+import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion, type MetricsHistory, type UsageStat } from '../types'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -354,8 +353,21 @@ const metricRows = computed<MetricRow[]>(() => {
   }
   return [
     mk('CPU', 'm', m.points.map((p) => p.cpu_m), m.cpu_capacity_m ?? m.cpu_limit_m),
-    mk('Memory', 'Mi', m.points.map((p) => p.mem_mi), m.mem_capacity_mi ?? m.mem_limit_mi),
+    mk('Memory', 'MB', m.points.map((p) => p.mem_mi), m.mem_capacity_mi ?? m.mem_limit_mi),
   ]
+})
+// Add-on usages (API bytes) as gauge rows; units and limits formatted from the API numbers.
+const GB = 1024 ** 3
+const MBYTES = 1024 * 1024
+function quotaRow(label: string, u: UsageStat) {
+  const gb = u.limit_bytes >= GB
+  const div = gb ? GB : MBYTES
+  const f = (n: number) => (gb ? (n / div).toFixed(2) : (n / div).toFixed(n >= 10 * MBYTES ? 0 : 1))
+  return { label, used: f(u.size_bytes), limit: f(u.limit_bytes), unit: gb ? 'GB' : 'MB', pct: u.limit_bytes ? (u.size_bytes / u.limit_bytes) * 100 : 100, over: u.over_quota }
+}
+const quotaRows = computed(() => {
+  const q = app.value?.quota
+  return [q?.db && quotaRow('Database', q.db), q?.storage && quotaRow('Blob storage', q.storage), q?.volume && quotaRow('Volume', q.volume)].filter((r) => !!r) as ReturnType<typeof quotaRow>[]
 })
 const showUsage = computed(() => (!!metrics.value && !suspended.value) || !!(app.value?.quota?.db || app.value?.quota?.storage || app.value?.quota?.volume || app.value?.volume))
 const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_secret).length)
@@ -428,23 +440,24 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <h2 id="h-usage" class="section-title">Resource usage</h2>
               <span v-if="metrics && !suspended" class="meta">{{ podCount }} pod{{ podCount === 1 ? '' : 's' }}, last few hours</span>
             </summary>
-            <table class="tbl mt-1">
-              <colgroup><col class="w-[26%]"><col class="w-[19%]"><col class="w-[19%]"><col class="w-[11%]"><col class="max-md:hidden"></colgroup>
-              <thead><tr><th>Resource</th><th class="text-right">Used</th><th class="text-right">Limit</th><th class="text-right">%</th><th class="max-md:hidden"><span class="sr-only">Graph</span></th></tr></thead>
-              <tbody>
-                <tr v-for="m in metricRows" :key="m.name">
-                  <td>{{ m.name }}</td>
-                  <td class="mono text-right" :class="m.near ? 'text-amber-400' : ''">{{ m.used }}{{ m.unit }}</td>
-                  <td class="mono text-right">{{ m.limit }}{{ m.unit }}</td>
-                  <td class="mono text-right" :class="m.near ? 'text-amber-400' : ''">{{ m.pct }}%</td>
-                  <td class="max-md:hidden"><Sparkline :label="m.name" :unit="m.unit" :values="m.values" :limit="m.limit" /></td>
-                </tr>
-                <UsageBar v-if="app.quota?.db" label="Database" :usage="app.quota.db" />
-                <UsageBar v-if="app.quota?.storage" label="Blob storage" :usage="app.quota.storage" />
-                <UsageBar v-if="app.quota?.volume" label="Volume" :usage="app.quota.volume" />
-                <tr v-else-if="app.volume"><td>Volume</td><td colspan="4" class="mono text-zinc-400">Measuring…</td></tr>
-              </tbody>
-            </table>
+            <ul class="mt-1">
+              <UsageGauge
+                v-for="m in metricRows"
+                :key="m.name"
+                :label="m.name"
+                :used="String(m.used)"
+                :limit="String(m.limit)"
+                :unit="m.unit"
+                :pct="m.pct"
+                :values="m.values"
+                :limit-raw="m.limit"
+                :raw-unit="m.unit"
+              />
+              <UsageGauge v-for="q in quotaRows" :key="q.label" v-bind="q" />
+              <li v-if="app.volume && !app.quota?.volume" class="border-b border-pico-border py-2.5 text-sm">
+                <span class="text-zinc-200">Volume</span> <span class="mono ml-3 text-zinc-400">Measuring…</span>
+              </li>
+            </ul>
             <p v-if="metrics && !suspended && !metrics.points.length" class="meta mt-2">Collecting&hellip; the first CPU and memory points show up within a couple of minutes.</p>
             <p v-if="app.quota?.db?.over_quota" role="alert" class="alert-warn mt-3">
               Database is over its {{ dbLimitMb !== null ? dbLimitMb + ' MB ' : '' }}cap and is read-only. Delete rows or drop tables to free space; writes come back within a minute.
@@ -583,7 +596,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
         </details>
       </section>
 
-      <div class="grid gap-x-10 lg:grid-cols-2">
+      <div>
         <section v-if="events.length" class="sec sec-pad min-w-0" aria-labelledby="h-events">
           <details :class="wide ? '' : 'disc'" :open="wide" @toggle="keepOpen">
             <summary class="flex flex-wrap items-baseline gap-x-3 pt-2 [&::-webkit-details-marker]:hidden" :class="wide ? 'list-none' : ''">
@@ -602,30 +615,30 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             </table>
           </details>
         </section>
-
-        <section v-if="versions.length" class="sec sec-pad min-w-0" aria-labelledby="h-versions">
-          <details :class="wide ? '' : 'disc'" :open="wide" @toggle="keepOpen">
-            <summary class="flex flex-wrap items-baseline gap-x-3 pt-2 [&::-webkit-details-marker]:hidden" :class="wide ? 'list-none' : ''">
-              <h2 id="h-versions" class="section-title">Recent versions</h2>
-              <span class="meta mono md:hidden">{{ versions.length }}</span>
-            </summary>
-            <table class="tbl mt-1">
-              <colgroup><col class="w-[34%]"><col><col class="w-[28%]"></colgroup>
-              <thead><tr><th>Version</th><th>Deployed</th><th class="text-right"><span class="sr-only">Action</span></th></tr></thead>
-              <tbody>
-                <tr v-for="v in versions" :key="v.digest">
-                  <td class="mono">{{ shortDigest(v.digest) }}</td>
-                  <td class="mono" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</td>
-                  <td class="text-right">
-                    <span v-if="v.current" class="meta">current</span>
-                    <button v-if="!v.current" type="button" class="row-act max-md:min-h-11!" aria-label="Roll back to this version" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </details>
-        </section>
       </div>
+
+      <section v-if="versions.length" class="sec sec-pad min-w-0" aria-labelledby="h-versions">
+        <details :class="wide ? '' : 'disc'" :open="wide" @toggle="keepOpen">
+          <summary class="flex flex-wrap items-baseline gap-x-3 pt-2 [&::-webkit-details-marker]:hidden" :class="wide ? 'list-none' : ''">
+            <h2 id="h-versions" class="section-title">Recent versions</h2>
+            <span class="meta mono md:hidden">{{ versions.length }}</span>
+          </summary>
+          <table class="tbl mt-1">
+            <colgroup><col class="w-[34%]"><col><col class="w-[28%]"></colgroup>
+            <thead><tr><th>Version</th><th>Deployed</th><th class="text-right"><span class="sr-only">Action</span></th></tr></thead>
+            <tbody>
+              <tr v-for="v in versions" :key="v.digest">
+                <td class="mono">{{ shortDigest(v.digest) }}</td>
+                <td class="mono" :title="fullTime(v.created_at)">{{ relTime(v.created_at, now) }}</td>
+                <td class="text-right">
+                  <span v-if="v.current" class="meta">current</span>
+                  <button v-if="!v.current" type="button" class="row-act max-md:min-h-11!" aria-label="Roll back to this version" :disabled="suspended || rollingBack" @click="rollbackTarget = v">Roll back</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </details>
+      </section>
     </template>
 
     <ConfirmDialog

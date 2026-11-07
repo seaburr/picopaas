@@ -507,7 +507,7 @@ async function onSubmit() {
       <AppNotFound v-else-if="isEdit && !loadedApp" />
 
       <template v-else>
-      <div :class="isEdit ? 'grid items-start gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]' : ''">
+      <div>
       <div class="min-w-0">
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
       <form class="sec sec-pad space-y-4" novalidate @submit.prevent="onSubmit">
@@ -663,7 +663,7 @@ async function onSubmit() {
             <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" :errors="envErrors" />
           </div>
 
-          <details class="disc border-y border-pico-border py-2" :open="form.health_check_enabled || form.allow_sensitive_paths || !!pathError || !!timeoutError">
+          <details class="disc border-t border-pico-border pt-2" :open="form.health_check_enabled || form.allow_sensitive_paths || !!pathError || !!timeoutError">
             <summary class="text-sm font-semibold text-white">Advanced options</summary>
             <div class="mt-3 space-y-3">
               <div>
@@ -738,7 +738,7 @@ async function onSubmit() {
       </form>
       </div>
 
-      <section v-if="isEdit && loadedApp" class="min-w-0" aria-labelledby="h-other">
+      <section v-if="isEdit && loadedApp" class="mt-4 min-w-0 pb-4" aria-labelledby="h-other" data-testid="other-settings">
         <h2 id="h-other" class="section-title mb-2">Other settings <span class="text-sm font-normal text-zinc-400">(not in the YAML spec)</span></h2>
         <AppSettingsPanel :app="loadedApp" :project-suspended="projSuspended" @update:app="onPanelUpdate">
           <BackupSettings :app-id="loadedApp.id" :suspended="suspended" :has-data="!!(loadedApp.want_db || loadedApp.want_storage)" />

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useProjectTitle } from '../composables/projectTitle'
 import { useRouter } from 'vue-router'
 import { projectLabel, projectNewApp } from '../utils/paths'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import KaisenTag from '../components/KaisenTag.vue'
@@ -97,7 +98,13 @@ async function confirmDelete() {
   }
 }
 
+const pendingRestart = ref<App | null>(null)
+function askRestart(app: App) {
+  if (restarting.value === app.id) return
+  pendingRestart.value = app
+}
 async function restart(app: App) {
+  pendingRestart.value = null
   restarting.value = app.id
   try {
     await store.restart(app.id)
@@ -222,11 +229,11 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
                 <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.db)" :title="app.want_db ? undefined : 'No database'">{{ usageText(app.quota?.db, app.want_db) }}</td>
                 <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.storage)" :title="app.want_storage ? undefined : 'No bucket'">{{ usageText(app.quota?.storage, app.want_storage) }}</td>
                 <td class="min-w-0"><HostLink compact :hostname="primaryHost(app)" /></td>
-                <td class="mono whitespace-nowrap" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</td>
+                <td class="mono whitespace-nowrap pr-4" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</td>
                 <td>
                   <div class="row-acts [&>*]:ml-0! flex-nowrap gap-x-2.5 whitespace-nowrap">
                     <RouterLink :to="`/apps/${app.id}`" class="row-act" :aria-label="`View health of ${app.name}`">Health</RouterLink>
-                    <button type="button" class="row-act" :aria-label="app.status === 'suspended' ? `Restart ${app.name} (unavailable while suspended)` : `Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="restart(app)">Restart</button>
+                    <button type="button" class="row-act" :aria-label="app.status === 'suspended' ? `Restart ${app.name} (unavailable while suspended)` : `Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
                     <span v-if="app.status === 'suspended'" class="row-act" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended: contact the administrator)`">Settings</span>
                     <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
                     <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${app.name}`" @click="pendingDelete = app">Delete</button>
@@ -236,7 +243,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
               <tr v-if="noteRow(app)">
                 <td colspan="11" class="!pt-0 text-sm">
                   <p v-if="app.last_event" class="meta">{{ eventNote(app.last_event, now) }}</p>
-                  <AppStatusNote v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" compact :app="app" :restarting="restarting === app.id" @restart="restart(app)" />
+                  <AppStatusNote v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
                 </td>
               </tr>
             </template>
@@ -262,11 +269,11 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
           </p>
           <p v-if="app.last_event" class="meta mt-1">{{ eventNote(app.last_event, now) }}</p>
           <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-1">
-            <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="restart(app)" />
+            <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
           </div>
           <div class="row-acts mt-1 justify-start gap-x-5">
             <RouterLink :to="`/apps/${app.id}`" class="row-act max-md:min-h-11!" :aria-label="`View health of ${app.name}`">Health</RouterLink>
-            <button type="button" class="row-act max-md:min-h-11!" :aria-label="`Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="restart(app)">Restart</button>
+            <button type="button" class="row-act max-md:min-h-11!" :aria-label="`Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
             <span v-if="app.status === 'suspended'" class="row-act max-md:min-h-11!" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended)`">Settings</span>
             <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act max-md:min-h-11!" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
             <button type="button" class="row-act row-act-danger max-md:min-h-11!" :aria-label="`Delete ${app.name}`" @click="pendingDelete = app">Delete</button>
@@ -275,6 +282,14 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
       </ul>
     </template>
 
+    <ConfirmDialog
+      :open="!!pendingRestart"
+      title="Restart app?"
+      :message="pendingRestart ? `${pendingRestart.name} restarts now and is briefly unavailable while the pod rolls.` : ''"
+      confirm-label="Restart"
+      @confirm="pendingRestart && restart(pendingRestart)"
+      @cancel="pendingRestart = null"
+    />
     <DeleteAppDialog :app="pendingDelete" :busy="deleting" @confirm="confirmDelete" @cancel="pendingDelete = null" />
   </main>
 </template>
