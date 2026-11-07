@@ -14,7 +14,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 
 | Reader | Doc | What is in it |
 |---|---|---|
-| App owner | [User guide](docs/USER_GUIDE.md) | Accounts, the app spec, env refs, databases, buckets, volumes, backups, projects, Kaisen, troubleshooting. |
+| App owner | [User guide](docs/USER_GUIDE.md) ([Getting started](docs/USER_GUIDE.md#0-getting-started)) | Accounts, the app spec, env refs, databases, buckets, volumes, backups, projects, Kaisen, troubleshooting. |
 | App owner | [Recipes](docs/RECIPES.md) | Verified setups for real apps (specs in [`examples/`](examples/)). |
 | App owner | [CLI](docs/CLI.md), [API](docs/API.md) | The `picopaas` command and every HTTP route. |
 | Operator | [Admin guide](docs/ADMIN_GUIDE.md) | Running a platform: every setting, servers, quotas, backups, Kaisen, security. |

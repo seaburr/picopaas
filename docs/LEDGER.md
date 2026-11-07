@@ -5,6 +5,13 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-07 [scm-security] START: committing and pushing round 2b (onboarding_dismissed, getting started dialog, e2e, docs); K131 security-reviewed.
+- 2026-11-07 [frontend-dev] DONE: round 2b, uncommitted, NOT browser-checked by designer (own Playwright shots 1440 dark+light, 390 dark). Templates project line removed; usage trend sparklines and Sparkline.vue removed (gauges stay; metrics-history still feeds them); Docs prose 75ch cap removed; Kaisen '4. Iterate' row; Getting started dialog (GettingStartedDialog.vue, useOnboarding.ts, once per session, 'Don't show this again' PATCHes onboarding_dismissed; reopen via Account page 'Show getting started'). e2e onboarding.spec.ts; global-setup dismisses it for the shared admin. typecheck/lint/check:layout/build green, full e2e 42/42.
+- 2026-11-07 [frontend-dev] START: round 2b (templates line, sparklines, docs width, Kaisen Iterate row, Getting started dialog).
+- 2026-11-07 [backend-dev] DONE: users.onboarding_dismissed (uncommitted). Model, UserOut/ProfileUpdate (null rejected), PATCH /auth/me + audit detail, migration e6b1d3a8c470 (single head), 6 tests in tests/test_owner_resources.py (+ migration test). 68 passed (owner_resources + user_timezone), ruff clean. Docs impact: API.md me/PATCH done; USER_GUIDE n/a.
+- 2026-11-07 [backend-dev] START: per-user onboarding_dismissed flag (modelled on theme).
+- 2026-11-07 [tech-writer] DONE: USER_GUIDE "## 0. Getting started" (anchor #0-getting-started) + README pointer; uncommitted.
+- 2026-11-07 [tech-writer] START: USER_GUIDE section 0 Getting started + README pointer.
 - 2026-11-07 [manager] DONE: feedback round 2 live: 6818d1a..2dc4e1d rolled out (deploy 42399453472, Roll out ran; CI 42398491962, image 42398492085). QA 36/36 e2e, UX 14/15 browser-checked (#11 code-only: needs a real key), pentest K130 no findings. Devlog https://blog.picopaas.xyz/release-feedback-round-2-settings-that-fit-readable-usage-softer-dark-mode/. Open P3s: Health component names and apps table image/host truncate instead of wrap.
 - 2026-11-07 [release-blogger] DONE: devlog posted (published): release-feedback-round-2-settings-that-fit-readable-usage-softer-dark-mode (commits 6818d1a..2dc4e1d). Updated in place with 7 screenshots (before/after pairs and singles).
 - 2026-11-07 [scm-security] DONE: feedback round 2 pushed: 6818d1a, d4674ae, 490acdf, 480a5b7, 2dc4e1d (docs). gitleaks clean per commit; CI 42398491962 success, image 42398492085 success, deploy 42399453472 success with Roll out ran (the earlier deploy 42398553896 skipped it, CI not yet green). Pushed without a local full pytest (frontend/docs only; qa 36/36 + gate green).
@@ -1561,3 +1568,5 @@ DONE [security-reviewer] frontend redesign review: no blockers; 2 LOW (sidebar c
 - 2026-11-07 [ui-ux-designer] START: Kaisen-under-projects UX rethink (design only): docs/design/kaisen-projects-ux.md + canvas boards.
 - [frontend-dev] START feedback round 1 APP PAGES (settings width, templates, advanced, health stats, danger, apps cols)
 - [frontend-dev] DONE feedback round 1 APP PAGES: AppFormView 2-col grid (>=1100px) full width, Advanced options disclosure (health check + sensitive paths), Templates port removed and image truncated, Lifetime statistics moved to bottom of HealthView (e2e updated), .sec-danger on app Danger zone, Apps list host col widened. typecheck+eslint green; browser-checked via preview (not built).
+2026-11-07T21:43:15Z START security-reviewer round 2b onboarding review
+2026-11-07T21:43:15Z DONE security-reviewer round 2b: K131 no findings

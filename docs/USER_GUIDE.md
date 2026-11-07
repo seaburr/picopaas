@@ -6,6 +6,40 @@ database and an S3-compatible blob storage bucket. PicoPaaS serves your app over
 
 Platform URL: `https://platform.picopaas.xyz` (the CLI default).
 
+## 0. Getting started
+
+PicoPaaS runs one Docker image per app, with env vars and secrets and an optional database and blob storage bucket, for throwaway
+projects. You push an image, the platform runs it behind HTTPS on a generated hostname, and you watch it from the web UI, the API or the CLI.
+
+**How it is organised.** A project holds apps and Kaisen builds and is shared with its members (section 15). Every account has a personal project.
+The left tree reads Projects > your project > Apps / Kaisen. Below it are Templates, Docs and, at the bottom, Account. Platform admins also see Administration.
+Per-app limits (memory 384 MB, CPU 200m by default, 512 MB images, 8 KiB per env var value) are listed in section 2 and section 10.
+
+**Deploy from a template.**
+
+1. Open **Templates** in the left tree and click **Use this template** on a row.
+2. Choose the project and continue (skipped if you only have one).
+3. Review the prefilled form (image, port, add-ons, env vars; secrets are listed with empty values you must set) and click **Create app**.
+
+**Deploy a public image.**
+
+1. In the tree, open your project > **Apps** and choose **New app**.
+2. Enter a **Name** (display only), an **Image** such as `nginxinc/nginx-unprivileged:alpine`, and the **Container port**, here `8080`.
+3. Optionally tick **Add-ons** (database, bucket), add **Environment variables**, then click **Create app**.
+
+**What happens next.** The app goes Queued, then Deploying, then Running, usually within a minute or two (section 12). Its URL is
+shown on the app page. Click the app for its health page: status, usage gauges, logs and recent versions. **Settings** holds the
+spec form, env vars, add-ons, custom domain, backups and the danger zone (delete).
+
+**Next steps.**
+
+- Env vars, secrets and `${{ ... }}` references: section 5.
+- Databases and blob storage: sections 5a, 6 and 7.
+- Deploy from YAML, the API or the CLI: sections 3 and 4, plus `API.md` and `CLI.md`.
+- Describe an app in words and let Claude build it: Kaisen, section 16.
+
+The Getting started dialog shown after sign-in can be reopened from the Account page (**Show getting started**); tick "Don't show this again" in it to stop it appearing after sign-in.
+
 ## 1. Getting an account
 
 1. Open the platform URL and click **Request access**. Enter an email and a password (8 to 256 characters), then
