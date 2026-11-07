@@ -9,7 +9,7 @@ test('theme: dark by default, light applies immediately and persists across relo
   await test.step('logged-out pages are dark by default', async () => {
     await page.goto('/login')
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    expect(await bg(page)).toBe('rgb(13, 13, 20)')
+    expect(await bg(page)).toBe('rgb(18, 20, 23)')
   })
 
   await page.getByLabel('Email').fill(ADMIN.email)
@@ -24,7 +24,7 @@ test('theme: dark by default, light applies immediately and persists across relo
   await test.step('choosing Light applies at once', async () => {
     await group.getByRole('radio', { name: 'Light' }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-    expect(await bg(page)).toBe('rgb(231, 224, 208)')
+    expect(await bg(page)).toBe('rgb(241, 238, 230)')
   })
 
   await test.step('it survives a reload (cache), before Vue boots', async () => {
@@ -46,6 +46,6 @@ test('theme: dark by default, light applies immediately and persists across relo
     await page.evaluate(() => localStorage.removeItem('picopaas-theme'))
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    expect(await bg(page)).toBe('rgb(13, 13, 20)')
+    expect(await bg(page)).toBe('rgb(18, 20, 23)')
   })
 })
