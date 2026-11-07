@@ -71,10 +71,10 @@ You can deploy four ways. All of them save the same app record; the platform the
 
 Each app has two pages. **App health** (`/apps/:id`) shows status, resource usage, quotas, logs, recent events and
 versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, and under **Advanced options** the health check and **Serve sensitive paths**) plus **Custom domain**,
-the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button at the top of each page links to
+the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. Below the form, a full-width **Other settings** section holds everything that is not in the YAML spec: custom domain, short address, moving the app to another project, backups and the danger zone. A button at the top of each page links to
 the other (**Settings** on the health page, **App health** on Settings). Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
 
-The **Apps** list is a table with these columns: Name, Status, Image, Port, **Memory limit**, **CPU limit** (the limits the app runs with, not its current use), Database and Bucket (use against the cap), Host and Created. Each row ends with the text actions **Health**, **Restart**, **Settings** and **Delete**.
+The **Apps** list is a table with these columns: Name, Status, Image, Port, **Memory limit**, **CPU limit** (the limits the app runs with, not its current use), Database and Bucket (use against the cap), Host and Created. Each row ends with the text actions **Health**, **Restart**, **Settings** and **Delete**. **Restart** asks you to confirm first (it briefly interrupts the app), and so does the restart button in an app's status note.
 
 ### 3b. YAML in the UI
 
@@ -646,8 +646,7 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 
 ### Resource usage
 
-The **App health** page has a **Resource usage** panel with CPU and memory sparklines: one point a minute, about the last 3 hours,
-drawn against your limits and turning amber near them. The same data is at `GET /apps/{id}/metrics-history`. Use it
+The **App health** page has a **Resource usage** panel of gauges. Each row shows a label, the value against its limit and a bar that is green normally, amber from 75% and red from 90% of the limit. CPU and memory (and the database, bucket and volume where the app has them) get a row each, and CPU and memory also show a trend: one point a minute, about the last 3 hours. The same data is at `GET /apps/{id}/metrics-history`. Use it
 to tell a CPU-bound app (the 200m limit throttles rather than kills) from one nearing the 384 MB memory limit.
 
 ## 13. Troubleshooting
@@ -686,7 +685,7 @@ The **Templates** page (`/templates`, or **Deploy from a template** on the New a
 
 Each template has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. A template warns when the instance has volumes, databases or blob storage turned off.
 
-**Use this template** opens the new-app form prefilled (`/projects/<project>/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
+**Use this template** first asks which project the app goes in, inline under the row (skipped when you have one project), then opens the new-app form prefilled (`/projects/<project>/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
 
 ## 15. Projects (teams)
 
@@ -747,6 +746,8 @@ A built app is a normal app in the build's project. It appears in the apps list 
 `static` apps have no server code, so they can't use a database, bucket or volume. Once added, a database (and its engine), bucket or volume can't be removed. You rarely write this file yourself; Kaisen does.
 
 ### Before you start
+
+Until the project has an Anthropic key, the empty Kaisen page says "Kaisen needs an Anthropic API key added to this project before it can build." (members see a note to ask an owner) and offers **Open Kaisen settings**. The page also shows a short how-it-works table and your recent spend. **Test Anthropic** in settings shows its single result inline next to the button.
 
 Kaisen uses your project's own Anthropic API key, so model cost is billed to you (or your team), not to PicoPaaS. Open your project's **Kaisen > Settings** in the left tree (`/projects/<project>/kaisen/settings`). The page says which project the settings apply to and whether you are an owner or a member. Settings belong to the project, so a team project has its own key, model and caps. In a team project, owners edit settings; members can build and spend the project's key. A project with no Anthropic key shows a setup step instead of a working **New build** button; members are told to ask an owner to add the key. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
 

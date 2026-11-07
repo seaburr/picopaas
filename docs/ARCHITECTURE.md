@@ -85,7 +85,10 @@ CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $75
   (Projects > project > app, Kaisen, Templates, Docs, Administration; it is a top bar with a Menu button under 760px)
   and the tree selects the project, so there is no project picker; every action is a text button or link, no icons;
   content is flat sections and tables, not cards; row actions are short text links (Health, Settings, Delete);
-  dark and light themes via CSS variables; page width comes from `page-main`, never a per-page `max-w-*`.
+  dark and light themes via CSS variables (dark text `--fg` #d4d4d8, muted `--mut` #a0a5ac, kept soft for contrast without glare);
+  one primary button per page, secondary buttons outlined, row actions plain text, danger styling only inside danger zones;
+  usage is shown as gauges (label, value/limit, bar ok, warn from 75%, err from 90%) with a trend for CPU and memory;
+  the docs page is wide with prose capped near 75ch; page width comes from `page-main`, never a per-page `max-w-*`.
   Kaisen's build page is a chat with a right rail and a pinned composer (Enter adds a line, Ctrl/Cmd+Enter sends).
   The user-facing description is in `USER_GUIDE.md`.
 - Tests use pytest with the real login flow and no auth mocks. K8s, MySQL-admin, and Spaces clients sit

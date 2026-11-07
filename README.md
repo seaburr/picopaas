@@ -36,7 +36,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - One-click templates (Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden, Wiki.js, Vikunja, Umami, ntfy, IT-Tools, Excalidraw, a Gatus status page, an nginx static site) that prefill the new-app form.
 - Instant rollback: the last few image versions are kept, and one click redeploys an older one.
 - Auto-rollback: a new image that fails to start is reverted to the last working version.
-- Per-app CPU and memory history (sparklines, about 3 hours) on the app page.
+- Per-app CPU and memory history (usage gauges and a trend, about 3 hours) on the app page.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
   auto-redeployed when they move.
 - Backups: nightly, automatic, for the database, bucket and volume. Back up now, download a whole backup as one package, delete backups, per-app on/off, the newest 14 kept (failed ones cleaned first), a per-app storage cap, and a final backup kept 14 days after an app is deleted.
