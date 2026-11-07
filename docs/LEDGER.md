@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-07 [manager] DONE: feedback round 2 live: 6818d1a..2dc4e1d rolled out (deploy 42399453472, Roll out ran; CI 42398491962, image 42398492085). QA 36/36 e2e, UX 14/15 browser-checked (#11 code-only: needs a real key), pentest K130 no findings. Devlog https://blog.picopaas.xyz/release-feedback-round-2-settings-that-fit-readable-usage-softer-dark-mode/. Open P3s: Health component names and apps table image/host truncate instead of wrap.
+- 2026-11-07 [release-blogger] DONE: devlog posted (published): release-feedback-round-2-settings-that-fit-readable-usage-softer-dark-mode (commits 6818d1a..2dc4e1d). Updated in place with 7 screenshots (before/after pairs and singles).
 - 2026-11-07 [scm-security] DONE: feedback round 2 pushed: 6818d1a, d4674ae, 490acdf, 480a5b7, 2dc4e1d (docs). gitleaks clean per commit; CI 42398491962 success, image 42398492085 success, deploy 42399453472 success with Roll out ran (the earlier deploy 42398553896 skipped it, CI not yet green). Pushed without a local full pytest (frontend/docs only; qa 36/36 + gate green).
 - 2026-11-07 [scm-security] START: committing and pushing feedback round 2 (6818d1a, d4674ae, 490acdf, 480a5b7 + docs); K130 security-reviewed, pushed after qa 36/36.
 - 2026-11-07 [ui-ux-designer] DONE: round 2 final review, browser-checked 1440/390 dark+light (Playwright, own server on 8791, killed). Fixes: AppFormView other-settings spacing, HealthView pods nowrap, AppsListView created padding, AdminView checklist label width. 14/15 findings pass, #11 verified by code only (no key to type). Shots in scratchpad round2/ux.
