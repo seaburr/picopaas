@@ -127,7 +127,7 @@ test('an owner of a project with no key is sent to its settings', async ({ page 
   const { personal } = await projects(page)
   await patchJson(page, '**/projects/*/kaisen', (j) => { j.can_edit = true; j.anthropic_key = { set: false } })
   await page.goto(`/projects/${personal}/kaisen`)
-  await expect(page.getByText('Kaisen needs an Anthropic API key in Personal before it can build.')).toBeVisible()
+  await expect(page.getByText('Kaisen needs an Anthropic API key added to this project before it can build.')).toBeVisible()
   await page.getByRole('link', { name: 'Open Kaisen settings' }).click()
   await expect(page).toHaveURL(new RegExp(`/projects/${personal}/kaisen/settings$`))
 })
@@ -145,9 +145,7 @@ test('switching projects in the tree changes the URL, for Apps and for Kaisen', 
     await expect(page).toHaveURL(new RegExp(`/projects/${made!.id}/kaisen$`))
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Kaisen builds in ${made!.name}`)
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(made!.name)
-    // "Other projects" is a row of links to the same page of the others
-    await page.locator('#main').getByRole('link', { name: 'Personal', exact: true }).click()
-    await expect(page).toHaveURL(new RegExp(`/projects/${personal}/kaisen$`))
+    await expect(page.locator('#main').getByText('Other projects')).toHaveCount(0)
   } finally {
     await page.request.delete(`/projects/${made!.id}`)
   }
