@@ -46,8 +46,8 @@ test('shell tree: toggle, navigate, persist, reveal, aria-current, keyboard, ski
   await test.step('aria-current marks exactly the current page', async () => {
     // In the lists only (the wordmark is a plain router link to /apps and is legitimately current there too).
     const current = tree(page).locator('ul.tree [aria-current="page"]')
-    await expect(current).toHaveCount(1) // every project links to /apps, only the current project claims it
-    await expect(current).toHaveText(/^Personal/)
+    await expect(current).toHaveCount(1) // the project row is only highlighted, the Apps row of that project is the page
+    await expect(current).toHaveText(/^Apps/)
     await page.goto('/templates')
     await expect(current).toHaveText('Templates')
     await page.goto('/admin/health')
@@ -107,7 +107,7 @@ test.describe('phone shell at 390px', () => {
     await login(page)
     await page.route('**/admin/health/logs/pods', (r) => r.fulfill({ json: { namespaces: [], pods: [] } }))
     const paths = [
-      '/apps', '/projects', '/account', '/guide',
+      '/apps', '/kaisen', '/kaisen/settings', '/projects', '/account', '/guide',
       '/admin?tab=users', '/admin?tab=apps', '/admin?tab=projects', '/admin?tab=suspensions',
       '/admin?tab=servers', '/admin?tab=settings', '/admin?tab=audit', '/admin/health',
     ]
@@ -121,7 +121,7 @@ test.describe('phone shell at 390px', () => {
   })
 })
 
-test('project switching from the tree changes the Apps page project', async ({ page }) => {
+test('project switching from the tree changes the Apps page project and URL', async ({ page }) => {
   await login(page)
   const name = `E2E Shell ${Date.now()}`
   const made = await page.request.post('/projects', { data: { name } })
@@ -129,13 +129,15 @@ test('project switching from the tree changes the Apps page project', async ({ p
   const { id } = (await made.json()) as { id: number }
   try {
     await page.goto('/apps')
-    const meta = page.locator('main p.meta').first()
-    await expect(meta).toHaveText('Personal')
+    const title = page.getByRole('heading', { level: 1 })
+    await expect(title).toHaveText(/^Apps in Personal/)
     await tree(page).getByRole('link', { name: new RegExp(`^${name}`) }).click()
-    await expect(page).toHaveURL(/\/apps$/)
-    await expect(meta).toHaveText(name)
+    await expect(page).toHaveURL(new RegExp(`/projects/${id}/apps$`))
+    await expect(title).toHaveText(`Apps in ${name}`)
+    await expect(page).toHaveTitle(`Apps in ${name} · PicoPaaS`)
     await tree(page).getByRole('link', { name: /^Personal/ }).click()
-    await expect(meta).toHaveText('Personal')
+    await expect(page).toHaveURL(/\/projects\/\d+\/apps$/)
+    await expect(title).toHaveText(/^Apps in Personal/)
   } finally {
     await page.request.delete(`/projects/${id}`)
   }
@@ -168,7 +170,8 @@ test('a 401 sign-out clears the sidebar cache (no previous projects shown to the
     await page.getByLabel('Email').fill((await import('./creds')).ADMIN.email)
     await page.getByLabel('Password', { exact: true }).fill((await import('./creds')).ADMIN.password)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await expect(tree(page).getByText('Loading…').first()).toBeVisible()
+    // The old URL redirect waits for /projects, so the shell is not drawn yet; either way the old list must not show.
+    await page.waitForTimeout(500)
     await expect(mine).toHaveCount(0)
     release()
     await expect(mine).toBeVisible()

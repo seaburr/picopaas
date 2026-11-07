@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useProjectTitle } from '../composables/projectTitle'
 import { useRouter } from 'vue-router'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
@@ -12,8 +13,10 @@ import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
+import { projectKaisen, projectLabel } from '../utils/paths'
 import type { KaisenUploadsAvailability } from '../types'
 
+const props = defineProps<{ pid: string }>()
 const router = useRouter()
 const projects = useProjectsStore()
 const store = useKaisenStore()
@@ -42,7 +45,9 @@ function undoStarter() {
   brief.value = undo.value.brief
   undo.value = null
 }
-const projectId = ref<number | null>(null)
+const projectId = computed(() => Number(props.pid))
+const projName = computed(() => projectLabel(curProject.value))
+useProjectTitle('New build', projName)
 const { project: curProject, suspended: projSuspended } = useProjectSuspension(projectId)
 const busy = ref(false)
 const error = ref('')
@@ -72,9 +77,9 @@ const totalCount = computed(() => chipList.value.filter((c) => c.file || c.statu
 
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
-  projectId.value = projects.current?.id ?? null
   await checkKey()
 })
+watch(() => props.pid, () => void checkKey())
 async function checkKey() {
   if (!projectId.value) return
   try {
@@ -189,17 +194,17 @@ async function startWithout() {
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb">
-        <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
+        <RouterLink :to="`/projects/${pid}`" class="link">{{ projName || 'Project' }}</RouterLink><span aria-hidden="true"> / </span>
+        <RouterLink :to="projectKaisen(projectId)" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>New build
       </nav>
       <div class="mb-3">
-        <div class="flex flex-wrap items-center gap-2"><h1 class="page-title">New build</h1><PreviewBadge /></div>
-        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in the current project, and asks if it needs to know something.</p>
+        <div class="flex flex-wrap items-center gap-2"><h1 class="page-title">New build<template v-if="projName"> in {{ projName }}</template></h1><PreviewBadge /></div>
+        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in {{ projName || 'this project' }}, and asks if it needs to know something.</p>
       </div>
 
       <p v-if="noKey" class="alert-warn mb-3" role="status">
-        Kaisen needs an Anthropic API key for this project before it can build.
-        <RouterLink v-if="canEditKey" to="/kaisen/settings" class="link">Add it in Kaisen settings</RouterLink>
-        <template v-else>Ask a project owner to add one.</template>
+        <template v-if="canEditKey">Kaisen needs an Anthropic API key in {{ projName }} before it can build. <RouterLink :to="projectKaisen(projectId, '/settings')" class="link">Open Kaisen settings</RouterLink></template>
+        <template v-else>Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</template>
       </p>
 
       <form class="sec space-y-4 pt-3 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
@@ -223,13 +228,13 @@ async function startWithout() {
             <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
           </div>
         </div>
-        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projects.current ? (projects.current.is_personal ? 'Personal' : projects.current.name) : 'Personal' }}</strong>. Kaisen deploys into it and spends from its Anthropic key. Change the project in the sidebar.</p>
+        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projName }}</strong>. Kaisen deploys into it and spends from its Anthropic key.</p>
 
         <details class="disc help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
           <summary>Output (optional)</summary>
           <div class="mt-2">
             <p class="help mb-2">You can always download the code. Pick a GitHub repository for this app if you want it pushed too. You can change this later on the build.</p>
-            <BuildOutputFields v-model="outForm" id-prefix="kb-out" :project-token-set="!!store.settings?.github_token.set" :errors="outErr" />
+            <BuildOutputFields v-model="outForm" id-prefix="kb-out" :project-token-set="!!store.settings?.github_token.set" :project-id="projectId" :errors="outErr" />
           </div>
         </details>
 
@@ -249,7 +254,7 @@ async function startWithout() {
         <div v-if="error" role="alert" class="alert-error whitespace-pre-wrap">{{ error }}</div>
         <div class="flex flex-col gap-2 sm:flex-row">
           <button type="submit" class="btn-primary" :disabled="busy || noKey || overLimit || projSuspended || stage === 'partial' || (composer?.uploading ?? 0) > 0" :title="projSuspended ? SUSPENDED_TITLE : undefined">{{ busy ? 'Starting…' : 'Start building' }}</button>
-          <RouterLink to="/kaisen" class="btn-secondary">Cancel</RouterLink>
+          <RouterLink :to="projectKaisen(projectId)" class="btn-secondary">Cancel</RouterLink>
         </div>
       </form>
     </main>

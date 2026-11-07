@@ -6,6 +6,7 @@ import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister 
 import { ApiError } from '../api/client'
 import type { User } from '../types'
 import { useAppsStore } from './apps'
+import { useKaisenStore } from './kaisen'
 import { useProjectsStore } from './projects'
 import { useSidebarStore } from './sidebar'
 
@@ -27,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
       useSidebarStore().reset()
       useAppsStore().reset()
       useProjectsStore().reset()
+      useKaisenStore().clear()
     },
     { flush: 'sync' },
   )

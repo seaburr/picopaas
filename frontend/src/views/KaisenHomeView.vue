@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useProjectTitle } from '../composables/projectTitle'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
@@ -11,11 +12,13 @@ import { fmtUsd, isActive } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
+import { projectKaisen, projectLabel } from '../utils/paths'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import type { KaisenBuild } from '../types'
 
+const props = defineProps<{ pid: string }>()
 const store = useKaisenStore()
 const projects = useProjectsStore()
 const auth = useAuthStore()
@@ -24,13 +27,17 @@ const now = useNow()
 const loading = ref(true)
 const error = ref('')
 
-const limit = computed(() => projects.current?.app_limit_effective ?? auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
+const pidNum = computed(() => Number(props.pid))
+const limit = computed(() => curProject.value?.app_limit_effective ?? auth.user?.app_limit_effective ?? auth.user?.app_limit ?? 0)
 const atLimit = computed(() => limit.value > 0 && store.builds.filter((b) => b.app_id).length >= limit.value)
 const noKey = computed(() => !!store.settings && !store.settings.anthropic_key.set)
 const canEdit = computed(() => !!store.settings?.can_edit)
-const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => projects.current?.id)
+const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => pidNum.value)
+const projName = computed(() => projectLabel(curProject.value))
+useProjectTitle('Kaisen builds', projName)
+const others = computed(() => projects.projects.filter((p) => p.id !== pidNum.value))
 const blocked = computed(() => projSuspended.value || noKey.value || atLimit.value)
-const blockedWhy = computed(() => (projSuspended.value ? 'Project is suspended' : noKey.value ? 'Add an Anthropic key in Kaisen settings first' : 'App limit reached. Ask an administrator to raise it.'))
+const blockedWhy = computed(() => (projSuspended.value ? 'Project is suspended' : noKey.value ? (canEdit.value ? 'Add an Anthropic key in Kaisen settings first' : 'Ask an owner to add an Anthropic API key') : 'App limit reached. Ask an administrator to raise it.'))
 
 let timer: ReturnType<typeof setInterval> | null = null
 function syncPolling() {
@@ -38,7 +45,7 @@ function syncPolling() {
   if (busy && !timer) {
     timer = setInterval(async () => {
       try {
-        await store.refreshBuilds()
+        await store.refreshBuilds(pidNum.value)
       } catch {
         // keep last known state
       }
@@ -55,19 +62,24 @@ onUnmounted(() => {
 })
 
 async function load() {
-  loading.value = true
+  const forPid = pidNum.value
+  // Same project as last time: show its builds at once and refresh quietly. Another project: start empty.
+  const cached = store.pid === forPid
+  if (!cached) store.clear()
+  loading.value = !cached
   error.value = ''
   try {
     if (!projects.loaded) await projects.load()
-    await store.load()
+    await store.load(forPid)
   } catch (e) {
+    if (forPid !== pidNum.value) return
     error.value = e instanceof ApiError ? e.message : "Couldn't load your builds."
   } finally {
-    loading.value = false
+    if (forPid === pidNum.value) loading.value = false
   }
 }
 onMounted(load)
-watch(() => projects.currentId, (n, o) => { if (o !== n && projects.loaded) load() })
+watch(() => props.pid, () => { if (projects.loaded) load() })
 
 const pendingDelete = ref<KaisenBuild | null>(null)
 const alsoApp = ref(false)
@@ -96,21 +108,28 @@ function askDelete(b: KaisenBuild) {
   <div>
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
+      <nav class="meta mb-2" aria-label="Breadcrumb">
+        <RouterLink :to="`/projects/${pid}`" class="link">{{ projName || 'Project' }}</RouterLink><span aria-hidden="true"> / </span>Kaisen
+      </nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 class="page-title">Kaisen</h1>
+          <h1 class="page-title">Kaisen builds<template v-if="projName"> in {{ projName }}</template></h1>
           <PreviewBadge />
           <span v-if="!loading && store.builds.length" class="meta"><span class="mono">{{ store.builds.length }}</span> {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>
         </div>
         <div class="flex items-center gap-2">
           <span v-if="atLimit && store.builds.length" class="meta mr-2">App limit reached. Ask an administrator to raise it.</span>
-          <IconButton label="Kaisen settings" text="Settings" to="/kaisen/settings" />
+          <IconButton label="Kaisen settings" text="Settings" :to="projectKaisen(pidNum, '/settings')" />
           <template v-if="store.builds.length > 0">
             <IconButton v-if="blocked" :label="`New build (${blockedWhy})`" text="New build" disabled />
-            <IconButton v-else label="New build" text="New build" to="/kaisen/new" />
+            <IconButton v-else label="New build" text="New build" :to="projectKaisen(pidNum, '/new')" />
           </template>
         </div>
       </div>
+
+      <p v-if="others.length" class="meta mb-3">Other projects:
+        <template v-for="(o, i) in others" :key="o.id"><span v-if="i" aria-hidden="true"> · </span> <RouterLink :to="projectKaisen(o.id)" class="link max-md:inline-block max-md:min-h-11 max-md:py-2.5">{{ projectLabel(o) }}</RouterLink></template>
+      </p>
 
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
@@ -126,16 +145,19 @@ function askDelete(b: KaisenBuild) {
 
       <div v-else-if="!error && store.builds.length === 0" class="sec max-w-2xl pt-3">
         <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
-        <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in this project. You can download the code or push it to GitHub.</p>
+        <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in {{ projName }}. You can download the code or push it to GitHub.</p>
         <p v-if="projSuspended" class="meta mt-3">{{ SUSPENDED_TITLE }}. New builds are paused.</p>
-        <p v-else-if="noKey" class="alert-warn mt-3">
-          Kaisen needs an Anthropic API key for this project before it can build.
-          <RouterLink v-if="canEdit" to="/kaisen/settings" class="link">Add it in Kaisen settings</RouterLink>
-          <template v-else>Ask a project owner to add one.</template>
-        </p>
+        <div v-else-if="noKey" class="mt-3">
+          <p v-if="canEdit" class="alert-warn">Kaisen needs an Anthropic API key in {{ projName }} before it can build.</p>
+          <p v-else class="alert-warn">Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</p>
+          <div class="mt-3">
+            <RouterLink v-if="canEdit" :to="projectKaisen(pidNum, '/settings')" class="btn-primary">Open Kaisen settings</RouterLink>
+            <IconButton v-else label="New build (Ask an owner to add an Anthropic API key)" text="New build" disabled />
+          </div>
+        </div>
         <div v-else class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
-          <RouterLink v-else to="/kaisen/new" class="btn-primary">New build</RouterLink>
+          <RouterLink v-else :to="projectKaisen(pidNum, '/new')" class="btn-primary">New build</RouterLink>
           <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
         </div>
       </div>
@@ -204,7 +226,7 @@ function askDelete(b: KaisenBuild) {
       </div>
 
       <p v-if="!loading && !error && store.spend" class="help mt-3">
-        Kaisen is in preview. Builds spend from this project's Anthropic key. Last 30 days: <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
+        Kaisen is in preview. Builds spend from {{ projName }}'s Anthropic key. Last 30 days: <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
       </p>
     </main>
 

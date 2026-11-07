@@ -38,6 +38,11 @@ async function stub(page: Page, get: () => Json, post?: (path: string, body: unk
     calls.push({ method: req.method(), path, body })
     if (req.method() === 'GET' && path === '') return route.fulfill({ json: { ...get(), uploads: summaryOk } })
     if (req.method() === 'GET' && path === '/uploads') return route.fulfill({ json: uploadsOk })
+    if (req.method() === 'GET' && path.startsWith('/files/')) {
+      const name = decodeURIComponent(path.slice('/files/'.length))
+      const content = Array.from({ length: 60 }, (_, i) => `// ${name} line ${i + 1}`).join('\n')
+      return route.fulfill({ json: { path: name, size: content.length, content, binary: false, truncated: false } })
+    }
     if (req.method() === 'GET') return route.fulfill({ json: [] })
     const out = post?.(path, body)
     return route.fulfill({ json: { ...(out ?? get()), uploads: summaryOk } })
@@ -50,6 +55,18 @@ async function stub(page: Page, get: () => Json, post?: (path: string, body: unk
 const composer = (page: Page) => page.getByLabel(/Tell Kaisen what to change|Your answer to Kaisen/)
 const scroller = (page: Page) => page.getByRole('region', { name: 'Conversation messages' })
 const scrollInfo = (page: Page) => scroller(page).evaluate((el) => ({ top: el.scrollTop, gap: el.scrollHeight - el.scrollTop - el.clientHeight, max: el.scrollHeight - el.clientHeight }))
+
+test('the build page names its project and the tree marks it', async ({ page }) => {
+  await login(page)
+  await stub(page, () => build([run(1)]))
+  await page.goto(`/kaisen/${ID}`)
+  const crumb = page.getByRole('navigation', { name: 'Breadcrumb' })
+  await expect(crumb).toContainText('Personal')
+  await expect(crumb.getByRole('link', { name: 'Kaisen' })).toHaveAttribute('href', '/projects/1/kaisen')
+  const main = page.getByRole('navigation', { name: 'Main' })
+  await expect(main.getByRole('link', { name: 'Personal' })).toHaveClass(/cur/)
+  await expect(main.getByRole('link', { name: 'Kaisen', exact: false }).filter({ hasText: 'Preview' })).toBeVisible()
+})
 
 test.describe('composer', () => {
   test('no open question: Enter is a newline, Ctrl and Cmd+Enter and the button send feedback', async ({ page }) => {
@@ -215,5 +232,46 @@ test.describe('chat scroll', () => {
     await page.waitForTimeout(500)
     const after = await scrollInfo(page)
     expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(2)
+  })
+})
+
+test.describe('project file reader', () => {
+  test('opens from the rail, folds a folder, shows numbered lines for a file, Escape closes; uploads stay separate', async ({ page }) => {
+    await login(page)
+    const files = [{ path: 'app.py', size: 300 }, { path: 'static/index.html', size: 200 }, { path: 'static/css/site.css', size: 100 }]
+    await stub(page, () => build([run(1)], [], { files }))
+    await page.goto(`/kaisen/${ID}`)
+
+    // the composer counts uploads, the rail counts project files: the labels differ
+    await expect(page.getByRole('button', { name: /^Uploads/ })).toContainText('0 of 20')
+    await expect(page.getByRole('heading', { name: /^Project files/ })).toContainText('3')
+
+    await page.getByRole('heading', { name: /^Project files/ }).click()
+    await page.getByRole('button', { name: 'Read project files' }).click()
+    const reader = page.getByRole('dialog', { name: 'Project files' })
+    await expect(reader).toBeVisible()
+    const tree = reader.getByRole('tree', { name: 'Files' })
+    await expect(tree.getByRole('treeitem', { name: /site\.css/ })).toBeVisible()
+
+    // collapse the static folder
+    await tree.getByRole('treeitem', { name: /^static\/$/ }).click()
+    await expect(tree.getByRole('treeitem', { name: /site\.css/ })).toHaveCount(0)
+    await expect(tree.getByRole('treeitem', { name: /^static\/$/ })).toHaveAttribute('aria-expanded', 'false')
+
+    // open a file: the pane shows its path and numbered lines
+    await tree.getByRole('treeitem', { name: /app\.py/ }).click()
+    await expect(reader.getByTestId('reader-path')).toHaveText('app.py')
+    const pane = reader.getByTestId('reader-pane')
+    await expect(pane).toContainText('// app.py line 1')
+    await expect(pane).toContainText('// app.py line 60')
+    await expect(pane.getByText('60', { exact: true })).toBeVisible()
+    const box = await pane.boundingBox()
+    expect(box!.width).toBeGreaterThan(600)
+
+    // keyboard: k moves up in the tree, Escape closes
+    await tree.focus()
+    await page.keyboard.press('k')
+    await page.keyboard.press('Escape')
+    await expect(reader).toBeHidden()
   })
 })

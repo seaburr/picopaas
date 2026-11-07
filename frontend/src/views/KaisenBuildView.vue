@@ -22,6 +22,8 @@ import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
+import { useProjectsStore } from '../stores/projects'
+import { projectKaisen, projectLabel } from '../utils/paths'
 import { useToastStore } from '../stores/toast'
 import type { App, KaisenBuildDetail, KaisenPushJob, KaisenSettings } from '../types'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
@@ -94,6 +96,7 @@ const deleting = ref(false)
 
 const buildId = computed(() => Number(props.id))
 const active = computed(() => !!build.value && isActive(build.value.status))
+const projects = useProjectsStore()
 const { project: buildProject, suspended: projSuspended } = useProjectSuspension(() => build.value?.project_id)
 const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kaisen !== false && !projSuspended.value)
 const you = computed(() => build.value?.created_by.id === auth.user?.id)
@@ -369,7 +372,7 @@ async function doDelete() {
   try {
     await store.remove(build.value.id, alsoApp.value)
     toast.success(`Deleted build ${build.value.name}.`)
-    router.push('/kaisen')
+    router.push(projectKaisen(build.value.project_id))
   } catch (e) {
     toast.error(`Couldn't delete: ${e instanceof ApiError ? e.message : 'unknown error'}`)
   } finally {
@@ -387,7 +390,7 @@ async function doDelete() {
       <div v-if="notFound" class="sec pt-3">
         <h1 class="page-title">Build not found</h1>
         <p class="mt-1 text-sm text-zinc-300">This build doesn't exist or was deleted.</p>
-        <RouterLink to="/kaisen" class="btn-secondary mt-4">Back to Kaisen</RouterLink>
+        <RouterLink :to="projects.current ? projectKaisen(projects.current.id) : '/kaisen'" class="btn-secondary mt-4">Back to Kaisen</RouterLink>
       </div>
 
       <div v-else-if="loadError && !build" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
@@ -404,7 +407,7 @@ async function doDelete() {
         <div ref="aboveEl">
           <SuspendedBanner :project="buildProject" kaisen />
           <nav class="meta mb-2" aria-label="Breadcrumb">
-            <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
+            <RouterLink :to="`/projects/${build.project_id}`" class="link">{{ projectLabel(buildProject) || 'Project' }}</RouterLink><span aria-hidden="true"> / </span><RouterLink :to="projectKaisen(build.project_id)" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
           </nav>
 
           <header class="mb-3 flex items-start justify-between gap-3">
@@ -417,7 +420,7 @@ async function doDelete() {
               <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
             </div>
             <div class="flex shrink-0 items-center gap-2">
-              <IconButton label="Kaisen settings" text="Settings" to="/kaisen/settings" />
+              <IconButton label="Kaisen settings" text="Settings" :to="projectKaisen(build.project_id, '/settings')" />
             </div>
           </header>
 
@@ -491,7 +494,7 @@ async function doDelete() {
                 <div class="pb-2 pt-1">
                   <p class="help mb-2">"Save output settings" only saves the choices below; it does not download anything. Use "Download code" to get the files. Pushing to GitHub is optional and uses this build's own repository.</p>
                   <form class="space-y-3" novalidate @submit.prevent="saveOutput">
-                    <BuildOutputFields v-model="outForm" id-prefix="bo" :token-state="build.output.token" :project-token-set="build.output.project_token_set" :disabled="!canRun" :errors="outErr" />
+                    <BuildOutputFields v-model="outForm" id-prefix="bo" :token-state="build.output.token" :project-token-set="build.output.project_token_set" :project-id="build.project_id" :disabled="!canRun" :errors="outErr" />
                     <div class="flex flex-wrap gap-2">
                       <button type="submit" class="btn-primary" :disabled="!canRun || !outDirty || busy === 'output'">{{ busy === 'output' ? 'Saving…' : 'Save output settings' }}</button>
                       <button v-if="outForm.output_mode === 'github'" type="button" class="btn-secondary" :disabled="!canRun || outDirty || busy === 'test' || !githubReady" @click="testOutput">{{ busy === 'test' ? 'Testing…' : 'Test' }}</button>
@@ -539,7 +542,7 @@ async function doDelete() {
                       <span class="meta">This build</span>
                       <span class="mono text-zinc-300">{{ fmtUsd(build.spend.build_usd) }} of {{ fmtUsd(build.spend.cap_build) }}</span>
                     </div>
-                    <div class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-muted" role="progressbar" aria-label="This build spend" aria-valuemin="0" :aria-valuemax="build.spend.cap_build" :aria-valuenow="Math.min(build.spend.build_usd, build.spend.cap_build)">
+                    <div class="mt-1 h-2 overflow-hidden rounded-sm bg-pico-muted" role="progressbar" aria-label="This build spend" aria-valuemin="0" :aria-valuemax="build.spend.cap_build" :aria-valuenow="Math.min(build.spend.build_usd, build.spend.cap_build)">
                       <div :class="['h-full', build.spend.build_usd >= build.spend.cap_build ? 'bg-danger' : 'bg-zinc-400']" :style="{ width: Math.min(100, (build.spend.build_usd / build.spend.cap_build) * 100) + '%' }" />
                     </div>
                   </div>
@@ -553,13 +556,13 @@ async function doDelete() {
 
               <BuildFiles :build-id="build.id" :files="build.files" />
 
-              <details class="disc sec py-1.5" aria-labelledby="h-del">
-                <summary><h2 id="h-del" class="section-title">Delete build</h2></summary>
-                <div class="pb-2 pt-1">
-                  <p class="help !mt-0 mb-2">Removes the build, its files and run history. Spend totals stay in your usage.</p>
+              <section class="sec-danger" aria-labelledby="h-del">
+                <h2 id="h-del" class="section-title">Danger zone</h2>
+                <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p class="text-sm text-zinc-300">Delete this build, its files and run history. Spend totals stay in your usage.</p>
                   <IconButton label="Delete build" text="Delete build" danger @click="alsoApp = false; confirmDelete = true" />
                 </div>
-              </details>
+              </section>
             </div>
           </details>
         </div>

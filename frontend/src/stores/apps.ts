@@ -7,10 +7,25 @@ import type { App, AppCreatePayload, AppUpdatePayload } from '../types'
 export const useAppsStore = defineStore('apps', () => {
   const apps = ref<App[]>([])
   const loaded = ref(false)
+  const pid = ref<number | null>(null) // the project `apps` belongs to, so a return visit can show it at once
 
-  async function load() {
-    apps.value = (await listApps(useProjectsStore().current?.id)) ?? []
+  // Latest request wins: a slow response for an earlier project must not overwrite a newer list.
+  let seq = 0
+  async function load(forPid?: number | null) {
+    const mine = ++seq
+    const target = forPid ?? useProjectsStore().current?.id ?? null
+    const list = (await listApps(target ?? undefined)) ?? []
+    if (mine !== seq) return
+    apps.value = list
+    pid.value = target
     loaded.value = true
+  }
+
+  // Drop the shown list (project switch) and invalidate any request still in flight.
+  function clear() {
+    seq++
+    apps.value = []
+    pid.value = null
   }
 
   async function fetchOne(id: number) {
@@ -59,9 +74,11 @@ export const useAppsStore = defineStore('apps', () => {
   }
 
   function reset() {
+    seq++
     apps.value = []
+    pid.value = null
     loaded.value = false
   }
 
-  return { apps, loaded, reset, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
+  return { apps, loaded, pid, reset, clear, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
 })

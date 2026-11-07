@@ -5,6 +5,7 @@ import IconButton from '../components/IconButton.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
 import type { Project } from '../types'
+import { projectApps, projectKaisen } from '../utils/paths'
 
 const auth = useAuthStore()
 const projects = useProjectsStore()
@@ -18,9 +19,8 @@ const members = (p: Project) => `${p.member_count} ${p.member_count === 1 ? 'mem
 const name = (p: Project) => (p.is_personal ? 'Personal' : p.name)
 const suspended = (p: Project) => p.status === 'suspended'
 
-function open(p: Project, to: '/apps' | '/kaisen') {
-  projects.select(p.id)
-  router.push(to)
+function open(p: Project, to: 'apps' | 'kaisen') {
+  router.push(to === 'apps' ? projectApps(p.id) : projectKaisen(p.id))
 }
 </script>
 
@@ -69,8 +69,8 @@ function open(p: Project, to: '/apps' | '/kaisen') {
             <td class="mono">{{ p.app_count }} of {{ p.app_limit_effective }}</td>
             <td class="text-right">
               <div class="row-acts">
-                <button type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Apps in ${name(p)}`" @click="open(p, '/apps')">Apps</button>
-                <button v-if="auth.user?.features?.kaisen" type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Kaisen builds in ${name(p)}`" @click="open(p, '/kaisen')">Kaisen</button>
+                <button type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Apps in ${name(p)}`" @click="open(p, 'apps')">Apps</button>
+                <button v-if="auth.user?.features?.kaisen" type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Kaisen builds in ${name(p)}`" @click="open(p, 'kaisen')">Kaisen</button>
               </div>
             </td>
           </tr>
@@ -89,8 +89,8 @@ function open(p: Project, to: '/apps' | '/kaisen') {
             <span v-if="suspended(p)" class="st tone-warn ml-1"><span class="dot dot-warn" aria-hidden="true" />Suspended</span>
           </p>
           <div class="row-acts !justify-start gap-x-4">
-            <button type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Apps in ${name(p)}`" @click="open(p, '/apps')">Apps</button>
-            <button v-if="auth.user?.features?.kaisen" type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Kaisen builds in ${name(p)}`" @click="open(p, '/kaisen')">Kaisen</button>
+            <button type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Apps in ${name(p)}`" @click="open(p, 'apps')">Apps</button>
+            <button v-if="auth.user?.features?.kaisen" type="button" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Kaisen builds in ${name(p)}`" @click="open(p, 'kaisen')">Kaisen</button>
           </div>
         </li>
       </ul>

@@ -227,7 +227,7 @@ async function confirmDelete() {
           <p v-if="createError" role="alert" class="field-error">{{ createError }}</p>
           <div class="flex gap-2">
             <button type="submit" class="btn-primary" :disabled="creating || !newName.trim()" :aria-busy="creating">{{ creating ? 'Creating…' : 'Create project' }}</button>
-            <RouterLink to="/apps" class="btn-secondary">Cancel</RouterLink>
+            <RouterLink :to="store.appsHome" class="btn-secondary">Cancel</RouterLink>
           </div>
         </form>
       </template>
@@ -389,8 +389,8 @@ async function confirmDelete() {
             <p v-else class="meta mt-1">No pending invites.</p>
           </section>
 
-          <section v-if="shared && isOwner" class="sec pt-3" aria-labelledby="h-pdanger">
-            <h2 id="h-pdanger" class="section-title text-danger-light">Danger zone</h2>
+          <section v-if="shared && isOwner" class="sec-danger" aria-labelledby="h-pdanger">
+            <h2 id="h-pdanger" class="section-title">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">Delete this project. It must have no apps; move or delete them first.</p>
               <button type="button" class="btn-danger shrink-0" :disabled="project.app_count > 0 || susp" :title="suspTitle" @click="deleteOpen = true">

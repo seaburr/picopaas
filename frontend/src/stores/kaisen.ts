@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { deleteBuild, getKaisenSettings, getKaisenSpend, listBuilds } from '../api/kaisen'
-import { useProjectsStore } from './projects'
 import type { KaisenBuild, KaisenSettings, KaisenSpend } from '../types'
 
 export const useKaisenStore = defineStore('kaisen', () => {
@@ -9,27 +8,46 @@ export const useKaisenStore = defineStore('kaisen', () => {
   const settings = ref<KaisenSettings | null>(null)
   const spend = ref<KaisenSpend | null>(null)
 
-  async function load() {
-    const pid = useProjectsStore().current?.id
-    builds.value = (await listBuilds(pid)) ?? []
+  // Latest request wins: a slow response for an earlier project must not overwrite a newer list.
+  let seq = 0
+  const pid = ref<number | null>(null) // the project `builds` belongs to, so a return visit can show it at once
+  function clear() {
+    seq++
+    builds.value = []
+    settings.value = null
+    spend.value = null
+    pid.value = null
+  }
+
+  async function load(forPid: number) {
+    const mine = ++seq
+    const list = (await listBuilds(forPid)) ?? []
+    if (mine !== seq) return
+    builds.value = list
+    pid.value = forPid
     // Spend and settings are secondary: a failure must not hide the list.
     try {
-      spend.value = await getKaisenSpend(pid)
+      const sp = await getKaisenSpend(forPid)
+      if (mine === seq) spend.value = sp
     } catch {
-      spend.value = null
+      if (mine === seq) spend.value = null
     }
-    if (pid) {
+    if (forPid) {
       try {
-        settings.value = await getKaisenSettings(pid)
+        const st = await getKaisenSettings(forPid)
+        if (mine === seq) settings.value = st
       } catch {
-        settings.value = null
+        if (mine === seq) settings.value = null
       }
     }
   }
 
   // Quiet refresh for polling: builds only.
-  async function refreshBuilds() {
-    builds.value = (await listBuilds(useProjectsStore().current?.id)) ?? []
+  async function refreshBuilds(pid: number) {
+    const mine = seq
+    const list = (await listBuilds(pid)) ?? []
+    if (mine !== seq) return
+    builds.value = list
   }
 
   function upsert(b: KaisenBuild) {
@@ -41,5 +59,5 @@ export const useKaisenStore = defineStore('kaisen', () => {
     builds.value = builds.value.filter((b) => b.id !== id)
   }
 
-  return { builds, settings, spend, load, refreshBuilds, upsert, remove }
+  return { builds, settings, spend, pid, clear, load, refreshBuilds, upsert, remove }
 })

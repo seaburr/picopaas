@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useProjectTitle } from '../composables/projectTitle'
 import IconButton from '../components/IconButton.vue'
 import KaisenMemberLimits from '../components/KaisenMemberLimits.vue'
 import KaisenKeyHelp from '../components/KaisenKeyHelp.vue'
@@ -10,11 +11,13 @@ import { getKaisenSettings, getKaisenSpend, saveKaisenSettings, testKaisen } fro
 import { fmtUsd } from '../composables/kaisen'
 import { useKaisenStore } from '../stores/kaisen'
 import { useProjectsStore } from '../stores/projects'
+import { projectKaisen, projectLabel } from '../utils/paths'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { useProjectSuspension } from '../composables/projectSuspension'
 import type { KaisenSettings, KaisenSettingsPayload } from '../types'
 
+const props = defineProps<{ pid: string }>()
 const projects = useProjectsStore()
 const store = useKaisenStore()
 const toast = useToastStore()
@@ -46,8 +49,10 @@ const form = reactive({
   web_domains: '',
 })
 
-const pid = computed(() => projects.current?.id ?? null)
-const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => projects.current?.id)
+const pid = computed(() => Number(props.pid))
+const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => pid.value)
+const projName = computed(() => projectLabel(curProject.value))
+useProjectTitle('Kaisen settings', projName)
 const readOnly = computed(() => (!!s.value && !s.value.can_edit) || projSuspended.value)
 
 function fill(v: KaisenSettings) {
@@ -85,7 +90,7 @@ async function load() {
   }
 }
 onMounted(load)
-watch(() => projects.currentId, (n, o) => { if (o !== n && projects.loaded) load() })
+watch(() => props.pid, () => { if (projects.loaded) load() })
 
 async function save() {
   if (!pid.value || readOnly.value) return
@@ -140,10 +145,11 @@ async function test(which: 'anthropic') {
   <div>
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
-      <nav class="meta mb-2" aria-label="Breadcrumb"><RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>Settings</nav>
+      <nav class="meta mb-2" aria-label="Breadcrumb">
+        <RouterLink :to="`/projects/${props.pid}`" class="link">{{ projName || 'Project' }}</RouterLink><span aria-hidden="true"> / </span><RouterLink :to="projectKaisen(pid)" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>Settings
+      </nav>
       <div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 class="page-title">Kaisen settings</h1><PreviewBadge />
-        <span v-if="projects.current" class="meta">Project: {{ projects.current.is_personal ? 'Personal' : projects.current.name }}</span>
+        <h1 class="page-title">Kaisen settings<template v-if="projName"> in {{ projName }}</template></h1><PreviewBadge />
       </div>
 
       <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
@@ -151,14 +157,14 @@ async function test(which: 'anthropic') {
         <IconButton label="Retry" @click="load" />
       </div>
 
-      <div v-else-if="loading || !s" class="grid max-w-5xl gap-x-8 gap-y-4 lg:grid-cols-2" aria-busy="true" aria-label="Loading settings">
+      <div v-else-if="loading || !s" class="grid gap-x-8 gap-y-4 lg:grid-cols-2 2xl:grid-cols-3" aria-busy="true" aria-label="Loading settings">
         <div class="sec sec-pad h-32 animate-pulse" />
         <div class="sec sec-pad h-24 animate-pulse" />
       </div>
 
-      <form v-else class="grid max-w-5xl gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start" novalidate @submit.prevent="save">
-        <p class="help lg:col-span-2">These settings belong to the project "{{ projects.current?.is_personal ? 'Personal' : projects.current?.name }}". Everyone who can run builds here spends from this key.</p>
-        <p v-if="readOnly && !projSuspended" class="alert-info lg:col-span-2" role="status">Only project owners can change these settings. You can see what is set.</p>
+      <form v-else class="grid gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start 2xl:grid-cols-3 [&_.input]:max-w-xl" novalidate @submit.prevent="save">
+        <p class="help col-span-full">Applies to every build in {{ projName }}. You are {{ s.can_edit ? 'an owner' : 'a member' }}<template v-if="!s.can_edit">: you can see what is set, not change it</template>. Everyone who can run builds here spends from this key.</p>
+        <p v-if="readOnly && !projSuspended" class="alert-info col-span-full" role="status">Only project owners can change these settings. <template v-if="!s.anthropic_key.set">Kaisen isn't set up in {{ projName }} yet: ask an owner to add an Anthropic API key.</template></p>
 
         <section class="sec sec-pad space-y-3" aria-labelledby="ks-anthropic">
           <h2 id="ks-anthropic" class="section-title">Anthropic</h2>
@@ -240,15 +246,15 @@ async function test(which: 'anthropic') {
           </template>
         </section>
 
-        <div v-if="saveError" role="alert" class="alert-error whitespace-pre-wrap lg:col-span-2">{{ saveError }}</div>
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:col-span-2">
+        <div v-if="saveError" role="alert" class="alert-error whitespace-pre-wrap col-span-full">{{ saveError }}</div>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between col-span-full">
           <button v-if="!readOnly" type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save settings' }}</button>
           <div class="flex flex-col gap-2 sm:flex-row">
             <button type="button" class="btn-secondary" :disabled="testing !== '' || dirty" @click="test('anthropic')">{{ testing === 'anthropic' ? 'Testing…' : 'Test Anthropic' }}</button>
           </div>
         </div>
-        <p v-if="dirty && !readOnly" class="help lg:col-span-2">Save first, then test.</p>
-        <div role="status" class="lg:col-span-2">
+        <p v-if="dirty && !readOnly" class="help col-span-full">Save first, then test.</p>
+        <div role="status" class="col-span-full">
           <p v-if="testResult" :class="testResult.ok ? 'alert-success' : 'alert-error'">{{ testResult.message }}</p>
         </div>
       </form>

@@ -19,6 +19,7 @@ import { refLabel, refsIn } from '../composables/envKeys'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { useProjectSuspension } from '../composables/projectSuspension'
 import { useAppsStore } from '../stores/apps'
+import { projectApps, projectLabel } from '../utils/paths'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { DB_REFS, STORAGE_REFS, type App, type AppEvent, type ImageVersion, type MetricsHistory } from '../types'
@@ -377,7 +378,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
     <template v-else>
       <SuspendedBanner :project="appProject" />
       <nav class="meta mb-1" aria-label="Breadcrumb">
-        <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>{{ app.name }}
+        <template v-if="appProject"><RouterLink :to="`/projects/${appProject.id}`" class="link">{{ projectLabel(appProject) }}</RouterLink><span aria-hidden="true"> / </span></template><RouterLink :to="appProject ? projectApps(appProject.id) : '/apps'" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>{{ app.name }}
       </nav>
 
       <header class="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
