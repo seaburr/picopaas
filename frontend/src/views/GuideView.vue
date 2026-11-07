@@ -188,7 +188,7 @@ function onClick(e: MouseEvent) {
         </div>
       </div>
       <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vue/no-v-html -- delegated click for in-doc links (keyboard activates the real <a>); html is DOMPurify-sanitized -->
-      <article v-else class="doc mt-4 min-w-0 max-w-3xl flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
+      <article v-else class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
     </div>
   </main>
 </template>
@@ -218,6 +218,10 @@ function onClick(e: MouseEvent) {
 .doc th { white-space: nowrap; }
 .doc td code { overflow-wrap: normal; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .doc .tbl-wrap { overflow-x: auto; }
+/* Prose stays at a readable measure; code blocks and tables use the rest of the width. */
+.doc > h1, .doc > h2, .doc > h3, .doc > p, .doc > ul, .doc > ol, .doc > blockquote { max-width: 75ch; }
+.doc > h2 { max-width: none; }
+.doc .tbl-wrap table { width: auto; min-width: min(100%, 40rem); }
 .doc th { background: var(--color-pico-card); color: var(--color-white); }
 .doc blockquote { border-left: 3px solid var(--color-pico-border); padding-left: 1rem; color: var(--doc-subtle); margin: .8rem 0; }
 </style>

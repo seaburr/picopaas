@@ -65,7 +65,6 @@ async function approve(id: number) {
   }
 }
 const waiting = (iso: string) => age(Math.max(0, (Date.now() - parseTs(iso).getTime()) / 1000))
-const statuses = ['running', 'deploying', 'pending', 'error', 'suspended'] as const
 const num = (v: number | null, unit: string) => (v === null ? 'n/a' : `${v}${unit}`)
 const NA = 'metrics unavailable'
 const fmtUse = (used: number | null, lim: number, unit: string) =>
@@ -113,10 +112,10 @@ function humanize(e: string): string {
   return e
 }
 const humanErrors = computed(() => [...new Set((data.value?.errors ?? []).map(humanize))])
-const otherErrors = computed(() => humanErrors.value.filter((e) => !/Kubernetes API/.test(e))) // that one is in the verdict row
+const otherErrors = computed(() => humanErrors.value.filter((e) => !/Kubernetes API|Metrics are unavailable/.test(e))) // those two are built into the problem list
 
 // Verdict: every problem links to where it is.
-interface Problem { text: string; target: string }
+interface Problem { text: string; detail?: string; target?: string }
 const problems = computed<Problem[]>(() => {
   const d = data.value
   if (!d) return []
@@ -135,9 +134,11 @@ const problems = computed<Problem[]>(() => {
   if (notReady.length) out.push({ text: `Platform pod${notReady.length > 1 ? 's' : ''} not ready: ${notReady.map((p) => p.name).join(', ')}`, target: 'sec-platform' })
   const full = d.db_servers.filter((s) => s.warn)
   if (full.length) out.push({ text: `${full.length} database server${full.length > 1 ? 's' : ''} above 80%`, target: 'sec-db' })
-  if (!d.metrics_available && !out.some((p) => /Kubernetes/.test(p.text))) out.push({ text: 'Metrics unavailable', target: 'sec-summary' })
+  if (!d.metrics_available && !out.some((p) => /Kubernetes/.test(p.text))) out.push({ text: 'Metrics unavailable', detail: 'CPU and memory usage show as n/a until the metrics server responds.', target: 'sec-summary' })
+  for (const e of otherErrors.value) out.push({ text: e })
   return out
 })
+const problemCount = computed(() => problems.value.length + (pendingN.value ? 1 : 0))
 const pendingN = computed(() => data.value?.users?.pending ?? data.value?.pending_users?.length ?? 0)
 function jump(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -148,8 +149,8 @@ function jump(id: string) {
   <main id="main" tabindex="-1" class="page-main space-y-4">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h1 class="page-title">Cluster health</h1>
-      <span v-if="data" class="st text-sm" :class="problems.length ? 'tone-warn' : 'tone-ok'">
-        <span class="dot" :class="problems.length ? 'dot-warn' : 'dot-ok'" aria-hidden="true" />{{ problems.length ? `${problems.length} ${problems.length === 1 ? 'warning' : 'warnings'}` : 'All systems normal' }}
+      <span v-if="data" class="st text-sm" :class="problemCount ? 'tone-warn' : 'tone-ok'">
+        <span class="dot" :class="problemCount ? 'dot-warn' : 'dot-ok'" aria-hidden="true" />{{ problemCount ? `${problemCount} ${problemCount === 1 ? 'problem' : 'problems'}` : 'All systems normal' }}
       </span>
       <span class="meta" aria-live="polite"><template v-if="updated">Updated {{ fmtTime(updated) }} (auto 15s)</template></span>
       <span class="flex-1" />
@@ -159,60 +160,60 @@ function jump(id: string) {
     <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
 
     <template v-if="data">
-      <div
-        v-if="problems.length || pendingN"
-        class="alert-warn flex flex-wrap items-center gap-x-3 gap-y-1"
-        role="status"
-        aria-label="Overall status"
-      >
-        <template v-if="problems.length">
-          <strong>{{ problems.length }} {{ problems.length === 1 ? 'problem' : 'problems' }}:</strong>
-          <button v-for="p in problems" :key="p.text" type="button" class="underline underline-offset-2 max-md:min-h-[36px]" @click="jump(p.target)">{{ p.text }}</button>
-        </template>
-        <RouterLink v-if="pendingN" to="/admin" class="underline underline-offset-2">{{ pendingN }} {{ pendingN === 1 ? 'user' : 'users' }} waiting for approval</RouterLink>
+      <div v-if="problems.length || pendingN" class="alert-warn" role="status" aria-label="Overall status">
+        <strong>{{ problemCount }} {{ problemCount === 1 ? 'problem' : 'problems' }}</strong>
+        <ul class="mt-1 space-y-0.5">
+          <li v-for="p in problems" :key="p.text">
+            <button v-if="p.target" type="button" class="text-left underline underline-offset-2 max-md:min-h-[36px]" @click="jump(p.target)">{{ p.text }}</button>
+            <template v-else>{{ p.text }}</template>
+            <span v-if="p.detail">: {{ p.detail }}</span>
+          </li>
+          <li v-if="pendingN"><RouterLink to="/admin" class="underline underline-offset-2">{{ pendingN }} {{ pendingN === 1 ? 'user' : 'users' }} waiting for approval</RouterLink></li>
+        </ul>
       </div>
       <p v-else class="sr-only" role="status" aria-label="Overall status">All systems normal. Nodes ready, no failed apps, database capacity fine.</p>
 
-      <div v-if="otherErrors.length" role="alert" class="alert-warn">
-        <ul class="list-inside list-disc">
-          <li v-for="e in otherErrors" :key="e">{{ e }}</li>
-        </ul>
-      </div>
-
       <section id="sec-summary" class="sec pt-2" aria-label="Summary">
-        <dl class="flex flex-wrap gap-x-8 gap-y-1 text-sm">
-          <div class="flex items-baseline gap-2">
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-3 min-[760px]:grid-cols-4 min-[1100px]:grid-cols-7">
+          <div>
             <dt class="meta">Nodes</dt>
-            <dd class="mono">{{ data.cluster.node_count }}<template v-if="data.cluster.max_nodes !== null"> / {{ data.cluster.max_nodes }} <span class="text-zinc-400">({{ Math.max(0, data.cluster.max_nodes - data.cluster.node_count) }} autoscaler headroom)</span></template><span v-else class="text-zinc-400"> (autoscaler max not reported)</span></dd>
+            <dd class="mono text-base">{{ data.cluster.node_count }}<template v-if="data.cluster.max_nodes !== null"> / {{ data.cluster.max_nodes }}</template></dd>
+            <dd class="meta">{{ data.cluster.max_nodes !== null ? `${Math.max(0, data.cluster.max_nodes - data.cluster.node_count)} headroom` : 'max not reported' }}</dd>
           </div>
-          <div class="flex items-baseline gap-2"><dt class="meta">Pods</dt><dd class="mono">{{ data.cluster.pods_total }}</dd></div>
-          <div class="flex items-baseline gap-2">
+          <div><dt class="meta">Pods</dt><dd class="mono text-base">{{ data.cluster.pods_total }}</dd></div>
+          <div>
             <dt class="meta">Metrics</dt>
-            <dd class="st" :class="data.metrics_available ? 'tone-ok' : 'tone-warn'"><span class="dot" :class="data.metrics_available ? 'dot-ok' : 'dot-warn'" aria-hidden="true" />{{ data.metrics_available ? 'Available' : 'Unavailable' }}<span v-if="!data.metrics_available" class="text-zinc-400">(usage shown as n/a)</span></dd>
+            <dd class="text-base" :class="data.metrics_available ? '' : 'tone-warn'">{{ data.metrics_available ? 'Available' : 'Unavailable' }}</dd>
+            <dd v-if="!data.metrics_available" class="meta">usage shown as n/a</dd>
           </div>
-          <template v-if="data.users">
-            <div class="flex items-baseline gap-2">
-              <dt class="meta">Users</dt>
-              <dd class="mono">{{ data.users.total }} <span class="text-zinc-400">({{ data.users.active }} active · {{ data.users.suspended }} suspended · {{ data.users.admins ?? 0 }} {{ (data.users.admins ?? 0) === 1 ? 'admin' : 'admins' }})</span></dd>
+          <template v-if="data.workloads">
+            <div>
+              <dt class="meta">Apps</dt>
+              <dd class="mono text-base">{{ data.workloads.apps_total }}</dd>
+              <dd class="meta">{{ data.workloads.by_status.running ?? 0 }} running</dd>
             </div>
-            <div class="flex items-baseline gap-2">
+            <div>
+              <dt class="meta">Failing</dt>
+              <dd class="mono text-base" :class="(data.workloads.by_status.error ?? 0) > 0 ? 'text-status-error font-semibold' : ''">{{ data.workloads.by_status.error ?? 0 }}</dd>
+              <dd class="meta">{{ (data.workloads.by_status.pending ?? 0) + (data.workloads.by_status.deploying ?? 0) }} starting</dd>
+              <dd class="meta">{{ data.workloads.by_status.suspended ?? 0 }} suspended</dd>
+            </div>
+          </template>
+          <template v-if="data.users">
+            <div>
+              <dt class="meta">Users</dt>
+              <dd class="mono text-base">{{ data.users.total }}</dd>
+              <dd class="meta">{{ data.users.active }} active</dd>
+              <dd class="meta">{{ data.users.suspended }} suspended</dd>
+              <dd class="meta">{{ data.users.admins ?? 0 }} {{ (data.users.admins ?? 0) === 1 ? 'admin' : 'admins' }}</dd>
+            </div>
+            <div>
               <dt class="meta">Pending approval</dt>
-              <dd class="mono" :class="data.users.pending > 0 ? 'text-amber-400' : ''">{{ data.users.pending }}</dd>
+              <dd class="mono text-base" :class="data.users.pending > 0 ? 'text-amber-400' : ''">{{ data.users.pending }}</dd>
             </div>
           </template>
         </dl>
-        <dl v-if="data.workloads" class="mt-1 flex flex-wrap gap-x-8 gap-y-1 text-sm" aria-label="Workloads">
-          <div class="flex items-baseline gap-2"><dt class="meta">Workloads</dt><dd class="mono">{{ data.workloads.apps_total }} <span class="font-sans text-zinc-400">apps</span></dd></div>
-          <div class="flex flex-wrap items-baseline gap-x-3">
-            <dd
-              v-for="st in statuses"
-              :key="st"
-              class="mono"
-              :class="st === 'error' && (data.workloads.by_status[st] ?? 0) > 0 ? 'font-semibold text-status-error' : 'text-zinc-400'"
-            >{{ data.workloads.by_status[st] ?? 0 }} {{ st }}</dd>
-          </div>
-          <div class="meta">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with blob storage<template v-if="data.workloads.with_volume"> · {{ data.workloads.with_volume }} with volume</template><template v-if="data.workloads.by_db_engine"> · {{ data.workloads.by_db_engine.mysql }} MySQL · {{ data.workloads.by_db_engine.postgres }} PostgreSQL</template></div>
-        </dl>
+        <p v-if="data.workloads" class="meta mt-2">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with blob storage<template v-if="data.workloads.with_volume"> · {{ data.workloads.with_volume }} with volume</template><template v-if="data.workloads.by_db_engine"> · {{ data.workloads.by_db_engine.mysql }} MySQL · {{ data.workloads.by_db_engine.postgres }} PostgreSQL</template></p>
       </section>
 
       <section v-if="data.pending_users?.length" class="sec pt-2" aria-label="Waiting for approval">
@@ -234,7 +235,6 @@ function jump(id: string) {
           </table>
         </div>
       </section>
-      <div v-else-if="data.users" class="text-right text-xs"><RouterLink to="/admin" class="link">Admin page</RouterLink></div>
 
       <section id="sec-nodes" class="sec scroll-mt-4 pt-2">
         <h2 class="section-title mb-1">Nodes</h2>
@@ -364,7 +364,7 @@ function jump(id: string) {
                 <td class="truncate" :title="`${a.name} (${a.namespace})`"><span class="mono text-white">{{ a.name }}</span> <span class="mono text-zinc-400">{{ a.namespace }}</span></td>
                 <td class="truncate" :title="a.owner_email">{{ a.owner_email }}</td>
                 <td><StatusBadge :status="a.status" /></td>
-                <td class="mono text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''" :title="podTitle(a)">{{ a.pods_ready }}/{{ a.pods_total }}{{ podsWanted(a) }}</td>
+                <td class="mono whitespace-nowrap text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''" :title="podTitle(a)">{{ a.pods_ready }}/{{ a.pods_total }}{{ podsWanted(a) }}</td>
                 <td class="mono text-right" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
                 <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.cpu_used_m, cpuCap(a))) ? 'font-semibold text-amber-400' : ''">
                   <template v-if="a.cpu_used_m !== null">{{ fmtUse(a.cpu_used_m, cpuCap(a), 'm') }}</template>

@@ -196,7 +196,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
         </li>
       </ul>
       <div class="flex flex-wrap items-center gap-3 border-t border-pico-border px-3 py-2">
-        <button type="button" class="btn-primary btn-sm" :disabled="!canSave(g)" @click="save(g)">{{ busy === g.name ? 'Saving…' : `Save ${g.name.toLowerCase()}` }}</button>
+        <button type="button" class="btn-secondary btn-sm" :disabled="!canSave(g)" @click="save(g)">{{ busy === g.name ? 'Saving…' : `Save ${g.name.toLowerCase()}` }}</button>
         <span v-if="dirtyIn(g).length" class="meta">{{ dirtyIn(g).length }} unsaved {{ dirtyIn(g).length === 1 ? 'change' : 'changes' }}</span>
         <p v-if="groupError[g.name]" role="alert" class="text-sm text-danger-light">{{ groupError[g.name] }}</p>
       </div>

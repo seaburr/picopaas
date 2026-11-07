@@ -9,7 +9,7 @@
  * No accent colour: the primary button is solid ink (--fg on --bg), links are ink and underlined.
  * Dark is the default; light (tan and warm gray) redefines the same ten variables on <html data-theme="light">
  * (frontend/public/theme-init.js applies it before first paint, the auth store applies the server value).
- * Contrast (on --bg / --raise): dark fg 15.2/13.9, mut 9.4/8.7, ok 8.2/7.5, warn 9.2/8.4, err 7.1/6.5;
+ * Contrast (on --bg / --raise): dark fg 12.5/11.4, mut 7.4/6.8, ok 8.2/7.5, warn 9.2/8.4, err 7.1/6.5;
  * light fg 15.2/13.6, mut 8.0/7.2, ok 5.5/5.0, warn 5.8/5.2, err 6.2/5.6. All text >= 4.5:1.
  * Boundaries: --edge (control borders: secondary/danger buttons, badges, alerts) dark 3.8/3.5, light 4.1/3.7, all >= 3:1;
  * --line (section and table hairlines) dark 2.1/1.9, light 2.4/2.1: visible dividers, not controls.
@@ -19,12 +19,12 @@
   --raise: #1a1d21;
   --line: #454b53;
   --edge: #6b727b;
-  --fg: #e7e9ec;
-  --mut: #b4bac1;
+  --fg: #d4d4d8;
+  --mut: #a0a5ac;
   --ok: #62c07f;
   --warn: #e0b040;
   --err: #f47d7a;
-  --off: #b4bac1;
+  --off: #a0a5ac;
 }
 :root[data-theme='light'] {
   color-scheme: light;

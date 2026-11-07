@@ -380,17 +380,17 @@ const overrideSummary = (a: AdminApp) => {
         <p class="help">Finish these so users can deploy apps with databases.</p>
         <ol class="mt-2 text-sm text-zinc-200">
           <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
-            <span class="st tone-warn w-28"><span class="dot dot-warn" aria-hidden="true" />To do</span>
+            <span class="st tone-warn w-32 shrink-0"><span class="dot dot-warn" aria-hidden="true" />To do</span>
             <span>Add a database server (MySQL or PostgreSQL). Until then the Database option is hidden from users.</span>
-            <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add database server</button>
+            <button type="button" class="btn-secondary btn-sm" @click="setTab('servers'); openAdd()">Add database server</button>
           </li>
           <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
-            <span class="st w-28" :class="pendingCount ? 'tone-warn' : 'tone-off'"><span class="dot" :class="pendingCount ? 'dot-warn' : 'dot-off'" aria-hidden="true" />{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
+            <span class="st w-32 shrink-0" :class="pendingCount ? 'tone-warn' : 'tone-off'"><span class="dot" :class="pendingCount ? 'dot-warn' : 'dot-off'" aria-hidden="true" />{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
             <span>Approve access requests{{ pendingCount ? ` (${pendingCount} waiting)` : '' }}.</span>
             <button v-if="pendingCount" type="button" class="btn-secondary btn-sm" @click="setTab('users')">Review</button>
           </li>
           <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
-            <span class="st tone-off w-28"><span class="dot dot-off" aria-hidden="true" />Optional</span>
+            <span class="st tone-off w-32 shrink-0"><span class="dot dot-off" aria-hidden="true" />Optional</span>
             <span>Check cluster capacity on the <RouterLink to="/admin/health" class="link">Health</RouterLink> page.</span>
           </li>
         </ol>

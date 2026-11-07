@@ -28,7 +28,7 @@ function open(p: Project, to: 'apps' | 'kaisen') {
   <main id="main" tabindex="-1" class="page-main">
     <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
       <h1 class="page-title">Projects</h1>
-      <RouterLink to="/projects/new" class="btn-primary btn-sm">New project</RouterLink>
+      <IconButton label="New project" text="New project" to="/projects/new" />
     </div>
 
     <div v-if="projects.loadError" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
