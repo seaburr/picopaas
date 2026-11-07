@@ -4,30 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0d0d14">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1eee6" media="(prefers-color-scheme: light)">
+<script src="/static/public-theme.js"></script>
 <title>Privacy, Terms of Use and Acceptable Use - PicoPaaS</title>
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
 <link rel="manifest" href="/static/site.webmanifest">
 <style>
-:root{--bg:#0d0d14;--panel:#16161f;--card:#1c1c28;--border:#2c2c3c;--primary:#3a6bd0;--primary-h:#2f5fc4;--accent-light:#7aa0d4;--text:#e4e4e7;--muted:#a1a1aa}
-*{box-sizing:border-box}html{color-scheme:dark}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-a{color:var(--accent-light)}a:focus-visible,.btn:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px;border-radius:6px}
-h1,h2,h3{color:#fff;line-height:1.25}.w{max-width:960px;margin:0 auto;padding:0 20px}
-.dev{background:rgba(245,158,11,.1);border-bottom:1px solid rgba(245,158,11,.4);color:#fcd34d;text-align:center;font-size:14px;line-height:1.625;padding:6px 20px}
-header.t{border-bottom:1px solid var(--border);background:var(--panel)}header.t .w{display:flex;justify-content:space-between;align-items:center;max-width:1152px;padding:8px 16px;gap:8px}@media(min-width:640px){header.t .w{padding:8px 24px}}
-.logo{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.01em;color:#fff;text-decoration:none}.logo img{width:28px;height:28px;border-radius:6px;display:block}
-.btn{display:inline-block;padding:10px 20px;border-radius:6px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;border:1px solid transparent;white-space:nowrap}.btn:hover{background:var(--primary-h)}
-.btn.s{background:transparent;border-color:#71717a;color:#e4e4e7}.btn.s:hover{background:var(--card)}.btn.sm{padding:8px 14px;font-size:14px}
-footer{border-top:1px solid var(--border);margin-top:64px;padding:24px 0;color:var(--muted);font-size:14px;text-align:center}footer a{white-space:nowrap}
-main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{font-size:20px;margin:36px 0 8px}p,li{color:#c4c4cc}li{margin:4px 0}.d{color:var(--muted);font-size:14px}footer .w{max-width:760px}
+:root{--bg:#121417;--raise:#1a1d21;--line:#2b2f35;--fg:#e7e9ec;--mut:#a2a8b0;--ok:#62c07f;--warn:#e0b040;--err:#f47d7a;color-scheme:dark}
+:root[data-theme=light]{--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}
+@media(prefers-color-scheme:light){:root:not([data-theme]){--bg:#f1eee6;--raise:#e7e2d5;--line:#cbc3ae;--fg:#1b1912;--mut:#5a5546;--ok:#2c6b3a;--warn:#7d5300;--err:#a8231d;color-scheme:light}}
+/* Fonts: the app's Inter and JetBrains Mono are hashed files that only the built app knows, so these pages name them (used when installed) and fall back to the system stack. No webfont is loaded (CSP font-src 'self'). */
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Inter Variable",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--fg);text-decoration:underline;text-underline-offset:2px}a:hover{text-decoration-thickness:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--fg);outline-offset:2px;border-radius:4px}
+code,.mono{font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+h1,h2,h3{line-height:1.25;font-weight:600;overflow-wrap:anywhere}
+.w{max-width:960px;margin:0 auto;padding:0 20px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-60px;z-index:10;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px 10px}.skip:focus{top:8px}
+.dev{border-bottom:1px solid var(--line);color:var(--warn);text-align:center;font-size:13px;line-height:1.45;padding:6px 20px}
+header.t{border-bottom:1px solid var(--line)}header.t .w{display:flex;justify-content:space-between;align-items:center;height:48px;gap:12px}
+.logo{font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
+nav.r{display:flex;align-items:center;gap:14px}nav.r a.l{color:var(--mut);text-decoration:none}nav.r a.l:hover{color:var(--fg);text-decoration:underline}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:13px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
+.btn.s{background:transparent;color:var(--fg);border-color:var(--line)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:13px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
+@media(max-width:480px){.w{padding:0 16px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+header.t .w,footer .w,main.w{max-width:760px}
+main.w{padding:32px 20px 0}h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:32px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+p,li{color:var(--fg)}li{margin:4px 0}.d{color:var(--mut);font-size:13px}ul{padding-left:20px}
+.cp{margin-top:6px}@media(max-width:480px){main.w{padding:24px 16px 0}}
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <div class="dev" role="note"><strong>Dev/test platform.</strong> Sign up, and if your account is approved, a PicoPaaS platform admin will reach out. No uptime guarantees; don&rsquo;t store personal data.</div>
-<header class="t"><div class="w"><a class="logo" href="/"><img src="/static/icon-64.png" alt="" width="28" height="28">PicoPaaS</a></div></header>
+<header class="t"><div class="w"><a class="logo" href="/">PicoPaaS</a></div></header>
 <main class="w" id="main">
 <h1>Privacy, Terms of Use and Acceptable Use</h1>
 <p class="d">Last updated 2026-10-22</p>
@@ -91,7 +109,7 @@ main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{fon
 <h2 id="report-abuse">Report abuse</h2>
 <p>To report abuse, phishing, malware, spam, a security problem, or a copyright (DMCA) or other takedown request, email <a href="mailto:abuse@picopaas.xyz">abuse@picopaas.xyz</a> and include:</p>
 <ul>
-<li>the app URL or hostname (for example <code style="color:#e4e4e7">name.picopaas.xyz</code>);</li>
+<li>the app URL or hostname (for example <code>name.picopaas.xyz</code>);</li>
 <li>what is happening and when (timestamps with time zone);</li>
 <li>evidence: links, screenshots, headers, logs;</li>
 <li>for copyright notices: the work infringed, your contact details, a statement of good-faith belief and that the notice is accurate, and your signature;</li>
@@ -105,6 +123,6 @@ main{padding:40px 20px 0;max-width:760px}h1{font-size:32px;margin:0 0 4px}h2{fon
 <h2>Contact</h2>
 <p>Abuse reports (see <a href="#report-abuse">Report abuse</a>), privacy questions and deletion requests: <a href="mailto:abuse@picopaas.xyz">abuse@picopaas.xyz</a></p>
 </main>
-<footer><div class="w">PicoPaaS &middot; <a href="https://platform.picopaas.xyz/guide">Docs</a> &middot; <a href="/privacy">Privacy &amp; Terms</a><div style="margin-top:6px">&copy; 2026 PicoPaaS</div></div></footer>
+<footer><div class="w">PicoPaaS &middot; <a href="https://platform.picopaas.xyz/guide">Docs</a> &middot; <a href="/privacy">Privacy &amp; Terms</a><div class="cp">&copy; 2026 PicoPaaS</div></div></footer>
 </body>
 </html>
