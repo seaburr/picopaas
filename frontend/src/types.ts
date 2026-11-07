@@ -768,6 +768,7 @@ export interface KaisenPackages {
   checked: number
   findings: string[]
   note: string | null
+  requested?: string[] // kept at the version the request names (not upgraded)
   response?: string[]
   files_changed?: boolean
 }

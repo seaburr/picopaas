@@ -114,12 +114,22 @@ def http_log(messages, secrets=()) -> str:
 
 
 def steward_block(run: KaisenRun) -> str:
-    """Tell the reviewer which versions the package steward just moved, so it doesn't send the builder back (findings are
-    written by the platform from registry data; the builder's free-text response is deliberately left out)."""
+    """Tell the reviewer which versions the package steward just moved (real upgrades only) and which it kept because the
+    request names them, so it doesn't send the builder back (written by the platform from registry data; the builder's
+    free-text response is deliberately left out)."""
     p = (run.review or {}).get("packages") if isinstance(run.review, dict) else None
-    if not isinstance(p, dict) or not p.get("files_changed") or not p.get("findings"):
+    if not isinstance(p, dict):
         return ""
-    items = "\n".join(str(x) for x in p["findings"]).replace("</package_steward", "<\\/package_steward")
+    ups = [str(x) for x in p.get("findings") or []] if p.get("files_changed") else []
+    kept = [str(x) for x in p.get("requested") or []]
+    if not ups and not kept:
+        return ""
+    parts = []
+    if ups:
+        parts.append("Upgraded on purpose:\n" + "\n".join(ups))
+    if kept:
+        parts.append("Kept as the request names (do not demand an upgrade):\n" + "\n".join(kept))
+    items = "\n".join(parts).replace("</package_steward", "<\\/package_steward")
     return f"<package_steward>\n{items}\n</package_steward>\n\n"
 
 

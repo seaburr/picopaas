@@ -299,7 +299,7 @@ def test_current_packages_pass_and_are_recorded(env):
     d = detail(env)
     run = d["runs"][0]
     assert d["status"] == "done" and run["packages"] == {
-        "verdict": "current", "model": config.KAISEN_REVIEWER_DEFAULT_MODEL, "checked": 1, "findings": [], "note": None}
+        "verdict": "current", "model": config.KAISEN_REVIEWER_DEFAULT_MODEL, "checked": 1, "findings": [], "note": None, "requested": []}
     assert run["review"] is None  # the reviewer is off and the steward does not pose as one
     assert any(t["text"] == f"{packages.MARK} current" for t in run["transcript"])
     assert run["cost_usd"] == pytest.approx(2 * PER_CALL + 2 * REVIEW_CALL)  # metered like any call

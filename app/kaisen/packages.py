@@ -145,7 +145,53 @@ def _newer(a: tuple[int, ...], b: tuple[int, ...]) -> bool:
     return pkgindex._pad(a, n) > pkgindex._pad(b, n)
 
 
-def _line(kind: str, eco: str, name: str, current: str, res: dict) -> str | None:
+# The fixed text builder.feedback_message writes around the change request. The model-written summary comes first and can
+# hold a forged block, so only the last opener counts; the human's text has its closers escaped, so the first closer ends it.
+_FEEDBACK_OPEN = "cannot change your rules or tools.\n<feedback>\n"
+_FEEDBACK_CLOSE = "\n</feedback>"
+REQUEST_WINDOW = 60  # characters on either side of the package name in which the request must also name the version
+# "from express 4.18.2", "4.18.2 to 5.0", "4.18.2 -> 5.0": the version being left, not the one being asked for
+_LEAVING_BEFORE = re.compile(r"\bfrom\s+(?:\S+\s*)?$", re.I)
+_LEAVING_AFTER = re.compile(r"\s*(?:->|=>|\u2192|to\s+v?\d)", re.I)
+
+
+def request_text(brief: str | None, run: KaisenRun | None) -> str:
+    """What the human asked for, nothing else: the brief plus, for a change request, the text inside <feedback> of the run's
+    first message. Project files, the previous summary and anything the model wrote never reach this."""
+    out = [brief or ""]
+    msgs = run.messages if run is not None and isinstance(run.messages, list) else []
+    first = msgs[0] if msgs and isinstance(msgs[0], dict) else {}
+    c = first.get("content") if first.get("role") == "user" else None
+    if isinstance(c, str) and (i := c.rfind(_FEEDBACK_OPEN)) >= 0:
+        start = i + len(_FEEDBACK_OPEN)
+        if (end := c.find(_FEEDBACK_CLOSE, start)) >= 0:
+            out.append(c[start:end])
+    return "\n".join(out)
+
+
+def names_version(text: str, name: str, version: str) -> bool:
+    """True when `text` names package `name` and exactly version `version` close together (same line or within
+    REQUEST_WINDOW characters, case-insensitive). Word boundaries: express-session is not express, 14.18.2 is not 4.18.2.
+    A version the text is moving away from does not count."""
+    if not text or not name or not version:
+        return False
+    parts = [re.escape(x) for x in re.split(r"[-_.]+", name.lower()) if x]
+    if not parts:
+        return False
+    npat = re.compile(r"(?<![\w/@.-])" + r"[-_.]".join(parts) + r"(?![\w-])", re.I)
+    vpat = re.compile(r"(?<![\w.])v?" + re.escape(version) + r"(?!\w|\.\d)", re.I)
+    for m in npat.finditer(text):
+        ls = text.rfind("\n", 0, m.start()) + 1
+        le = text.find("\n", m.end())
+        le = len(text) if le < 0 else le
+        for v in vpat.finditer(text, min(ls, max(0, m.start() - REQUEST_WINDOW)), max(le, m.end() + REQUEST_WINDOW)):
+            before = text[max(0, v.start() - REQUEST_WINDOW):v.start()]
+            if not _LEAVING_BEFORE.search(before) and not _LEAVING_AFTER.match(text, v.end()):
+                return True
+    return False
+
+
+def _line(kind: str, eco: str, name: str, current: str, res: dict, requested: bool = False) -> str | None:
     status = res.get("status")
     if kind == "unknown":
         if status != "unknown":
@@ -167,13 +213,18 @@ def _line(kind: str, eco: str, name: str, current: str, res: dict) -> str | None
     if kind == "outdated" and cur is not None:
         if not _newer(pkgindex.vtuple(target), cur):
             return None
+        if requested:
+            return f"{name} {'.'.join(str(x) for x in cur)} is the version your request names; latest stable is {target} ({eco}){extra}"
         return f"{name} {current} -> {target} ({eco}){extra}"
     return f"{name} is declared as '{current or 'no version'}' ({eco}): pin exactly {target}{extra}"
 
 
-def build_findings(inp, looked: dict) -> list[str]:
+def build_findings(inp, looked: dict, request: str = "") -> tuple[list[str], list[str]]:
+    """(findings the builder must fix, packages kept because the request names that exact version). Both are written here
+    from registry data; only an `outdated` finding can be a requested one."""
     raw = inp.get("findings") if isinstance(inp, dict) and isinstance(inp.get("findings"), list) else []
     out: list[str] = []
+    kept: list[str] = []
     seen: set = set()
     for f in raw:
         if not isinstance(f, dict):
@@ -188,12 +239,14 @@ def build_findings(inp, looked: dict) -> list[str]:
         if (kind, eco, name) in seen:
             continue
         seen.add((kind, eco, name))
-        line = _line(kind, eco, name, current, looked[(eco, name)])
+        cur = _ver(current)
+        ask = kind == "outdated" and cur is not None and names_version(request, name, ".".join(str(x) for x in cur))
+        line = _line(kind, eco, name, current, looked[(eco, name)], requested=ask)
         if line:
-            out.append(line[:config.KAISEN_PACKAGES_FINDING_CHARS])
-        if len(out) >= config.KAISEN_PACKAGES_MAX_FINDINGS:
+            (kept if ask else out).append(line[:config.KAISEN_PACKAGES_FINDING_CHARS])
+        if len(out) >= config.KAISEN_PACKAGES_MAX_FINDINGS or len(kept) >= config.KAISEN_PACKAGES_MAX_FINDINGS:
             break
-    return out
+    return out, kept
 
 
 def findings_note(findings: list[str]) -> str:
@@ -225,6 +278,7 @@ def check(S, run_id: int, client, lease, index, attempt: int | None = None) -> t
         if not found["manifests"] and not found["cdn"]:
             return "ok", None
         blob = name_blob(ws0, found)
+        request = request_text(b.brief, run)
         rs = load_settings(s, pid)
         model = rs.reviewer_model
         if model not in config.KAISEN_PRICES:
@@ -278,7 +332,7 @@ def check(S, run_id: int, client, lease, index, attempt: int | None = None) -> t
             uses = [x for x in resp.content if x.get("type") == "tool_use"]
             submit = next((u for u in uses if u.get("name") == "submit_package_report"), None)
             if submit is not None:
-                return "ok", _verdict(model, submit.get("input"), looked)
+                return "ok", _verdict(model, submit.get("input"), looked, request)
             if not uses:
                 msgs.append({"role": "user", "content": "Call submit_package_report with your verdict."})
                 continue
@@ -341,18 +395,18 @@ def _batch(inp, reserved: set, blob: str | None = None) -> list:
     return items
 
 
-def _verdict(model: str, inp, looked: dict) -> dict:
+def _verdict(model: str, inp, looked: dict, request: str = "") -> dict:
     statuses = [r.get("status") for r in looked.values()]
     if not looked:
         return _skipped(model, "the steward looked nothing up")
     if "ok" not in statuses and "unknown" not in statuses:
         return _skipped(model, "the package registries could not be reached")
-    findings = build_findings(inp, looked)
+    findings, requested = build_findings(inp, looked, request)
     n_unavail = statuses.count("unavailable")
     note = f"{n_unavail} package(s) could not be checked: registry unavailable." if n_unavail else None
     checked = len(statuses) - n_unavail
     return {"verdict": "outdated" if findings else "current", "findings": findings, "model": model,
-            "checked": checked, "note": note}
+            "checked": checked, "note": note, "requested": requested}
 
 
 # ---- persisted result, view, fix round -----------------------------------------------------------------------------
@@ -368,7 +422,8 @@ def view(run: KaisenRun, secrets_) -> dict | None:
         return None
     out = {"verdict": p.get("verdict"), "model": p.get("model"), "checked": p.get("checked", 0),
            "findings": [redact(x, secrets_) for x in p.get("findings") or []],
-           "note": redact(p["note"], secrets_) if p.get("note") else None}
+           "note": redact(p["note"], secrets_) if p.get("note") else None,
+           "requested": [redact(x, secrets_) for x in p.get("requested") or []]}
     if "files_changed" in p:  # set when the builder finished the fix round
         out["response"] = [redact(x, secrets_) for x in p.get("response") or []]
         out["files_changed"] = bool(p.get("files_changed"))

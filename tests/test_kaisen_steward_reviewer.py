@@ -31,3 +31,9 @@ def test_a_finding_cannot_close_the_block():
 
 def test_prompt_tells_the_reviewer_to_leave_upgrades_alone():
     assert "<package_steward>" in PROMPT.read_text()
+
+
+def test_prompt_no_longer_says_to_undo_nothing_even_when_the_request_names_the_older_version():
+    text = PROMPT.read_text()
+    assert "even if the request names the older version" not in text
+    assert "names" in text and "never ask to upgrade one" in text

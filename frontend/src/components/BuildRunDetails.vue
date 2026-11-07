@@ -59,6 +59,10 @@ const text = (r: KaisenRun) => (r.transcript ?? []).map((t) => `${label(t)}: ${b
               <p class="help">Steward asked for upgrades; builder answered{{ run.packages.files_changed ? '' : ' (no files changed after the check)' }}{{ run.packages.response && run.packages.response.length ? ':' : ' without a response.' }}</p>
               <ul v-if="run.packages.response && run.packages.response.length" class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(x, k) in run.packages.response" :key="k" class="whitespace-pre-wrap break-words">{{ x }}</li></ul>
             </div>
+            <div v-if="run.packages.requested && run.packages.requested.length" class="mt-1">
+              <p class="help">Kept as your request names</p>
+              <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(x, k) in run.packages.requested" :key="k" class="whitespace-pre-wrap break-words">{{ x }}</li></ul>
+            </div>
             <details v-if="run.packages.findings && run.packages.findings.length" class="mt-1">
               <summary class="cursor-pointer">Findings ({{ run.packages.findings.length }})</summary>
               <ul class="mt-1 list-disc space-y-1 pl-5 text-zinc-200"><li v-for="(f, k) in run.packages.findings" :key="k" class="whitespace-pre-wrap break-words">{{ f }}</li></ul>
