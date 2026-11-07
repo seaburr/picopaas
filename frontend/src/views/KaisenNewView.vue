@@ -2,7 +2,6 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
-import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import { ApiError } from '../api/client'
 import { createBuild, getKaisenSettings, runBuild } from '../api/kaisen'
@@ -186,8 +185,7 @@ async function startWithout() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
+  <div>
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb">
@@ -204,7 +202,7 @@ async function startWithout() {
         <template v-else>Ask a project owner to add one.</template>
       </p>
 
-      <form class="card card-pad space-y-4 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
+      <form class="sec space-y-4 pt-3 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
         <div>
           <label for="kb-name" class="label">Name</label>
           <input id="kb-name" v-model="name" class="input" autocomplete="off" maxlength="60" :aria-invalid="nameError ? 'true' : undefined" aria-describedby="kb-name-help" placeholder="Todo list" />
@@ -225,9 +223,9 @@ async function startWithout() {
             <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
           </div>
         </div>
-        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projects.current ? (projects.current.is_personal ? 'Personal' : projects.current.name) : 'Personal' }}</strong>. Kaisen deploys into it and spends from its Anthropic key. Change the project from the picker on the Kaisen page.</p>
+        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projects.current ? (projects.current.is_personal ? 'Personal' : projects.current.name) : 'Personal' }}</strong>. Kaisen deploys into it and spends from its Anthropic key. Change the project in the sidebar.</p>
 
-        <details class="help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
+        <details class="disc help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
           <summary>Output (optional)</summary>
           <div class="mt-2">
             <p class="help mb-2">You can always download the code. Pick a GitHub repository for this app if you want it pushed too. You can change this later on the build.</p>

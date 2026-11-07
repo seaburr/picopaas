@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ChevronRight, RotateCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { ApiError } from '../api/client'
 import type { KaisenDiff } from '../types'
@@ -38,7 +37,7 @@ const lines = (d: string) => d.replace(/\n$/, '').split('\n')
     <p v-if="loading" class="text-sm text-zinc-300 motion-safe:animate-pulse">Loading changes…</p>
     <div v-else-if="error" class="alert-error flex items-center justify-between gap-2">
       <span>{{ error }}</span>
-      <IconButton :icon="RotateCw" label="Retry" sm @click="fetchDiff" />
+      <IconButton label="Retry" sm @click="fetchDiff" />
     </div>
     <template v-else-if="diff">
       <p class="text-sm text-zinc-200">
@@ -57,9 +56,8 @@ const lines = (d: string) => d.replace(/\n$/, '').split('\n')
       </div>
       <div v-if="diff.changed.length" class="space-y-1">
         <p class="meta">Changed</p>
-        <details v-for="c in diff.changed" :key="c.path" class="group rounded-md border border-pico-border">
-          <summary class="flex cursor-pointer items-center gap-1 px-2 py-1 text-sm">
-            <ChevronRight :size="14" class="shrink-0 transition-transform group-open:rotate-90" aria-hidden="true" />
+        <details v-for="c in diff.changed" :key="c.path" class="disc rounded-md border border-pico-border">
+          <summary class="py-1 pr-2 text-sm">
             <span class="mono break-all">{{ c.path }}</span>
           </summary>
           <p v-if="!c.diff" class="border-t border-pico-border px-2 py-1 text-sm text-zinc-300">Diff not shown (too large).</p>

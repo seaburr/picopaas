@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'
-import IconButton from './IconButton.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import { ApiError } from '../api/client'
 import { deleteUpload, describeUpload, listUploads, replaceUpload, uploadContentUrl } from '../api/kaisen'
@@ -196,8 +194,8 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
       <div v-if="quota" class="grid gap-2 sm:grid-cols-2">
         <div v-for="b in [{ id: 'asset', label: 'Site images', used: quota.asset_bytes, limit: quota.asset_limit_bytes }, { id: 'ref', label: 'Reference files', used: quota.ref_bytes, limit: quota.ref_limit_bytes }]" :key="b.id">
           <div class="flex justify-between text-xs text-zinc-300"><span>{{ b.label }}</span><span>{{ fmtSize(b.used) }} of {{ fmtSize(b.limit) }}</span></div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-pico-card" role="progressbar" :aria-label="b.label" aria-valuemin="0" :aria-valuemax="b.limit" :aria-valuenow="b.used">
-            <div class="h-full rounded-full" :class="pct(b.used, b.limit) >= 80 ? 'bg-warn-solid' : 'bg-accent-light'" :style="{ width: `${pct(b.used, b.limit)}%` }" />
+          <div class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-card" role="progressbar" :aria-label="b.label" aria-valuemin="0" :aria-valuemax="b.limit" :aria-valuenow="b.used">
+            <div class="h-full rounded-sm" :class="pct(b.used, b.limit) >= 80 ? 'bg-warn-solid' : 'bg-accent-light'" :style="{ width: `${pct(b.used, b.limit)}%` }" />
           </div>
         </div>
       </div>
@@ -206,14 +204,14 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
       <span class="sr-only" aria-live="polite">{{ busy ? 'Working' : '' }}</span>
 
       <p v-if="items.length === 0" class="meta">No files yet.</p>
-      <ul v-else class="divide-y divide-pico-line">
+      <ul v-else class="divide-y divide-pico-border">
         <li v-for="u in items" :id="`fd-u-${u.id}`" :key="u.id" class="flex flex-wrap items-start gap-3 py-2" :class="focusId === u.id ? 'rounded-md bg-pico-card px-2' : ''">
           <img v-if="u.kind === 'asset'" :src="uploadContentUrl(buildId, u.id, u.version)" alt="" class="h-12 w-12 shrink-0 rounded-sm bg-pico-card object-contain" loading="lazy" />
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span class="break-all text-sm font-medium text-zinc-100">{{ u.name_orig }}</span>
-              <span class="badge-neutral">{{ u.kind === 'asset' ? 'Site' : 'Reference' }}</span>
-              <span v-if="!u.run_id" class="badge-info">Not sent yet</span>
+              <span class="meta">{{ u.kind === 'asset' ? 'Site' : 'Reference' }}</span>
+              <span v-if="!u.run_id" class="meta">Not sent yet</span>
             </div>
             <p class="meta mono flex flex-wrap gap-x-2"><span class="break-all">{{ u.path }}</span><span>{{ u.ext.toUpperCase() }}</span><span>{{ fmtSize(u.size) }}</span><span v-if="dims(u)">{{ dims(u) }}</span></p>
             <form v-if="editId === u.id" class="mt-1 flex flex-wrap items-center gap-2" @submit.prevent="saveEdit(u)">
@@ -224,10 +222,10 @@ const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height
             </form>
             <p v-else class="text-sm text-zinc-300 break-words">{{ u.description || 'No description.' }}</p>
           </div>
-          <div class="flex shrink-0 items-center gap-1">
-            <IconButton :icon="Pencil" :label="`Edit description of ${u.name_orig}`" touch :disabled="!canEdit || busy" @click="startEdit(u)" />
-            <IconButton :icon="RefreshCw" :label="`Replace ${u.name_orig}`" touch :disabled="!controlsOn || busy" @click="startReplace(u)" />
-            <IconButton :icon="Trash2" :label="`Delete ${u.name_orig}`" danger touch :disabled="!canEdit || busy" @click="delTarget = u" />
+          <div class="row-acts shrink-0">
+            <button type="button" class="row-act" :aria-label="`Edit description of ${u.name_orig}`" :disabled="!canEdit || busy" @click="startEdit(u)">Edit</button>
+            <button type="button" class="row-act" :aria-label="`Replace ${u.name_orig}`" :disabled="!controlsOn || busy" @click="startReplace(u)">Replace</button>
+            <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${u.name_orig}`" :disabled="!canEdit || busy" @click="delTarget = u">Delete</button>
           </div>
         </li>
       </ul>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { RotateCw, Save } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { ApiError } from '../api/client'
 import { getKaisenMembers, saveKaisenMember } from '../api/kaisen'
@@ -73,13 +72,13 @@ const cols = computed(() => (canEdit.value
 </script>
 
 <template>
-  <section class="card card-pad min-w-0 space-y-3 lg:col-span-2" aria-labelledby="ks-members">
+  <section class="sec sec-pad min-w-0 space-y-3 lg:col-span-2" aria-labelledby="ks-members">
     <h2 id="ks-members" class="section-title">Member limits (USD)</h2>
     <p class="help">Caps for each person's own spend, on top of the project limits above. Blank means no limit. Resets at 00:00 UTC; counts all builds in this project.</p>
 
     <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
       <span>{{ error }}</span>
-      <IconButton :icon="RotateCw" label="Retry" @click="load" />
+      <IconButton label="Retry" @click="load" />
     </div>
     <div v-else-if="loading" class="h-16 animate-pulse rounded-sm bg-pico-card" aria-busy="true" aria-label="Loading member limits" />
     <p v-else-if="!data || data.members.length === 0" class="meta">No members yet.</p>
@@ -92,14 +91,14 @@ const cols = computed(() => (canEdit.value
         <span role="columnheader">Per-build limit</span>
         <span v-if="canEdit" role="columnheader" class="sr-only">Save</span>
       </div>
-      <div v-for="m in data.members" :key="m.user_id" role="row" class="grid items-center gap-x-3 gap-y-2 border-t border-pico-line py-2" :class="cols">
+      <div v-for="m in data.members" :key="m.user_id" role="row" class="grid items-center gap-x-3 gap-y-2 border-t border-pico-border py-2" :class="cols">
         <div role="cell" class="min-w-0 break-all text-zinc-200">{{ m.email }}</div>
         <div role="cell" class="text-zinc-300"><span class="meta sm:hidden">Role: </span>{{ m.role }}</div>
         <div role="cell" class="mono text-zinc-300"><span class="meta sm:hidden">Spent today: </span>{{ fmtUsd(m.spend_today_usd) }}</div>
         <template v-if="canEdit && edit[m.user_id]">
           <div role="cell"><label class="meta sm:hidden" :for="`day-${m.user_id}`">Daily limit</label><input :id="`day-${m.user_id}`" v-model="edit[m.user_id]!.day" type="number" step="0.01" min="0" inputmode="decimal" class="input w-full sm:w-24" placeholder="No limit" :aria-label="`Daily limit for ${m.email}`" /></div>
           <div role="cell"><label class="meta sm:hidden" :for="`bld-${m.user_id}`">Per-build limit</label><input :id="`bld-${m.user_id}`" v-model="edit[m.user_id]!.build" type="number" step="0.01" min="0" inputmode="decimal" class="input w-full sm:w-24" placeholder="No limit" :aria-label="`Per-build limit for ${m.email}`" /></div>
-          <div role="cell"><IconButton :icon="Save" :label="`Save limits for ${m.email}`" :busy="savingId === m.user_id" :disabled="!rowDirty(m.user_id)" @click="save(m.user_id)" /></div>
+          <div role="cell"><IconButton text="Save" sm :label="`Save limits for ${m.email}`" :busy="savingId === m.user_id" :disabled="!rowDirty(m.user_id)" @click="save(m.user_id)" /></div>
         </template>
         <template v-else>
           <div role="cell" class="mono text-zinc-300"><span class="meta sm:hidden">Daily limit: </span>{{ cap(m.cap_day) }}</div>

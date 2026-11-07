@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useId, watch } from 'vue'
-import { Paperclip } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import AttachChip from './AttachChip.vue'
 import { listUploads } from '../api/kaisen'
 import { ATTACH_ACCEPT, useAttachments } from '../composables/useAttachments'
@@ -23,6 +22,10 @@ const props = defineProps<{
   canAttach: boolean // the user may change files right now (member, no active run)
   hint?: string
   rows?: number
+  attachOffReason?: string // why attaching is off when the caller turned it off (e.g. while answering a question)
+  autogrow?: boolean // the textarea grows with its content, up to maxRows
+  maxRows?: number
+  keyHint?: boolean // quietly show that Enter adds a line and Ctrl/Cmd+Enter sends
 }>()
 const emit = defineEmits<{ 'update:modelValue': [v: string]; submit: [p: { text: string; attachmentIds: number[] }]; 'open-files': []; changed: [] }>()
 
@@ -40,7 +43,7 @@ onMounted(async () => {
 const attachOff = computed(() => {
   if (props.locked) return ''
   if (props.summary && !props.summary.uploads_enabled) return props.summary.uploads_disabled_reason || props.summary.uploads_not_enabled_label || 'Not enabled for this project yet'
-  if (!props.canAttach) return 'You can not change files right now.'
+  if (!props.canAttach) return props.attachOffReason || 'You can not change files right now.'
   return ''
 })
 const attachOn = computed(() => !props.locked && !attachOff.value)
@@ -88,6 +91,19 @@ function onDrop(e: DragEvent) {
   take(Array.from(e.dataTransfer?.files ?? []))
 }
 
+const ta = ref<HTMLTextAreaElement | null>(null)
+function grow() {
+  const el = ta.value
+  if (!el || !props.autogrow) return
+  el.style.height = 'auto'
+  const lh = parseFloat(getComputedStyle(el).lineHeight) || 20
+  const max = lh * (props.maxRows ?? 8) + 12
+  el.style.height = `${Math.min(el.scrollHeight + 2, max)}px`
+  el.style.overflowY = el.scrollHeight + 2 > max ? 'auto' : 'hidden'
+}
+onMounted(grow)
+watch(() => props.modelValue, () => nextTick(grow))
+
 const text = computed({ get: () => props.modelValue, set: (v: string) => emit('update:modelValue', v) })
 const canSend = computed(() => !props.locked && !props.busy && !!props.modelValue.trim() && a.uploading.value === 0)
 const sendHint = computed(() => {
@@ -119,9 +135,9 @@ const offHelp = computed(() => (props.summary && !props.summary.uploads_enabled 
 <template>
   <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -- drag and drop is an extra path; the Attach button is the keyboard control -->
   <div class="relative" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
-    <div v-if="dragging" class="absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed border-accent-light bg-pico-bg/90 text-sm text-accent-light" aria-live="polite">Drop to attach (png, jpg, webp, svg, css, html, txt, md)</div>
+    <div v-if="dragging" class="absolute inset-0 z-10 flex items-center justify-center rounded-md border-2 border-dashed border-zinc-400 bg-pico-bg/90 text-sm text-white" aria-live="polite">Drop to attach (png, jpg, webp, svg, css, html, txt, md)</div>
     <label v-if="!inputId" class="sr-only" :for="uid">{{ label }}</label>
-    <textarea :id="inputId ?? uid" v-model="text" class="input" :rows="rows ?? 3" :disabled="!!locked || busy" :placeholder="placeholder" :aria-describedby="describedby" :aria-invalid="invalid ? 'true' : undefined" @paste="onPaste" @keydown="onKey" />
+    <textarea :id="inputId ?? uid" ref="ta" v-model="text" class="input" :class="autogrow ? 'resize-none' : ''" :rows="rows ?? 3" :disabled="!!locked || busy" :placeholder="placeholder" :aria-describedby="describedby" :aria-invalid="invalid ? 'true' : undefined" @paste="onPaste" @keydown="onKey" />
     <ul v-if="a.chips.value.length" class="mt-2 space-y-2" aria-label="Attached files">
       <AttachChip v-for="c in a.chips.value" :key="c.key" :chip="c" @remove="a.remove(c.key)" @retry="a.retry(c.key)" @note="a.setNote(c.key, $event)" @save="a.saveNote(c.key)" @open-files="emit('open-files')" />
     </ul>
@@ -130,16 +146,17 @@ const offHelp = computed(() => (props.summary && !props.summary.uploads_enabled 
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <input ref="fileInput" type="file" multiple class="sr-only" tabindex="-1" aria-hidden="true" :accept="ATTACH_ACCEPT" @change="onInput" />
       <button type="button" class="btn-secondary btn-sm" :aria-disabled="!attachOn || undefined" :title="attachOff || 'Attach files'" :class="attachOn ? '' : 'opacity-50'" @click="pick">
-        <Paperclip :size="14" aria-hidden="true" />Attach
+        Attach
       </button>
       <button v-if="summary && buildId !== null && summary.max_files !== undefined" type="button" class="btn-secondary btn-sm" @click="emit('open-files')">
-        Files<span class="meta ml-1">{{ count }} of {{ summary.max_files }}</span><span v-if="summary.changed_since_deploy" class="ml-1.5 inline-block h-2 w-2 rounded-full bg-warn-solid" aria-hidden="true" /><span v-if="summary.changed_since_deploy" class="sr-only">, changed since deploy</span>
+        Files<span class="meta ml-1">{{ count }} of {{ summary.max_files }}</span><span v-if="summary.changed_since_deploy" class="dot dot-warn ml-1.5" aria-hidden="true" /><span v-if="summary.changed_since_deploy" class="sr-only">, changed since deploy</span>
       </button>
       <span v-if="attachOff" class="help min-w-0 basis-full sm:basis-0 sm:flex-1">{{ offHelp }}</span>
       <span v-else class="flex-1" />
       <span v-if="sendHint" class="help">{{ sendHint }}</span>
       <button v-if="!noSubmit" type="button" class="btn-primary ml-auto" :disabled="!canSend" @click="submit">{{ busy ? 'Sending…' : submitLabel }}</button>
     </div>
+    <p v-if="keyHint && !locked" class="help">Enter adds a line. Ctrl or Cmd+Enter sends.</p>
     <p v-if="hasUnsent && buildId !== null" class="help mt-1">Attached files are sent with your next message.</p>
     <p v-if="blockedMsg && !attachOff" class="field-error mt-1" role="alert">{{ blockedMsg }}</p>
   </div>

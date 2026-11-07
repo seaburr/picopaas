@@ -1,22 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Download, RotateCw, Settings, Trash2 } from 'lucide-vue-next'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import BuildFiles from '../components/BuildFiles.vue'
 import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
 import BuildConversation from '../components/BuildConversation.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
-import BuildInbox from '../components/BuildInbox.vue'
 import BuildLastDeployment from '../components/BuildLastDeployment.vue'
-import BuildProgress from '../components/BuildProgress.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
-import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
@@ -53,6 +49,45 @@ function openFiles(uid?: number) {
   filesFocus.value = uid ?? null
   filesOpen.value = true
 }
+// ---- layout: the chat fills the viewport below whatever sits above it; the rail is beside it (>= 1024px) or a disclosure ----
+const mq = typeof matchMedia === 'function' ? matchMedia('(min-width: 1024px)') : null
+const desktop = ref(mq?.matches ?? true)
+const railOpen = ref(false)
+function onRailToggle(e: Event) {
+  if (!desktop.value) railOpen.value = (e.target as HTMLDetailsElement).open
+}
+const aboveEl = ref<HTMLElement | null>(null)
+const chatCol = ref<HTMLElement | null>(null)
+const chatH = ref(520)
+function measure() {
+  const el = chatCol.value
+  if (!el || (!desktop.value && railOpen.value)) return
+  const top = el.getBoundingClientRect().top + window.scrollY
+  chatH.value = Math.max(380, Math.floor(window.innerHeight - top - 12))
+}
+function onMq(e: MediaQueryListEvent) {
+  desktop.value = e.matches
+  nextTick(measure)
+}
+let aboveRo: ResizeObserver | null = null
+onMounted(() => {
+  mq?.addEventListener('change', onMq)
+  window.addEventListener('resize', measure)
+})
+watch(chatCol, (el) => {
+  if (!el) return
+  nextTick(measure)
+  aboveRo?.disconnect()
+  if (typeof ResizeObserver !== 'undefined' && aboveEl.value) {
+    aboveRo = new ResizeObserver(measure)
+    aboveRo.observe(aboveEl.value)
+  }
+})
+onBeforeUnmount(() => {
+  mq?.removeEventListener('change', onMq)
+  window.removeEventListener('resize', measure)
+  aboveRo?.disconnect()
+})
 const confirmDelete = ref(false)
 const alsoApp = ref(false)
 const deleting = ref(false)
@@ -64,13 +99,15 @@ const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kai
 const you = computed(() => build.value?.created_by.id === auth.user?.id)
 const inbox = computed(() => build.value?.inbox ?? [])
 const hasQuestion = computed(() => inbox.value.some((i) => i.kind === 'question' && i.status === 'open'))
-const feedbackReason = computed(() => {
+// Why the composer is off. An open question does not lock it: the composer answers the question instead.
+const composerLocked = computed(() => {
   if (projSuspended.value) return SUSPENDED_TITLE
-  if (!canRun.value) return 'You can not send changes to this build.'
+  if (!canRun.value) return hasQuestion.value ? 'You can not answer for this build.' : 'You can not send changes to this build.'
   if (active.value) return 'Kaisen is working. You can send more once this run finishes.'
-  if (hasQuestion.value) return 'Answer Kaisen\'s question first.'
   return ''
 })
+// Why "send a change" actions (Fix it, suggestions) are off.
+const feedbackReason = computed(() => composerLocked.value || (hasQuestion.value ? 'Answer Kaisen\'s question first.' : ''))
 const firstRun = computed(() => !!build.value && build.value.runs.length === 0 && build.value.status === 'queued')
 const out = computed(() => build.value?.output)
 const activeRun = computed(() => (active.value ? build.value?.runs.find((r) => r.status === 'running' || r.status === 'queued') ?? null : null))
@@ -173,11 +210,11 @@ async function sendChange(text?: string) {
 const FIX_TEXT = 'The preview is failing. Read the deploy logs with deploy_preview, find the cause and fix it.'
 const TESTS_FIX_TEXT = 'The generated tests are failing. Read the test output with deploy_preview and fix it.'
 const testsFailing = computed(() => ['fail', 'timeout'].includes(build.value?.tests?.status ?? ''))
-const TEST_LOOK: Record<string, { label: string; cls: string }> = {
-  pass: { label: 'Tests pass', cls: 'badge-ok' },
-  fail: { label: 'Tests fail', cls: 'badge-error' },
-  timeout: { label: 'Tests timed out', cls: 'badge-warn' },
-  running: { label: 'Tests running', cls: 'badge-info' },
+const TEST_LOOK: Record<string, { label: string; tone: string }> = {
+  pass: { label: 'Tests pass', tone: 'ok' },
+  fail: { label: 'Tests fail', tone: 'err' },
+  timeout: { label: 'Tests timed out', tone: 'warn' },
+  running: { label: 'Tests running', tone: 'off' },
 }
 async function fixTests() {
   await act('feedback', () => sendFeedback(buildId.value, TESTS_FIX_TEXT))
@@ -194,8 +231,9 @@ async function dismiss(itemId: number) {
 }
 async function answer(itemId: number, text: string) {
   answerBusy.value = itemId
-  await act('answer', () => answerInbox(buildId.value, itemId, text))
+  const b = await act('answer', () => answerInbox(buildId.value, itemId, text))
   answerBusy.value = null
+  if (b) feedback.value = ''
 }
 watch(outForm, () => { outDirty.value = true; outTest.value = null }, { deep: true })
 async function saveOutput() {
@@ -342,13 +380,11 @@ async function doDelete() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-
+  <div>
     <main id="main" tabindex="-1" class="page-main">
       <div class="sr-only" role="status">{{ announce }}</div>
 
-      <div v-if="notFound" class="card card-pad">
+      <div v-if="notFound" class="sec pt-3">
         <h1 class="page-title">Build not found</h1>
         <p class="mt-1 text-sm text-zinc-300">This build doesn't exist or was deleted.</p>
         <RouterLink to="/kaisen" class="btn-secondary mt-4">Back to Kaisen</RouterLink>
@@ -356,154 +392,176 @@ async function doDelete() {
 
       <div v-else-if="loadError && !build" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
         <span>{{ loadError }}</span>
-        <IconButton :icon="RotateCw" label="Retry" @click="load()" />
+        <IconButton label="Retry" @click="load()" />
       </div>
 
       <div v-else-if="!build" class="space-y-3" aria-busy="true" aria-label="Loading build">
-        <div class="h-6 w-48 animate-pulse rounded-sm bg-pico-panel" />
-        <div class="h-32 animate-pulse rounded-sm bg-pico-panel" />
+        <div class="h-6 w-48 animate-pulse rounded-sm bg-pico-card" />
+        <div class="h-32 animate-pulse rounded-sm bg-pico-card" />
       </div>
 
       <template v-else>
-        <SuspendedBanner :project="buildProject" kaisen />
-        <nav class="meta mb-2" aria-label="Breadcrumb">
-          <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
-        </nav>
+        <div ref="aboveEl">
+          <SuspendedBanner :project="buildProject" kaisen />
+          <nav class="meta mb-2" aria-label="Breadcrumb">
+            <RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>{{ build.name }}
+          </nav>
 
-        <header class="mb-3 flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <h1 class="page-title break-all">{{ build.name }}</h1>
-              <StatusBadge kind="build" :status="build.status" />
-              <PreviewBadge />
+          <header class="mb-3 flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h1 class="page-title !text-lg break-all">{{ build.name }}</h1>
+                <StatusBadge kind="build" :status="build.status" />
+                <PreviewBadge />
+              </div>
+              <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
             </div>
-            <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
-          </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <IconButton :icon="Settings" label="Kaisen settings" text="Settings" to="/kaisen/settings" />
-            <IconButton :icon="Trash2" label="Delete build" text="Delete" danger @click="alsoApp = false; confirmDelete = true" />
-          </div>
-        </header>
+            <div class="flex shrink-0 items-center gap-2">
+              <IconButton label="Kaisen settings" text="Settings" to="/kaisen/settings" />
+            </div>
+          </header>
 
-        <p v-if="auth.user?.features?.kaisen === false" class="alert-warn mb-3">Kaisen is turned off on this instance.</p>
-        <p v-if="actionError" role="alert" class="alert-error mb-3 whitespace-pre-wrap">{{ actionError }}</p>
+          <p v-if="auth.user?.features?.kaisen === false" class="alert-warn mb-3">Kaisen is turned off on this instance.</p>
+          <p v-if="actionError" role="alert" class="alert-error mb-3 whitespace-pre-wrap">{{ actionError }}</p>
+        </div>
 
-        <div class="space-y-3">
-          <section class="card card-pad" aria-labelledby="h-live">
-            <h2 id="h-live" class="section-title mb-2">Live app</h2>
-            <template v-if="build.app_id && build.app_hostname">
-              <div class="flex flex-wrap items-center gap-2">
-                <HostLink :hostname="build.app_hostname" />
-                <StatusBadge v-if="app || build.app_status" :status="app?.status ?? build.app_status ?? ''" />
-              </div>
-              <div v-if="appBroken && build.app_id" class="mt-2 flex flex-wrap items-center gap-2">
-                <button type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixIt">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
-                <span class="help">{{ feedbackReason || (testsFailing ? 'Asks Kaisen to read the deploy logs, fix the cause and the failing tests.' : 'Asks Kaisen to read the deploy logs and fix the cause.') }}</span>
-              </div>
-              <div class="mt-3 border-t border-pico-border pt-2" aria-labelledby="h-tests">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 id="h-tests" class="label !mb-0">Tests</h3>
-                  <template v-if="build.tests">
-                    <span :class="['badge', TEST_LOOK[build.tests.status]?.cls ?? 'badge-neutral']">{{ TEST_LOOK[build.tests.status]?.label ?? build.tests.status }}</span>
-                    <span v-if="build.tests.ran_at" class="meta mono">{{ relTime(build.tests.ran_at, now) }}</span>
-                    <button v-if="testsFailing && !active && !appBroken" type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixTests">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
+        <div class="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6" :style="{ '--chat-h': chatH + 'px' }">
+          <section ref="chatCol" class="h-[var(--chat-h)] min-h-0 min-w-0 lg:border-t lg:border-pico-border lg:pt-2" aria-labelledby="h-convo">
+            <h2 id="h-convo" class="sr-only">Conversation</h2>
+            <BuildConversation
+              v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
+              :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="composerLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
+              :can-run="canRun" :active-run="activeRun" :first-run="firstRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" :answer-busy="answerBusy"
+              @submit="(p) => sendChange(p.text)" @answer="answer" @dismiss="dismiss" @interrupt="interrupt" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
+            />
+          </section>
+
+          <!-- On a phone the rail is one disclosure above the chat; from 1024px it is a column beside it, always open. -->
+          <details class="disc max-lg:order-first max-lg:border-t max-lg:border-pico-border lg:h-[var(--chat-h)] lg:overflow-y-auto" :open="desktop || railOpen" aria-label="Build details" @toggle="onRailToggle">
+            <summary class="text-sm font-semibold max-lg:min-h-[44px] lg:hidden">Build details</summary>
+            <div class="lg:border-t lg:border-pico-border lg:pt-0">
+              <details class="disc sec py-1.5" open aria-labelledby="h-live">
+                <summary><h2 id="h-live" class="section-title">Live app and preview</h2></summary>
+                <div class="pb-2 pt-1">
+                  <template v-if="build.app_id && build.app_hostname">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <HostLink :hostname="build.app_hostname" />
+                      <StatusBadge v-if="app || build.app_status" :status="app?.status ?? build.app_status ?? ''" />
+                    </div>
+                    <div v-if="appBroken && build.app_id" class="mt-2 flex flex-wrap items-center gap-2">
+                      <button type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixIt">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
+                      <span class="help !mt-0">{{ feedbackReason || (testsFailing ? 'Asks Kaisen to read the deploy logs, fix the cause and the failing tests.' : 'Asks Kaisen to read the deploy logs and fix the cause.') }}</span>
+                    </div>
+                    <div class="mt-3 border-t border-pico-border pt-2" aria-labelledby="h-tests">
+                      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <h3 id="h-tests" class="text-xs font-medium text-zinc-200">Tests</h3>
+                        <template v-if="build.tests">
+                          <span :class="['st', `tone-${TEST_LOOK[build.tests.status]?.tone ?? 'off'}`]"><span :class="['dot', `dot-${TEST_LOOK[build.tests.status]?.tone ?? 'off'}`]" aria-hidden="true" />{{ TEST_LOOK[build.tests.status]?.label ?? build.tests.status }}</span>
+                          <span v-if="build.tests.ran_at" class="meta mono">{{ relTime(build.tests.ran_at, now) }}</span>
+                          <button v-if="testsFailing && !active && !appBroken" type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixTests">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
+                        </template>
+                        <span v-else class="meta">No test result yet. Add a "test" command in kaisen.json.</span>
+                      </div>
+                      <details v-if="build.tests && build.tests.tail" class="disc mt-1">
+                        <summary class="text-sm">Test output</summary>
+                        <pre class="mono mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-pico-card p-3 text-zinc-200 [overflow-wrap:anywhere]" tabindex="0" aria-label="Test output">{{ build.tests.tail }}</pre>
+                      </details>
+                    </div>
+                    <BuildLastDeployment :items="inbox" :now="now" />
+                    <div v-if="app && ['pending', 'deploying', 'error'].includes(app.status)" class="mt-2"><AppStatusNote compact :app="app" /></div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary btn-sm">App health</RouterLink>
+                      <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary btn-sm">App settings</RouterLink>
+                      <button v-if="canRun" type="button" class="btn-secondary btn-sm" :disabled="goingOffline || !app" @click="confirmOffline = true">Take offline</button>
+                    </div>
+                    <p class="help mt-2">Taking it offline deletes the app (and its database, if it has one) but keeps this build. Deploy again any time; the app gets a new address.</p>
                   </template>
-                  <span v-else class="meta">No test result yet. Add a "test" command in kaisen.json.</span>
+                  <div v-else-if="(build.status === 'done' || build.status === 'error' || build.status === 'stopped') && build.files.length > 0" class="alert-info flex flex-wrap items-center justify-between gap-2">
+                    <span>Offline. The code and conversation are kept here.</span>
+                    <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
+                  </div>
+                  <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in the conversation to continue.</p>
+                  <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
+                  <BuildLastDeployment v-if="!(build.app_id && build.app_hostname)" :items="inbox" :now="now" />
                 </div>
-                <details v-if="build.tests && build.tests.tail" class="mt-1">
-                  <summary class="cursor-pointer text-sm">Test output</summary>
-                  <pre class="mono mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-pico-bg p-3 text-xs text-zinc-200" tabindex="0" aria-label="Test output">{{ build.tests.tail }}</pre>
-                </details>
-              </div>
-              <BuildLastDeployment :items="inbox" :now="now" />
-              <div v-if="app && ['pending', 'deploying', 'error'].includes(app.status)" class="mt-2"><AppStatusNote compact :app="app" /></div>
-              <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-                <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary">App health</RouterLink>
-                <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary">App settings</RouterLink>
-                <button v-if="canRun" type="button" class="btn-secondary sm:ml-auto" :disabled="goingOffline || !app" @click="confirmOffline = true">Take offline</button>
-              </div>
-              <p class="help mt-2">Taking it offline deletes the app (and its database, if it has one) but keeps this build. Deploy again any time; the app gets a new address.</p>
-            </template>
-            <div v-else-if="(build.status === 'done' || build.status === 'error' || build.status === 'stopped') && build.files.length > 0" class="alert-info flex flex-wrap items-center justify-between gap-2">
-              <span>Offline. The code and conversation are kept here.</span>
-              <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
+              </details>
+
+              <details class="disc sec py-1.5" aria-labelledby="h-output">
+                <summary><h2 id="h-output" class="section-title">Output</h2></summary>
+                <div class="pb-2 pt-1">
+                  <p class="help mb-2">"Save output settings" only saves the choices below; it does not download anything. Use "Download code" to get the files. Pushing to GitHub is optional and uses this build's own repository.</p>
+                  <form class="space-y-3" novalidate @submit.prevent="saveOutput">
+                    <BuildOutputFields v-model="outForm" id-prefix="bo" :token-state="build.output.token" :project-token-set="build.output.project_token_set" :disabled="!canRun" :errors="outErr" />
+                    <div class="flex flex-wrap gap-2">
+                      <button type="submit" class="btn-primary" :disabled="!canRun || !outDirty || busy === 'output'">{{ busy === 'output' ? 'Saving…' : 'Save output settings' }}</button>
+                      <button v-if="outForm.output_mode === 'github'" type="button" class="btn-secondary" :disabled="!canRun || outDirty || busy === 'test' || !githubReady" @click="testOutput">{{ busy === 'test' ? 'Testing…' : 'Test' }}</button>
+                      <button v-if="githubReady" type="button" class="btn-secondary" :disabled="outDirty || pushRunning || !out?.can_push" @click="push">{{ pushRunning ? 'Pushing…' : 'Push now' }}</button>
+                      <button type="button" class="btn-secondary" :disabled="busy === 'download'" @click="download">{{ busy === 'download' ? 'Preparing…' : 'Download code (.tar.gz)' }}</button>
+                    </div>
+                    <div v-if="pushRunning" class="alert-info" role="status">
+                      <p><span class="motion-safe:animate-pulse">Pushing to GitHub…</span> You can leave this page; the push keeps going.</p>
+                    </div>
+                    <div v-else-if="pushError" class="alert-error" role="alert">
+                      <p class="whitespace-pre-wrap">{{ pushError }}</p>
+                    </div>
+                    <div v-else-if="pushJob?.status === 'done'" class="alert-success" role="status">
+                      <p>Pushed. {{ pushJob.message }}</p>
+                      <p class="mt-1 flex flex-wrap gap-x-3">
+                        <a v-if="pushJob.pr_url" :href="pushJob.pr_url" target="_blank" rel="noopener noreferrer" class="link">Open pull request<span class="sr-only"> (opens in new tab)</span></a>
+                        <a v-if="pushJob.url" :href="pushJob.url" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a>
+                        <span v-if="pushJob.finished_at" class="meta">{{ relTime(pushJob.finished_at, now) }}</span>
+                      </p>
+                    </div>
+                    <div v-else-if="pushJob?.status === 'error'" class="alert-error" role="alert">
+                      <p class="whitespace-pre-wrap">Push failed: {{ pushJob.message }}</p>
+                      <p v-if="pushJob.error_code && NOTHING_CHANGED.includes(pushJob.error_code)" class="mt-1">Nothing changed in your repo.</p>
+                      <p v-if="pushJob.error_code" class="meta mt-1">Reason: <span class="mono">{{ pushJob.error_code }}</span></p>
+                      <p class="mt-2 flex flex-wrap gap-2">
+                        <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="outDirty || !out?.can_push" @click="push">Try again</button>
+                        <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="!canRun || outDirty || busy === 'test'" @click="testOutput">Test connection</button>
+                      </p>
+                    </div>
+                    <p v-if="outDirty" class="help">Save first, then test or push.</p>
+                  </form>
+                  <div role="status">
+                    <p v-if="outTest" :class="[outTest.ok ? 'alert-success' : 'alert-error', 'mt-2']">{{ outTest.message }}</p>
+                  </div>
+                  <p v-if="githubReady && !outDirty" class="help">Pushes to {{ out?.repo }} on branch {{ out?.branch || 'kaisen/' + build.slug }}.{{ out?.open_pr ? ' Opens a pull request.' : '' }}</p>
+                </div>
+              </details>
+
+              <details class="disc sec py-1.5" open aria-labelledby="h-spend">
+                <summary><h2 id="h-spend" class="section-title">Spend</h2></summary>
+                <div class="pb-2 pt-1">
+                  <p v-if="!build.spend.cap_build" class="meta">No cap set</p>
+                  <div v-else>
+                    <div class="flex items-baseline justify-between gap-2 text-sm">
+                      <span class="meta">This build</span>
+                      <span class="mono text-zinc-300">{{ fmtUsd(build.spend.build_usd) }} of {{ fmtUsd(build.spend.cap_build) }}</span>
+                    </div>
+                    <div class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-muted" role="progressbar" aria-label="This build spend" aria-valuemin="0" :aria-valuemax="build.spend.cap_build" :aria-valuenow="Math.min(build.spend.build_usd, build.spend.cap_build)">
+                      <div :class="['h-full', build.spend.build_usd >= build.spend.cap_build ? 'bg-danger' : 'bg-zinc-400']" :style="{ width: Math.min(100, (build.spend.build_usd / build.spend.cap_build) * 100) + '%' }" />
+                    </div>
+                  </div>
+                  <p class="meta mt-2">Last 30 days, project <span class="mono">{{ fmtUsd(build.spend.last30_usd) }}</span></p>
+                </div>
+              </details>
+
+              <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
+
+              <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
+
+              <BuildFiles :build-id="build.id" :files="build.files" />
+
+              <details class="disc sec py-1.5" aria-labelledby="h-del">
+                <summary><h2 id="h-del" class="section-title">Delete build</h2></summary>
+                <div class="pb-2 pt-1">
+                  <p class="help !mt-0 mb-2">Removes the build, its files and run history. Spend totals stay in your usage.</p>
+                  <IconButton label="Delete build" text="Delete build" danger @click="alsoApp = false; confirmDelete = true" />
+                </div>
+              </details>
             </div>
-            <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in the conversation below to continue.</p>
-            <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
-            <BuildLastDeployment v-if="!(build.app_id && build.app_hostname)" :items="inbox" :now="now" />
-          </section>
-
-          <BuildInbox :items="inbox" :can-run="canRun" :busy-id="answerBusy" :spend-cap="build.spend.cap_build" :build-id="build.id" :summary="build.uploads" @answer="answer" @resume="resume" @dismiss="dismiss" @open-files="openFiles" @changed="load(false)" />
-
-          <BuildProgress v-if="activeRun" :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" @interrupt="interrupt" />
-          <p v-if="firstRun" class="help">Your first build is queued.</p>
-          <BuildConversation
-            v-else v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
-            :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="feedbackReason" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
-            @submit="(p) => sendChange(p.text)" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
-          />
-
-          <BuildFiles :build-id="build.id" :files="build.files" />
-          <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
-
-          <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
-
-          <section class="card card-pad" aria-labelledby="h-output">
-            <h2 id="h-output" class="section-title mb-2">Output</h2>
-            <p class="help mb-2">"Save output settings" only saves the choices below; it does not download anything. Use "Download code" to get the files. Pushing to GitHub is optional and uses this build's own repository.</p>
-            <form class="space-y-3" novalidate @submit.prevent="saveOutput">
-              <BuildOutputFields v-model="outForm" id-prefix="bo" :token-state="build.output.token" :project-token-set="build.output.project_token_set" :disabled="!canRun" :errors="outErr" />
-              <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <button type="submit" class="btn-primary" :disabled="!canRun || !outDirty || busy === 'output'">{{ busy === 'output' ? 'Saving…' : 'Save output settings' }}</button>
-                <button v-if="outForm.output_mode === 'github'" type="button" class="btn-secondary" :disabled="!canRun || outDirty || busy === 'test' || !githubReady" @click="testOutput">{{ busy === 'test' ? 'Testing…' : 'Test' }}</button>
-                <button v-if="githubReady" type="button" class="btn-secondary" :disabled="outDirty || pushRunning || !out?.can_push" @click="push">{{ pushRunning ? 'Pushing…' : 'Push now' }}</button>
-                <button type="button" class="btn-secondary" :disabled="busy === 'download'" @click="download"><Download :size="16" aria-hidden="true" /> {{ busy === 'download' ? 'Preparing…' : 'Download code (.tar.gz)' }}</button>
-              </div>
-              <div v-if="pushRunning" class="alert-info" role="status">
-                <p><span class="motion-safe:animate-pulse">Pushing to GitHub…</span> You can leave this page; the push keeps going.</p>
-              </div>
-              <div v-else-if="pushError" class="alert-error" role="alert">
-                <p class="whitespace-pre-wrap">{{ pushError }}</p>
-              </div>
-              <div v-else-if="pushJob?.status === 'done'" class="alert-success" role="status">
-                <p>Pushed. {{ pushJob.message }}</p>
-                <p class="mt-1 flex flex-wrap gap-x-3">
-                  <a v-if="pushJob.pr_url" :href="pushJob.pr_url" target="_blank" rel="noopener noreferrer" class="link">Open pull request<span class="sr-only"> (opens in new tab)</span></a>
-                  <a v-if="pushJob.url" :href="pushJob.url" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a>
-                  <span v-if="pushJob.finished_at" class="meta">{{ relTime(pushJob.finished_at, now) }}</span>
-                </p>
-              </div>
-              <div v-else-if="pushJob?.status === 'error'" class="alert-error" role="alert">
-                <p class="whitespace-pre-wrap">Push failed: {{ pushJob.message }}</p>
-                <p v-if="pushJob.error_code && NOTHING_CHANGED.includes(pushJob.error_code)" class="mt-1">Nothing changed in your repo.</p>
-                <p v-if="pushJob.error_code" class="meta mt-1">Reason: <span class="mono">{{ pushJob.error_code }}</span></p>
-                <p class="mt-2 flex flex-wrap gap-2">
-                  <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="outDirty || !out?.can_push" @click="push">Try again</button>
-                  <button v-if="githubReady" type="button" class="btn-secondary btn-sm" :disabled="!canRun || outDirty || busy === 'test'" @click="testOutput">Test connection</button>
-                </p>
-              </div>
-              <p v-if="outDirty" class="help">Save first, then test or push.</p>
-            </form>
-            <div role="status">
-              <p v-if="outTest" :class="[outTest.ok ? 'alert-success' : 'alert-error', 'mt-2']">{{ outTest.message }}</p>
-            </div>
-            <p v-if="githubReady && !outDirty" class="help">Pushes to {{ out?.repo }} on branch {{ out?.branch || 'kaisen/' + build.slug }}.{{ out?.open_pr ? ' Opens a pull request.' : '' }}</p>
-          </section>
-
-          <section class="card card-pad" aria-labelledby="h-spend">
-            <h2 id="h-spend" class="section-title mb-2">Spend</h2>
-            <p v-if="!build.spend.cap_build" class="meta">No cap set</p>
-            <div v-else>
-              <div class="flex items-baseline justify-between gap-2 text-sm">
-                <span class="meta">This build</span>
-                <span class="mono text-zinc-300">{{ fmtUsd(build.spend.build_usd) }} of {{ fmtUsd(build.spend.cap_build) }}</span>
-              </div>
-              <div class="mt-1 h-1.5 overflow-hidden rounded-sm bg-pico-card" role="progressbar" aria-label="This build spend" aria-valuemin="0" :aria-valuemax="build.spend.cap_build" :aria-valuenow="Math.min(build.spend.build_usd, build.spend.cap_build)">
-                <div :class="['h-full', build.spend.build_usd >= build.spend.cap_build ? 'bg-danger' : 'bg-accent']" :style="{ width: Math.min(100, (build.spend.build_usd / build.spend.cap_build) * 100) + '%' }" />
-              </div>
-            </div>
-            <p class="meta mt-2">Last 30 days, project <span class="mono">{{ fmtUsd(build.spend.last30_usd) }}</span></p>
-          </section>
+          </details>
         </div>
       </template>
     </main>

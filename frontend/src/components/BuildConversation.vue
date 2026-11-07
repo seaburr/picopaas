@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ChevronRight } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AttachComposer from './AttachComposer.vue'
+import BuildInbox from './BuildInbox.vue'
+import BuildProgress from './BuildProgress.vue'
 import BuildRunDetails from './BuildRunDetails.vue'
 import StatusBadge from './StatusBadge.vue'
 import { listUploads, uploadContentUrl } from '../api/kaisen'
 import { relTime } from '../composables/appUi'
 import { duration, fmtSize, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
-import type { KaisenBuildDetail, KaisenUpload, KaisenUploadsSummary } from '../types'
+import type { KaisenBuildDetail, KaisenInboxItem, KaisenRun, KaisenUpload, KaisenUploadsSummary } from '../types'
 
+// The conversation is the page: a scrolling thread (yours on the right in a box, Kaisen's across the left as plain
+// text) with the composer pinned under it. It fills the height its parent gives it.
 const props = defineProps<{
   build: KaisenBuildDetail
   now: number
@@ -22,12 +25,21 @@ const props = defineProps<{
   busy: boolean
   hint: string
   modelValue: string
+  canRun: boolean
+  activeRun?: KaisenRun | null
+  firstRun?: boolean // the first run is queued but has no run row yet
+  interrupting?: boolean
+  interruptError?: string
+  answerBusy?: number | null
   draft?: boolean // created as a draft: nothing has run yet
   starting?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [v: string]
   submit: [p: { text: string; attachmentIds: number[] }]
+  answer: [id: number, text: string]
+  dismiss: [id: number]
+  interrupt: [runId: number]
   resume: []
   'open-files': [uploadId?: number]
   changed: []
@@ -35,7 +47,7 @@ const emit = defineEmits<{
 }>()
 const text = computed({ get: () => props.modelValue, set: (v: string) => emit('update:modelValue', v) })
 
-interface Item { key: string; at: number; who: 'you' | 'kaisen'; kind: string; text: string; runIdx: number | null; files: KaisenUpload[] }
+interface Item { key: string; at: number; iso: string; who: 'you' | 'kaisen'; kind: string; text: string; runIdx: number | null; files: KaisenUpload[]; notice?: KaisenInboxItem }
 const ts = (iso: string) => {
   const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`).getTime()
   return Number.isNaN(d) ? 0 : d
@@ -53,7 +65,7 @@ async function loadUploads() {
   try {
     uploads.value = (await listUploads(props.build.id)).uploads
   } catch {
-    // tiles are an extra; the Files drawer still reports errors
+    // chips are an extra; the Files drawer still reports errors
   }
 }
 onMounted(loadUploads)
@@ -62,112 +74,194 @@ const unsent = computed(() => uploads.value.filter((u) => !u.run_id))
 const filesOf = (runId: number) => uploads.value.filter((u) => u.run_id === runId)
 const dims = (u: KaisenUpload) => (u.width && u.height ? `${u.width}×${u.height} · ` : '')
 
+const NOTICE_KINDS = ['budget', 'refusal', 'error']
 const items = computed<Item[]>(() => {
-  const out: Item[] = [{ key: 'brief', at: ts(props.build.created_at), who: 'you', kind: 'brief', text: props.build.brief, runIdx: null, files: [] }]
+  const b = props.build
+  const out: Item[] = [{ key: 'brief', at: ts(b.created_at), iso: b.created_at, who: 'you', kind: 'brief', text: b.brief, runIdx: null, files: [] }]
   runsAsc.value.forEach(({ r, i }, n) => {
     const files = filesOf(r.id)
     if (n === 0 && r.kind === 'build') out[0].files = files
-    else if (r.kind === 'feedback') out.push({ key: `c${r.id}`, at: ts(r.started_at) - 1, who: 'you', kind: 'change', text: changeText(i) || 'Sent a change.', runIdx: null, files })
-    else if (files.length) out.push({ key: `f${r.id}`, at: ts(r.started_at) - 1, who: 'you', kind: 'files', text: '', runIdx: null, files })
-    out.push({ key: `r${r.id}`, at: ts(r.started_at), who: 'kaisen', kind: 'run', text: r.summary ?? '', runIdx: i, files: [] })
+    else if (r.kind === 'feedback') out.push({ key: `c${r.id}`, at: ts(r.started_at) - 1, iso: r.started_at, who: 'you', kind: 'change', text: changeText(i) || 'Sent a change.', runIdx: null, files })
+    else if (files.length) out.push({ key: `f${r.id}`, at: ts(r.started_at) - 1, iso: r.started_at, who: 'you', kind: 'files', text: '', runIdx: null, files })
+    // The active run is the "working" message at the end of the thread.
+    // A run with no reply text of its own reads as: the question it asked, then its status line and details.
+    const asked = r.summary ? [] : b.inbox.filter((q) => q.kind === 'question' && ts(q.created_at) >= ts(r.started_at) && (!r.finished_at || ts(q.created_at) <= ts(r.finished_at)))
+    const runAt = asked.length ? Math.max(...asked.map((q) => ts(q.created_at))) + 1.5 : ts(r.started_at)
+    if (props.activeRun?.id !== r.id) out.push({ key: `r${r.id}`, at: runAt, iso: r.started_at, who: 'kaisen', kind: 'run', text: r.summary ?? '', runIdx: i, files: [] })
   })
-  for (const it of props.build.inbox) {
-    if (it.kind !== 'question') continue
-    out.push({ key: `q${it.id}`, at: ts(it.created_at) + 1, who: 'kaisen', kind: 'question', text: it.text, runIdx: null, files: [] })
-    if (it.answer) out.push({ key: `a${it.id}`, at: ts(it.created_at) + 2, who: 'you', kind: 'answer', text: it.answer, runIdx: null, files: [] })
+  for (const it of b.inbox) {
+    if (it.kind === 'question') {
+      out.push({ key: `q${it.id}`, at: ts(it.created_at) + 1, iso: it.created_at, who: 'kaisen', kind: 'question', text: it.text, runIdx: null, files: [] })
+      if (it.answer) out.push({ key: `a${it.id}`, at: ts(it.created_at) + 2, iso: it.created_at, who: 'you', kind: 'answer', text: it.answer, runIdx: null, files: [] })
+    } else if (NOTICE_KINDS.includes(it.kind) && it.status === 'open') {
+      out.push({ key: `n${it.id}`, at: ts(it.created_at) + 1, iso: it.created_at, who: 'kaisen', kind: 'notice', text: '', runIdx: null, files: [], notice: it })
+    }
   }
-  return out.sort((a, b) => a.at - b.at)
+  return out.sort((a, b2) => a.at - b2.at)
 })
-const open = ref<Record<string, boolean>>({})
 
-// The timeline scrolls inside a fixed-height panel. Jump to the START of the newest message, not the panel's bottom:
-// the latest run's details open by default and would otherwise push the message itself out of view.
-const timeline = ref<HTMLElement | null>(null)
-const lastTop = () => (timeline.value?.lastElementChild as HTMLElement | null)?.offsetTop ?? 0
-let following = true // false once the reader scrolls back through older messages
+// ---- answering: the oldest open question first, from the same composer ----
+const openQuestions = computed(() => props.build.inbox.filter((i) => i.kind === 'question' && i.status === 'open').sort((a, b) => a.id - b.id))
+const answering = computed(() => openQuestions.value[0] ?? null)
+const remaining = computed(() => Math.max(0, openQuestions.value.length - 1))
+const brief = (t: string) => (t.length > 90 ? `${t.slice(0, 90).trimEnd()}…` : t)
+function onSubmit(p: { text: string; attachmentIds: number[] }) {
+  if (props.answerBusy != null) return // an answer is in flight: never send its text to the next question
+  stickNow()
+  if (answering.value) emit('answer', answering.value.id, p.text)
+  else emit('submit', p)
+}
+
+// ---- stick to the bottom like any chat ----
+const scroller = ref<HTMLElement | null>(null)
+const listEl = ref<HTMLElement | null>(null)
+const atBottom = ref(true)
+const near = () => {
+  const el = scroller.value
+  return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 48
+}
+const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+function toBottom(smooth = false) {
+  const el = scroller.value
+  if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduced() ? 'smooth' : 'auto' })
+}
+function stickNow() {
+  atBottom.value = true
+  nextTick(() => toBottom())
+}
+// Pinned until the reader scrolls UP. Growth of the content or a smaller viewport never unpins by itself, so a layout
+// pass between a programmatic scroll and its scroll event can not lose the pin.
+let lastTop = 0
 function onScroll() {
-  if (timeline.value) following = timeline.value.scrollTop >= lastTop() - 80
+  const el = scroller.value
+  if (!el) return
+  if (near()) atBottom.value = true
+  else if (el.scrollTop < lastTop) atBottom.value = false
+  lastTop = el.scrollTop
 }
-async function showLatest() {
-  await nextTick()
-  if (timeline.value) timeline.value.scrollTop = lastTop()
+// Opening a disclosure or a diff grows the content below the reader: unpin first so the view stays put, then
+// re-evaluate once the layout has settled.
+function onClickCapture(e: MouseEvent) {
+  if (!(e.target as Element | null)?.closest('summary, button')) return
+  atBottom.value = false
+  requestAnimationFrame(() => requestAnimationFrame(() => { atBottom.value = near() }))
 }
-onMounted(showLatest)
-watch(() => items.value.length, () => {
-  if (following) showLatest()
+let ro: ResizeObserver | null = null
+onMounted(() => {
+  nextTick(() => toBottom())
+  if (typeof ResizeObserver === 'undefined') return
+  ro = new ResizeObserver(() => {
+    if (atBottom.value) toBottom()
+  })
+  if (listEl.value) ro.observe(listEl.value)
+  if (scroller.value) ro.observe(scroller.value)
 })
+onBeforeUnmount(() => ro?.disconnect())
+watch(() => props.build.id, () => stickNow())
 </script>
 
 <template>
-  <section class="card card-pad" aria-labelledby="h-convo">
-    <h2 id="h-convo" class="section-title mb-3">Conversation</h2>
-    <ol ref="timeline" class="relative max-h-[65vh] space-y-3 overflow-y-auto pr-1" tabindex="0" aria-label="Conversation messages" @scroll.passive="onScroll">
-      <li v-for="it in items" :key="it.key" class="flex gap-2">
-        <span class="mono mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px]" :class="it.who === 'you' ? 'bg-pico-card text-zinc-200' : 'bg-accent text-white'" aria-hidden="true">{{ it.who === 'you' ? 'Y' : 'K' }}</span>
-        <div class="min-w-0 flex-1">
-          <p class="meta">
-            <span class="font-medium text-zinc-200">{{ it.who === 'you' ? (it.kind === 'brief' && !you ? build.created_by.email : 'You') : 'Kaisen' }}</span>
-            <template v-if="it.kind === 'brief'"> · {{ relTime(build.created_at, now) }} · brief</template>
-            <template v-else-if="it.kind === 'change'"> · change</template>
-            <template v-else-if="it.kind === 'answer'"> · answer</template>
-            <template v-else-if="it.kind === 'files'"> · files</template>
-            <template v-else-if="it.kind === 'question'"> · question</template>
-            <template v-else-if="it.runIdx !== null">
-              · run #{{ build.runs[it.runIdx].id }} <StatusBadge kind="build" :status="build.runs[it.runIdx].status" />
-              <span class="mono ml-1"> {{ relTime(build.runs[it.runIdx].started_at, now) }}<template v-if="duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at)"> · {{ duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at) }}</template> · {{ fmtUsd(build.runs[it.runIdx].cost_usd) }}</span>
-              <span class="sr-only"> {{ RUN_KIND_LABEL[build.runs[it.runIdx].kind] }}</span>
-            </template>
-          </p>
-          <p v-if="it.text" class="whitespace-pre-wrap break-words text-sm text-zinc-200">{{ it.text }}</p>
-          <ul v-if="it.files.length" class="mt-1 flex flex-wrap gap-2" aria-label="Attached files">
-            <li v-for="u in it.files" :key="u.id">
-              <button type="button" class="flex max-w-full items-center gap-2 rounded-md border border-pico-border bg-pico-card px-2 py-1 text-left hover:bg-pico-panel" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
-                <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-8 w-8 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
-                <span v-else class="mono flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-xs text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
-                <span class="min-w-0">
-                  <span class="block break-all text-sm text-zinc-100">{{ u.name_orig }}</span>
-                  <span class="meta block">{{ dims(u) }}{{ fmtSize(u.size) }} · {{ u.kind === 'asset' ? 'Use in the site' : 'Reference only' }}</span>
-                  <span v-if="u.description" class="meta block break-words">{{ u.description }}</span>
-                </span>
-              </button>
-            </li>
-          </ul>
-          <details v-if="it.runIdx !== null" class="group mt-1 rounded-md border border-pico-border" :open="open[it.key] ?? it.runIdx === 0" @toggle="open[it.key] = ($event.target as HTMLDetailsElement).open">
-            <summary class="flex cursor-pointer items-center gap-1 px-3 py-1.5 text-sm text-zinc-300">
-              <ChevronRight :size="14" class="transition-transform group-open:rotate-90" aria-hidden="true" />Run details: changes, review, transcript
-            </summary>
-            <div class="border-t border-pico-border px-3 py-2">
-              <BuildRunDetails :build-id="build.id" :run="build.runs[it.runIdx]" :is-latest="it.runIdx === 0" :can-pick="canPick" :can-resume="canResume" :resuming="resuming" @pick="text = $event" @resume="emit('resume')" />
+  <div class="flex h-full min-h-0 flex-col">
+    <div class="relative min-h-0 flex-1">
+      <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions -- the capture handler only watches clicks that summaries and buttons inside the thread already receive from the keyboard -->
+      <div ref="scroller" class="h-full overflow-y-auto pr-1" tabindex="0" role="region" aria-label="Conversation messages" @scroll.passive="onScroll" @click.capture="onClickCapture">
+        <ol ref="listEl" class="flex flex-col gap-4 pb-2">
+          <li v-for="it in items" :key="it.key" class="min-w-0">
+            <!-- yours: a plain raised box on the right -->
+            <div v-if="it.who === 'you'" class="flex flex-col items-end">
+              <p v-if="it.kind === 'brief' && !you" class="meta mb-0.5">{{ build.created_by.email }}</p>
+              <div class="min-w-0 max-w-[75%] rounded-md bg-pico-card px-3 py-2 text-sm text-zinc-100 max-sm:max-w-[88%]">
+                <p v-if="it.text" class="whitespace-pre-wrap [overflow-wrap:anywhere]">{{ it.text }}</p>
+                <ul v-if="it.files.length" class="flex flex-wrap gap-1.5" :class="it.text ? 'mt-2' : ''" aria-label="Attached files">
+                  <li v-for="u in it.files" :key="u.id" class="min-w-0 max-w-full">
+                    <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-bg max-md:min-h-[44px]" :title="u.description || undefined" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
+                      <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-7 w-7 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
+                      <span v-else class="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-[10px] text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
+                      <span class="min-w-0">
+                        <span class="block truncate text-xs text-zinc-100">{{ u.name_orig }}</span>
+                        <span class="meta block truncate"><span class="mono">{{ dims(u) }}{{ fmtSize(u.size) }}</span> · {{ u.kind === 'asset' ? 'Use in the site' : 'Reference only' }}</span>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              <p class="meta mt-0.5 text-[11px]">{{ relTime(it.iso, now) }}</p>
             </div>
-          </details>
-        </div>
-      </li>
-    </ol>
 
-    <div v-if="draft" class="alert-info mt-3 space-y-2" role="status">
+            <!-- an open notice (spend cap, refusal, error) -->
+            <div v-else-if="it.notice" class="max-w-3xl">
+              <BuildInbox :item="it.notice" :can-run="canRun" :spend-cap="build.spend.cap_build" @resume="emit('resume')" @dismiss="emit('dismiss', $event)" />
+            </div>
+
+            <!-- Kaisen: plain text across the left -->
+            <div v-else class="max-w-3xl min-w-0">
+              <p v-if="it.text" class="whitespace-pre-wrap text-sm text-zinc-100 [overflow-wrap:anywhere]">{{ it.text }}</p>
+              <template v-if="it.runIdx !== null">
+                <div v-if="build.runs[it.runIdx].error" class="mt-1 flex flex-wrap items-start justify-between gap-2">
+                  <p class="min-w-0 whitespace-pre-wrap text-sm text-danger-light [overflow-wrap:anywhere]">{{ build.runs[it.runIdx].error }}</p>
+                  <button v-if="it.runIdx === 0 && canResume && (build.runs[it.runIdx].status === 'error' || build.runs[it.runIdx].status === 'stopped')" type="button" class="btn-secondary btn-sm" :disabled="resuming" @click="emit('resume')">{{ resuming ? 'Resuming…' : 'Resume' }}</button>
+                </div>
+                <div v-if="it.runIdx === 0 && build.runs[0].status === 'done' && canPick && build.runs[0].suggestions && build.runs[0].suggestions.length" class="mt-2 flex flex-wrap items-center gap-2">
+                  <span class="meta">Next:</span>
+                  <button v-for="s in build.runs[0].suggestions" :key="s" type="button" class="btn-secondary btn-sm !h-auto !whitespace-normal py-1 text-left" @click="text = s">{{ s }}</button>
+                </div>
+                <p class="meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <StatusBadge kind="build" :status="build.runs[it.runIdx].status" />
+                  <span class="sr-only">{{ RUN_KIND_LABEL[build.runs[it.runIdx].kind] }} run</span>
+                  <span aria-hidden="true">·</span><span class="mono">{{ relTime(build.runs[it.runIdx].started_at, now) }}</span>
+                  <template v-if="duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at)"><span aria-hidden="true">·</span><span class="mono">{{ duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at) }}</span></template>
+                  <span aria-hidden="true">·</span><span class="mono">{{ fmtUsd(build.runs[it.runIdx].cost_usd) }}</span>
+                </p>
+                <details class="disc mt-0.5">
+                  <summary class="meta">Run details</summary>
+                  <div class="py-2 pl-3.5">
+                    <BuildRunDetails :build-id="build.id" :run="build.runs[it.runIdx]" />
+                  </div>
+                </details>
+              </template>
+            </div>
+          </li>
+
+          <li v-if="activeRun" class="max-w-3xl min-w-0">
+            <BuildProgress :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="interrupting" :interrupt-error="interruptError" @interrupt="emit('interrupt', $event)" />
+          </li>
+          <li v-else-if="firstRun" class="text-sm text-zinc-200" role="status"><span class="motion-safe:animate-pulse">Your first build is queued.</span></li>
+        </ol>
+      </div>
+      <button v-if="!atBottom" type="button" class="absolute bottom-2 right-3 rounded-md border border-pico-border bg-pico-bg px-2.5 py-0.5 text-xs text-zinc-300 hover:text-white max-md:min-h-[36px]" aria-label="Jump to latest message" @click="atBottom = true; toBottom(true)">Latest</button>
+    </div>
+
+    <div v-if="draft" class="alert-info mt-2 shrink-0 space-y-2" role="status">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <span>This build is a draft. Nothing has been built yet.</span>
         <button type="button" class="btn-primary btn-sm" :disabled="starting || !!locked" @click="emit('start')">{{ starting ? 'Starting…' : 'Start building' }}</button>
       </div>
       <div v-if="unsent.length">
         <p class="meta">Sent when you start building:</p>
-        <ul class="mt-1 flex flex-wrap gap-2" aria-label="Files sent when you start building">
-          <li v-for="u in unsent" :key="u.id">
-            <button type="button" class="flex max-w-full items-center gap-2 rounded-md border border-pico-border bg-pico-card px-2 py-1 text-left hover:bg-pico-panel" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
-              <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-8 w-8 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
-              <span v-else class="mono flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-xs text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
-              <span class="min-w-0"><span class="block break-all text-sm text-zinc-100">{{ u.name_orig }}</span><span class="meta block">{{ dims(u) }}{{ fmtSize(u.size) }} · {{ u.kind === 'asset' ? 'Use in the site' : 'Reference only' }}</span></span>
+        <ul class="mt-1 flex flex-wrap gap-1.5" aria-label="Files sent when you start building">
+          <li v-for="u in unsent" :key="u.id" class="min-w-0 max-w-full">
+            <button type="button" class="flex max-w-full items-center gap-2 rounded-sm border border-pico-border px-1.5 py-1 text-left hover:bg-pico-card max-md:min-h-[44px]" :aria-label="`Open ${u.name_orig} in Files`" @click="emit('open-files', u.id)">
+              <img v-if="u.kind === 'asset'" :src="uploadContentUrl(build.id, u.id, u.version)" alt="" class="h-7 w-7 shrink-0 rounded-sm bg-pico-bg object-cover" loading="lazy" />
+              <span v-else class="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-pico-bg text-[10px] text-zinc-300" aria-hidden="true">{{ u.ext.toUpperCase().slice(0, 4) }}</span>
+              <span class="min-w-0"><span class="block truncate text-xs text-zinc-100">{{ u.name_orig }}</span><span class="meta block truncate"><span class="mono">{{ dims(u) }}{{ fmtSize(u.size) }}</span> · {{ u.kind === 'asset' ? 'Use in the site' : 'Reference only' }}</span></span>
             </button>
           </li>
         </ul>
       </div>
     </div>
-    <div v-if="!draft" class="mt-4 border-t border-pico-border pt-3">
+
+    <div v-if="!draft" class="mt-2 shrink-0 border-t border-pico-border pt-2">
+      <p v-if="answering" class="meta mb-1" role="status">
+        Answering Kaisen's question: <span class="[overflow-wrap:anywhere]">"{{ brief(answering.text) }}"</span><template v-if="remaining"> · <span class="mono">{{ remaining }}</span> more waiting after this one</template>
+      </p>
       <AttachComposer
-        v-model="text" :build-id="build.id" :summary="summary" label="Tell Kaisen what to change" placeholder="Tell Kaisen what to change. Drop, paste or attach files."
-        submit-label="Send to Kaisen" :busy="busy" :locked="locked" :can-attach="canAttach" :unsent="unsent" :hint="hint || 'Kaisen edits the code and redeploys. About a minute.'"
-        @submit="following = true; emit('submit', $event)" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
+        v-model="text" :build-id="build.id" :summary="summary" :label="answering ? 'Your answer to Kaisen' : 'Tell Kaisen what to change'"
+        :placeholder="answering ? 'Answer Kaisen\'s question.' : 'Tell Kaisen what to change. Drop, paste or attach files.'"
+        :submit-label="answering ? 'Send answer' : 'Send to Kaisen'" :busy="answerBusy != null || (!answering && busy)" :locked="locked" :can-attach="canAttach && !answering"
+        :attach-off-reason="answering ? 'Files can\'t go with an answer. Attach them to your next message.' : undefined" :unsent="unsent" :hint="answering ? '' : (hint || 'Kaisen edits the code and redeploys. About a minute.')"
+        :rows="2" autogrow :max-rows="7" key-hint
+        @submit="onSubmit" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
       />
     </div>
-  </section>
+  </div>
 </template>

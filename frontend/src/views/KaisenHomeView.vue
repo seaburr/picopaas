@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { HeartPulse, Plus, RotateCw, Settings, Trash2, Wand2 } from 'lucide-vue-next'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
-import NavBar from '../components/NavBar.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
@@ -12,7 +10,6 @@ import { relTime, useNow } from '../composables/appUi'
 import { fmtUsd, isActive } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
-import ProjectPicker from '../components/ProjectPicker.vue'
 import { useProjectsStore } from '../stores/projects'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
@@ -96,42 +93,38 @@ function askDelete(b: KaisenBuild) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-
+  <div>
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
-      <nav class="meta mb-2" aria-label="Breadcrumb">Kaisen</nav>
       <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 class="page-title">Kaisen</h1>
-          <ProjectPicker label="in" />
           <PreviewBadge />
-          <span v-if="!loading && store.builds.length" class="meta">{{ store.builds.length }} {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>
+          <span v-if="!loading && store.builds.length" class="meta"><span class="mono">{{ store.builds.length }}</span> {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>
         </div>
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-2">
           <span v-if="atLimit && store.builds.length" class="meta mr-2">App limit reached. Ask an administrator to raise it.</span>
-          <IconButton :icon="Settings" label="Kaisen settings" text="Settings" to="/kaisen/settings" />
+          <IconButton label="Kaisen settings" text="Settings" to="/kaisen/settings" />
           <template v-if="store.builds.length > 0">
-            <IconButton v-if="blocked" :icon="Plus" :label="`New build (${blockedWhy})`" text="New build" disabled />
-            <IconButton v-else :icon="Plus" label="New build" text="New build" to="/kaisen/new" />
+            <IconButton v-if="blocked" :label="`New build (${blockedWhy})`" text="New build" disabled />
+            <IconButton v-else label="New build" text="New build" to="/kaisen/new" />
           </template>
         </div>
       </div>
 
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
-        <IconButton :icon="RotateCw" label="Retry" @click="load" />
+        <IconButton label="Retry" @click="load" />
       </div>
 
-      <ul v-if="loading" class="space-y-2" aria-busy="true" aria-label="Loading builds">
-        <li v-for="n in 3" :key="n" class="card card-pad">
+      <ul v-if="loading" class="border-t border-pico-border" aria-busy="true" aria-label="Loading builds">
+        <li v-for="n in 3" :key="n" class="border-b border-pico-border py-2">
           <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
-          <div class="mt-3 h-3 w-64 max-w-full animate-pulse rounded-sm bg-pico-card" />
+          <div class="mt-2 h-3 w-64 max-w-full animate-pulse rounded-sm bg-pico-card" />
         </li>
       </ul>
 
-      <div v-else-if="!error && store.builds.length === 0" class="card card-pad">
+      <div v-else-if="!error && store.builds.length === 0" class="sec max-w-2xl pt-3">
         <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
         <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in this project. You can download the code or push it to GitHub.</p>
         <p v-if="projSuspended" class="meta mt-3">{{ SUSPENDED_TITLE }}. New builds are paused.</p>
@@ -140,36 +133,75 @@ function askDelete(b: KaisenBuild) {
           <RouterLink v-if="canEdit" to="/kaisen/settings" class="link">Add it in Kaisen settings</RouterLink>
           <template v-else>Ask a project owner to add one.</template>
         </p>
-        <div v-else class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <div v-else class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
           <RouterLink v-else to="/kaisen/new" class="btn-primary">New build</RouterLink>
           <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
         </div>
       </div>
 
-      <ul v-else-if="store.builds.length" class="space-y-2">
-        <li v-for="b in store.builds" :key="b.id" class="card card-pad">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0 flex-1">
-              <div class="flex min-w-0 items-center gap-2">
-                <RouterLink :to="`/kaisen/${b.id}`" class="truncate font-medium text-white hover:underline" :title="b.name">{{ b.name }}</RouterLink>
-                <StatusBadge kind="build" :status="b.status" />
-              </div>
-              <div v-if="b.app_hostname" class="mt-0.5"><HostLink :hostname="b.app_hostname" /></div>
-              <p class="meta mono">
-                <template v-if="b.last_run_at">Last run {{ relTime(b.last_run_at, now) }} · </template>{{ b.file_count }} {{ b.file_count === 1 ? 'file' : 'files' }} · {{ fmtUsd(b.cost_usd) }}
-              </p>
-            </div>
-            <div class="flex shrink-0 items-center">
-              <IconButton v-if="b.app_id" :icon="HeartPulse" label="View app health" :to="`/apps/${b.app_id}`" />
-              <IconButton :icon="Wand2" label="Open build" :to="`/kaisen/${b.id}`" />
-              <IconButton :icon="Trash2" label="Delete build" danger @click="askDelete(b)" />
-            </div>
+      <ul v-else-if="store.builds.length" class="border-t border-pico-border md:hidden" aria-label="Builds">
+        <li v-for="b in store.builds" :key="b.id" class="border-b border-pico-border py-2">
+          <div class="flex items-center justify-between gap-3">
+            <RouterLink :to="`/kaisen/${b.id}`" class="min-w-0 truncate font-medium text-white hover:underline" :title="b.name">{{ b.name }}</RouterLink>
+            <StatusBadge kind="build" :status="b.status" />
           </div>
-          <p v-if="b.status === 'waiting' || b.open_questions > 0" class="alert-info mt-2">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
-          <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="alert-error mt-2 truncate" :title="b.last_error">{{ b.last_error }}</p>
+          <div v-if="b.app_hostname" class="mt-0.5 truncate"><HostLink compact :hostname="b.app_hostname" /></div>
+          <p class="meta mt-0.5"><span v-if="b.last_run_at">Last run <span class="mono">{{ relTime(b.last_run_at, now) }}</span> · </span><span class="mono">{{ b.file_count }}</span> {{ b.file_count === 1 ? 'file' : 'files' }} · <span class="mono">{{ fmtUsd(b.cost_usd) }}</span></p>
+          <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
+          <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
+          <div class="row-acts !justify-start gap-x-4">
+            <RouterLink v-if="b.app_id" :to="`/apps/${b.app_id}`" class="row-act max-md:!min-h-[44px]" :aria-label="`View app health for ${b.name}`">Health</RouterLink>
+            <RouterLink :to="`/kaisen/${b.id}`" class="row-act max-md:!min-h-[44px]" :aria-label="`Open build ${b.name}`">Open</RouterLink>
+            <button type="button" class="row-act row-act-danger max-md:!min-h-[44px]" :aria-label="`Delete build ${b.name}`" @click="askDelete(b)">Delete</button>
+          </div>
         </li>
       </ul>
+
+      <div v-if="!loading && store.builds.length" class="max-md:hidden">
+        <table class="tbl">
+          <caption class="sr-only">Builds</caption>
+          <colgroup>
+            <col />
+            <col class="w-28" />
+            <col class="w-16" />
+            <col class="w-24" />
+            <col class="w-20" />
+            <col class="w-48" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Build</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-right">Files</th>
+              <th scope="col">Last run</th>
+              <th scope="col" class="text-right">Cost</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="b in store.builds" :key="b.id">
+              <td class="min-w-0 !whitespace-normal">
+                <RouterLink :to="`/kaisen/${b.id}`" class="block truncate font-medium text-white hover:underline" :title="b.name">{{ b.name }}</RouterLink>
+                <div v-if="b.app_hostname" class="truncate"><HostLink compact :hostname="b.app_hostname" /></div>
+                <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
+                <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
+              </td>
+              <td><StatusBadge kind="build" :status="b.status" /></td>
+              <td class="mono text-right">{{ b.file_count }}</td>
+              <td class="mono">{{ b.last_run_at ? relTime(b.last_run_at, now) : '' }}</td>
+              <td class="mono text-right">{{ fmtUsd(b.cost_usd) }}</td>
+              <td>
+                <div class="row-acts">
+                  <RouterLink v-if="b.app_id" :to="`/apps/${b.app_id}`" class="row-act" :aria-label="`View app health for ${b.name}`">Health</RouterLink>
+                  <RouterLink :to="`/kaisen/${b.id}`" class="row-act" :aria-label="`Open build ${b.name}`">Open</RouterLink>
+                  <button type="button" class="row-act row-act-danger" :aria-label="`Delete build ${b.name}`" @click="askDelete(b)">Delete</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <p v-if="!loading && !error && store.spend" class="help mt-3">
         Kaisen is in preview. Builds spend from this project's Anthropic key. Last 30 days: <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>

@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 import KaisenMemberLimits from '../components/KaisenMemberLimits.vue'
 import KaisenKeyHelp from '../components/KaisenKeyHelp.vue'
-import NavBar from '../components/NavBar.vue'
 import PasswordField from '../components/PasswordField.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import { ApiError } from '../api/client'
@@ -139,8 +137,7 @@ async function test(which: 'anthropic') {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
+  <div>
     <main id="main" tabindex="-1" class="page-main">
       <SuspendedBanner :project="curProject" kaisen />
       <nav class="meta mb-2" aria-label="Breadcrumb"><RouterLink to="/kaisen" class="link">Kaisen</RouterLink><span aria-hidden="true"> / </span>Settings</nav>
@@ -151,19 +148,19 @@ async function test(which: 'anthropic') {
 
       <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
-        <IconButton :icon="RotateCw" label="Retry" @click="load" />
+        <IconButton label="Retry" @click="load" />
       </div>
 
-      <div v-else-if="loading || !s" class="grid gap-3 lg:grid-cols-2" aria-busy="true" aria-label="Loading settings">
-        <div class="card card-pad h-32 animate-pulse" />
-        <div class="card card-pad h-24 animate-pulse" />
+      <div v-else-if="loading || !s" class="grid max-w-5xl gap-x-8 gap-y-4 lg:grid-cols-2" aria-busy="true" aria-label="Loading settings">
+        <div class="sec sec-pad h-32 animate-pulse" />
+        <div class="sec sec-pad h-24 animate-pulse" />
       </div>
 
-      <form v-else class="grid gap-3 lg:grid-cols-2 lg:items-start" novalidate @submit.prevent="save">
+      <form v-else class="grid max-w-5xl gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start" novalidate @submit.prevent="save">
         <p class="help lg:col-span-2">These settings belong to the project "{{ projects.current?.is_personal ? 'Personal' : projects.current?.name }}". Everyone who can run builds here spends from this key.</p>
         <p v-if="readOnly && !projSuspended" class="alert-info lg:col-span-2" role="status">Only project owners can change these settings. You can see what is set.</p>
 
-        <section class="card card-pad space-y-3" aria-labelledby="ks-anthropic">
+        <section class="sec sec-pad space-y-3" aria-labelledby="ks-anthropic">
           <h2 id="ks-anthropic" class="section-title">Anthropic</h2>
           <template v-if="readOnly">
             <p class="text-sm text-zinc-200">API key: {{ s.anthropic_key.set ? 'Set' : 'Not set' }}</p>
@@ -186,7 +183,7 @@ async function test(which: 'anthropic') {
           <KaisenKeyHelp kind="anthropic" />
         </section>
 
-        <section class="card card-pad space-y-3" aria-labelledby="ks-reviewer">
+        <section class="sec sec-pad space-y-3" aria-labelledby="ks-reviewer">
           <h2 id="ks-reviewer" class="section-title">Reviewer</h2>
           <p class="help">Adds a second, cheaper model pass after each run, then at most one automatic fix round. Usually adds a few cents per run.</p>
           <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.reviewer" type="checkbox" class="check" :disabled="readOnly" /> Review each run<span v-if="readOnly" class="meta">({{ s.reviewer === 'on' ? 'on' : 'off' }})</span></label>
@@ -197,13 +194,13 @@ async function test(which: 'anthropic') {
           </div>
         </section>
 
-        <section class="card card-pad space-y-3" aria-labelledby="ks-steward">
+        <section class="sec sec-pad space-y-3" aria-labelledby="ks-steward">
           <h2 id="ks-steward" class="section-title">Package steward</h2>
           <p class="help">Checks that packages are on the latest stable versions at the end of each run and has the builder upgrade them. Uses a small amount of your model budget. Skipped when an app has no packages.</p>
           <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.package_steward" type="checkbox" class="check" :disabled="readOnly" /> Check packages after each run<span v-if="readOnly" class="meta">({{ s.package_steward === 'off' ? 'off' : 'on' }})</span></label>
         </section>
 
-        <section class="card card-pad" aria-labelledby="ks-caps">
+        <section class="sec sec-pad" aria-labelledby="ks-caps">
           <h2 id="ks-caps" class="section-title mb-2">Spend limits (USD)</h2>
           <div class="grid gap-3 sm:grid-cols-3">
             <div><label for="ks-cap-run" class="label">Per run</label><input id="ks-cap-run" v-model.number="form.cap_run" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>
@@ -215,7 +212,7 @@ async function test(which: 'anthropic') {
 
         <KaisenMemberLimits v-if="pid" :project-id="pid" />
 
-        <section class="card card-pad space-y-3" aria-labelledby="ks-web">
+        <section class="sec sec-pad space-y-3" aria-labelledby="ks-web">
           <h2 id="ks-web" class="section-title">Web access</h2>
           <p class="help">Lets the builder search the web and read pages, for example to check a library's docs. Web content is untrusted: a page can contain text that tries to steer the builder. The allow-list limits which sites it can read.</p>
           <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.web_access" type="checkbox" class="check" :disabled="readOnly || s.web_project_enabled === false" /> Allow web access<span v-if="readOnly" class="meta">({{ s.web_access ? 'on' : 'off' }})</span></label>
@@ -230,7 +227,7 @@ async function test(which: 'anthropic') {
           <p class="help">Each web search costs {{ fmtUsd(s.web_search_usd) }} plus tokens.</p>
         </section>
 
-        <section class="card card-pad space-y-3" aria-labelledby="ks-output">
+        <section class="sec sec-pad space-y-3" aria-labelledby="ks-output">
           <h2 id="ks-output" class="section-title">GitHub</h2>
           <p class="help">A GitHub token every build in this project can use. Each build picks its own repository; it can use this token or its own. Anyone who can run builds here can push with it to any repository it can write, so use a fine-grained token limited to the repositories you mean.</p>
           <p v-if="readOnly" class="text-sm text-zinc-200">Access token: {{ s.github_token.set ? 'Set' : 'Not set' }}</p>
@@ -239,7 +236,7 @@ async function test(which: 'anthropic') {
             <p v-if="fieldErr.github_token" class="field-error" role="alert">{{ fieldErr.github_token }}</p>
             <label v-if="s.github_token.set" class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.clear_github_token" type="checkbox" class="check" /> Clear stored token</label>
             <KaisenKeyHelp kind="github" :open="!s.github_token.set" />
-            <p class="help">To check the token, open a build and press Test on its Output card.</p>
+            <p class="help">To check the token, open a build and press Test in its Output section.</p>
           </template>
         </section>
 
