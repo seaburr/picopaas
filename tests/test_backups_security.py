@@ -482,7 +482,7 @@ def _script_env(tmp_path, keys):
 
     (bindir / "jq").symlink_to(jq)
     # Like real restic, a --stdin backup drains its input first (answering early would SIGPIPE the dump under load).
-    stub("restic", f'echo "restic $@" >> {calls}\ncase " $* " in *" backup "*" --stdin "*) cat >/dev/null;; esac\nfor a in "$@"; do case "$a" in backup) echo \'{{"message_type":"summary","snapshot_id":"cafe0123456789","data_added":1}}\';; stats) echo \'{{"total_size":1}}\';; esac; done\nexit 0\n')
+    stub("restic", f'echo "restic $@" >> {calls}\ncase " $* " in *" --stdin "*) cat >/dev/null;; esac\nfor a in "$@"; do case "$a" in backup) echo \'{{"message_type":"summary","snapshot_id":"cafe0123456789","data_added":1}}\';; stats) echo \'{{"total_size":1}}\';; esac; done\nexit 0\n')
     listing = "\n".join('{"key":"s3://b/%s","size":1}' % k for k in keys)
     stub("s5cmd", f'echo "s5cmd $@" >> {calls}\n'
          f'for a in "$@"; do [ "$a" = ls ] && cat <<\'EOF\'\n{listing}\nEOF\n[ "$a" = ls ] && exit 0; done\n'
