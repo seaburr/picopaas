@@ -1,6 +1,6 @@
 export type Theme = 'dark' | 'light'
 export const THEME_KEY = 'picopaas-theme'
-const THEME_COLOR: Record<Theme, string> = { dark: '#0d0d14', light: '#e7e0d0' }
+const THEME_COLOR: Record<Theme, string> = { dark: '#121417', light: '#f1eee6' }
 
 export function cachedTheme(): Theme {
   try {

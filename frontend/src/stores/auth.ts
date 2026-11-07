@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { ref, watchEffect } from 'vue'
+import { ref, watch, watchEffect } from 'vue'
 import { userZone } from '../utils/tz'
 import { applyTheme } from '../utils/theme'
 import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { User } from '../types'
+import { useAppsStore } from './apps'
 import { useProjectsStore } from './projects'
+import { useSidebarStore } from './sidebar'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -15,6 +17,19 @@ export const useAuthStore = defineStore('auth', () => {
   watchEffect(() => {
     if (user.value) applyTheme(user.value.theme === 'light' ? 'light' : 'dark')
   })
+
+  // Every sign-out path (logout button, status page, 401 handler) ends with user = null: drop the per-user caches here
+  // so no other account ever sees the previous one's projects or apps. Independent of any component being mounted.
+  watch(
+    () => user.value?.id ?? null,
+    (id, prev) => {
+      if (id === prev || id !== null) return
+      useSidebarStore().reset()
+      useAppsStore().reset()
+      useProjectsStore().reset()
+    },
+    { flush: 'sync' },
+  )
 
   async function load() {
     try {

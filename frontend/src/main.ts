@@ -4,6 +4,8 @@ import App from './App.vue'
 import { setUnauthorizedHandler } from './api/client'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import '@fontsource-variable/inter/wght.css'
+import '@fontsource-variable/jetbrains-mono/wght.css'
 import './style.css'
 
 const pinia = createPinia()

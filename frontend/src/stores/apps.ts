@@ -58,5 +58,10 @@ export const useAppsStore = defineStore('apps', () => {
     return app
   }
 
-  return { apps, loaded, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
+  function reset() {
+    apps.value = []
+    loaded.value = false
+  }
+
+  return { apps, loaded, reset, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
 })

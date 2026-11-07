@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { computed } from 'vue'
 
-// Square icon-only button. Renders a <RouterLink> when `to` is set, an <a> when `href` is set, else a <button>.
-// `label` is both the aria-label and the tooltip. Danger turns red on hover/focus only.
+// Text button (the name is historical; actions are text, there are no icons). Renders a <RouterLink> when `to` is set, an <a> when `href` is set, else a <button>.
+//  - `text` set: a page-top / toolbar button (outlined, .btn-secondary .btn-sm; `danger` -> .btn-danger).
+//  - no `text`: a quiet row action (.row-act text link). Its visible text is `label`, shortened when long; pass
+//    `verb` to choose the word when the label names the row ("Suspend ghost-blog" -> verb="Suspend").
+// `label` is always the aria-label and the tooltip. `busy` disables it and dims it.
 const props = defineProps<{
-  icon: Component
   label: string
   to?: string
   href?: string
@@ -13,33 +15,33 @@ const props = defineProps<{
   disabled?: boolean
   expanded?: boolean
   pressed?: boolean
-  busy?: boolean // spinning icon, disabled
-  text?: string // visible label from sm up; icon-only below sm. Rule: set it on every action at the top of a page; repeated row actions stay icon-only
-  touch?: boolean // 44px hit area below sm
+  busy?: boolean
+  text?: string
+  verb?: string // the visible word of a row action, when the label names the row ("Suspend ghost" -> "Suspend")
+  touch?: boolean
 }>()
 defineEmits<{ click: [e: MouseEvent] }>()
-const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'btn-icon-sm' : '', props.touch ? 'btn-icon-touch' : '', props.text ? 'btn-icon-text' : '', props.danger ? 'btn-icon-danger' : '']
+
+const shown = computed(() => {
+  if (props.text) return props.text
+  if (props.verb) return props.verb
+  const plain = props.label.replace(/\s*\(.*\)\s*$/, '').replace(/\s+in a new tab$/, '').replace(/…$/, '').trim()
+  return plain.length > 22 ? plain.split(' ')[0] : plain
+})
+const cls = computed(() =>
+  props.text
+    ? [props.danger ? 'btn-danger' : 'btn-secondary', props.sm ? 'btn-sm' : '']
+    : ['row-act', props.danger ? 'row-act-danger' : ''],
+)
 </script>
 
 <template>
-  <RouterLink v-if="to && !disabled" :to="to" :class="cls()" :title="label" :aria-label="label">
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
-  </RouterLink>
-  <a
-    v-else-if="href && !disabled"
-    :href="href"
-    target="_blank"
-    rel="noopener noreferrer"
-    :class="cls()"
-    :title="label"
-    :aria-label="label"
-  >
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
-  </a>
+  <RouterLink v-if="to && !disabled" :to="to" :class="cls" :title="label" :aria-label="label">{{ shown }}</RouterLink>
+  <a v-else-if="href && !disabled" :href="href" target="_blank" rel="noopener noreferrer" :class="cls" :title="label" :aria-label="label">{{ shown }}</a>
   <button
     v-else
     type="button"
-    :class="cls()"
+    :class="cls"
     :title="label"
     :aria-label="label"
     :disabled="disabled || busy"
@@ -48,7 +50,5 @@ const cls = () => ['btn-icon', props.busy ? 'btn-icon-busy' : '', props.sm ? 'bt
     :aria-haspopup="expanded === undefined ? undefined : 'menu'"
     :aria-expanded="expanded"
     @click="$emit('click', $event)"
-  >
-    <component :is="icon" :size="16" :stroke-width="2" aria-hidden="true" /><span v-if="text" class="hidden sm:inline" aria-hidden="true">{{ text }}</span>
-  </button>
+  >{{ shown }}</button>
 </template>

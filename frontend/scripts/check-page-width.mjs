@@ -1,6 +1,8 @@
 // Fails when a view's <main> sets its own width instead of the shared page classes (src/style.css).
-// Signed-in pages use `page-main` so every page lines up; only the small centered sign-in/status pages
-// listed in NARROW may use `page-narrow`. Run: npm run check:layout (also in CI).
+// Signed-in pages use `page-main`: fluid inside the sidebar shell's content column (full width, 20px padding), so every
+// page lines up. A prose or form page that wants a narrower text measure puts max-w-* on an INNER element, never on
+// <main>. Only the small centered sign-in/status pages listed in NARROW may use `page-narrow`.
+// Run: npm run check:layout (also in CI).
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -15,7 +17,8 @@ for (const file of readdirSync(VIEWS).filter((f) => f.endsWith('.vue')).sort()) 
     const line = src.slice(0, m.index).split('\n').length
     const where = `src/views/${file}:${line}`
     if (/:class=/.test(tag)) problems.push(`${where}: <main> must use a static class, not :class`)
-    if (/\bmax-w-/.test(tag)) problems.push(`${where}: <main> sets max-w-*; use page-main instead`)
+    if (/\bmax-w-/.test(tag)) problems.push(`${where}: <main> sets max-w-*; keep page-main fluid and cap an inner element instead`)
+    if (!/\bpage-narrow\b/.test(tag) && /\b(mx-auto|container)\b/.test(tag)) problems.push(`${where}: <main> must not center itself (mx-auto/container); page-main is fluid`)
     const main = /\bpage-main\b/.test(tag)
     const narrow = /\bpage-narrow\b/.test(tag)
     if (!main && !narrow) problems.push(`${where}: <main> needs class page-main`)

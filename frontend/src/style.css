@@ -1,120 +1,125 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-pico-bg: #0d0d14;
-  --color-pico-panel: #16161f;
-  --color-pico-card: #1c1c28;
-  --color-pico-border: #2c2c3c;
-  --color-pico-muted: #4a4a5e;
-
-  --color-accent: #4a78c2;
-  --color-accent-dark: #233775;
-  --color-accent-light: #7aa0d4;
-
-  --color-primary: #3a6bd0;
-  --color-primary-hover: #2f5fc4;
-  --color-primary-active: #2653b0;
-
-  --color-zinc-500: #8b8b96;
-  --color-zinc-600: #8b8b96;
-
-  --color-danger: #d95555;
-  --color-danger-dark: #9e2424;
-  --color-danger-light: #e87070;
-
-  --color-status-pending: #d4aa20;
-  --color-status-running: #6a9e4a;
-  --color-status-error: #d95555;
-  --color-status-stopped: #7a7a8c;
-
-  /* Role tokens that only differ in the light theme (the dark values equal today's literals). */
-  --color-on-solid: #ffffff; /* text on solid primary/danger buttons: white in both themes */
-  --color-pico-inset: color-mix(in oklab, #000 40%, transparent); /* log/diff wells */
-  --color-info: #4a78c2; /* info alerts/badges; dark: same as accent */
-  --color-info-light: #7aa0d4;
-  --color-warn-solid: oklch(82.8% 0.189 84.429); /* solid amber chips/dots (== amber-400), text on it is black */
-}
-
 /*
- * Theming. Dark is the default and is defined by the @theme tokens above. Light is a second set of VALUES for the
- * same tokens, set on <html data-theme="light"> (frontend/public/theme-init.js applies it before first paint; the
- * auth store applies the server value). Tailwind 4 utilities read these as var(--color-*) at runtime (no `inline`),
- * so every text-zinc-*, text-amber-*, bg-pico-* utility keeps its ROLE and just resolves to a light-theme value:
- *   zinc 100..500  = text from strongest to quietest ink (inverted ramp), 600 = quiet separators,
- *   zinc 700/800   = subtle borders / disabled fills (they are lights here),
- *   amber/emerald/red 200..400 = dark, readable tints of the same hue (they were pale on dark),
- *   white          = the page ink (headings, values); buttons use --color-on-solid instead.
- * Contrast of every pairing is listed in docs/ledger notes; all text >= 4.5:1 on bg, panel and card.
+ * PicoPaaS design system (docs/design: "Rules"). Everything below keeps the old token and utility NAMES so every view
+ * inherits the look, but the VALUES now come from ten raw variables and nothing else:
+ *   neutrals: --bg --raise --line --fg --mut         state (the only hues): --ok --warn --err --off
+ * Rules: no gradients; radii 4-6px; no decorative cards or icons; monospace only for technical values (.mono);
+ * tables, dividers and aligned columns over nested boxes; colour means state, never decoration; dense (13px body).
+ * No accent colour: the primary button is solid ink (--fg on --bg), links are ink and underlined.
+ * Dark is the default; light (tan and warm gray) redefines the same ten variables on <html data-theme="light">
+ * (frontend/public/theme-init.js applies it before first paint, the auth store applies the server value).
+ * Contrast (text on --bg / --raise, from the approved mock; none changed): dark fg 15.2/13.9, mut 7.7/7.1, ok 8.2/7.5,
+ * warn 9.2/8.4, err 7.1/6.5; light fg 15.2/13.6, mut 6.4/5.8, ok 5.5/5.0, warn 5.8/5.2, err 6.2/5.6. All >= 4.5:1.
  */
+:root {
+  --bg: #121417;
+  --raise: #1a1d21;
+  --line: #2b2f35;
+  --fg: #e7e9ec;
+  --mut: #a2a8b0;
+  --ok: #62c07f;
+  --warn: #e0b040;
+  --err: #f47d7a;
+  --off: #a2a8b0;
+}
 :root[data-theme='light'] {
   color-scheme: light;
+  --bg: #f1eee6;
+  --raise: #e7e2d5;
+  --line: #cbc3ae;
+  --fg: #1b1912;
+  --mut: #5a5546;
+  --ok: #2c6b3a;
+  --warn: #7d5300;
+  --err: #a8231d;
+  --off: #5a5546;
+}
 
-  --color-pico-bg: #e7e0d0; /* tan */
-  --color-pico-panel: #f1eee6; /* warm light gray */
-  --color-pico-card: #f9f7f1; /* raised: inputs, nested rows */
-  --color-pico-border: #cbc3ae;
-  --color-pico-muted: #c3baa4;
-  --color-pico-inset: #ebe6d8;
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-white: #1b1912; /* page ink */
-  --color-black: #000;
+  /* Dense type scale: body 13px/1.45. text-sm is the body size, text-base is one step up. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.45;
 
-  --color-zinc-100: #1b1912;
-  --color-zinc-200: #2a271d;
-  --color-zinc-300: #3c382b;
-  --color-zinc-400: #4f4a3a;
-  --color-zinc-500: #645e4a;
-  --color-zinc-600: #645e4a;
-  --color-zinc-700: #bdb49d;
-  --color-zinc-800: #ddd6c4;
+  /* Radii 4 to 6px, flat surfaces. (rounded-full stays a circle; only dots and bars use it.) */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-2xl: 6px;
+  --shadow-md: 0 0 #0000;
+  --shadow-lg: 0 0 #0000;
+  --shadow-xl: 0 0 #0000;
+  --shadow-2xl: 0 0 #0000;
 
-  /* sage: chrome, links, focus, bars. "light" here means the text/ring shade (it is the dark one on this theme). */
-  --color-accent: #4b7253;
-  --color-accent-dark: #2f4a36;
-  --color-accent-light: #37573f;
-  --color-primary: #486a4f;
-  --color-primary-hover: #3e5d44;
-  --color-primary-active: #34503a;
+  /* Surfaces */
+  --color-pico-bg: var(--bg);
+  --color-pico-panel: var(--bg);
+  --color-pico-card: var(--raise);
+  --color-pico-border: var(--line);
+  --color-pico-muted: color-mix(in oklab, var(--mut) 35%, var(--bg)); /* slider/bar tracks */
+  --color-pico-inset: var(--raise); /* log/diff wells */
 
-  /* info is deliberately NOT sage: a slate blue, so "needs you" never reads as "ready". */
-  --color-info: #4f6f8f;
-  --color-info-light: #27425d;
-  --color-warn-solid: #e3a008;
+  /* Ink. 100-300 = --fg, 400-600 = --mut, 700 = hairline, 800 = disabled fill. */
+  --color-white: var(--fg);
+  --color-zinc-100: var(--fg);
+  --color-zinc-200: var(--fg);
+  --color-zinc-300: var(--fg);
+  --color-zinc-400: var(--mut);
+  --color-zinc-500: var(--mut);
+  --color-zinc-600: var(--mut);
+  --color-zinc-700: var(--line);
+  --color-zinc-800: var(--raise);
+  --color-blue-100: var(--fg);
 
-  --color-danger: #b8342b;
-  --color-danger-light: #9f1f1f;
-  --color-danger-dark: #9e2424;
+  /* No accent hue. accent = bar fills (--mut), accent-light = focus/border/text ink (--fg). primary = solid ink. */
+  --color-accent: var(--mut);
+  --color-accent-dark: var(--line);
+  --color-accent-light: var(--fg);
+  --color-primary: var(--fg);
+  --color-primary-hover: color-mix(in oklab, var(--fg) 82%, var(--bg));
+  --color-primary-active: color-mix(in oklab, var(--fg) 68%, var(--bg));
+  --color-on-solid: var(--bg); /* text on a solid primary/danger fill */
 
-  --color-status-pending: #7c5200;
-  --color-status-running: #136a30;
-  --color-status-error: #a3231b;
-  --color-status-stopped: #5f5a49;
+  /* Info is neutral. */
+  --color-info: var(--mut);
+  --color-info-light: var(--fg);
 
-  --color-amber-200: #5f3e04;
-  --color-amber-300: #704a06;
-  --color-amber-400: #724a00;
-  --color-amber-500: #a76a12;
-
-  --color-emerald-200: #075a3a;
-  --color-emerald-300: #095e3d;
-  --color-emerald-400: #0b6e47;
-
-  --color-red-200: #8c1c1c;
-  --color-red-300: #9a2020;
-  --color-red-400: #a82323;
-
-  --color-blue-100: #1b1912;
-
-  --doc-text: #3c382b;
-  --doc-subtle: #4f4a3a;
-  --doc-anchor: #8f8670;
+  /* State: the only hues. Every old amber/emerald/red/danger/status token resolves to one of four. */
+  --color-danger: var(--err);
+  --color-danger-dark: var(--err);
+  --color-danger-light: var(--err);
+  --color-warn-solid: var(--warn);
+  --color-amber-200: var(--warn);
+  --color-amber-300: var(--warn);
+  --color-amber-400: var(--warn);
+  --color-amber-500: var(--warn);
+  --color-emerald-200: var(--ok);
+  --color-emerald-300: var(--ok);
+  --color-emerald-400: var(--ok);
+  --color-emerald-500: var(--ok);
+  --color-red-200: var(--err);
+  --color-red-300: var(--err);
+  --color-red-400: var(--err);
+  --color-status-pending: var(--warn);
+  --color-status-running: var(--ok);
+  --color-status-error: var(--err);
+  --color-status-stopped: var(--off);
 }
 
 :root {
-  --doc-text: #d4d4d8;
-  --doc-subtle: #a1a1aa;
-  --doc-anchor: var(--color-pico-muted);
-  --doc-link: var(--color-accent-light);
+  --doc-text: var(--fg);
+  --doc-subtle: var(--mut);
+  --doc-anchor: var(--mut);
+  --doc-link: var(--fg);
 }
 
 /*
@@ -138,28 +143,32 @@
 /*
  * Design tokens as component classes. Use these instead of ad-hoc utility soup.
  *   Buttons : .btn-primary .btn-secondary .btn-danger .btn-danger-solid .btn-ghost  (+ .btn-sm, .btn-block)
+ *   Row acts: .row-acts (container) .row-act (+ .row-act-danger): quiet text links in table rows
  *   Forms   : .input .label .help .field-error .check
- *   Surfaces: .card .card-pad .alert-error .alert-warn .alert-info .alert-success
- *   Badges  : .badge-ok .badge-warn .badge-error .badge-neutral .badge-info
- *   Text    : .page-title .section-title .meta .link .table-th
+ *   Surfaces: .sec (flat section with a top hairline) .sec-pad .alert-error .alert-warn .alert-info .alert-success
+ *   Tables  : .tbl (hairlines, 4px rows) .table-th
+ *   State   : .dot + .dot-ok|warn|err|off, .st + .tone-ok|warn|err|off (dot + text in the state colour), .badge-*
+ *   Disclose: .disc on <details> (CSS triangle on the summary; the tree reuses it)
+ *   Text    : .page-title .section-title .meta .link .mono
  */
 
-/* Page width. Every signed-in page's <main> uses page-main so all pages line up; only the small centered
-   sign-in/status pages use page-narrow. Enforced by scripts/check-page-width.mjs (npm run check:layout, CI). */
+/* Page content. Fluid inside the content column (the sidebar takes the left); prose and form pages cap their own text
+   width with a max-w-* on an inner element, never on <main>. Only the small centered sign-in/status pages use
+   page-narrow. Enforced by scripts/check-page-width.mjs (npm run check:layout, CI). */
 @utility page-main {
-  @apply mx-auto max-w-6xl px-4 py-4 sm:px-6;
+  @apply w-full px-4 py-3 min-[760px]:px-5;
 }
 @utility page-narrow {
   @apply mx-auto max-w-md px-4;
 }
 
 @utility btn {
-  @apply inline-flex min-h-[32px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium transition-colors;
+  @apply inline-flex min-h-[28px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 py-0.5 text-sm transition-colors max-md:min-h-[44px];
   @apply disabled:cursor-not-allowed aria-disabled:cursor-not-allowed;
 }
 
 @utility btn-sm {
-  @apply min-h-[28px] px-2 py-0.5 text-xs;
+  @apply min-h-[24px] px-2 py-0 text-xs max-md:min-h-[32px];
 }
 
 @utility btn-block {
@@ -167,45 +176,68 @@
 }
 
 @utility btn-primary {
-  @apply btn bg-primary text-on-solid hover:bg-primary-hover active:bg-primary-active;
-  @apply disabled:border-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
-  @apply aria-disabled:border-zinc-700 aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
+  @apply btn border-primary bg-primary font-medium text-on-solid hover:bg-primary-hover active:bg-primary-active;
+  @apply disabled:border-pico-border disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+  @apply aria-disabled:border-pico-border aria-disabled:bg-zinc-800 aria-disabled:text-zinc-500;
 }
 
 @utility btn-secondary {
-  @apply btn border-zinc-500 bg-transparent text-zinc-200 hover:bg-pico-card hover:text-white;
-  @apply disabled:border-dashed disabled:border-zinc-700 disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
-  @apply aria-disabled:border-dashed aria-disabled:border-zinc-700 aria-disabled:text-zinc-500;
+  @apply btn border-pico-border bg-transparent text-white hover:bg-pico-card;
+  @apply disabled:border-dashed disabled:bg-transparent disabled:text-zinc-500 disabled:hover:bg-transparent;
+  @apply aria-disabled:border-dashed aria-disabled:text-zinc-500;
 }
 
 @utility btn-danger {
   @apply btn border-danger/50 bg-transparent text-danger-light hover:bg-danger/10;
-  @apply disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500 disabled:hover:bg-transparent;
+  @apply disabled:border-dashed disabled:border-pico-border disabled:text-zinc-500 disabled:hover:bg-transparent;
 }
 
 @utility btn-danger-solid {
-  @apply btn bg-danger-dark text-on-solid hover:bg-[#b32b2b] active:bg-[#8a1f1f];
-  @apply disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
+  @apply btn border-danger bg-danger font-medium text-on-solid hover:bg-[color-mix(in_oklab,var(--err)_85%,var(--bg))] active:bg-[color-mix(in_oklab,var(--err)_70%,var(--bg))];
+  @apply disabled:border-pico-border disabled:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-zinc-800;
 }
 
 @utility btn-ghost {
-  @apply btn text-zinc-300 hover:bg-pico-card hover:text-white;
+  @apply btn text-white hover:bg-pico-card;
   @apply disabled:text-zinc-500 disabled:hover:bg-transparent;
 }
 
+@utility row-acts {
+  /* Container for text actions in a table row: right-aligned, 10px apart. */
+  @apply flex flex-wrap items-center justify-end gap-y-0.5;
+}
+
+@utility row-act {
+  /* Quiet text link for repeated row actions (Restart, Settings, Delete). Works on <a>, <button>, RouterLink. */
+  @apply inline-flex cursor-pointer items-center whitespace-nowrap border-0 bg-transparent p-0 text-sm text-zinc-400 hover:text-white hover:underline max-md:min-h-[44px];
+  @apply disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-zinc-400 disabled:hover:no-underline aria-disabled:cursor-not-allowed aria-disabled:opacity-60;
+  &[aria-busy='true'] {
+    @apply cursor-wait opacity-70;
+  }
+}
+
+@utility row-act-danger {
+  @apply hover:text-danger-light focus-visible:text-danger-light;
+}
+
 @utility input {
-  @apply block min-h-[32px] w-full rounded-md border border-zinc-500 bg-pico-card px-2.5 py-1 text-sm text-white placeholder:text-zinc-500;
+  /* Border is --mut, not --line: a field must be findable without its label (1.4.11). */
+  @apply block min-h-[28px] w-full rounded-md border border-zinc-500 bg-transparent px-2 py-0.5 text-sm text-white placeholder:text-zinc-500 max-md:min-h-[44px];
   @apply focus-visible:border-accent-light disabled:cursor-not-allowed disabled:border-dashed disabled:border-zinc-700 disabled:text-zinc-500;
   &[aria-invalid='true'] {
     @apply border-danger-light;
   }
-  /* Selects: our own chevron with room on the right (the native arrow hugs the border). */
-  &select {
-    @apply appearance-none bg-no-repeat pr-8;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-    background-position: right 0.5rem center;
-    background-size: 14px 14px;
-  }
+}
+
+/* Selects: our own chevron with room on the right (the native arrow hugs the border). Unlayered, so it wins over .input;
+   the `@utility input { &select }` form it replaces never compiled to a real selector. */
+select.input {
+  appearance: none;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a2a8b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-size: 14px 14px;
 }
 
 @utility label {
@@ -227,87 +259,76 @@
 @utility range {
   @apply h-8 w-full cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50;
   &::-webkit-slider-runnable-track {
-    @apply h-1.5 rounded-full bg-pico-muted;
+    @apply h-1.5 rounded-sm bg-pico-muted;
   }
   &::-moz-range-track {
-    @apply h-1.5 rounded-full bg-pico-muted;
+    @apply h-1.5 rounded-sm bg-pico-muted;
   }
   &::-webkit-slider-thumb {
-    @apply -mt-2 h-5.5 w-5.5 appearance-none rounded-full border-2 border-accent-light bg-primary;
+    @apply -mt-2 h-5.5 w-3 appearance-none rounded-md border-2 border-accent-light bg-primary;
   }
   &::-moz-range-thumb {
-    @apply h-5 w-5 rounded-full border-2 border-accent-light bg-primary;
+    @apply h-5 w-3 rounded-md border-2 border-accent-light bg-primary;
   }
   &:focus-visible {
-    @apply outline-hidden ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
+    @apply outline-2 outline-offset-2 outline-accent-light;
   }
 }
 
-@utility card {
-  @apply rounded-lg border border-pico-border bg-pico-panel;
+@utility sec {
+  /* A flat section: no fill, no side borders, no radius, a top hairline. Pages group content with this, not boxes. */
+  @apply border-t border-pico-border;
 }
 
-@utility card-pad {
-  @apply p-3 sm:p-4;
+@utility sec-pad {
+  /* Vertical padding only (sections align to the page edge, not inset). */
+  @apply pt-2 pb-4;
 }
 
 @utility alert-error {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-danger/40 bg-danger/10 text-danger-light;
+  @apply border-danger/60 text-danger-light;
 }
 
 @utility alert-warn {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-amber-500/40 bg-amber-500/10 text-amber-300;
+  @apply border-amber-500/60 text-amber-300;
 }
 
 @utility alert-info {
+  /* Neutral: information is not a state. */
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-info/40 bg-info/10 text-info-light;
+  @apply border-pico-border bg-pico-card text-white;
 }
 
 @utility alert-success {
   @apply rounded-md border px-3 py-2 text-sm;
-  @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300;
+  @apply border-emerald-500/60 text-emerald-300;
 }
 
 @utility badge {
-  @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium;
+  /* 4px, flat, text in the state colour. Never a pill. */
+  @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 text-xs;
 }
 
 @utility badge-ok {
-  @apply badge border-emerald-500/30 bg-emerald-500/10 text-emerald-300;
+  @apply badge border-emerald-500/40 text-emerald-300;
 }
 
 @utility badge-warn {
-  @apply badge border-amber-500/30 bg-amber-500/10 text-amber-300;
+  @apply badge border-amber-500/40 text-amber-300;
 }
 
 @utility badge-error {
-  @apply badge border-danger/40 bg-danger/10 text-danger-light;
+  @apply badge border-danger/50 text-danger-light;
 }
 
 @utility badge-neutral {
-  @apply badge border-zinc-500/40 bg-zinc-500/10 text-zinc-300;
+  @apply badge border-pico-border text-zinc-400;
 }
 
 @utility badge-info {
-  @apply badge border-info/40 bg-info/10 text-info-light;
-}
-
-@utility nav-link {
-  @apply inline-flex min-h-[32px] items-center whitespace-nowrap rounded-md px-2.5 py-1 text-sm text-zinc-400 hover:bg-pico-border hover:text-white;
-  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
-  &.nav-active {
-    @apply bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60;
-  }
-}
-
-@utility nav-active {
-  /* idle (dim) -> hover (strong card + white) -> active (full card, medium, bright white); no underline */
-  &.nav-link {
-    @apply bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60;
-  }
+  @apply badge border-pico-border text-zinc-400;
 }
 
 @utility page-title {
@@ -323,59 +344,39 @@
 }
 
 @utility link {
-  @apply text-accent-light underline-offset-2 hover:underline;
+  /* Links are ink and underlined. No colour, so they read the same in every theme. */
+  @apply text-white underline underline-offset-2 hover:text-zinc-400;
 }
 
 @utility table-th {
-  @apply text-left text-[11px] font-medium uppercase tracking-wide text-zinc-400;
+  @apply text-left text-xs font-medium text-zinc-400;
 }
 
 @utility mono {
-  /* Technical data (hostnames, images, ports, ids, keys, timestamps, resources). Same look as the audit table. */
+  /* Technical data (hostnames, images, ports, ids, keys, timestamps, resource quantities). */
   @apply font-mono text-xs tabular-nums;
-}
-
-@utility btn-icon {
-  /* Icon buttons: square hit area, quiet until hovered. Danger turns red on hover/focus only. */
-  @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-zinc-400 transition-colors hover:bg-pico-card hover:text-white;
-  @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-400 aria-disabled:cursor-not-allowed aria-disabled:opacity-40;
-}
-
-@utility btn-icon-busy {
-  & svg {
-    @apply animate-spin;
-  }
-}
-
-@utility btn-icon-sm {
-  @apply h-7 w-7;
-}
-
-@utility btn-icon-text {
-  /* Icon button that also shows its label from sm up (the label stays as aria-label below sm). */
-  @apply sm:w-auto sm:gap-1.5 sm:px-2.5 sm:text-sm;
-}
-
-@utility btn-icon-touch {
-  /* 44px touch target below sm; compact from sm up. */
-  @apply max-sm:h-11 max-sm:w-11;
-}
-
-@utility btn-icon-danger {
-  @apply hover:bg-danger/10 hover:text-danger-light focus-visible:text-danger-light;
 }
 
 @utility tbl {
   /*
-   * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. th/td share padding; right-align numeric
-   * and action columns with .text-right on BOTH th and td. Technical values: add .truncate + title on the td.
+   * Real tables: <table class="tbl"> with a <colgroup> of explicit widths. Hairlines between rows, 4px row padding,
+   * first column flush left. Right-align numeric columns with .text-right on BOTH th and td. Technical values: add
+   * .mono, and .truncate + title on the td.
    */
   @apply w-full table-fixed border-collapse text-sm;
   & th {
-    @apply table-th px-3 py-2 align-middle;
+    @apply table-th border-b border-pico-border px-2.5 py-1 align-middle whitespace-nowrap;
   }
   & td {
-    @apply px-3 py-1.5 align-middle;
+    @apply border-b border-pico-border px-2.5 py-1 align-middle;
+  }
+  & th:first-child,
+  & td:first-child {
+    padding-left: 0;
+  }
+  & th:last-child,
+  & td:last-child {
+    padding-right: 0;
   }
   & th.text-right {
     text-align: right;
@@ -383,17 +384,168 @@
   & td.text-right {
     text-align: right;
   }
-  & tbody tr {
-    @apply border-t border-pico-border;
+  & tbody tr:hover {
+    background: var(--raise);
+  }
+}
+
+@utility tbl-stack {
+  /* Add to a .tbl: below md the table becomes blocks, one per row, no header. */
+  @media (max-width: 767px) {
+    &, & tbody, & tr, & td { display: block; width: 100%; }
+    & colgroup, & thead { display: none; }
+    & tr { border-bottom: 1px solid var(--line); padding: 0.5rem 0; }
+    & td { border: 0; padding: 0.125rem 0; }
+    & .row-acts { justify-content: flex-start; }
   }
 }
 
 @utility row-pad {
   /* Grid-row lists (stacked below md): header and rows use the same fixed template via the *-cols classes. */
-  @apply px-3 py-2;
+  @apply px-2.5 py-1;
+}
+
+/* State markers. Colour is never the only signal: dots differ by shape (ok solid circle, warn/off hollow circle, err
+   square) and always travel with text. */
+@layer components {
+  .row-act + .row-act, .row-act + a, .row-act + button { margin-left: 0.625rem }
+  .tone-ok { --c: var(--ok) }
+  .tone-warn { --c: var(--warn) }
+  .tone-err { --c: var(--err) }
+  .tone-off { --c: var(--off) }
+  .dot {
+    display: inline-block;
+    box-sizing: border-box;
+    width: 7px;
+    height: 7px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--c, currentColor);
+  }
+  .dot-ok { --c: var(--ok) }
+  .dot-warn { --c: var(--warn); background: none; border: 1.5px solid var(--c) }
+  .dot-off { --c: var(--off); background: none; border: 1.5px solid var(--c) }
+  .dot-err { --c: var(--err); border-radius: 1px }
+  .st {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--c, inherit);
+    white-space: nowrap;
+  }
+
+  /* Disclosure triangle for <details class="disc">; the summary text/link sits after it. Independent of the tree. */
+  .disc > summary {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 23px;
+    padding-left: 14px;
+    list-style: none;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .disc > summary::-webkit-details-marker { display: none }
+  .disc > summary::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    margin-top: -4px;
+    border-left: 5px solid var(--mut);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+  }
+  .disc[open] > summary::before { transform: rotate(90deg) }
+
+  /* ---- Sidebar shell (components/AppSidebar.vue) ---- */
+  .shell-nav { flex: none }
+  .side {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 216px;
+    padding: 10px 8px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .side-top, .side-head { display: none }
+  .side-brand { padding: 2px 6px 10px; font-size: 14px; font-weight: 600 }
+  .side a { text-decoration: none; color: inherit }
+  .tree, .tree ul { list-style: none; margin: 0; padding: 0 }
+  .tree ul { margin-left: 11px; padding-left: 6px; border-left: 1px solid var(--line) }
+  .tree a { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px }
+  .tree a:hover { background: var(--raise); text-decoration: none }
+  .tree a.cur { background: var(--raise); font-weight: 600 }
+  .tree .n { margin-left: auto; color: var(--mut) }
+  .tree li > a { margin-left: 14px }
+  .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
+  .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
+  .tree.adm { margin-top: 14px }
+  .tree .lbl { padding: 2px 6px; color: var(--mut); font-size: 12px }
+  .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; color: var(--mut); font-weight: 400 }
+  .tree .sub-note { margin: 0 0 0 14px; padding: 2px 6px; color: var(--mut); font-size: 12px }
+  .tree .sub-note button { text-decoration: underline; color: inherit; cursor: pointer }
+  .side-foot { margin-top: auto; padding: 16px 6px 2px; color: var(--mut); display: flex; flex-direction: column; gap: 2px }
+  .side-foot .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .side-foot .links { display: flex; flex-wrap: wrap; gap: 2px 10px }
+  .side-foot .links.fine { font-size: 12px; margin-top: 6px }
+  .side-foot a, .side-foot button { color: inherit; text-decoration: none; cursor: pointer }
+  .side-foot a.cur { color: var(--fg); font-weight: 600 }
+  .side-foot a:hover, .side-foot button:hover { color: var(--fg); text-decoration: underline }
+  .side a:focus-visible, .side button:focus-visible, .side-top a:focus-visible, .side-top button:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px }
+
+  @media (max-width: 759px) {
+    .side-top, .side-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      flex: none;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side-head .side-brand, .side-top .side-brand { padding: 0; font-size: 14px }
+    .side-brand-desk { display: none }
+    .side {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      width: auto;
+      height: auto;
+      padding: 0;
+      border-right: 0;
+      background: var(--bg);
+      font-size: 14px;
+    }
+    .side[data-open='true'] { display: flex }
+    .tree { padding: 4px 8px 0 }
+    .tree a { min-height: 44px; padding: 0 8px; gap: 8px }
+    .tree ul { margin-left: 13px }
+    .tree summary { min-height: 44px; padding-left: 32px }
+    .tree summary::before { left: 12px; border-left-width: 6px }
+    .tree ul summary { padding-left: 26px }
+    .tree ul summary::before { left: 8px }
+    .tree li > a { margin-left: 32px }
+    .tree ul li > a { margin-left: 0 }
+    .tree .lbl { padding: 0 8px; font-size: 13px }
+    .tree.adm { margin-top: 0 }
+    .side-foot { margin-top: auto; border-top: 1px solid var(--line); padding: 0 16px; min-height: 48px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0 14px; font-size: 13px }
+    .side-foot .who { flex: 1 1 100%; padding-top: 8px }
+    .side-foot .links a, .side-foot .links button { display: inline-flex; align-items: center; min-height: 44px }
+    .side-foot .links.fine { margin-top: 0; flex: 1 1 100% }
+  }
 }
 
 @layer base {
+  /* A scroll container must also contain its absolutely positioned descendants (.sr-only text in table cells), or
+     they escape the clip and make the whole page scroll sideways. */
+  .overflow-x-auto, .overflow-auto, .overflow-y-auto { position: relative; }
   input[type='number']::-webkit-outer-spin-button,
   input[type='number']::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -415,6 +567,8 @@
   html,
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
+    font-size: 13px;
+    line-height: 1.45;
     /* Belt-and-suspenders against stray page-level horizontal overflow on small screens
        (e.g. a non-shrinking flex child). `clip` doesn't create a scroll container, so
        inner overflow-x-auto tables and position: sticky keep working. */
@@ -424,7 +578,8 @@
     @apply border-pico-border;
   }
   :focus-visible {
-    @apply outline-hidden ring-2 ring-accent-light ring-offset-2 ring-offset-pico-bg;
+    outline: 2px solid var(--fg);
+    outline-offset: 1px;
   }
   main:focus {
     outline: none; /* skip-link target only */
@@ -446,14 +601,14 @@
 /* Light-theme details that variables can't express. */
 :root[data-theme='light'] {
   & select.input {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23645e4a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  }
-  /* Text links sit in ink-coloured prose where sage vs ink is < 3:1, so they carry an underline. */
-  & .link,
-  & .doc a {
-    text-decoration: underline;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a5546' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   & dialog::backdrop {
     background-color: rgb(40 34 20 / 0.45);
   }
+}
+
+/* Text links in rendered docs are ink, so they carry the underline. */
+.doc a {
+  text-decoration: underline;
 }

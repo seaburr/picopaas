@@ -13,5 +13,5 @@
   var cs = document.querySelector('meta[name="color-scheme"]')
   var tc = document.querySelector('meta[name="theme-color"]')
   if (cs) cs.setAttribute('content', t)
-  if (tc) tc.setAttribute('content', t === 'light' ? '#e7e0d0' : '#0d0d14')
+  if (tc) tc.setAttribute('content', t === 'light' ? '#f1eee6' : '#121417')
 })()
