@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
 import { projectApps, projectLabel, projectNewApp } from '../utils/paths'
@@ -29,9 +29,32 @@ const docsName = (t: AppTemplate) => DOCS_NAME[t.id] ?? t.name.replace(/\s*\(.*\
 
 const projects = useProjectsStore()
 const route = useRoute()
+const router = useRouter()
 // The project a template deploys into: ?project= from the New app chooser, else the current project (named on the page).
 const target = computed(() => projects.projects.find((x) => x.id === Number(route.query.project)) ?? projects.current)
-const newAppPath = computed(() => (target.value ? projectNewApp(target.value.id) : '/apps/new'))
+
+// Project step: choosing a template asks which project it deploys into (skipped when there is only one).
+const picking = ref<AppTemplate | null>(null)
+const pickPid = ref<number | null>(null)
+function chooseTemplate(t: AppTemplate) {
+  const list = projects.projects
+  if (list.length <= 1) return go(t, list[0]?.id ?? null)
+  picking.value = t
+  pickPid.value = target.value?.id ?? list[0]?.id ?? null
+  nextTick(() => {
+    const sel = document.getElementById('tpl-project') as HTMLSelectElement | null
+    sel?.scrollIntoView({ block: 'center' })
+    sel?.focus({ preventScroll: true })
+  })
+}
+function cancelPick() {
+  const id = picking.value?.id
+  picking.value = null
+  nextTick(() => (document.querySelector(`[data-use-template="${id}"]`) as HTMLElement | null)?.focus())
+}
+function go(t: AppTemplate, pid: number | null) {
+  router.push({ path: pid !== null ? projectNewApp(pid) : '/apps/new', query: { template: t.id } })
+}
 
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
@@ -63,7 +86,8 @@ onMounted(async () => {
       <colgroup><col class="w-[14%]"><col><col class="w-[12%]"><col class="w-[22%]"><col class="w-72"></colgroup>
       <thead><tr><th>Template</th><th>Description</th><th>Add-ons</th><th>Image</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
       <tbody>
-        <tr v-for="t in templates" :key="t.id" class="align-top">
+        <template v-for="t in templates" :key="t.id">
+        <tr class="align-top">
           <td class="font-medium text-white wrap-break-word">{{ t.name }}</td>
           <td class="wrap-break-word text-zinc-300">
             {{ t.description }}
@@ -80,12 +104,27 @@ onMounted(async () => {
           <td class="mono"><span class="block truncate" :title="t.image">{{ t.image }}</span></td>
           <td>
             <div class="row-acts flex-wrap gap-x-4 md:flex-nowrap md:whitespace-nowrap [&>*]:ml-0!">
-              <RouterLink :to="{ path: newAppPath, query: { template: t.id } }" class="row-act text-white">Use this template</RouterLink>
+              <button type="button" class="row-act text-white" :data-use-template="t.id" @click="chooseTemplate(t)">Use this template</button>
               <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="row-act">Setup guide</a>
               <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="row-act" :title="`${docsName(t)} documentation`">Docs<span class="sr-only"> ({{ docsName(t) }})</span></a>
             </div>
           </td>
         </tr>
+        <tr v-if="picking?.id === t.id" class="tpl-step">
+          <td colspan="5" @keydown.esc="cancelPick">
+            <p class="section-title">Step 1 of 2: choose a project for {{ t.name }}</p>
+            <p class="help">The app is created in this project, and everyone in it can manage the app. Step 2 is the new-app form.</p>
+            <div class="mt-2 flex flex-wrap items-center gap-3">
+              <label for="tpl-project" class="sr-only">Project</label>
+              <select id="tpl-project" v-model="pickPid" class="input max-w-xs">
+                <option v-for="p in projects.projects" :key="p.id" :value="p.id">{{ projectLabel(p) }}</option>
+              </select>
+              <button type="button" class="btn-primary" :disabled="pickPid === null" @click="go(t, pickPid)">Continue</button>
+              <button type="button" class="btn-ghost" @click="cancelPick">Cancel</button>
+            </div>
+          </td>
+        </tr>
+        </template>
       </tbody>
     </table>
   </main>

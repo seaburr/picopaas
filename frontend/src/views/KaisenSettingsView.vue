@@ -132,7 +132,6 @@ async function test(which: 'anthropic') {
   testResult.value = null
   try {
     testResult.value = await testKaisen(pid.value, which)
-    if (testResult.value.ok) toast.success(testResult.value.message)
   } catch (e) {
     testResult.value = { ok: false, message: e instanceof ApiError ? e.message : 'The test could not run.' }
   } finally {

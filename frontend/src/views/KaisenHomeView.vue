@@ -35,7 +35,6 @@ const canEdit = computed(() => !!store.settings?.can_edit)
 const { project: curProject, suspended: projSuspended } = useProjectSuspension(() => pidNum.value)
 const projName = computed(() => projectLabel(curProject.value))
 useProjectTitle('Kaisen builds', projName)
-const others = computed(() => projects.projects.filter((p) => p.id !== pidNum.value))
 const blocked = computed(() => projSuspended.value || noKey.value || atLimit.value)
 const blockedWhy = computed(() => (projSuspended.value ? 'Project is suspended' : noKey.value ? (canEdit.value ? 'Add an Anthropic key in Kaisen settings first' : 'Ask an owner to add an Anthropic API key') : 'App limit reached. Ask an administrator to raise it.'))
 
@@ -127,10 +126,6 @@ function askDelete(b: KaisenBuild) {
         </div>
       </div>
 
-      <p v-if="others.length" class="meta mb-3">Other projects:
-        <template v-for="(o, i) in others" :key="o.id"><span v-if="i" aria-hidden="true"> · </span> <RouterLink :to="projectKaisen(o.id)" class="link max-md:inline-block max-md:min-h-11 max-md:py-2.5">{{ projectLabel(o) }}</RouterLink></template>
-      </p>
-
       <div v-if="error" role="alert" class="alert-error mb-4 flex flex-wrap items-center justify-between gap-2">
         <span>{{ error }}</span>
         <IconButton label="Retry" @click="load" />
@@ -143,22 +138,35 @@ function askDelete(b: KaisenBuild) {
         </li>
       </ul>
 
-      <div v-else-if="!error && store.builds.length === 0" class="sec max-w-2xl pt-3">
-        <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
-        <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in {{ projName }}. You can download the code or push it to GitHub.</p>
-        <p v-if="projSuspended" class="meta mt-3">{{ SUSPENDED_TITLE }}. New builds are paused.</p>
-        <div v-else-if="noKey" class="mt-3">
-          <p v-if="canEdit" class="alert-warn">Kaisen needs an Anthropic API key in {{ projName }} before it can build.</p>
-          <p v-else class="alert-warn">Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</p>
-          <div class="mt-3">
-            <RouterLink v-if="canEdit" :to="projectKaisen(pidNum, '/settings')" class="btn-primary">Open Kaisen settings</RouterLink>
-            <IconButton v-else label="New build (Ask an owner to add an Anthropic API key)" text="New build" disabled />
+      <div v-else-if="!error && store.builds.length === 0" class="sec grid gap-x-12 gap-y-6 pt-3 lg:grid-cols-2">
+        <div>
+          <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
+          <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in {{ projName }}. You can download the code or push it to GitHub.</p>
+          <p v-if="projSuspended" class="meta mt-3">{{ SUSPENDED_TITLE }}. New builds are paused.</p>
+          <div v-else-if="noKey" class="mt-3">
+            <p v-if="canEdit" class="alert-warn">Kaisen needs an Anthropic API key added to this project before it can build.</p>
+            <p v-else class="alert-warn">Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</p>
+            <div class="mt-3">
+              <RouterLink v-if="canEdit" :to="projectKaisen(pidNum, '/settings')" class="btn-primary">Open Kaisen settings</RouterLink>
+              <IconButton v-else label="New build (Ask an owner to add an Anthropic API key)" text="New build" disabled />
+            </div>
+          </div>
+          <div v-else class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
+            <RouterLink v-else :to="projectKaisen(pidNum, '/new')" class="btn-primary">New build</RouterLink>
+            <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
           </div>
         </div>
-        <div v-else class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <span v-if="atLimit" class="meta">App limit reached. Ask an administrator to raise it.</span>
-          <RouterLink v-else :to="projectKaisen(pidNum, '/new')" class="btn-primary">New build</RouterLink>
-          <RouterLink to="/guide/user" class="btn-ghost">Read the guide</RouterLink>
+        <div>
+          <h2 class="section-title">How it works</h2>
+          <table class="tbl mt-1">
+            <tbody>
+              <tr><th scope="row" class="w-28">1. Describe</th><td class="!whitespace-normal">Say what the app should do. Kaisen asks if it needs to know something.</td></tr>
+              <tr><th scope="row">2. Build</th><td class="!whitespace-normal">It writes the code, runs it and fixes what fails. Your replies steer it.</td></tr>
+              <tr><th scope="row">3. Deploy</th><td class="!whitespace-normal">It ships the result as an app in {{ projName }}. Keep iterating, download the code or push it to GitHub.</td></tr>
+              <tr v-if="store.spend"><th scope="row">Spend</th><td class="!whitespace-normal">Last 30 days <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day">, daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>, from {{ projName }}'s Anthropic key.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -225,7 +233,7 @@ function askDelete(b: KaisenBuild) {
         </table>
       </div>
 
-      <p v-if="!loading && !error && store.spend" class="help mt-3">
+      <p v-if="!loading && !error && store.spend && store.builds.length" class="help mt-3">
         Kaisen is in preview. Builds spend from {{ projName }}'s Anthropic key. Last 30 days: <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day"> · daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>
       </p>
     </main>

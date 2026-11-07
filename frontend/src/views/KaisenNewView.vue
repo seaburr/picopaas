@@ -203,7 +203,7 @@ async function startWithout() {
       </div>
 
       <p v-if="noKey" class="alert-warn mb-3" role="status">
-        <template v-if="canEditKey">Kaisen needs an Anthropic API key in {{ projName }} before it can build. <RouterLink :to="projectKaisen(projectId, '/settings')" class="link">Open Kaisen settings</RouterLink></template>
+        <template v-if="canEditKey">Kaisen needs an Anthropic API key added to this project before it can build. <RouterLink :to="projectKaisen(projectId, '/settings')" class="link">Open Kaisen settings</RouterLink></template>
         <template v-else>Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</template>
       </p>
 
