@@ -40,7 +40,7 @@ function submit() {
     ref="dlg"
     :aria-labelledby="titleId"
     :aria-describedby="msgId"
-    class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+    class="m-auto w-[calc(100%-2rem)] max-w-sm rounded-md border border-pico-border bg-pico-panel p-0 text-white shadow-lg backdrop:bg-black/70"
     @cancel="m.onNativeCancel"
     @click="m.onBackdrop"
   >
@@ -63,7 +63,7 @@ function submit() {
           data-autofocus
         />
       </div>
-      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div class="mt-4 flex flex-col-reverse gap-2 border-t border-pico-border pt-3 sm:flex-row sm:justify-end">
         <button type="button" class="btn-secondary" :data-autofocus="!requireText && danger ? '' : undefined" :disabled="busy" @click="emit('cancel')">
           Cancel
         </button>

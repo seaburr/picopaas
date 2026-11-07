@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Eye, EyeOff, Pencil, Plus, Trash2 } from 'lucide-vue-next'
-import IconButton from './IconButton.vue'
 import { computed, reactive, watch } from 'vue'
 import { envKeyError, REF_TIPS, refLabel, SUGGESTED_KEYS } from '../composables/envKeys'
 import { DB_REFS, MASKED_VALUE, STORAGE_REFS, type EnvVar } from '../types'
@@ -96,7 +94,7 @@ function insertRef(ref: string) {
   }
 }
 
-const envGrid = 'sm:grid sm:grid-cols-[14rem_minmax(0,1fr)_6rem] sm:items-center sm:gap-2'
+const envGrid = 'sm:grid sm:grid-cols-[14rem_minmax(0,1fr)_9.5rem] sm:items-center sm:gap-2'
 const groups = computed(() => [
   ...(props.wantDb ? [{ title: 'Database', refs: DB_REFS }] : []),
   ...(props.wantStorage ? [{ title: 'Blob storage', refs: STORAGE_REFS }] : []),
@@ -111,12 +109,12 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       {{ explainer }}
     </p>
 
-    <p v-if="rows.length === 0" class="rounded-md border border-dashed border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
+    <p v-if="rows.length === 0" class="border-y border-pico-border px-3 py-4 text-center text-sm text-zinc-400">
       No env vars yet.
     </p>
 
-    <div v-if="rows.length" :class="[envGrid, 'table-th hidden px-2']"><span>Key</span><span>Value</span><span class="text-right">Secret</span></div>
-    <div v-for="(row, i) in rows" :key="idFor(row)" class="rounded-md border border-pico-border bg-pico-card p-1.5">
+    <div v-if="rows.length" :class="[envGrid, 'table-th hidden border-b border-pico-border pb-1']"><span>Key</span><span>Value</span><span class="text-right">Secret</span></div>
+    <div v-for="(row, i) in rows" :key="idFor(row)" class="border-b border-pico-border pb-2">
       <div :class="['flex flex-col gap-1.5', envGrid]">
         <div>
           <input
@@ -128,7 +126,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             spellcheck="false"
             :aria-label="`Name of variable ${i + 1}`"
             :aria-invalid="!!keyMsg(row, i) || undefined"
-            class="input mono bg-pico-panel"
+            class="input mono"
             @input="onKeyInput(i, $event)"
             @focus="activeIndex = null"
           />
@@ -136,8 +134,8 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
 
         <div class="min-w-0 flex-1">
           <div v-if="row.is_secret && !row.touched" class="flex gap-1">
-            <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input mono bg-pico-panel/50" />
-            <IconButton :icon="Pencil" :label="`Change secret ${row.key}`" @click="startChangingSecret(i)" />
+            <input type="password" value="********" disabled :aria-label="`Value for ${row.key || 'secret'} (hidden)`" class="input mono" />
+            <button type="button" class="row-act shrink-0 px-1" :aria-label="`Change secret ${row.key}`" @click="startChangingSecret(i)">Change</button>
           </div>
           <div v-else class="relative">
             <input
@@ -147,21 +145,20 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
               autocomplete="off"
               :aria-label="`Value for ${row.key || 'variable ' + (i + 1)}`"
               :aria-invalid="!!valueMsg(i) || undefined"
-              :class="['input mono bg-pico-panel', row.is_secret ? 'pr-9' : '']"
+              :class="['input mono', row.is_secret ? 'pr-14' : '']"
               @focus="activeIndex = i"
             />
             <button
               v-if="row.is_secret"
               type="button"
-              class="btn-icon btn-icon-sm absolute right-0.5 top-0.5"
+              class="row-act absolute right-2 top-1 text-xs"
               :aria-pressed="!!row.peek"
               :aria-label="row.peek ? `Hide value for ${row.key || 'variable ' + (i + 1)}` : `Show value for ${row.key || 'variable ' + (i + 1)}`"
               :title="row.peek ? 'Hide value' : 'Show value'"
               @mousedown.prevent
               @click="row.peek = !row.peek"
             >
-              <EyeOff v-if="row.peek" :size="16" aria-hidden="true" />
-              <Eye v-else :size="16" aria-hidden="true" />
+              {{ row.peek ? 'Hide' : 'Show' }}
             </button>
           </div>
         </div>
@@ -171,7 +168,7 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
             <input type="checkbox" :checked="row.is_secret" class="check" @change="onToggleSecret(i)" />
             secret
           </label>
-          <IconButton :icon="Trash2" :label="`Remove ${row.key || 'variable ' + (i + 1)}`" danger @click="removeRow(i)" />
+          <button type="button" class="row-act row-act-danger" :aria-label="`Remove ${row.key || 'variable ' + (i + 1)}`" @click="removeRow(i)">Remove</button>
         </div>
       </div>
       <p v-if="keyMsg(row, i)" class="field-error" role="alert">{{ keyMsg(row, i) }}</p>
@@ -179,21 +176,21 @@ const explainer = 'Use ' + refLabel('db.url') + ' references to inject database 
       <p v-if="valueMsg(i)" class="field-error" role="alert">{{ valueMsg(i) }}</p>
     </div>
 
-    <button type="button" class="btn-secondary btn-sm" @click="addRow()"><Plus :size="14" aria-hidden="true" />Add variable</button>
+    <button type="button" class="btn-secondary btn-sm" @click="addRow()">Add variable</button>
 
-    <div v-if="groups.length" class="rounded-md border border-pico-border bg-pico-card p-3">
+    <div v-if="groups.length" class="border-t border-pico-border pt-2">
       <p class="mb-2 text-xs text-zinc-300">
         Click a reference to put it in the focused empty value field, or add a new row with a suggested name.
       </p>
       <div v-for="g in groups" :key="g.title" class="mt-2 first:mt-0">
-        <p class="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">{{ g.title }}</p>
+        <p class="mb-1 text-xs font-medium text-zinc-400">{{ g.title }}</p>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="ref in g.refs"
             :key="ref"
             type="button"
             :title="REF_TIPS[ref] ?? SUGGESTED_KEYS[ref]"
-            class="rounded-sm border border-pico-border bg-pico-panel px-1.5 py-0.5 mono text-accent-light hover:border-accent"
+            class="rounded-sm border border-pico-border px-1.5 py-0.5 mono text-zinc-200 hover:border-zinc-400"
             @mousedown.prevent
             @click="insertRef(ref)"
           >

@@ -6,7 +6,6 @@ import { ApiError } from '../api/client'
 import { useApiKeysStore } from '../stores/apiKeys'
 import { useToastStore } from '../stores/toast'
 import type { ApiKey } from '../types'
-import { Ban, Copy } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { copyText, stamp, stampTitle } from '../utils/format'
 import type { ApiKeyScope } from '../types'
@@ -112,109 +111,154 @@ async function confirmRevoke() {
   }
 }
 
-// Header and rows share one fixed template (md+); stacked below md.
-const keyGrid = 'md:grid-cols-[minmax(0,1fr)_8rem_5rem_8.5rem_9rem_2rem] md:gap-3'
 const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
 </script>
 
 <template>
-  <section id="api-keys" class="card card-pad scroll-mt-4" aria-labelledby="keys-title">
+  <section id="api-keys" class="sec scroll-mt-4 pt-3" aria-labelledby="keys-title">
     <h2 id="keys-title" class="section-title">API keys</h2>
-    <p class="mt-1 text-sm text-zinc-300">
-        API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for
-        you (<RouterLink to="/guide/api" class="link">API reference</RouterLink>). Set
-        <code class="mono">PICOPAAS_TOKEN</code> to a key and run
-        <code class="mono">picopaas apply -f app.yaml</code>. Choose <strong>Full</strong> (deploy and manage apps, like
-        your account) or <strong>Read-only</strong> (list and inspect only — safe for dashboards and CI status checks).
-        API keys can't create or revoke keys; do that here.
-      </p>
+    <p class="mt-1 max-w-3xl text-sm text-zinc-300">
+      API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for
+      you (<RouterLink to="/guide/api" class="link">API reference</RouterLink>). Set
+      <code class="mono">PICOPAAS_TOKEN</code> to a key and run
+      <code class="mono">picopaas apply -f app.yaml</code>. Choose <strong>Full</strong> (deploy and manage apps, like
+      your account) or <strong>Read-only</strong> (list and inspect only — safe for dashboards and CI status checks).
+      API keys can't create or revoke keys; do that here.
+    </p>
 
-      <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
-        <div class="sm:w-60">
-          <label :for="nameId" class="label">Name <span class="font-normal text-zinc-400">(optional)</span></label>
-          <input :id="nameId" v-model="newName" maxlength="64" placeholder="e.g. github-actions" class="input" autocomplete="off" />
-        </div>
-        <div class="sm:w-40">
-          <label :for="scopeId" class="label">Access</label>
-          <select :id="scopeId" v-model="newScope" class="input">
-            <option value="full">Full</option>
-            <option value="read">Read-only</option>
-          </select>
-        </div>
-        <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create key' }}</button>
-      </form>
-
-      <section v-if="justCreatedKey" class="alert-info mt-3 p-3" aria-label="New API key">
-        <p class="text-sm font-medium text-white">Copy your new key now. For security we can't show it again.</p>
-        <div class="mt-2 flex items-stretch gap-2">
-          <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-sm bg-pico-card px-3 py-1.5 text-accent-light">{{ justCreatedKey }}</code>
-          <IconButton :icon="Copy" :label="copied ? 'Copied' : 'Copy key'" @click="copy(justCreatedKey, true)" />
-        </div>
-        <div class="mt-3" role="tablist" aria-label="Usage snippets">
-          <button
-            v-for="t in tabs"
-            :key="t.id"
-            type="button"
-            role="tab"
-            :aria-selected="tab === t.id"
-            class="border-b-2 px-3 py-1.5 text-sm"
-            :class="tab === t.id ? 'border-accent-light font-medium text-white' : 'border-transparent text-zinc-300 hover:text-white'"
-            @click="tab = t.id"
-          >{{ t.label }}</button>
-        </div>
-        <div class="relative" role="tabpanel">
-          <pre class="mono whitespace-pre-wrap break-all rounded-b bg-pico-card px-3 py-2 pr-12 text-zinc-200"><code>{{ snippets }}</code></pre>
-          <IconButton :icon="Copy" label="Copy snippet" sm class="absolute right-2 top-2" @click="copy(snippets)" />
-        </div>
-        <button type="button" class="link mt-3 text-xs" @click="dismissCreated">I've saved it, dismiss</button>
-      </section>
-
-      <div v-if="error" class="alert-error mt-3" role="alert">{{ error }}</div>
-
-      <div v-if="loading" class="mt-4 text-sm text-zinc-400">Loading…</div>
-
-      <div v-else-if="store.keys.length === 0" class="card mt-4 p-6 text-center">
-        <h2 class="section-title">No API keys yet</h2>
-        <p class="mx-auto mt-1 max-w-sm text-sm text-zinc-300">Create one to deploy from the CLI or CI. Keys are shown once, so copy it when it appears.</p>
+    <form class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onCreate">
+      <div class="sm:w-60">
+        <label :for="nameId" class="label">Name <span class="font-normal text-zinc-400">(optional)</span></label>
+        <input :id="nameId" v-model="newName" maxlength="64" placeholder="e.g. github-actions" class="input" autocomplete="off" />
       </div>
+      <div class="sm:w-40">
+        <label :for="scopeId" class="label">Access</label>
+        <select :id="scopeId" v-model="newScope" class="input">
+          <option value="full">Full</option>
+          <option value="read">Read-only</option>
+        </select>
+      </div>
+      <button type="submit" :disabled="creating" class="btn-primary">{{ creating ? 'Creating…' : 'Create key' }}</button>
+    </form>
 
+    <section v-if="justCreatedKey" class="alert-info mt-3 p-3" aria-label="New API key">
+      <p class="text-sm font-medium text-white">Copy your new key now. For security we can't show it again.</p>
+      <div class="mt-2 flex items-stretch gap-2">
+        <code class="mono min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-sm bg-pico-card px-3 py-1.5 text-white">{{ justCreatedKey }}</code>
+        <IconButton text="Copy" :label="copied ? 'Copied' : 'Copy key'" @click="copy(justCreatedKey, true)" />
+      </div>
+      <div class="mt-3" role="tablist" aria-label="Usage snippets">
+        <button
+          v-for="t in tabs"
+          :key="t.id"
+          type="button"
+          role="tab"
+          :aria-selected="tab === t.id"
+          class="border-b-2 px-3 py-1.5 text-sm max-md:min-h-[36px]"
+          :class="tab === t.id ? 'border-white font-medium text-white' : 'border-transparent text-zinc-300 hover:text-white'"
+          @click="tab = t.id"
+        >{{ t.label }}</button>
+      </div>
+      <div class="relative" role="tabpanel">
+        <pre class="mono whitespace-pre-wrap break-all rounded-b bg-pico-card px-3 py-2 pr-16 text-zinc-200"><code>{{ snippets }}</code></pre>
+        <IconButton text="Copy" label="Copy snippet" class="absolute right-2 top-2" @click="copy(snippets)" />
+      </div>
+      <button type="button" class="link mt-3 text-xs max-md:min-h-[36px]" @click="dismissCreated">I've saved it, dismiss</button>
+    </section>
+
+    <div v-if="error" class="alert-error mt-3" role="alert">{{ error }}</div>
+
+    <div v-if="loading" class="mt-4 text-sm text-zinc-400">Loading…</div>
+
+    <div v-else-if="store.keys.length === 0" class="mt-4">
+      <h3 class="text-sm font-medium text-white">No API keys yet</h3>
+      <p class="mt-1 max-w-md text-sm text-zinc-300">Create one to deploy from the CLI or CI. Keys are shown once, so copy it when it appears.</p>
+    </div>
+
+    <template v-else>
+      <h3 class="label mt-4">Active keys <span class="meta font-normal">({{ active.length }})</span></h3>
+      <p v-if="active.length === 0" class="mt-2 text-sm text-zinc-400">No active keys.</p>
       <template v-else>
-        <h2 class="label mt-4">Active keys <span class="meta font-normal">({{ active.length }})</span></h2>
-        <p v-if="active.length === 0" class="mt-2 text-sm text-zinc-400">No active keys.</p>
-        <div v-else class="card mt-2 overflow-hidden">
-          <div :class="[keyGrid, 'table-th row-pad hidden border-b border-pico-border md:grid']">
-            <span>Name</span><span>Key</span><span>Access</span><span>Created</span><span>Last used</span><span class="sr-only">Actions</span>
-          </div>
-          <ul class="divide-y divide-pico-border">
-            <li v-for="key in active" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
-              <span class="truncate font-medium text-white" :title="key.name || undefined"><span v-if="key.name">{{ key.name }}</span><span v-else class="text-zinc-400">(unnamed)</span></span>
-              <code class="mono truncate text-zinc-200" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
-              <span><span class="meta md:hidden">Access </span><span class="rounded-sm px-1.5 py-0.5 text-xs font-medium" :class="key.scope === 'read' ? 'bg-pico-card text-zinc-300' : 'bg-accent-light/15 text-accent-light'">{{ scopeLabel(key.scope) }}</span></span>
-              <span class="mono text-zinc-300" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
-              <span class="mono text-zinc-300" :title="key.last_used_at ? stampTitle(key.last_used_at) : undefined"><span class="meta md:hidden">Last used </span>{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</span>
-              <span class="flex justify-end"><IconButton :icon="Ban" label="Revoke key" danger @click="pendingRevoke = key" /></span>
+        <table class="tbl mt-1 max-[759px]:hidden">
+          <colgroup>
+            <col />
+            <col class="w-36" />
+            <col class="w-24" />
+            <col class="w-40" />
+            <col class="w-40" />
+            <col class="w-20" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">Key</th>
+              <th scope="col">Access</th>
+              <th scope="col">Created</th>
+              <th scope="col">Last used</th>
+              <th scope="col" class="text-right"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="key in active" :key="key.id">
+              <td class="truncate font-medium text-white" :title="key.name || undefined"><span v-if="key.name">{{ key.name }}</span><span v-else class="font-normal text-zinc-400">(unnamed)</span></td>
+              <td class="mono truncate text-zinc-200" :title="`${key.prefix}…`">{{ key.prefix }}…</td>
+              <td class="text-zinc-300">{{ scopeLabel(key.scope) }}</td>
+              <td class="mono truncate text-zinc-300" :title="stampTitle(key.created_at)">{{ stamp(key.created_at) }}</td>
+              <td class="mono truncate text-zinc-300" :title="key.last_used_at ? stampTitle(key.last_used_at) : undefined">{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</td>
+              <td class="text-right"><div class="row-acts"><button type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" aria-label="Revoke key" @click="pendingRevoke = key">Revoke</button></div></td>
+            </tr>
+          </tbody>
+        </table>
+        <ul class="mt-1 divide-y divide-pico-border border-y border-pico-border min-[760px]:hidden">
+          <li v-for="key in active" :key="key.id" class="py-2">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="min-w-0 truncate font-medium text-white"><span v-if="key.name">{{ key.name }}</span><span v-else class="font-normal text-zinc-400">(unnamed)</span></span>
+              <code class="mono shrink-0 text-zinc-200">{{ key.prefix }}…</code>
+            </div>
+            <div class="meta">{{ scopeLabel(key.scope) }} · created <span class="mono">{{ stamp(key.created_at) }}</span> · used <span class="mono">{{ key.last_used_at ? stamp(key.last_used_at) : 'never' }}</span></div>
+            <div class="row-acts !justify-start"><button type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" aria-label="Revoke key" @click="pendingRevoke = key">Revoke</button></div>
+          </li>
+        </ul>
+      </template>
+
+      <template v-if="revoked.length">
+        <button type="button" class="link mt-4 text-sm max-md:min-h-[36px]" :aria-expanded="showRevoked" @click="showRevoked = !showRevoked">
+          {{ showRevoked ? 'Hide' : 'Show' }} {{ revoked.length }} revoked {{ revoked.length === 1 ? 'key' : 'keys' }}
+        </button>
+        <div v-if="showRevoked" class="text-zinc-400">
+          <table class="tbl mt-1 max-[759px]:hidden">
+            <colgroup>
+              <col />
+              <col class="w-36" />
+              <col class="w-24" />
+              <col class="w-40" />
+              <col class="w-60" />
+            </colgroup>
+            <thead>
+              <tr><th scope="col">Name</th><th scope="col">Key</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Revoked</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="key in revoked" :key="key.id">
+                <td class="truncate" :title="key.name || undefined">{{ key.name || '(unnamed)' }}</td>
+                <td class="mono truncate" :title="`${key.prefix}…`">{{ key.prefix }}…</td>
+                <td>{{ scopeLabel(key.scope) }}</td>
+                <td class="mono truncate" :title="stampTitle(key.created_at)">{{ stamp(key.created_at) }}</td>
+                <td class="mono truncate" :title="stampTitle(key.revoked_at!)">Revoked {{ stamp(key.revoked_at!) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <ul class="mt-1 divide-y divide-pico-border border-y border-pico-border min-[760px]:hidden">
+            <li v-for="key in revoked" :key="key.id" class="py-2 text-sm">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="min-w-0 truncate">{{ key.name || '(unnamed)' }}</span>
+                <code class="mono shrink-0">{{ key.prefix }}…</code>
+              </div>
+              <div class="meta">{{ scopeLabel(key.scope) }} · <span class="mono">Revoked {{ stamp(key.revoked_at!) }}</span></div>
             </li>
           </ul>
         </div>
-
-        <template v-if="revoked.length">
-          <button type="button" class="link mt-4 text-sm" :aria-expanded="showRevoked" @click="showRevoked = !showRevoked">
-            {{ showRevoked ? 'Hide' : 'Show' }} {{ revoked.length }} revoked {{ revoked.length === 1 ? 'key' : 'keys' }}
-          </button>
-          <div v-if="showRevoked" class="card mt-2 overflow-hidden text-zinc-400">
-            <ul class="divide-y divide-pico-border">
-              <li v-for="key in revoked" :key="key.id" :class="[keyGrid, 'row-pad flex flex-col md:grid md:items-center']">
-                <span class="truncate" :title="key.name || undefined">{{ key.name || '(unnamed)' }}</span>
-                <code class="mono truncate" :title="`${key.prefix}…`">{{ key.prefix }}…</code>
-                <span><span class="meta md:hidden">Access </span>{{ scopeLabel(key.scope) }}</span>
-                <span class="mono" :title="stampTitle(key.created_at)"><span class="meta md:hidden">Created </span>{{ stamp(key.created_at) }}</span>
-                <span class="mono" :title="stampTitle(key.revoked_at!)">Revoked {{ stamp(key.revoked_at!) }}</span>
-                <span />
-              </li>
-            </ul>
-          </div>
-        </template>
       </template>
+    </template>
 
     <ConfirmDialog
       :open="pendingRevoke !== null"

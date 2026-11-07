@@ -227,7 +227,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
 <template>
   <div>
         <div class="space-y-3">
-          <section class="card card-pad" aria-labelledby="h-domain">
+          <section class="sec sec-pad" aria-labelledby="h-domain">
             <h2 id="h-domain" class="section-title mb-1">Custom domain</h2>
             <p class="help">
               Serve this app on your own domain in addition to <span class="mono">{{ app.hostname }}</span>. We issue a
@@ -245,13 +245,13 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
             <div v-else class="mt-3 space-y-3">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="mono text-zinc-100">{{ cdom.host }}</span>
-                <span class="badge-info" :class="cdom.status === 'active' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'">
-                  {{ cdom.status === 'active' ? 'Active' : 'Pending verification' }}
+                <span :class="['st', cdom.status === 'active' ? 'tone-ok' : 'tone-warn']">
+                  <span :class="['dot', cdom.status === 'active' ? 'dot-ok' : 'dot-warn']" aria-hidden="true" />{{ cdom.status === 'active' ? 'Active' : 'Pending verification' }}
                 </span>
-                <a v-if="cdom.status === 'active'" :href="`https://${cdom.host}`" target="_blank" rel="noopener" class="link text-sm">Open ↗</a>
+                <a v-if="cdom.status === 'active'" :href="`https://${cdom.host}`" target="_blank" rel="noopener" class="link text-sm">Open</a>
               </div>
 
-              <div v-if="cdom.status !== 'active'" class="rounded-md border border-pico-border bg-pico-card p-3 text-sm">
+              <div v-if="cdom.status !== 'active'" class="border-y border-pico-border py-3 text-sm">
                 <p class="mb-2 text-zinc-300">Create these two DNS records at your domain provider, then verify:</p>
                 <div class="overflow-x-auto">
                   <table class="w-full min-w-lg text-left text-xs">
@@ -266,13 +266,13 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
                     <tbody class="divide-y divide-pico-border align-top">
                       <tr>
                         <td class="py-2 pr-3 mono text-zinc-200">CNAME</td>
-                        <td class="py-2 pr-3"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.host }}</span><CopyButton :text="cdom.host" sm label="Copy CNAME host name" /></div></td>
-                        <td class="py-2"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.cname_target }}</span><CopyButton :text="cdom.cname_target" sm label="Copy CNAME value" /></div></td>
+                        <td class="py-2 pr-3"><div class="flex flex-wrap items-center gap-x-2.5"><span class="mono break-all text-zinc-200">{{ cdom.host }}</span><CopyButton :text="cdom.host" label="Copy CNAME host name" /></div></td>
+                        <td class="py-2"><div class="flex flex-wrap items-center gap-x-2.5"><span class="mono break-all text-zinc-200">{{ cdom.cname_target }}</span><CopyButton :text="cdom.cname_target" label="Copy CNAME value" /></div></td>
                       </tr>
                       <tr>
                         <td class="py-2 pr-3 mono text-zinc-200">TXT</td>
-                        <td class="py-2 pr-3"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_host }}</span><CopyButton :text="cdom.challenge_host" sm label="Copy TXT host name" /></div></td>
-                        <td class="py-2"><div class="flex items-center gap-1"><span class="mono break-all text-zinc-200">{{ cdom.challenge_token }}</span><CopyButton :text="cdom.challenge_token" sm label="Copy TXT value" /></div></td>
+                        <td class="py-2 pr-3"><div class="flex flex-wrap items-center gap-x-2.5"><span class="mono break-all text-zinc-200">{{ cdom.challenge_host }}</span><CopyButton :text="cdom.challenge_host" label="Copy TXT host name" /></div></td>
+                        <td class="py-2"><div class="flex flex-wrap items-center gap-x-2.5"><span class="mono break-all text-zinc-200">{{ cdom.challenge_token }}</span><CopyButton :text="cdom.challenge_token" label="Copy TXT value" /></div></td>
                       </tr>
                     </tbody>
                   </table>
@@ -294,8 +294,8 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
             </div>
           </section>
 
-          <section v-if="isAdmin" class="card card-pad" aria-labelledby="h-sub">
-            <h2 id="h-sub" class="section-title mb-1">Short address <span class="badge-info ml-1 align-middle">Admin</span></h2>
+          <section v-if="isAdmin" class="sec sec-pad" aria-labelledby="h-sub">
+            <h2 id="h-sub" class="section-title mb-1">Short address <span class="meta ml-1 font-normal">Admin only</span></h2>
             <p class="help">
               Also serve this app at a short address on the platform domain, covered by the platform certificate.
             </p>
@@ -312,7 +312,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
             <p v-if="subError" id="sub-err" role="alert" class="field-error mt-2 wrap-break-word">{{ subError }}</p>
           </section>
 
-          <section v-if="canMove" class="card card-pad" aria-labelledby="h-move">
+          <section v-if="canMove" class="sec sec-pad" aria-labelledby="h-move">
             <h2 id="h-move" class="section-title mb-1">Project</h2>
             <p class="help mt-0! mb-2">Currently in {{ fromProject?.is_personal ? 'Personal' : fromProject?.name }}. Moving keeps the URL, data and credentials.</p>
             <form class="flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="onMove">
@@ -329,7 +329,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
           <!-- Extra settings sections go in this slot; the Danger zone must stay the last element. -->
           <slot />
 
-          <section class="card card-pad border-danger/40" aria-labelledby="h-danger">
+          <section class="sec sec-pad border-danger/40" aria-labelledby="h-danger">
             <h2 id="h-danger" class="section-title text-danger-light">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">

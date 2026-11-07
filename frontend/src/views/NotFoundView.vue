@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
@@ -8,19 +7,18 @@ const route = useRoute()
 </script>
 
 <template>
-  <div class="min-h-screen">
-    <NavBar />
-    <main id="main" tabindex="-1" class="page-narrow py-16 text-center">
-      <p class="meta tracking-widest">404</p>
-      <h1 class="page-title mt-2">Page not found</h1>
-      <p class="mt-3 wrap-break-word text-sm text-zinc-300">
-        There's nothing at <code class="text-white">{{ route.path }}</code>. The link may be old or mistyped.
+  <main id="main" tabindex="-1" class="page-main">
+    <div class="max-w-md py-8">
+      <p class="meta mono">404</p>
+      <h1 class="page-title mt-1">Page not found</h1>
+      <p class="mt-2 wrap-break-word text-sm text-zinc-300">
+        There's nothing at <code class="mono text-white">{{ route.path }}</code>. The link may be old or mistyped.
       </p>
-      <div class="mt-6 flex justify-center gap-3">
+      <div class="mt-4 flex gap-2">
         <RouterLink v-if="auth.user" to="/apps" class="btn-primary">Go to your apps</RouterLink>
         <RouterLink v-else to="/login" class="btn-primary">Log in</RouterLink>
         <RouterLink to="/guide/user" class="btn-secondary">Read the docs</RouterLink>
       </div>
-    </main>
-  </div>
+    </div>
+  </main>
 </template>

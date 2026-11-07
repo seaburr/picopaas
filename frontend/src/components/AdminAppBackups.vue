@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Download } from 'lucide-vue-next'
-import IconButton from './IconButton.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { adminBackupSets, adminDownloadBackupSet, adminGetBackupExport } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -68,7 +66,7 @@ async function download(setId: number) {
 </script>
 
 <template>
-  <div class="rounded-md bg-pico-card p-3 text-xs" aria-live="polite">
+  <div class="py-2 text-xs" aria-live="polite">
     <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
     <p v-else-if="!data" class="text-zinc-400" role="status">Loading backups…</p>
     <template v-else>
@@ -78,7 +76,7 @@ async function download(setId: number) {
       </p>
       <p v-if="data.purged" class="text-amber-300">This app's backups have been purged.</p>
       <p v-else-if="!data.backups.length" class="text-zinc-400">No backups.</p>
-      <table v-else class="tbl min-w-lg">
+      <div v-else class="overflow-x-auto"><table class="tbl min-w-lg">
         <thead><tr><th scope="col">Taken</th><th scope="col">Trigger</th><th scope="col">Status</th><th scope="col">Parts</th><th scope="col" class="text-right">Size</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
         <tbody class="text-zinc-300">
           <tr v-for="b in data.backups" :key="b.id">
@@ -87,12 +85,10 @@ async function download(setId: number) {
             <td>{{ b.status }}</td>
             <td>{{ b.parts.map((p) => p.kind).join(', ') }}</td>
             <td class="mono text-right">{{ size(b.size_bytes) }}</td>
-            <td class="text-right">
-<IconButton :icon="Download" label="Download backup set" sm :busy="busy.has(b.id)" :disabled="b.status === 'running' || b.status === 'failed' || b.status === 'deleting'" @click="download(b.id)" />
-            </td>
+            <td><div class="row-acts"><button type="button" class="row-act" aria-label="Download backup set" :disabled="b.status === 'running' || b.status === 'failed' || b.status === 'deleting'" :aria-busy="busy.has(b.id)" @click="download(b.id)">Download</button></div></td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </template>
   </div>
 </template>

@@ -146,7 +146,7 @@ function reset() {
   <dialog
     ref="dlg"
     :aria-labelledby="`${uid}-title`"
-    class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+    class="m-auto w-[calc(100%-2rem)] max-w-lg rounded-md border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
     @cancel="m.onNativeCancel"
     @click="m.onBackdrop"
   >

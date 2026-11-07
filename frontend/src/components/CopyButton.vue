@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Check, Copy } from 'lucide-vue-next'
 import { useToastStore } from '../stores/toast'
 
+// Text action ("Copy" -> "Copied"). `sm` is accepted for old call sites and ignored.
 const props = defineProps<{ text: string; label?: string; sm?: boolean }>()
 const toast = useToastStore()
 const done = ref(false)
@@ -21,14 +21,11 @@ async function copy() {
 <template>
   <button
     type="button"
-    class="btn-icon"
-    :class="sm ? 'btn-icon-sm' : ''"
+    class="row-act"
     :title="done ? 'Copied' : (label ?? 'Copy')"
     :aria-label="label ?? 'Copy'"
     @click="copy"
   >
-    <Copy v-if="!done" :size="16" aria-hidden="true" />
-    <Check v-else :size="16" class="text-emerald-300" aria-hidden="true" />
-    <span class="sr-only" aria-live="polite">{{ done ? 'Copied' : '' }}</span>
+    <span aria-hidden="true">{{ done ? 'Copied' : 'Copy' }}</span><span class="sr-only" aria-live="polite">{{ done ? 'Copied' : '' }}</span>
   </button>
 </template>

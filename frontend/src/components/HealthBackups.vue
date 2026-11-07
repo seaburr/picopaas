@@ -7,7 +7,6 @@ import { parseTs } from '../composables/appUi'
 import { fmt } from '../utils/tz'
 import IconButton from './IconButton.vue'
 import { useToastStore } from '../stores/toast'
-import { DatabaseBackup, Download, X } from 'lucide-vue-next'
 import PlatformBackupDownloadDialog from './PlatformBackupDownloadDialog.vue'
 import AdminAppBackups from './AdminAppBackups.vue'
 import type { BackupFailure, PlatformBackupRun } from '../types'
@@ -76,80 +75,86 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
 </script>
 
 <template>
-  <section id="sec-backups" class="scroll-mt-4" aria-label="Backups">
-    <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Backups</h2>
+  <section id="sec-backups" class="sec scroll-mt-4 pt-2" aria-label="Backups">
+    <h2 class="section-title mb-1">Backups</h2>
     <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
     <p v-else-if="!data" class="text-sm text-zinc-400" role="status">Loading backup health…</p>
-    <div v-else class="space-y-3">
+    <div v-else class="space-y-4">
       <p v-if="!data.enabled || !data.configured" class="alert-info" role="status">
         {{ !data.configured ? 'Backups are not configured on this platform.' : 'Backups are switched off.' }}
       </p>
 
-      <div v-if="pdb" class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3" :class="pdb.stale ? 'border-amber-500/40' : ''">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="text-xs text-zinc-400">
-            Platform database backup
-            <span v-if="pdb.stale" class="ml-1 rounded-sm bg-amber-500/20 px-1.5 py-0.5 text-amber-400">stale</span>
-          </span>
-          <IconButton :icon="DatabaseBackup" :label="running ? 'Queueing…' : 'Back up now'" :disabled="running || !pdb.active" @click="runNow" />
+      <div v-if="pdb" class="min-w-0">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h3 class="text-sm font-medium text-white">Platform database backup</h3>
+          <span v-if="pdb.stale" class="st tone-warn text-xs"><span class="dot dot-warn" aria-hidden="true" />stale</span>
+          <span class="flex-1" />
+          <IconButton :label="running ? 'Queueing…' : 'Back up now'" text="Back up now" :disabled="running || !pdb.active" @click="runNow" />
         </div>
-        <p v-if="!pdb.enabled || !pdb.active" class="mt-1 text-xs text-zinc-400" role="status">{{ !pdb.enabled ? 'Platform database backups are switched off.' : 'Platform database backups are not active.' }}</p>
-        <p class="mt-1 text-xs text-zinc-400">
+        <p v-if="!pdb.enabled || !pdb.active" class="meta" role="status">{{ !pdb.enabled ? 'Platform database backups are switched off.' : 'Platform database backups are not active.' }}</p>
+        <p class="meta">
           Every {{ pdb.interval_hours }}h · keep {{ pdb.keep.daily }}d/{{ pdb.keep.weekly }}w/{{ pdb.keep.monthly }}m ·
           last success <span class="mono" :title="pdb.last_success_at ? stampTitle(pdb.last_success_at) : ''">{{ pdb.last_success_at ? stamp(pdb.last_success_at) : 'never' }}</span>
-          <template v-if="pdb.repo_bytes"> · repo {{ size(pdb.repo_bytes) }}</template>
+          <template v-if="pdb.repo_bytes"> · repo <span class="mono">{{ size(pdb.repo_bytes) }}</span></template>
         </p>
-        <p v-if="lastRun" class="mt-1 text-xs" :class="lastRun.status === 'failed' ? 'text-danger-light' : 'text-zinc-400'">
+        <p v-if="lastRun" class="text-xs" :class="lastRun.status === 'failed' ? 'text-danger-light' : 'text-zinc-400'">
           Last run: {{ lastRun.status }} ({{ lastRun.trigger }}) <span class="mono" :title="stampTitle(lastRun.finished_at ?? lastRun.created_at)">{{ stamp(lastRun.finished_at ?? lastRun.created_at) }}</span><template v-if="lastRun.error">: {{ lastRun.error }}</template>
         </p>
-        <p v-else class="mt-1 text-xs text-zinc-400">No runs yet.</p>
+        <p v-else class="meta">No runs yet.</p>
         <div v-if="failedDl" class="alert-warn mt-2 flex items-start justify-between gap-2 text-xs" role="status">
           <span class="min-w-0 wrap-break-word">A download of backup {{ failedDl.snapshot_id ?? '' }} failed<template v-if="failedDl.failed_at"> at {{ stamp(failedDl.failed_at) }}</template><template v-if="failedDl.error">: {{ failedDl.error }}</template></span>
-          <IconButton :icon="X" label="Dismiss" sm @click="dismissedFail = failedDl.id" />
+          <IconButton label="Dismiss" text="Dismiss" sm @click="dismissedFail = failedDl.id" />
         </div>
-        <ul v-if="pdb.runs.length" class="mt-2 divide-y divide-pico-border border-t border-pico-border text-xs text-zinc-300" aria-label="Recent platform backups">
-          <li v-for="r in pdb.runs" :key="r.id" class="flex flex-wrap items-center justify-between gap-2 py-1.5">
-            <span class="min-w-0 wrap-break-word">
-              <span class="mono" :title="stampTitle(r.finished_at ?? r.created_at)">{{ stamp(r.finished_at ?? r.created_at) }}</span>
-              · {{ r.status }} ({{ r.trigger }})<template v-if="r.bytes_added"> · +{{ size(r.bytes_added) }}</template>
-              <span v-if="exportLabel(r)" class="badge-info ml-1">{{ exportLabel(r) }}</span>
-            </span>
-            <IconButton v-if="r.downloadable" :icon="Download" :label="`Download backup from ${stamp(r.finished_at ?? r.created_at)}`" sm @click="dlRun = r" />
-          </li>
-        </ul>
-        <p v-if="pdb.download_per_hour" class="mt-1 text-xs text-zinc-500">Up to {{ pdb.download_per_hour }} {{ pdb.download_per_hour === 1 ? 'download' : 'downloads' }} per hour.</p>
+        <div v-if="pdb.runs.length" class="mt-2 overflow-x-auto">
+          <table class="tbl min-w-[34rem]" aria-label="Recent platform backups">
+            <colgroup><col class="w-44" /><col class="w-28" /><col class="w-24" /><col class="w-24" /><col /><col class="w-28" /></colgroup>
+            <thead><tr><th scope="col">When</th><th scope="col">Status</th><th scope="col">Trigger</th><th scope="col" class="text-right">Added</th><th scope="col">Export</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+            <tbody class="text-zinc-300">
+              <tr v-for="r in pdb.runs" :key="r.id">
+                <td class="mono" :title="stampTitle(r.finished_at ?? r.created_at)">{{ stamp(r.finished_at ?? r.created_at) }}</td>
+                <td><span class="st" :class="r.status === 'failed' ? 'tone-err' : r.status === 'succeeded' || r.status === 'ok' ? 'tone-ok' : 'tone-off'"><span class="dot" :class="r.status === 'failed' ? 'dot-err' : r.status === 'succeeded' || r.status === 'ok' ? 'dot-ok' : 'dot-off'" aria-hidden="true" />{{ r.status }}</span></td>
+                <td>{{ r.trigger }}</td>
+                <td class="mono text-right">{{ r.bytes_added ? '+' + size(r.bytes_added) : '-' }}</td>
+                <td class="text-zinc-400">{{ exportLabel(r) }}</td>
+                <td><div class="row-acts"><button v-if="r.downloadable" type="button" class="row-act" :aria-label="`Download backup from ${stamp(r.finished_at ?? r.created_at)}`" @click="dlRun = r">Download</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="pdb.download_per_hour" class="meta mt-1">Up to {{ pdb.download_per_hour }} {{ pdb.download_per_hour === 1 ? 'download' : 'downloads' }} per hour.</p>
       </div>
 
-      <div class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3" :class="st?.warning ? 'border-amber-500/40' : ''">
+      <div class="min-w-0 border-t border-pico-border pt-2">
         <div class="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 text-xs text-zinc-400">
-          <span>Backup storage</span>
+          <h3 class="text-sm font-medium text-white">Backup storage</h3>
           <span class="mono">{{ size(st!.used_bytes) }} of {{ size(st!.cap_bytes) }}<template v-if="st!.used_pct !== null"> ({{ st!.used_pct }}%)</template> · {{ st!.apps_with_backups }} {{ st!.apps_with_backups === 1 ? 'app' : 'apps' }}</span>
         </div>
         <div
-          class="relative h-3 overflow-hidden rounded-sm bg-pico-card" role="img"
+          class="relative h-1.5 overflow-hidden rounded-sm bg-pico-card" role="img"
           :aria-label="`Backup storage ${size(st!.used_bytes)} of ${size(st!.cap_bytes)}`"
         >
           <div :class="['absolute inset-y-0 left-0', hot ? 'bg-amber-500' : 'bg-accent']" :style="{ width: pct + '%' }" />
         </div>
         <p v-if="st!.over_cap" class="mt-2 text-xs text-danger-light" role="alert">Platform backup storage is over its cap: new backups are refused until space is freed.</p>
         <p v-if="st!.warning" class="mt-2 text-xs text-amber-400" role="status">{{ st!.warning }}</p>
-        <p class="mt-1 text-xs text-zinc-400">{{ st!.note }}</p>
+        <p class="meta mt-1">{{ st!.note }}</p>
         <div v-if="st!.top_apps.length" class="mt-2 overflow-x-auto">
-          <table class="tbl min-w-176">
+          <table class="tbl min-w-[56rem]">
+            <colgroup><col class="w-44" /><col class="w-48" /><col class="w-20" /><col class="w-20" /><col class="w-28" /><col class="w-20" /><col class="w-20" /><col class="w-20" /><col class="w-24" /></colgroup>
             <thead>
               <tr><th scope="col">Largest repositories</th><th scope="col">Owner</th><th scope="col" class="text-right">Total</th><th scope="col" class="text-right">Ceiling</th><th scope="col">State</th><th scope="col" class="text-right">DB</th><th scope="col" class="text-right">Volume</th><th scope="col" class="text-right">Bucket</th><th scope="col"><span class="sr-only">Backups</span></th></tr>
             </thead>
             <tbody class="text-zinc-300">
               <template v-for="a in st!.top_apps" :key="a.app_id"><tr>
                 <td class="wrap-break-word"><span v-if="a.deleted" class="text-zinc-400" title="Backups of deleted apps are kept 14 days so they can still be restored, then purged automatically.">{{ a.name }} <span class="text-zinc-500">deleted<template v-if="a.purge_after"> · purged after {{ purgeDate(a.purge_after) }}</template></span></span><RouterLink v-else :to="`/apps/${a.app_id}`" class="link">{{ a.name }}</RouterLink></td>
-                <td class="break-all" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
+                <td class="truncate" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
                 <td class="mono text-right">{{ size(a.repo_bytes) }}</td>
                 <td class="mono text-right">{{ a.cap_bytes != null ? size(a.cap_bytes) : '-' }}</td>
-                <td><span v-if="a.full" class="badge-error">full</span> <span v-if="a.admin_disabled" class="badge-warn" title="Backups locked off by an administrator">locked</span></td>
+                <td><span v-if="a.full" class="st tone-err"><span class="dot dot-err" aria-hidden="true" />full</span> <span v-if="a.admin_disabled" class="st tone-warn" title="Backups locked off by an administrator"><span class="dot dot-warn" aria-hidden="true" />locked</span></td>
                 <td class="mono text-right">{{ size(a.db_bytes) }}</td>
                 <td class="mono text-right">{{ size(a.volume_bytes) }}</td>
                 <td class="mono text-right">{{ size(a.bucket_bytes) }}</td>
-                <td class="text-right"><button type="button" class="btn-secondary btn-sm" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button></td>
+                <td><div class="row-acts"><button type="button" class="row-act" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button></div></td>
               </tr>
               <tr v-if="openApp === a.app_id"><td colspan="9"><AdminAppBackups :app-id="a.app_id" /></td></tr></template>
             </tbody>
@@ -157,23 +162,33 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
         </div>
       </div>
 
-      <div v-if="extraDeleted.length" class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3">
-        <h3 class="mb-1 text-xs font-semibold text-zinc-300">Deleted apps with retained backups</h3>
-        <ul class="divide-y divide-pico-border text-xs text-zinc-300">
-          <li v-for="a in extraDeleted" :key="a.app_id" class="py-1.5">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="min-w-0 wrap-break-word">{{ a.name }} <span class="text-zinc-500">{{ a.owner_email ?? '' }}<template v-if="a.purge_after"> · purged after {{ purgeDate(a.purge_after) }}</template> · {{ size(a.repo_bytes) }}</span></span>
-              <button type="button" class="btn-secondary btn-sm" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button>
-            </div>
-            <div v-if="openApp === a.app_id" class="mt-2"><AdminAppBackups :app-id="a.app_id" /></div>
-          </li>
-        </ul>
+      <div v-if="extraDeleted.length" class="min-w-0">
+        <h3 class="mb-1 text-sm font-medium text-white">Deleted apps with retained backups</h3>
+        <div class="overflow-x-auto">
+          <table class="tbl min-w-[36rem]">
+            <colgroup><col /><col class="w-48" /><col class="w-36" /><col class="w-24" /><col class="w-24" /></colgroup>
+            <thead><tr><th scope="col">App</th><th scope="col">Owner</th><th scope="col">Purged after</th><th scope="col" class="text-right">Size</th><th scope="col"><span class="sr-only">Backups</span></th></tr></thead>
+            <tbody class="text-zinc-300">
+              <template v-for="a in extraDeleted" :key="a.app_id">
+                <tr>
+                  <td class="wrap-break-word">{{ a.name }}</td>
+                  <td class="truncate" :title="a.owner_email ?? undefined">{{ a.owner_email ?? '-' }}</td>
+                  <td class="mono">{{ a.purge_after ? purgeDate(a.purge_after) : '-' }}</td>
+                  <td class="mono text-right">{{ size(a.repo_bytes) }}</td>
+                  <td><div class="row-acts"><button type="button" class="row-act" :aria-expanded="openApp === a.app_id" @click="openApp = openApp === a.app_id ? null : a.app_id">{{ openApp === a.app_id ? 'Hide' : 'Backups' }}</button></div></td>
+                </tr>
+                <tr v-if="openApp === a.app_id"><td colspan="5"><AdminAppBackups :app-id="a.app_id" /></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div>
-        <h3 class="mb-1 text-xs font-semibold text-zinc-300">Failed backups, last {{ data.days }} days</h3>
-        <div class="card overflow-x-auto">
-          <table v-if="data.failures.length" class="tbl min-w-240">
+        <h3 class="mb-1 text-sm font-medium text-white">Failed backups, last {{ data.days }} days</h3>
+        <div class="overflow-x-auto">
+          <table v-if="data.failures.length" class="tbl min-w-[56rem]">
+            <colgroup><col class="w-40" /><col class="w-44" /><col class="w-20" /><col class="w-24" /><col class="w-40" /><col class="w-32" /><col /></colgroup>
             <thead>
               <tr><th scope="col">App</th><th scope="col">Owner</th><th scope="col">Kind</th><th scope="col">Trigger</th><th scope="col">When</th><th scope="col">Status</th><th scope="col">Why</th></tr>
             </thead>
@@ -184,12 +199,12 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
                 <td>{{ f.kind }}</td>
                 <td>{{ f.trigger }}</td>
                 <td class="mono whitespace-nowrap" :title="f.at ? stampTitle(f.at) : undefined">{{ f.at ? stamp(f.at) : '-' }}</td>
-                <td><span :class="f.still_failing ? 'badge-error' : 'badge-neutral'">{{ f.still_failing ? 'still failing' : 'recovered' }}</span></td>
-                <td class="max-w-88 whitespace-pre-wrap wrap-break-word text-xs leading-4">{{ f.error || 'No reason recorded.' }}</td>
+                <td><span class="st" :class="f.still_failing ? 'tone-err' : 'tone-off'"><span class="dot" :class="f.still_failing ? 'dot-err' : 'dot-off'" aria-hidden="true" />{{ f.still_failing ? 'still failing' : 'recovered' }}</span></td>
+                <td class="whitespace-pre-wrap wrap-break-word text-xs leading-4">{{ f.error || 'No reason recorded.' }}</td>
               </tr>
             </tbody>
           </table>
-          <p v-else class="px-3 py-4 text-center text-sm text-zinc-400">No failed backups in the last {{ data.days }} days</p>
+          <p v-else class="py-2 text-sm text-zinc-400">No failed backups in the last {{ data.days }} days</p>
         </div>
       </div>
 
@@ -202,9 +217,9 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
       </p>
 
       <div v-if="data.stuck.length">
-        <h3 class="mb-1 text-xs font-semibold text-amber-300">Stuck ({{ data.stuck.length }})</h3>
-        <div class="card overflow-x-auto border-amber-500/40">
-          <table class="tbl min-w-160">
+        <h3 class="mb-1 text-sm font-medium text-amber-300">Stuck ({{ data.stuck.length }})</h3>
+        <div class="overflow-x-auto">
+          <table class="tbl min-w-[40rem]">
             <thead><tr><th scope="col">App</th><th scope="col">Owner</th><th scope="col">Kind</th><th scope="col">Trigger</th><th scope="col">State</th><th scope="col" class="text-right">For</th></tr></thead>
             <tbody class="text-zinc-300">
               <tr v-for="f in data.stuck" :key="f.run_id">

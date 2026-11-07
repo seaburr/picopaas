@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Ban, Check, Play, RotateCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SuspendDialog from './SuspendDialog.vue'
@@ -161,44 +160,57 @@ async function confirmUnsuspend() {
 
     <div v-if="error" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
       <span>{{ error }}</span>
-      <IconButton :icon="RotateCw" label="Retry" @click="load" />
+      <IconButton label="Retry" text="Retry" @click="load" />
     </div>
     <p v-else-if="loading && rows.length === 0" class="meta" aria-busy="true">Loading projects…</p>
-    <p v-else-if="rows.length === 0" class="card card-pad meta">{{ q.trim() ? 'No projects match that search.' : 'No projects yet.' }}</p>
+    <p v-else-if="rows.length === 0" class="sec meta py-2">{{ q.trim() ? 'No projects match that search.' : 'No projects yet.' }}</p>
     <template v-else>
-    <ul class="card divide-y divide-pico-border" :aria-busy="loading">
-      <li v-for="p in rows" :key="p.id" class="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-        <div class="min-w-0">
-          <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span class="truncate font-medium text-white" :title="p.name">{{ p.name }}</span>
-            <span v-if="p.is_personal" class="badge-neutral">just you</span>
-            <span v-if="p.status === 'suspended'" class="badge-error">Suspended</span>
-          </div>
-          <div class="meta break-all" :title="p.owner_emails.join(', ')">
-            {{ p.app_count }} of {{ p.app_limit_effective }} apps · {{ p.member_count }} {{ p.member_count === 1 ? 'member' : 'members' }} · owner {{ p.owner_emails.join(', ') || 'none' }}
-          </div>
-          <p v-if="p.status === 'suspended'" class="meta wrap-break-word text-zinc-300">
-            <span :title="p.suspended_at ? fullDate(p.suspended_at) : undefined">{{ p.suspended_at ? humanDate(p.suspended_at) : 'Suspended' }}</span>: {{ p.suspended_reason || 'No reason recorded.' }}
-          </p>
-          <p v-if="rowError[p.id]" role="alert" class="field-error">{{ rowError[p.id] }}</p>
-        </div>
-        <div class="flex shrink-0 flex-wrap items-center gap-2">
-          <form class="flex items-center gap-1" @submit.prevent="save(p)">
-            <label :for="`pl-${p.id}`" class="meta">App limit</label>
-            <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" :placeholder="String(p.app_limit_effective)" class="input mono w-20" />
-            <button v-if="draft[p.id] !== orig(p)" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${p.name}`" title="Save limit">
-              <Check :size="16" aria-hidden="true" />
-            </button>
-          </form>
-          <ProjectFeaturesMenu :project="p" :busy="flagBusy === p.id" @toggle="(f, v) => toggleFeature(p, f, v)" />
-          <template v-if="!p.is_personal">
-            <IconButton v-if="p.status === 'suspended'" :icon="Play" :label="`Unsuspend ${p.name}`" sm @click="unsTarget = p" />
-            <IconButton v-else :icon="Ban" :label="`Suspend ${p.name}`" sm danger @click="openSuspend(p)" />
+    <div class="overflow-x-auto" :aria-busy="loading">
+      <table class="tbl min-w-[60rem]">
+        <colgroup><col /><col class="w-20" /><col class="w-24" /><col class="w-52" /><col class="w-36" /><col class="w-40" /><col class="w-44" /></colgroup>
+        <thead>
+          <tr><th scope="col">Project</th><th scope="col" class="text-right">Apps</th><th scope="col" class="text-right">Members</th><th scope="col">Owner</th><th scope="col">App limit</th><th scope="col">Features</th><th scope="col"><span class="sr-only">Action</span></th></tr>
+        </thead>
+        <tbody class="text-zinc-300">
+          <template v-for="p in rows" :key="p.id">
+            <tr>
+              <td class="truncate" :title="p.name">
+                <span class="font-medium text-white">{{ p.name }}</span>
+                <span v-if="p.is_personal" class="meta ml-1.5">just you</span>
+                <span v-if="p.status === 'suspended'" class="st tone-off ml-1.5 text-xs"><span class="dot dot-off" aria-hidden="true" />Suspended</span>
+              </td>
+              <td class="mono text-right">{{ p.app_count }} of {{ p.app_limit_effective }}<span class="sr-only"> apps</span></td>
+              <td class="mono text-right">{{ p.member_count }}<span class="sr-only"> {{ p.member_count === 1 ? 'member' : 'members' }}</span></td>
+              <td class="truncate" :title="p.owner_emails.join(', ')">{{ p.owner_emails.join(', ') || 'none' }}</td>
+              <td>
+                <form class="flex items-center gap-1" @submit.prevent="save(p)">
+                  <label :for="`pl-${p.id}`" class="sr-only">App limit</label>
+                  <input :id="`pl-${p.id}`" v-model="draft[p.id]" type="text" inputmode="numeric" pattern="[0-9]*" :placeholder="String(p.app_limit_effective)" class="input mono w-16" />
+                  <button v-if="draft[p.id] !== orig(p)" type="submit" class="row-act" :aria-label="`Save app limit for ${p.name}`" title="Save limit">Save</button>
+                </form>
+              </td>
+              <td><ProjectFeaturesMenu :project="p" :busy="flagBusy === p.id" @toggle="(f, v) => toggleFeature(p, f, v)" /></td>
+              <td>
+                <div class="row-acts">
+                  <template v-if="!p.is_personal">
+                    <IconButton v-if="p.status === 'suspended'" :label="`Unsuspend ${p.name}`" verb="Unsuspend" sm @click="unsTarget = p" />
+                    <IconButton v-else :label="`Suspend ${p.name}`" verb="Suspend" sm danger @click="openSuspend(p)" />
+                  </template>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="p.status === 'suspended' || rowError[p.id]">
+              <td colspan="7">
+                <p v-if="p.status === 'suspended'" class="meta wrap-break-word text-zinc-300">
+                  <span :title="p.suspended_at ? fullDate(p.suspended_at) : undefined">{{ p.suspended_at ? humanDate(p.suspended_at) : 'Suspended' }}</span>: {{ p.suspended_reason || 'No reason recorded.' }}
+                </p>
+                <p v-if="rowError[p.id]" role="alert" class="field-error">{{ rowError[p.id] }}</p>
+              </td>
+            </tr>
           </template>
-          <span v-else class="h-7 w-7" aria-hidden="true" />
-        </div>
-      </li>
-    </ul>
+        </tbody>
+      </table>
+    </div>
     <nav class="mt-3 flex flex-wrap items-center justify-between gap-2" aria-label="Projects pages">
       <span class="meta" role="status">{{ from }}–{{ to }} of {{ total }}</span>
       <span class="flex gap-2">

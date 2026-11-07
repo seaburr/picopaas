@@ -3,14 +3,12 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppNotFound from '../components/AppNotFound.vue'
 import IconButton from '../components/IconButton.vue'
-import { HeartPulse } from 'lucide-vue-next'
 import BackupSettings from '../components/BackupSettings.vue'
 import AppSettingsPanel from '../components/AppSettingsPanel.vue'
 import EnvVarEditor from '../components/EnvVarEditor.vue'
 import ResourceSliders from '../components/ResourceSliders.vue'
 import HostLink from '../components/HostLink.vue'
 import KaisenChooser from '../components/KaisenChooser.vue'
-import NavBar from '../components/NavBar.vue'
 import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
@@ -429,10 +427,8 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-
-    <main id="main" tabindex="-1" class="page-main">
+  <main id="main" tabindex="-1" class="page-main">
+    <div class="max-w-3xl">
       <SuspendedBanner v-if="isEdit" :project="appProject" />
       <nav v-if="isEdit && !gone" class="meta mb-2" aria-label="Breadcrumb">
         <RouterLink to="/apps" class="link">Apps</RouterLink>
@@ -461,7 +457,7 @@ async function onSubmit() {
             Deploy a public Docker image. You'll get an https URL as soon as the app is created.
           </p>
         </div>
-        <IconButton v-if="isEdit && loadedApp" :icon="HeartPulse" label="App health" text="App health" :to="`/apps/${loadedApp.id}`" />
+        <IconButton v-if="isEdit && loadedApp" label="App health" text="App health" :to="`/apps/${loadedApp.id}`" />
       </div>
 
       <p v-if="isEdit && loadedApp?.kaisen_build_id" class="alert-info mb-3">
@@ -507,7 +503,7 @@ async function onSubmit() {
 
       <template v-else>
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
-      <form class="card card-pad space-y-4" novalidate @submit.prevent="onSubmit">
+      <form class="sec sec-pad space-y-4" novalidate @submit.prevent="onSubmit">
         <div v-if="appSuspended && !projSuspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
         <fieldset :disabled="suspended" :class="'space-y-4'">
           <div>
@@ -528,7 +524,7 @@ async function onSubmit() {
             <p id="f-name-help" class="help">Display name only. {{ isEdit ? 'Renaming does not change the URL.' : 'Your URL is generated after you create the app.' }}</p>
           </div>
 
-          <p v-if="!isEdit && projectName" class="help">In project: <strong class="font-medium text-zinc-200">{{ projectName }}</strong>. Everyone in the project can manage this app. Change the project from the picker on the Apps page.</p>
+          <p v-if="!isEdit && projectName" class="help">In project: <strong class="font-medium text-zinc-200">{{ projectName }}</strong>. Everyone in the project can manage this app. Change the project in the sidebar.</p>
 
           <div>
             <label for="f-image" class="label">Image</label>
@@ -552,8 +548,8 @@ async function onSubmit() {
               <input v-model="form.auto_update" type="checkbox" class="check mt-0.5" />
               <span>Redeploy automatically when this tag changes <span class="text-zinc-400">(checked every 10 minutes; new images must pass the size and non-root checks)</span></span>
             </label>
-            <details class="mt-2 rounded-md border border-pico-border bg-pico-card px-3 py-2 text-sm">
-              <summary class="cursor-pointer text-zinc-200">Image requirements</summary>
+            <details class="disc mt-2 text-sm">
+              <summary class="text-zinc-200">Image requirements</summary>
               <ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-zinc-300">
                 <li>Public: anonymous pulls must work (Docker Hub, GHCR, etc.).</li>
                 <li>Must not run as root. Set a non-root <code class="mono">USER</code> in the Dockerfile.</li>
@@ -660,8 +656,8 @@ async function onSubmit() {
             <EnvVarEditor v-model="env" :want-db="form.want_db" :want-storage="form.want_storage" :errors="envErrors" />
           </div>
 
-          <details class="rounded-md border border-pico-border bg-pico-card px-3 py-2" :open="form.health_check_enabled || !!pathError || !!timeoutError">
-            <summary class="cursor-pointer text-sm text-zinc-200">Advanced: health check</summary>
+          <details class="disc border-y border-pico-border py-2" :open="form.health_check_enabled || !!pathError || !!timeoutError">
+            <summary class="text-sm font-semibold text-white">Advanced: health check</summary>
             <div class="mt-3 space-y-3">
               <div>
                 <label class="flex items-center gap-2 text-sm text-zinc-200">
@@ -723,7 +719,7 @@ async function onSubmit() {
         </div>
 
         <p class="meta sm:hidden">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
-        <div class="sticky bottom-0 -mx-3 -mb-3 flex items-center justify-between gap-2 rounded-b-lg border-t border-pico-border bg-pico-panel/95 px-3 py-2 backdrop-blur-sm sm:-mx-4 sm:-mb-4 sm:px-4">
+        <div class="sticky bottom-0 flex items-center justify-between gap-2 border-t border-pico-border bg-pico-bg py-2">
           <p class="meta hidden sm:block">{{ isEdit ? 'Saving redeploys the app.' : 'The app deploys right after you create it.' }}</p>
           <div class="flex w-full gap-2 sm:w-auto">
             <RouterLink :to="isEdit && appId !== null ? `/apps/${appId}` : '/apps'" class="btn-secondary flex-1 sm:flex-none">Cancel</RouterLink>
@@ -742,6 +738,6 @@ async function onSubmit() {
       </section>
       </template>
       </template>
-    </main>
-  </div>
+    </div>
+  </main>
 </template>

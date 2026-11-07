@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import NavBar from '../components/NavBar.vue'
 import { ApiError } from '../api/client'
 import { acceptInvite } from '../api/projects'
 import { useProjectsStore } from '../stores/projects'
@@ -40,18 +39,17 @@ onMounted(accept)
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-    <main id="main" tabindex="-1" class="page-narrow py-10 text-center">
+  <main id="main" tabindex="-1" class="page-main">
+    <div class="max-w-md py-8">
       <h1 class="page-title">Project invite</h1>
       <p v-if="busy" class="help" aria-busy="true">Joining the project…</p>
       <template v-else-if="error">
-        <p role="alert" class="alert-error mt-3 text-left">{{ error }}</p>
-        <div class="mt-4 flex justify-center gap-2">
+        <p role="alert" class="alert-error mt-3">{{ error }}</p>
+        <div class="mt-3 flex gap-2">
           <button type="button" class="btn-secondary" @click="accept">Try again</button>
           <RouterLink to="/apps" class="btn-primary">Go to apps</RouterLink>
         </div>
       </template>
-    </main>
-  </div>
+    </div>
+  </main>
 </template>

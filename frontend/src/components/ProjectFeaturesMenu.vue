@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ChevronDown } from 'lucide-vue-next'
 import type { AdminProject } from '../types'
 
 const props = defineProps<{ project: AdminProject; busy?: boolean }>()
@@ -39,10 +38,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="root" class="relative">
-    <button ref="btn" type="button" class="btn-secondary btn-sm" aria-haspopup="true" :aria-expanded="open" :aria-label="`Features for ${project.name}: ${onCount} on`" @click="open = !open">
-      Features <span class="meta">{{ onCount }} on</span><ChevronDown :size="14" aria-hidden="true" />
+    <button ref="btn" type="button" class="row-act" aria-haspopup="true" :aria-expanded="open" :aria-label="`Features for ${project.name}: ${onCount} on`" @click="open = !open">
+      Features ({{ onCount }} on)
     </button>
-    <fieldset v-if="open" class="absolute right-0 z-20 mt-1 w-48 rounded-md border border-pico-border bg-pico-panel p-2 shadow-xl">
+    <fieldset v-if="open" class="absolute right-0 z-20 mt-1 w-48 rounded-md border border-pico-border bg-pico-panel p-2 shadow-lg">
       <legend class="sr-only">Kaisen features for {{ project.name }}</legend>
       <label class="flex items-center gap-2 py-1 text-sm text-zinc-200">
         <input type="checkbox" class="check" :checked="web" :disabled="busy" @change="emit('toggle', 'kaisen_web_search', ($event.target as HTMLInputElement).checked)" /> Web search

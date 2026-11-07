@@ -143,7 +143,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
       Changes apply within a few seconds. Reset returns a value to its built-in setting.
     </p>
 
-    <section v-for="g in groups" :key="g.name" class="card" :aria-labelledby="`${uid}-${g.name}`">
+    <section v-for="g in groups" :key="g.name" class="sec" :aria-labelledby="`${uid}-${g.name}`">
       <div class="border-b border-pico-border px-3 py-2">
         <h2 :id="`${uid}-${g.name}`" class="section-title">{{ g.name }}</h2>
       </div>
@@ -155,7 +155,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
           <div class="min-w-0">
             <p class="label mb-0! flex flex-wrap items-center gap-2">
               {{ r.label }}
-              <span v-if="r.default?.overridden || r.ceiling?.overridden" class="badge-warn">overridden</span>
+              <span v-if="r.default?.overridden || r.ceiling?.overridden" class="st tone-warn text-xs font-normal">overridden</span>
             </p>
             <p class="help">{{ (r.default ?? r.ceiling)!.description }}</p>
             <p v-if="r.default && r.ceiling" class="help">{{ r.ceiling.description }}</p>

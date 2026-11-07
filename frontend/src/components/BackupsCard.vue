@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Download, Settings, Trash2 } from 'lucide-vue-next'
 import ConfirmDialog from './ConfirmDialog.vue'
 import IconButton from './IconButton.vue'
 import { backUpNow, deleteBackupSet, downloadBackupSet, getBackupExport, getBackups } from '../api/backups'
@@ -10,7 +9,7 @@ import { fmt } from '../utils/tz'
 import { useToastStore } from '../stores/toast'
 import type { BackupRunExport, BackupSet, BackupsInfo } from '../types'
 
-// Backups card for the App health page. One row per backup (a package of db / blob storage / volume parts).
+// Backups section for the App health page. One row per backup (a package of db / blob storage / volume parts).
 // Hidden when the platform has backups off / unconfigured / nothing to back up.
 const props = defineProps<{ appId: number; suspended: boolean; hasData: boolean }>()
 const toast = useToastStore()
@@ -195,8 +194,7 @@ const stamp = (iso: string) => fmt(parseTs(iso), { dateStyle: 'medium', timeStyl
 const triggerLabel = (t: string) => (t === 'manual' ? 'manual' : t === 'final' ? 'before delete' : 'automatic')
 const triggerTitle = (t: string) =>
   t === 'manual' ? 'Started by you' : t === 'final' ? 'Taken when the app was deleted' : 'Started by the schedule; it can be downloaded too'
-const statusClass = (s: string) =>
-  s === 'succeeded' ? 'badge-ok' : s === 'failed' ? 'badge-error' : s === 'partial' ? 'badge-warn' : 'badge-neutral'
+const statusTone = (s: string) => (s === 'succeeded' ? 'ok' : s === 'failed' ? 'err' : s === 'partial' ? 'warn' : 'off')
 const failedParts = (b: BackupSet) => b.parts.filter((p) => p.status === 'failed')
 const partsTitle = (b: BackupSet) => failedParts(b).map((p) => `${kindLabel(p.kind)}: ${p.error || 'failed'}`).join('\n')
 const partClass = (s: string) => (s === 'failed' ? 'text-danger-light' : s === 'succeeded' ? '' : 'text-zinc-400')
@@ -226,36 +224,36 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section v-if="loadError || visible" class="card card-pad min-w-0" aria-labelledby="h-backups">
-    <h2 id="h-backups" class="section-title mb-2">Backups</h2>
+  <section v-if="loadError || visible" class="sec sec-pad min-w-0" aria-labelledby="h-backups">
+    <div class="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 pt-2">
+      <h2 id="h-backups" class="section-title">Backups</h2>
+      <span v-if="info && !loadError" class="meta">
+        Scheduled: {{ locked ? 'off (locked by the administrator)' : info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="!locked && info.enabled && info.schedule !== 'off' && nextAt"> · next <span class="mono">{{ nextAt }}</span></template>
+      </span>
+      <span class="grow" />
+      <template v-if="info && !loadError">
+        <IconButton label="Backup settings" text="Backup settings" :to="`/apps/${appId}/edit#backups`" />
+        <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :aria-describedby="noRun ? 'bk-run-reason' : undefined" @click="runNow">
+          {{ runBusy ? 'Starting…' : backupRunning ? 'Backup running…' : inFlight ? 'Deleting…' : 'Back up now' }}
+        </button>
+      </template>
+    </div>
     <p v-if="loadError" role="alert" class="alert-warn">{{ loadError }}</p>
     <template v-else-if="info">
-      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <p class="min-w-0 text-sm">
-          <span class="font-medium">Scheduled backups:</span>
-          {{ locked ? 'off (locked by the administrator)' : info.enabled && info.schedule !== 'off' ? info.schedule : 'off' }}<template v-if="!locked && info.enabled && info.schedule !== 'off' && nextAt"> · next {{ nextAt }}</template>
-        </p>
-        <div class="flex shrink-0 flex-wrap items-center gap-2">
-          <IconButton :icon="Settings" label="Backup settings" :to="`/apps/${appId}/edit#backups`" />
-          <button type="button" class="btn-secondary btn-sm" :disabled="runBusy || inFlight || suspended || locked || full" :aria-describedby="noRun ? 'bk-run-reason' : undefined" @click="runNow">
-            {{ runBusy ? 'Starting…' : backupRunning ? 'Backup running…' : inFlight ? 'Deleting…' : 'Back up now' }}
-          </button>
-        </div>
-      </div>
-      <p v-if="locked" id="bk-run-reason" role="status" class="alert-warn mt-2">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
-      <p v-else-if="full" id="bk-run-reason" role="status" class="alert-warn mt-2">
+      <p v-if="locked" id="bk-run-reason" role="status" class="alert-warn">{{ lockMsg }} Existing backups are kept and can still be downloaded or deleted.</p>
+      <p v-else-if="full" id="bk-run-reason" role="status" class="alert-warn">
         Backup storage for this app is full ({{ sz(info.repo_bytes ?? 0) }} of {{ sz(info.cap_bytes) }}). The oldest backups roll off automatically, which frees space. You can also delete one yourself.
       </p>
-      <p v-else class="help mt-1">Scheduled backups are off unless you turn them on. "Back up now" works either way ({{ info.manual_per_hour ?? 1 }} per hour).</p>
-      <p v-if="suspended" class="help mt-1">This app is suspended, so backups can't be started or deleted. You can still download existing backups.</p>
+      <p v-else class="help mt-0!">Scheduled backups are off unless you turn them on. "Back up now" works either way ({{ info.manual_per_hour ?? 1 }} per hour).</p>
+      <p v-if="suspended" class="help">This app is suspended, so backups can't be started or deleted. You can still download existing backups.</p>
 
       <p v-if="!info.backups" class="meta mt-3">The backup list needs a newer platform version. Reload in a minute.</p>
       <template v-else>
-        <p class="mt-3 min-w-0 wrap-break-word text-sm">
-          <span class="font-medium">Last backup:</span>{{ ' ' }}
+        <p class="mt-2 min-w-0 wrap-break-word text-sm">
+          <span class="text-zinc-400">Last backup:</span>{{ ' ' }}
           <template v-if="lastSet">
-            <span :title="fullTime(lastSet.created_at)">{{ when(lastSet.created_at) }}</span> ·
-            <span :class="statusClass(lastSet.status)">{{ lastSet.status }}</span>
+            <span :title="fullTime(lastSet.created_at)">{{ when(lastSet.created_at) }}</span>,
+            <span :class="['st', `tone-${statusTone(lastSet.status)}`]">{{ lastSet.status }}</span>
           </template>
           <template v-else> none yet</template>
         </p>
@@ -263,52 +261,47 @@ onBeforeUnmount(() => {
           {{ info.volume_backups.note || 'Volume backups are not available yet; ask the admin.' }}
         </p>
 
-        <ul v-if="sets.length" class="mt-3 divide-y divide-pico-border text-sm">
-          <li v-for="b in sets" :key="b.id" class="min-w-0 py-2">
-            <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span class="min-w-0 font-medium" :title="fullTime(b.created_at)">{{ stamp(b.created_at) }}</span>
-              <span class="meta">{{ when(b.created_at) }}</span>
-              <span class="badge-neutral" :title="triggerTitle(b.trigger)">{{ triggerLabel(b.trigger) }}</span>
-              <span :class="statusClass(b.status)" :title="b.status === 'partial' ? partsTitle(b) : undefined">{{ b.status }}</span>
-            </div>
-            <p v-if="b.status === 'partial' || b.status === 'failed'" class="mt-1 wrap-break-word text-xs text-amber-300">
-              <template v-for="p in failedParts(b)" :key="p.run_id">{{ kindLabel(p.kind) }} failed{{ p.error ? `: ${p.error}` : '' }}. </template>
-            </p>
-            <div class="mt-1 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
-              <span class="meta flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                <template v-for="(p, i) in b.parts" :key="p.run_id">
-                  <span v-if="i > 0" aria-hidden="true">·</span>
-                  <span :class="['wrap-break-word', partClass(p.status)]" :title="p.error || p.status">
-                    {{ kindLabel(p.kind) }}
-                    <template v-if="p.status === 'succeeded'">✓<template v-if="p.bytes_added != null"> {{ fmtBytes(p.bytes_added) }}</template></template>
-                    <template v-else>({{ p.status }})</template>
-                  </span>
-                </template>
-              </span>
-              <span class="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+        <table v-if="sets.length" class="tbl tbl-stack mt-2">
+          <colgroup><col class="w-[19%]"><col class="w-[11%]"><col class="w-[11%]"><col><col class="w-[22%]"></colgroup>
+          <thead><tr><th>Taken</th><th>Source</th><th>Status</th><th>Contents</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody>
+            <tr v-for="b in sets" :key="b.id">
+              <td :title="fullTime(b.created_at)"><span class="mono">{{ stamp(b.created_at) }}</span> <span class="meta">{{ when(b.created_at) }}</span></td>
+              <td class="text-zinc-300" :title="triggerTitle(b.trigger)">{{ triggerLabel(b.trigger) }}</td>
+              <td><span :class="['st', `tone-${statusTone(b.status)}`]" :title="b.status === 'partial' ? partsTitle(b) : undefined">{{ b.status }}</span></td>
+              <td class="min-w-0 wrap-break-word">
+                <span class="meta">
+                  <template v-for="(p, i) in b.parts" :key="p.run_id">
+                    <span v-if="i > 0" aria-hidden="true"> · </span>
+                    <span :class="partClass(p.status)" :title="p.error || p.status">{{ kindLabel(p.kind) }}<template v-if="p.status === 'succeeded'"><template v-if="p.bytes_added != null"> <span class="mono">{{ fmtBytes(p.bytes_added) }}</span></template></template><template v-else> ({{ p.status }})</template></span>
+                  </template>
+                </span>
+                <p v-if="b.status === 'partial' || b.status === 'failed'" class="mt-0.5 wrap-break-word text-xs text-amber-300">
+                  <template v-for="p in failedParts(b)" :key="p.run_id">{{ kindLabel(p.kind) }} failed{{ p.error ? `: ${p.error}` : '' }}. </template>
+                </p>
                 <template v-if="b.status === 'succeeded' || b.status === 'partial'">
-                  <span v-if="exState(b) === 'busy'" class="meta text-right" role="status">preparing, you can leave this page</span>
-                  <span v-else-if="exState(b) === 'ready' && b.export?.available_until" class="meta text-right" :title="fullTime(b.export.available_until)">ready until {{ clock(b.export.available_until) }}</span>
-                  <span v-else-if="exState(b) === 'failed'" class="min-w-0 wrap-break-word text-right text-xs text-danger-light">{{ failMsg(b) }}</span>
+                  <p v-if="exState(b) === 'busy'" class="meta mt-0.5" role="status">Download preparing, you can leave this page.</p>
+                  <p v-else-if="exState(b) === 'ready' && b.export?.available_until" class="meta mt-0.5" :title="fullTime(b.export.available_until)">Download ready until <span class="mono">{{ clock(b.export.available_until) }}</span></p>
+                  <p v-else-if="exState(b) === 'failed'" class="mt-0.5 wrap-break-word text-xs text-danger-light">{{ failMsg(b) }}</p>
                 </template>
-                <IconButton
-                  v-if="exState(b) === 'busy' || preparing.has(b.id)"
-                  :icon="Download"
-                  label="Preparing download…"
-                  busy
-                />
-                <IconButton
-                  v-else
-                  :icon="Download"
-                  label="Download backup"
-                  :disabled="b.status === 'running' || b.status === 'deleting' || b.status === 'failed' || (b.export ? fetching.has(b.export.id) : false)"
-                  @click="onDownload(b)"
-                />
-                <IconButton :icon="Trash2" label="Delete backup" danger :disabled="suspended || b.status === 'running' || b.status === 'deleting'" @click="delTarget = b" />
-              </span>
-            </div>
-          </li>
-        </ul>
+              </td>
+              <td>
+                <div class="row-acts">
+                  <button v-if="exState(b) === 'busy' || preparing.has(b.id)" type="button" class="row-act" aria-busy="true" disabled aria-label="Preparing download…">Preparing…</button>
+                  <button
+                    v-else
+                    type="button"
+                    class="row-act"
+                    aria-label="Download backup"
+                    :disabled="b.status === 'running' || b.status === 'deleting' || b.status === 'failed' || (b.export ? fetching.has(b.export.id) : false)"
+                    @click="onDownload(b)"
+                  >Download</button>
+                  <button type="button" class="row-act row-act-danger" aria-label="Delete backup" :disabled="suspended || b.status === 'running' || b.status === 'deleting'" @click="delTarget = b">Delete</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
         <p v-else class="meta mt-3">No backups yet.</p>
       </template>
     </template>

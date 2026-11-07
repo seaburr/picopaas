@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import NavBar from '../components/NavBar.vue'
 import PasswordField from '../components/PasswordField.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
@@ -24,7 +23,6 @@ import { useToastStore } from '../stores/toast'
 import { useAuthStore } from '../stores/auth'
 import type { AdminApp, AdminUser, AuditEntry, DbServer, ResourcesPatch, Suspension } from '../types'
 import { copyText, fullDate, humanDate, stamp, stampTitle } from '../utils/format'
-import { Archive, Ban, Check, Copy, Download, Plus, ShieldCheck, ShieldOff, ExternalLink, KeyRound, Lock, Play, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
 
 const route = useRoute()
@@ -364,18 +362,10 @@ const overrideSummary = (a: AdminApp) => {
   return out.join(' · ')
 }
 
-const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
-// One fixed template per list, shared by the header and every row (md+; apps/audit lg+). Only the first/detail column flexes.
-const usersGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_6.5rem_5rem_3.5rem_7rem_9rem] md:items-center md:gap-3'
-const appsGrid = 'lg:grid lg:grid-cols-[minmax(0,1fr)_12rem_6.5rem_10.5rem_9.5rem] lg:items-center lg:gap-3'
-const serversGrid = 'md:grid md:grid-cols-[8rem_minmax(0,1fr)_6rem_9rem_8.5rem_2rem] md:items-center md:gap-3'
-const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] lg:items-start lg:gap-3'
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-    <main id="main" tabindex="-1" class="page-main space-y-3">
+  <main id="main" tabindex="-1" class="page-main space-y-3">
       <h1 class="page-title">Admin</h1>
 
       <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
@@ -385,29 +375,29 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         <button type="button" class="btn-secondary btn-sm" @click="setTab('servers')">Go to database servers</button>
       </div>
 
-      <section v-if="loaded && servers.length === 0" class="card card-pad border-accent/40" aria-labelledby="setup-title">
+      <section v-if="loaded && servers.length === 0" class="sec pt-2" aria-labelledby="setup-title">
         <h2 id="setup-title" class="section-title">Set up your platform</h2>
         <p class="help">Finish these so users can deploy apps with databases.</p>
-        <ol class="mt-3 space-y-2 text-sm text-zinc-200">
-          <li class="flex flex-wrap items-center gap-2">
-            <span class="badge-warn">To do</span>
+        <ol class="mt-2 text-sm text-zinc-200">
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
+            <span class="st tone-warn w-28"><span class="dot dot-warn" aria-hidden="true" />To do</span>
             <span>Add a database server (MySQL or PostgreSQL). Until then the Database option is hidden from users.</span>
             <button type="button" class="btn-primary btn-sm" @click="setTab('servers'); openAdd()">Add database server</button>
           </li>
-          <li class="flex flex-wrap items-center gap-2">
-            <span :class="pendingCount ? 'badge-warn' : 'badge-neutral'">{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
+            <span class="st w-28" :class="pendingCount ? 'tone-warn' : 'tone-off'"><span class="dot" :class="pendingCount ? 'dot-warn' : 'dot-off'" aria-hidden="true" />{{ pendingCount ? 'To do' : 'Nothing pending' }}</span>
             <span>Approve access requests{{ pendingCount ? ` (${pendingCount} waiting)` : '' }}.</span>
             <button v-if="pendingCount" type="button" class="btn-secondary btn-sm" @click="setTab('users')">Review</button>
           </li>
-          <li class="flex flex-wrap items-center gap-2">
-            <span class="badge-neutral">Optional</span>
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-pico-border py-1.5">
+            <span class="st tone-off w-28"><span class="dot dot-off" aria-hidden="true" />Optional</span>
             <span>Check cluster capacity on the <RouterLink to="/admin/health" class="link">Health</RouterLink> page.</span>
           </li>
         </ol>
       </section>
 
       <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -- roving tabindex: the tab buttons inside are the focusable elements -->
-      <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-1 border-b border-pico-border" @keydown="onTabKey">
+      <div role="tablist" aria-label="Admin sections" class="flex gap-x-1 overflow-x-auto border-b border-pico-border" @keydown="onTabKey">
         <button
           v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'suspensions', label: 'Suspensions', n: suspensionCount }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
@@ -417,13 +407,13 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
           :aria-selected="tab === t.id"
           :aria-controls="`${uid}-panel`"
           :tabindex="tab === t.id ? 0 : -1"
-          class="-mb-px inline-flex min-h-[36px] items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm"
-          :class="tab === t.id ? 'border-accent-light font-medium text-white' : 'border-transparent text-zinc-300 hover:text-white'"
+          class="-mb-px inline-flex min-h-[32px] items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm max-md:min-h-[44px]"
+          :class="tab === t.id ? 'border-white font-medium text-white' : 'border-transparent text-zinc-400 hover:text-white'"
           @click="setTab(t.id)"
         >
           {{ t.label }}
-          <span v-if="t.n !== null" class="meta">{{ t.n }}</span>
-          <span v-if="t.id === 'users' && pendingCount" class="badge-warn">{{ pendingCount }} pending</span>
+          <span v-if="t.n !== null" class="meta mono">{{ t.n }}</span>
+          <span v-if="t.id === 'users' && pendingCount" class="st tone-warn text-xs"><span class="dot dot-warn" aria-hidden="true" />{{ pendingCount }} pending</span>
         </button>
       </div>
 
@@ -435,144 +425,161 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
         <!-- USERS -->
         <template v-if="tab === 'users'">
-          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="space-y-1.5">
+          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="sec pt-2">
             <h2 class="section-title text-amber-300">Waiting for approval ({{ pendingUsers.length }})</h2>
-            <ul class="card divide-y divide-pico-border border-amber-500/40">
-              <li v-for="u in pendingUsers" :key="u.id" :class="[rowBase, 'md:flex-row md:items-center md:justify-between md:gap-3']">
-                <div class="min-w-0">
-                  <div class="truncate font-medium text-white" :title="u.email">{{ u.email }}</div>
-                  <div class="meta" :title="fullDate(u.created_at)">Requested {{ humanDate(u.created_at) }} · app limit {{ u.app_limit_effective }}</div>
-                </div>
-                <div class="flex shrink-0 gap-1">
-                  <IconButton :icon="Check" :label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)" />
-                  <IconButton :icon="X" :label="`Reject ${u.email}`" danger @click="askUser('reject', u)" />
-                </div>
-              </li>
-            </ul>
+            <div class="overflow-x-auto">
+              <table class="tbl min-w-[40rem]">
+                <colgroup><col /><col class="w-56" /><col class="w-20" /><col class="w-40" /></colgroup>
+                <thead><tr><th scope="col">User</th><th scope="col">Requested</th><th scope="col" class="text-right">App limit</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                  <tr v-for="u in pendingUsers" :key="u.id">
+                    <td class="truncate font-medium text-white" :title="u.email">{{ u.email }}</td>
+                    <td class="meta" :title="fullDate(u.created_at)">{{ humanDate(u.created_at) }}</td>
+                    <td class="mono text-right">{{ u.app_limit_effective }}</td>
+                    <td>
+                      <div class="row-acts">
+                        <button type="button" class="row-act" :aria-label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)">Approve</button>
+                        <button type="button" class="row-act row-act-danger" :aria-label="`Reject ${u.email}`" @click="askUser('reject', u)">Reject</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
-          <div class="card overflow-hidden">
-            <div :class="[usersGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>User</span><span>Status</span><span class="text-right">Apps</span><span class="text-right">Keys</span><span>App limit</span><span class="text-right">Actions</span>
-            </div>
-            <ul class="divide-y divide-pico-border">
-              <li v-for="u in otherUsers" :key="u.id" :class="[rowBase, usersGrid]">
-                <div class="min-w-0">
-                  <div class="flex min-w-0 items-center gap-1.5">
-                    <span class="truncate font-medium text-white" :title="u.email">{{ u.email }}</span>
-                    <span v-if="u.role === 'platform_admin'" class="badge-info shrink-0">Admin</span>
-                  </div>
-                  <div class="meta" :title="fullDate(u.created_at)">Joined {{ humanDate(u.created_at) }}</div>
-                </div>
-                <div><StatusBadge :status="u.status" /></div>
-                <div class="mono whitespace-nowrap md:text-right"><span class="meta md:hidden">Apps </span>{{ u.app_count }}<span class="meta"> / {{ u.app_limit_effective }}</span></div>
-                <div class="mono whitespace-nowrap md:text-right"><span class="meta md:hidden">API keys </span>{{ u.api_key_count ?? 0 }}</div>
-                <div v-if="u.role === 'platform_admin'" class="mono whitespace-nowrap text-sm">
-                  <span class="meta md:hidden">Limit </span>{{ u.app_limit_effective }}
-                </div>
-                <form v-else class="flex h-7 items-center gap-1 whitespace-nowrap" @submit.prevent="saveLimit(u)">
-                  <span class="meta md:hidden">Limit</span>
-                  <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono w-14" />
-                  <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="btn-icon btn-icon-sm text-accent-light" :aria-label="`Save app limit for ${u.email}`" title="Save limit"><Check :size="16" aria-hidden="true" /></button>
-                  <span v-else-if="saved[u.id]" class="text-emerald-300" role="status" title="Saved"><Check :size="16" aria-hidden="true" /><span class="sr-only">Saved</span></span>
-                </form>
-                <div class="flex gap-0.5 md:justify-end">
-                  <IconButton :icon="KeyRound" :label="`API keys of ${u.email}`" sm @click="keysUser = u" />
-                  <IconButton
-                    v-if="u.role === 'platform_admin'"
-                    :icon="ShieldOff"
-                    :label="demoteBlocked(u) ? 'Remove admin (you are the only admin)' : `Remove admin from ${u.email}`"
-                    sm
-                    :disabled="demoteBlocked(u)"
-                    @click="askAdmin(u, false)"
-                  />
-                  <IconButton v-else-if="u.status === 'active'" :icon="ShieldCheck" :label="`Make ${u.email} an admin`" sm @click="askAdmin(u, true)" />
-                  <template v-if="u.role !== 'platform_admin'">
-                    <IconButton v-if="u.status === 'suspended'" :icon="Play" :label="`Unsuspend ${u.email}`" sm @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')" />
-                    <IconButton v-if="u.status === 'active'" :icon="Ban" :label="`Suspend ${u.email}`" sm @click="askUser('suspend', u)" />
-                    <IconButton :icon="RotateCcw" :label="`Reset password for ${u.email}`" sm @click="askUser('reset', u)" />
-                    <IconButton :icon="Trash2" :label="`Delete ${u.email}`" sm danger @click="askUser('delete', u)" />
-                  </template>
-                </div>
-              </li>
-              <li v-if="loaded && otherUsers.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">{{ q ? 'No users match your search.' : 'No other users yet.' }}</li>
-            </ul>
+          <div class="overflow-x-auto">
+            <table class="tbl min-w-[60rem]">
+              <colgroup><col /><col class="w-28" /><col class="w-20" /><col class="w-14" /><col class="w-32" /><col class="w-[26rem]" /></colgroup>
+              <thead>
+                <tr><th scope="col">User</th><th scope="col">Status</th><th scope="col" class="text-right">Apps</th><th scope="col" class="text-right">Keys</th><th scope="col">App limit</th><th scope="col" class="text-right">Actions</th></tr>
+              </thead>
+              <tbody class="text-zinc-200">
+                <tr v-for="u in otherUsers" :key="u.id">
+                  <td class="truncate" :title="u.email">
+                    <span class="font-medium text-white">{{ u.email }}</span>
+                    <span v-if="u.role === 'platform_admin'" class="meta ml-1.5">Admin</span>
+                    <span class="meta ml-1.5" :title="fullDate(u.created_at)">joined {{ humanDate(u.created_at) }}</span>
+                  </td>
+                  <td><StatusBadge :status="u.status" /></td>
+                  <td class="mono whitespace-nowrap text-right">{{ u.app_count }}<span class="text-zinc-400"> / {{ u.app_limit_effective }}</span></td>
+                  <td class="mono text-right">{{ u.api_key_count ?? 0 }}</td>
+                  <td>
+                    <span v-if="u.role === 'platform_admin'" class="mono">{{ u.app_limit_effective }}</span>
+                    <form v-else class="flex items-center gap-1 whitespace-nowrap" @submit.prevent="saveLimit(u)">
+                      <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono w-14" />
+                      <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="row-act" :aria-label="`Save app limit for ${u.email}`" title="Save limit">Save</button>
+                      <span v-else-if="saved[u.id]" class="st tone-ok text-xs" role="status">Saved</span>
+                    </form>
+                  </td>
+                  <td>
+                    <div class="row-acts">
+                      <button type="button" class="row-act" :aria-label="`API keys of ${u.email}`" @click="keysUser = u">API keys</button>
+                      <button v-if="u.role === 'platform_admin'" type="button" class="row-act" :aria-label="demoteBlocked(u) ? 'Remove admin (you are the only admin)' : `Remove admin from ${u.email}`" :disabled="demoteBlocked(u)" @click="askAdmin(u, false)">Remove admin</button>
+                      <button v-else-if="u.status === 'active'" type="button" class="row-act" :aria-label="`Make ${u.email} an admin`" @click="askAdmin(u, true)">Make admin</button>
+                      <template v-if="u.role !== 'platform_admin'">
+                        <button v-if="u.status === 'suspended'" type="button" class="row-act" :aria-label="`Unsuspend ${u.email}`" @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')">Unsuspend</button>
+                        <button v-if="u.status === 'active'" type="button" class="row-act" :aria-label="`Suspend ${u.email}`" @click="askUser('suspend', u)">Suspend</button>
+                        <button type="button" class="row-act" :aria-label="`Reset password for ${u.email}`" @click="askUser('reset', u)">Reset password</button>
+                        <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${u.email}`" @click="askUser('delete', u)">Delete</button>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="loaded && otherUsers.length === 0"><td colspan="6" class="py-3 text-center text-zinc-400">{{ q ? 'No users match your search.' : 'No other users yet.' }}</td></tr>
+                <tr v-else-if="!loaded"><td colspan="6" class="py-3 text-zinc-400" aria-busy="true">Loading users…</td></tr>
+              </tbody>
+            </table>
           </div>
         </template>
 
         <!-- APPS -->
-        <div v-else-if="tab === 'apps'" class="card overflow-hidden">
-          <div :class="[appsGrid, 'table-th row-pad hidden border-b border-pico-border']">
-            <span>App</span><span>Owner</span><span>Status</span><span>Resources</span><span class="text-right">Actions</span>
-          </div>
-          <ul class="divide-y divide-pico-border">
-            <li v-for="a in filteredApps" :key="a.id" :class="[rowBase, appsGrid]">
-              <div class="min-w-0">
-                <div class="truncate font-medium text-white" :title="a.name">{{ a.name }}</div>
-                <div class="mono truncate text-zinc-400" :title="a.hostname">{{ a.hostname }}</div>
-              </div>
-              <div class="mono truncate text-zinc-300" :title="a.owner_email"><span class="meta lg:hidden">Owner: </span>{{ a.owner_email }}</div>
-              <div><StatusBadge :status="a.status" /></div>
-              <div>
-                <template v-if="a.resources">
-                  <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>
-                  <div class="my-0.5 flex flex-wrap gap-1">
-                    <span v-if="a.resources.overridden" class="badge-info px-1.5! py-0! text-[11px]!" title="Overridden: an admin set custom limits for this app.">overridden</span>
-                    <span v-else class="mono text-zinc-400">default</span>
-                    <span v-if="a.resources.exceeds_platform_caps" class="badge-warn px-1.5! py-0! text-[11px]!" title="Exceeds caps: above the default per-app caps.">exceeds caps</span>
+        <div v-else-if="tab === 'apps'" class="overflow-x-auto">
+          <table class="tbl min-w-[60rem]">
+            <colgroup><col /><col class="w-52" /><col class="w-28" /><col class="w-64" /><col class="w-64" /></colgroup>
+            <thead>
+              <tr><th scope="col">App</th><th scope="col">Owner</th><th scope="col">Status</th><th scope="col">Resources</th><th scope="col" class="text-right">Actions</th></tr>
+            </thead>
+            <tbody class="text-zinc-200">
+              <tr v-for="a in filteredApps" :key="a.id" class="align-top">
+                <td class="truncate" :title="a.hostname">
+                  <div class="mono truncate font-medium text-white" :title="a.name">{{ a.name }}</div>
+                  <div class="mono truncate text-zinc-400">{{ a.hostname }}</div>
+                </td>
+                <td class="mono truncate text-zinc-300" :title="a.owner_email">{{ a.owner_email }}</td>
+                <td><StatusBadge :status="a.status" /></td>
+                <td>
+                  <template v-if="a.resources">
+                    <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>
+                    <div class="meta">
+                      <span v-if="a.resources.overridden" title="Overridden: an admin set custom limits for this app.">overridden</span>
+                      <span v-else>default</span>
+                      <span v-if="a.resources.exceeds_platform_caps" class="st tone-warn ml-2" title="Exceeds caps: above the default per-app caps."><span class="dot dot-warn" aria-hidden="true" />exceeds caps</span>
+                    </div>
+                    <div v-if="overrideSummary(a)" class="mono wrap-break-word text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
+                  </template>
+                  <span v-else class="text-zinc-400">-</span>
+                </td>
+                <td>
+                  <div class="row-acts">
+                    <a :href="appUrl(a)" target="_blank" rel="noopener noreferrer" class="row-act" :aria-label="`Open ${a.name}`">Open</a>
+                    <button type="button" class="row-act" :aria-label="`Edit limits for ${a.name}`" @click="openLimits(a)">Limits</button>
+                    <button type="button" class="row-act" :aria-label="`Backups for ${a.name}`" @click="bkApp = a">Backups</button>
+                    <button v-if="a.status === 'suspended' && a.suspended_via !== 'project' && a.suspended_via !== 'user'" type="button" class="row-act" :aria-label="`Unsuspend ${a.name}`" @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')">Unsuspend</button>
+                    <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${a.name}`" @click="askDeleteApp(a)">Delete</button>
                   </div>
-                  <div v-if="overrideSummary(a)" class="mono wrap-break-word text-zinc-300" :title="overrideSummary(a)">{{ overrideSummary(a) }}</div>
-                </template>
-                <span v-else class="text-zinc-400">-</span>
-              </div>
-              <div class="flex gap-0.5 lg:justify-end">
-                <IconButton :icon="ExternalLink" :label="`Open ${a.name}`" sm :href="appUrl(a)" />
-                <IconButton :icon="SlidersHorizontal" :label="`Edit limits for ${a.name}`" sm @click="openLimits(a)" />
-                <IconButton :icon="Archive" :label="`Backups for ${a.name}`" sm @click="bkApp = a" />
-                <IconButton v-if="a.status === 'suspended' && a.suspended_via !== 'project' && a.suspended_via !== 'user'" :icon="Play" :label="`Unsuspend ${a.name}`" sm @click="act(() => unsuspendApp(a.id), `${a.name} unsuspended.`, 'Couldn\'t unsuspend the app')" />
-                <IconButton :icon="Trash2" :label="`Delete ${a.name}`" sm danger @click="askDeleteApp(a)" />
-              </div>
-            </li>
-            <li v-if="loaded && filteredApps.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</li>
-          </ul>
+                </td>
+              </tr>
+              <tr v-if="loaded && filteredApps.length === 0"><td colspan="5" class="py-3 text-center text-zinc-400">{{ q ? 'No apps match your search.' : 'No apps yet.' }}</td></tr>
+              <tr v-else-if="!loaded"><td colspan="5" class="py-3 text-zinc-400" aria-busy="true">Loading apps…</td></tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- DB SERVERS -->
         <template v-else-if="tab === 'servers'">
           <div class="flex items-center justify-between gap-2">
             <p class="text-sm text-zinc-300">Database servers (MySQL or PostgreSQL) that app databases are placed on.</p>
-            <IconButton :icon="Plus" label="Add database server" class="shrink-0" @click="openAdd" />
+            <IconButton label="Add database server" text="Add server" class="shrink-0" @click="openAdd" />
           </div>
-          <div class="card overflow-hidden">
-            <div :class="[serversGrid, 'table-th row-pad hidden border-b border-pico-border']">
-              <span>Name</span><span>Host</span><span>Engine</span><span>Capacity</span><span>Status</span><span></span>
-            </div>
-            <ul class="divide-y divide-pico-border">
-              <li v-for="s in servers" :key="s.id" :class="[rowBase, serversGrid]">
-                <div class="truncate font-medium text-white" :title="s.name">{{ s.name }}</div>
-                <div class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</div>
-                <div><span class="badge-neutral">{{ dbEngineLabel(s.engine) }}</span></div>
-                <DbCapacityBar :server="s" />
-                <select
-                  :value="s.status"
-                  :aria-label="`Status of ${s.name}`"
-                  :title="SERVER_STATUS_HELP[s.status] ?? ''"
-                  class="input w-full"
-                  @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
-                >
-                  <option value="active">Active</option>
-                  <option value="draining">Draining</option>
-                  <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
-                </select>
-                <IconButton :icon="Lock" :label="`Change admin password of ${s.name}`" sm @click="openPw(s)" />
-              </li>
-              <li v-if="loaded && servers.length === 0" class="px-3 py-5 text-center">
-                <p class="text-sm text-zinc-300">No database servers yet. Users can't create apps with a database until you add one.</p>
-                <button type="button" class="btn-primary mt-3" @click="openAdd">Add server</button>
-              </li>
-            </ul>
+          <div class="overflow-x-auto">
+            <table class="tbl min-w-[48rem]">
+              <colgroup><col class="w-32" /><col /><col class="w-28" /><col class="w-36" /><col class="w-36" /><col class="w-28" /></colgroup>
+              <thead>
+                <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Engine</th><th scope="col">Capacity</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+              </thead>
+              <tbody class="text-zinc-200">
+                <tr v-for="s in servers" :key="s.id">
+                  <td class="truncate font-medium text-white" :title="s.name">{{ s.name }}</td>
+                  <td class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</td>
+                  <td>{{ dbEngineLabel(s.engine) }}</td>
+                  <td><DbCapacityBar :server="s" /></td>
+                  <td>
+                    <select
+                      :value="s.status"
+                      :aria-label="`Status of ${s.name}`"
+                      :title="SERVER_STATUS_HELP[s.status] ?? ''"
+                      class="input w-full"
+                      @change="patch(s, { status: ($event.target as HTMLSelectElement).value })"
+                    >
+                      <option value="active">Active</option>
+                      <option value="draining">Draining</option>
+                      <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
+                    </select>
+                  </td>
+                  <td><div class="row-acts"><button type="button" class="row-act" :aria-label="`Change admin password of ${s.name}`" @click="openPw(s)">Password</button></div></td>
+                </tr>
+                <tr v-if="loaded && servers.length === 0">
+                  <td colspan="6" class="py-4 text-center">
+                    <p class="text-sm text-zinc-300">No database servers yet. Users can't create apps with a database until you add one.</p>
+                    <button type="button" class="btn-primary mt-3" @click="openAdd">Add server</button>
+                  </td>
+                </tr>
+                <tr v-else-if="!loaded"><td colspan="6" class="py-3 text-zinc-400" aria-busy="true">Loading database servers…</td></tr>
+              </tbody>
+            </table>
           </div>
-          <p v-if="servers.length" class="help mt-2">
+          <p v-if="servers.length" class="help mt-2 max-w-3xl">
             <strong class="text-zinc-200">Status</strong> controls where <em>new</em> app databases go. <em>Active</em>
             servers take them (the one with the most free slots wins; a server at its max is skipped automatically).
             <em>Draining</em> takes none; databases already on it keep working and are never moved. Drain a server
@@ -587,25 +594,29 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
 
         <!-- AUDIT -->
         <template v-else>
-        <div class="mb-2 flex items-center justify-end gap-2 text-xs text-zinc-300">
+        <div class="flex items-center justify-end gap-3 text-xs text-zinc-300">
           <span>Download full audit log</span>
-          <span class="inline-flex items-center gap-0.5">CSV<IconButton :icon="Download" label="Download audit log as CSV" @click="exportAudit('csv')" /></span>
-          <span class="inline-flex items-center gap-0.5">JSON<IconButton :icon="Download" label="Download audit log as JSON" @click="exportAudit('json')" /></span>
+          <IconButton label="Download audit log as CSV" text="CSV" @click="exportAudit('csv')" />
+          <IconButton label="Download audit log as JSON" text="JSON" @click="exportAudit('json')" />
         </div>
-        <div class="card max-h-136 overflow-auto">
-          <div :class="[auditGrid, 'table-th row-pad sticky top-0 hidden border-b border-pico-border bg-pico-panel']">
-            <span>When</span><span>Actor</span><span>Action</span><span>Target</span><span>Detail</span>
-          </div>
-          <ul class="divide-y divide-pico-border">
-            <li v-for="a in filteredAudit" :key="a.id" :class="[rowBase, auditGrid, 'text-zinc-200']">
-              <span class="mono text-zinc-300" :title="stampTitle(a.at)">{{ stamp(a.at) }}</span>
-              <span class="mono truncate" :title="a.actor_email ?? undefined">{{ a.actor_email ?? '-' }}</span>
-              <span class="mono truncate" :title="a.action">{{ a.action }}</span>
-              <span class="mono truncate" :title="`${a.target_type ?? ''} ${a.target_id ?? ''}`">{{ a.target_type }} {{ a.target_id }}</span>
-              <span class="wrap-break-word text-xs leading-4 text-zinc-300">{{ a.detail }}</span>
-            </li>
-            <li v-if="loaded && filteredAudit.length === 0" class="px-3 py-4 text-center text-sm text-zinc-400">No entries.</li>
-          </ul>
+        <div class="max-h-136 overflow-auto">
+          <table class="tbl min-w-[56rem]">
+            <colgroup><col class="w-40" /><col class="w-52" /><col class="w-44" /><col class="w-36" /><col /></colgroup>
+            <thead>
+              <tr class="sticky top-0 bg-pico-bg"><th scope="col">When</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Detail</th></tr>
+            </thead>
+            <tbody class="text-zinc-200">
+              <tr v-for="a in filteredAudit" :key="a.id" class="align-top">
+                <td class="mono whitespace-nowrap text-zinc-300" :title="stampTitle(a.at)">{{ stamp(a.at) }}</td>
+                <td class="mono truncate" :title="a.actor_email ?? undefined">{{ a.actor_email ?? '-' }}</td>
+                <td class="mono truncate" :title="a.action">{{ a.action }}</td>
+                <td class="mono truncate" :title="`${a.target_type ?? ''} ${a.target_id ?? ''}`">{{ a.target_type }} {{ a.target_id }}</td>
+                <td class="wrap-break-word text-xs leading-4 text-zinc-300">{{ a.detail }}</td>
+              </tr>
+              <tr v-if="loaded && filteredAudit.length === 0"><td colspan="5" class="py-3 text-center text-zinc-400">No entries.</td></tr>
+              <tr v-else-if="!loaded"><td colspan="5" class="py-3 text-zinc-400" aria-busy="true">Loading audit log…</td></tr>
+            </tbody>
+          </table>
         </div>
         </template>
       </div>
@@ -615,7 +626,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
     <dialog
       ref="pwSrvDlg"
       :aria-labelledby="`${uid}-pws-title`"
-      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-md border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
       @cancel="pwSrvModal.onNativeCancel"
       @click="pwSrvModal.onBackdrop"
     >
@@ -636,7 +647,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
     <dialog
       ref="addDlg"
       :aria-labelledby="`${uid}-add-title`"
-      class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-md border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
       @cancel="addModal.onNativeCancel"
       @click="addModal.onBackdrop"
     >
@@ -694,7 +705,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
     <dialog
       ref="pwDlg"
       :aria-labelledby="`${uid}-pw-title`"
-      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
+      class="m-auto w-[calc(100%-2rem)] max-w-md rounded-md border border-pico-border bg-pico-panel p-0 text-white shadow-xl backdrop:bg-black/70"
       @cancel="pwModal.onNativeCancel"
       @click="pwModal.onBackdrop"
     >
@@ -705,7 +716,7 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
         </p>
         <div class="mt-3 flex items-stretch gap-2">
           <code class="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap rounded-sm bg-pico-card px-3 py-2 text-sm text-accent-light">{{ tempPw.password }}</code>
-          <IconButton :icon="Copy" label="Copy password" class="shrink-0" data-autofocus @click="copyTemp" />
+          <IconButton label="Copy password" text="Copy" class="shrink-0" data-autofocus @click="copyTemp" />
         </div>
         <div class="mt-5 flex justify-end"><button type="button" class="btn-secondary" @click="tempPw = null">Done</button></div>
       </div>
@@ -737,5 +748,4 @@ const auditGrid = 'lg:grid lg:grid-cols-[8rem_12rem_9.5rem_8rem_minmax(0,1fr)] l
       @confirm="runConfirm"
       @cancel="confirm = null"
     />
-  </div>
 </template>

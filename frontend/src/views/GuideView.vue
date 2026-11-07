@@ -7,9 +7,7 @@ import userMd from '@docs/USER_GUIDE.md?raw'
 import apiMd from '@docs/API.md?raw'
 import cliMd from '@docs/CLI.md?raw'
 import recipesMd from '@docs/RECIPES.md?raw'
-import { RotateCw } from 'lucide-vue-next'
 import IconButton from '../components/IconButton.vue'
-import NavBar from '../components/NavBar.vue'
 import { getAdminGuide } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
 
@@ -137,47 +135,46 @@ function onClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="min-h-screen">
-    <NavBar />
-    <div id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 md:flex md:gap-8 md:py-6">
-      <aside class="shrink-0 md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-64 lg:w-80 md:self-start md:overflow-y-auto">
-        <nav aria-label="Documents" class="mb-3 flex flex-wrap border-b border-pico-border text-sm">
-          <RouterLink
-            v-for="(d, k) in DOCS"
-            :key="k"
-            :to="`/guide/${k}`"
-            class="-mb-px flex-1 whitespace-nowrap border-b-2 px-2.5 py-2 text-center md:flex-none"
-            :class="doc === k ? 'border-accent-light font-semibold text-white' : 'border-transparent text-zinc-300 hover:text-white'"
-            :aria-current="doc === k ? 'page' : undefined"
-          >{{ d.title }}</RouterLink>
-        </nav>
+  <main id="main" tabindex="-1" class="page-main">
+    <nav aria-label="Documents" class="mb-3 flex flex-wrap border-b border-pico-border text-sm">
+      <RouterLink
+        v-for="(d, k) in DOCS"
+        :key="k"
+        :to="`/guide/${k}`"
+        class="-mb-px whitespace-nowrap border-b-2 px-3 py-2 max-md:flex-1 max-md:text-center"
+        :class="doc === k ? 'border-white font-semibold text-white' : 'border-transparent text-zinc-300 hover:text-white'"
+        :aria-current="doc === k ? 'page' : undefined"
+      >{{ d.title }}</RouterLink>
+    </nav>
 
-        <!-- Mobile: sticky Contents bar that follows the reader down a very long page -->
-        <div class="sticky top-0 z-30 -mx-4 border-b border-pico-border bg-pico-bg/95 px-4 py-2 backdrop-blur-sm md:hidden">
-          <button type="button" class="btn-secondary btn-sm w-full justify-between" :aria-expanded="navOpen" aria-controls="toc" @click="navOpen = !navOpen">
-            <span class="shrink-0">Contents</span>
-            <span class="min-w-0 truncate font-normal text-zinc-400">{{ activeText }}</span>
-            <span aria-hidden="true">{{ navOpen ? '&#9650;' : '&#9660;' }}</span>
-          </button>
-          <nav v-show="navOpen" id="toc" aria-label="Contents (mobile)" class="absolute inset-x-0 top-full max-h-[60vh] space-y-0.5 overflow-y-auto border-b border-pico-border bg-pico-panel px-4 py-2 text-sm shadow-xl">
-            <a
-              v-for="t in rendered.toc"
-              :key="t.id"
-              :href="`#${t.id}`"
-              class="block rounded-sm px-2 py-2"
-              :class="[t.level === 3 ? 'pl-6 text-xs' : '', activeId === t.id ? 'bg-pico-card font-medium text-white' : 'text-zinc-300']"
-              @click.prevent="go(t.id)"
-            >{{ t.text }}</a>
-          </nav>
-        </div>
+    <!-- Mobile: sticky Contents bar that follows the reader down a very long page (a direct child of the page root so it can stick) -->
+    <div class="sticky top-0 z-30 -mx-4 border-b border-pico-border bg-pico-bg px-4 py-2 min-[760px]:-mx-5 min-[760px]:px-5 md:hidden">
+      <button type="button" class="btn-secondary btn-sm w-full justify-between" :aria-expanded="navOpen" aria-controls="toc" @click="navOpen = !navOpen">
+        <span class="shrink-0">Contents</span>
+        <span class="min-w-0 truncate font-normal text-zinc-400">{{ activeText }}</span>
+        <span aria-hidden="true">{{ navOpen ? '&#9650;' : '&#9660;' }}</span>
+      </button>
+      <nav v-show="navOpen" id="toc" aria-label="Contents (mobile)" class="absolute inset-x-0 top-full max-h-[60vh] overflow-y-auto border-b border-pico-border bg-pico-panel px-4 py-1 text-sm shadow-lg">
+        <a
+          v-for="t in rendered.toc"
+          :key="t.id"
+          :href="`#${t.id}`"
+          class="flex min-h-[44px] items-center rounded-sm px-2"
+          :class="[t.level === 3 ? 'pl-6 text-xs' : '', activeId === t.id ? 'bg-pico-card font-medium text-white' : 'text-zinc-300']"
+          @click.prevent="go(t.id)"
+        >{{ t.text }}</a>
+      </nav>
+    </div>
 
-        <nav aria-label="Contents" class="hidden space-y-0.5 text-sm md:block">
+    <div class="md:flex md:gap-8">
+      <aside class="hidden shrink-0 md:sticky md:top-4 md:block md:max-h-[calc(100vh-2rem)] md:w-56 md:self-start md:overflow-y-auto lg:w-64">
+        <nav aria-label="Contents" class="space-y-0.5 text-sm">
           <a
             v-for="t in rendered.toc"
             :key="t.id"
             :href="`#${t.id}`"
             class="block rounded-sm border-l-2 px-2 py-1 leading-snug hover:text-white"
-            :class="[t.level === 3 ? 'ml-3 text-xs' : '', activeId === t.id ? 'border-accent-light bg-pico-card/60 font-medium text-white' : 'border-transparent text-zinc-300']"
+            :class="[t.level === 3 ? 'ml-3 text-xs' : '', activeId === t.id ? 'border-white font-medium text-white' : 'border-transparent text-zinc-300']"
             :aria-current="activeId === t.id ? 'location' : undefined"
             @click.prevent="go(t.id)"
           >{{ t.text }}</a>
@@ -187,13 +184,13 @@ function onClick(e: MouseEvent) {
         <p v-if="adminLoading" class="help" role="status">Loading admin guide...</p>
         <div v-else-if="adminError" role="alert">
           <p class="text-red-400">{{ adminError }}</p>
-          <IconButton :icon="RotateCw" label="Retry" class="mt-2" @click="loadAdmin" />
+          <IconButton text="Retry" label="Retry" class="mt-2" @click="loadAdmin" />
         </div>
       </div>
       <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vue/no-v-html -- delegated click for in-doc links (keyboard activates the real <a>); html is DOMPurify-sanitized -->
-      <article v-else class="doc mt-4 min-w-0 flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
+      <article v-else class="doc mt-4 min-w-0 max-w-3xl flex-1 md:mt-0" @click="onClick" v-html="rendered.html" />
     </div>
-  </div>
+  </main>
 </template>
 
 <style>
@@ -211,7 +208,7 @@ function onClick(e: MouseEvent) {
 .doc a { color: var(--doc-link); }
 .doc code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875em; background: var(--color-pico-card); border-radius: 4px; padding: .1em .35em; overflow-wrap: anywhere; }
 .doc .code { position: relative; margin: .8rem 0; }
-.doc .code pre { overflow-x: auto; background: var(--color-pico-panel); border: 1px solid var(--color-pico-border); border-radius: 6px; padding: .8rem 1rem; }
+.doc .code pre { overflow-x: auto; background: var(--color-pico-panel); border: 1px solid var(--color-pico-border); border-radius: 4px; padding: .8rem 1rem; }
 .doc .code pre code { background: none; padding: 0; white-space: pre; overflow-wrap: normal; font-size: 13px; }
 .doc .copy-btn { position: absolute; top: 6px; right: 6px; font-size: 11px; color: var(--doc-subtle); background: var(--color-pico-card); border: 1px solid var(--color-pico-border); border-radius: 4px; padding: 1px 8px; }
 .doc .copy-btn:hover { color: var(--color-white); }

@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { Settings2, UserPlus } from 'lucide-vue-next'
-import IconButton from '../components/IconButton.vue'
 import { useProjectsStore } from '../stores/projects'
-import NavBar from '../components/NavBar.vue'
 import ApiKeysCard from '../components/ApiKeysCard.vue'
 import PasswordField from '../components/PasswordField.vue'
 import { changePassword, setTheme, setTimezone } from '../api/auth'
@@ -101,93 +98,120 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-    <main id="main" tabindex="-1" class="page-main space-y-3">
-      <h1 class="page-title">Account</h1>
+  <main id="main" tabindex="-1" class="page-main space-y-3">
+    <h1 class="page-title">Account</h1>
 
-      <div class="grid gap-3 lg:grid-cols-2 lg:items-start">
-        <section class="card card-pad" aria-label="Profile">
-          <dl class="grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
-            <dt class="text-zinc-400">Email</dt>
-            <dd class="truncate text-white" :title="auth.user?.email">{{ auth.user?.email }}</dd>
-            <dt class="text-zinc-400">Role</dt>
-            <dd class="text-white">{{ auth.user?.role === 'platform_admin' ? 'Platform admin' : 'User' }}</dd>
-            <dt class="text-zinc-400">App limit</dt>
-            <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
-            <dt class="text-zinc-400">Joined</dt>
-            <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
-            <dt id="theme-label" class="text-zinc-400">Theme</dt>
-            <dd class="min-w-0">
-              <div role="radiogroup" aria-labelledby="theme-label" class="inline-flex rounded-md border border-zinc-500 p-0.5">
-                <button
-                  v-for="t in themes"
-                  :key="t.id"
-                  type="button"
-                  role="radio"
-                  data-theme-opt
-                  :aria-checked="theme === t.id"
-                  :tabindex="theme === t.id ? 0 : -1"
-                  :disabled="themeBusy"
-                  :class="['min-h-[28px] rounded-sm px-3 text-sm transition-colors disabled:cursor-wait', theme === t.id ? 'bg-pico-muted font-medium text-white ring-1 ring-inset ring-zinc-400/60' : 'text-zinc-300 hover:bg-pico-card hover:text-white']"
-                  @click="onTheme(t.id)"
-                  @keydown="onThemeKey"
-                >{{ t.label }}</button>
-              </div>
-              <p class="mt-1 text-xs text-zinc-400">Saved to your profile; used on every device.</p>
-            </dd>
-            <dt class="text-zinc-400"><label for="tz">Time zone</label></dt>
-            <dd class="min-w-0 space-y-1">
-              <input v-model="zoneFilter" type="search" class="input" placeholder="Filter zones…" aria-label="Filter time zones" />
-              <select id="tz" class="input w-full min-w-0 truncate" :value="auth.user?.timezone ?? ''" :disabled="zoneBusy" @change="onZone">
-                <option value="">Browser default</option>
-                <option v-for="z in shownZones" :key="z" :value="z">{{ z }}</option>
-              </select>
-              <p class="text-xs text-zinc-500">Times shown in {{ effectiveZone() }}</p>
-              <p v-if="zoneErr" class="field-error" role="alert">{{ zoneErr }}</p>
-            </dd>
-          </dl>
-        </section>
-  
-        <section class="card card-pad" aria-labelledby="proj-title">
-          <h2 id="proj-title" class="section-title">Projects</h2>
-          <p class="help">Share apps with other people in a project. Your personal project stays private to you.</p>
-          <p v-if="projects.loadError" role="alert" class="field-error mt-2">{{ projects.loadError }}</p>
-          <ul v-if="projects.projects.length" class="mt-2 divide-y divide-pico-border rounded-sm border border-pico-border">
-            <li v-for="p in projects.projects" :key="p.id" class="flex items-center justify-between gap-2 px-3 py-2">
-              <RouterLink :to="`/projects/${p.id}`" class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-white">
-                  {{ p.is_personal ? 'Personal project' : p.name }}
-                  <span v-if="p.is_personal" class="badge-info ml-1">personal</span>
-                  <span v-else class="badge-info ml-1">{{ p.role }}</span>
-                </div>
-                <div class="meta">{{ p.app_count }} {{ p.app_count === 1 ? 'app' : 'apps' }}<template v-if="!p.is_personal"> · {{ p.member_count }} {{ p.member_count === 1 ? 'member' : 'members' }}</template></div>
-              </RouterLink>
-              <div class="flex shrink-0 items-center gap-1">
-                <IconButton v-if="!p.is_personal && p.role === 'owner'" :icon="UserPlus" :label="`Invite people to ${p.name}`" :to="`/projects/${p.id}#invite`" />
-                <IconButton v-if="!p.is_personal" :icon="Settings2" :label="p.role === 'owner' ? `Manage ${p.name}` : `View ${p.name}`" :to="`/projects/${p.id}`" />
-              </div>
-            </li>
-          </ul>
-          <p v-if="projects.loaded && !projects.projects.some((p) => !p.is_personal)" class="meta mt-2">No shared projects yet. Create one from the <RouterLink to="/projects" class="link">Projects page</RouterLink>, then invite people from it.</p>
-        </section>
-
-        <section class="card card-pad" aria-labelledby="pw-title">
-          <h2 id="pw-title" class="section-title">Change password</h2>
-          <form class="mt-3 max-w-sm space-y-3" @submit.prevent="onSubmit">
-            <PasswordField v-model="form.current" label="Current password" autocomplete="current-password" />
-            <PasswordField v-model="form.next" label="New password" autocomplete="new-password" :minlength="8" help="At least 8 characters." />
-            <div>
-              <PasswordField v-model="form.confirm" label="Confirm new password" autocomplete="new-password" :minlength="8" :invalid="mismatch" />
-              <p v-if="mismatch" class="field-error">Passwords don't match.</p>
+    <div class="grid gap-x-8 gap-y-3 lg:grid-cols-2 lg:items-start">
+      <section class="sec pt-3" aria-label="Profile">
+        <dl class="grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
+          <dt class="text-zinc-400">Email</dt>
+          <dd class="mono truncate text-white" :title="auth.user?.email">{{ auth.user?.email }}</dd>
+          <dt class="text-zinc-400">Role</dt>
+          <dd class="text-white">{{ auth.user?.role === 'platform_admin' ? 'Platform admin' : 'User' }}</dd>
+          <dt class="text-zinc-400">App limit</dt>
+          <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
+          <dt class="text-zinc-400">Joined</dt>
+          <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
+          <dt id="theme-label" class="text-zinc-400">Theme</dt>
+          <dd class="min-w-0">
+            <div role="radiogroup" aria-labelledby="theme-label" class="inline-flex rounded-md border border-zinc-500 p-0.5">
+              <button
+                v-for="t in themes"
+                :key="t.id"
+                type="button"
+                role="radio"
+                data-theme-opt
+                :aria-checked="theme === t.id"
+                :tabindex="theme === t.id ? 0 : -1"
+                :disabled="themeBusy"
+                :class="['min-h-[28px] rounded-sm px-3 text-sm transition-colors disabled:cursor-wait max-md:min-h-[36px]', theme === t.id ? 'bg-pico-muted font-medium text-white' : 'text-zinc-300 hover:bg-pico-card hover:text-white']"
+                @click="onTheme(t.id)"
+                @keydown="onThemeKey"
+              >{{ t.label }}</button>
             </div>
-            <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
-            <button type="submit" class="btn-primary" :disabled="loading || mismatch">{{ loading ? 'Saving…' : 'Change password' }}</button>
-          </form>
-        </section>
-      </div>
+            <p class="mt-1 text-xs text-zinc-400">Saved to your profile; used on every device.</p>
+          </dd>
+          <dt class="text-zinc-400"><label for="tz">Time zone</label></dt>
+          <dd class="min-w-0 space-y-1">
+            <input v-model="zoneFilter" type="search" class="input" placeholder="Filter zones…" aria-label="Filter time zones" />
+            <select id="tz" class="input w-full min-w-0 truncate" :value="auth.user?.timezone ?? ''" :disabled="zoneBusy" @change="onZone">
+              <option value="">Browser default</option>
+              <option v-for="z in shownZones" :key="z" :value="z">{{ z }}</option>
+            </select>
+            <p class="text-xs text-zinc-500">Times shown in <span class="mono">{{ effectiveZone() }}</span></p>
+            <p v-if="zoneErr" class="field-error" role="alert">{{ zoneErr }}</p>
+          </dd>
+        </dl>
+      </section>
 
-      <ApiKeysCard />
-    </main>
-  </div>
+      <section class="sec pt-3" aria-labelledby="pw-title">
+        <h2 id="pw-title" class="section-title">Change password</h2>
+        <form class="mt-3 max-w-sm space-y-3" @submit.prevent="onSubmit">
+          <PasswordField v-model="form.current" label="Current password" autocomplete="current-password" />
+          <PasswordField v-model="form.next" label="New password" autocomplete="new-password" :minlength="8" help="At least 8 characters." />
+          <div>
+            <PasswordField v-model="form.confirm" label="Confirm new password" autocomplete="new-password" :minlength="8" :invalid="mismatch" />
+            <p v-if="mismatch" class="field-error">Passwords don't match.</p>
+          </div>
+          <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
+          <button type="submit" class="btn-primary" :disabled="loading || mismatch">{{ loading ? 'Saving…' : 'Change password' }}</button>
+        </form>
+      </section>
+    </div>
+
+    <section class="sec pt-3" aria-labelledby="proj-title">
+      <h2 id="proj-title" class="section-title">Projects</h2>
+      <p class="help">Share apps with other people in a project. Your personal project stays private to you.</p>
+      <p v-if="projects.loadError" role="alert" class="field-error mt-2">{{ projects.loadError }}</p>
+      <template v-if="projects.projects.length">
+        <table class="tbl mt-2 max-[759px]:hidden">
+          <colgroup>
+            <col />
+            <col class="w-24" />
+            <col class="w-24" />
+            <col class="w-24" />
+            <col class="w-44" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Project</th>
+              <th scope="col">Role</th>
+              <th scope="col">Apps</th>
+              <th scope="col">Members</th>
+              <th scope="col" class="text-right"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in projects.projects" :key="p.id">
+              <td class="truncate"><RouterLink :to="`/projects/${p.id}`" class="font-medium text-white hover:underline">{{ p.is_personal ? 'Personal project' : p.name }}</RouterLink></td>
+              <td class="text-zinc-300">{{ p.is_personal ? 'Personal' : p.role === 'owner' ? 'Owner' : 'Member' }}</td>
+              <td class="mono">{{ p.app_count }}</td>
+              <td class="mono">{{ p.is_personal ? '' : p.member_count }}</td>
+              <td class="text-right">
+                <div class="row-acts">
+                  <RouterLink v-if="!p.is_personal && p.role === 'owner'" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Invite people to ${p.name}`" :to="`/projects/${p.id}#invite`">Invite</RouterLink>
+                  <RouterLink v-if="!p.is_personal" class="row-act max-[759px]:!min-h-[44px]" :aria-label="p.role === 'owner' ? `Manage ${p.name}` : `View ${p.name}`" :to="`/projects/${p.id}`">{{ p.role === 'owner' ? 'Manage' : 'View' }}</RouterLink>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <ul class="mt-2 divide-y divide-pico-border border-y border-pico-border min-[760px]:hidden">
+          <li v-for="p in projects.projects" :key="p.id" class="flex items-center justify-between gap-2 py-1">
+            <RouterLink :to="`/projects/${p.id}`" class="min-w-0 flex-1 py-1">
+              <div class="truncate text-sm font-medium text-white">{{ p.is_personal ? 'Personal project' : p.name }}</div>
+              <div class="meta">{{ p.is_personal ? 'personal' : p.role }} · {{ p.app_count }} {{ p.app_count === 1 ? 'app' : 'apps' }}<template v-if="!p.is_personal"> · {{ p.member_count }} {{ p.member_count === 1 ? 'member' : 'members' }}</template></div>
+            </RouterLink>
+            <div class="row-acts shrink-0 gap-x-3">
+              <RouterLink v-if="!p.is_personal && p.role === 'owner'" class="row-act max-[759px]:!min-h-[44px]" :aria-label="`Invite people to ${p.name}`" :to="`/projects/${p.id}#invite`">Invite</RouterLink>
+              <RouterLink v-if="!p.is_personal" class="row-act max-[759px]:!min-h-[44px]" :aria-label="p.role === 'owner' ? `Manage ${p.name}` : `View ${p.name}`" :to="`/projects/${p.id}`">{{ p.role === 'owner' ? 'Manage' : 'View' }}</RouterLink>
+            </div>
+          </li>
+        </ul>
+      </template>
+      <p v-if="projects.loaded && !projects.projects.some((p) => !p.is_personal)" class="meta mt-2">No shared projects yet. Create one from the <RouterLink to="/projects" class="link">Projects page</RouterLink>, then invite people from it.</p>
+    </section>
+
+    <ApiKeysCard />
+  </main>
 </template>

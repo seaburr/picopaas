@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { Download, RefreshCw } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { downloadPlatformLogs, getPlatformLogs, getPlatformPods, type LogQuery } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -88,10 +87,10 @@ async function download() {
 </script>
 
 <template>
-  <section id="sec-logs" class="scroll-mt-4" aria-label="Platform logs">
-    <h2 class="mb-1.5 text-sm font-semibold text-zinc-300">Platform logs</h2>
+  <section id="sec-logs" class="sec scroll-mt-4 pt-2" aria-label="Platform logs">
+    <h2 class="section-title mb-1">Platform logs</h2>
     <div v-if="podsError" role="alert" class="alert-error">{{ podsError }}</div>
-    <div v-else class="min-w-0 rounded-md border border-pico-border bg-pico-panel p-3">
+    <div v-else class="min-w-0">
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <div>
           <label for="pl-ns" class="label">Namespace</label>
@@ -118,15 +117,15 @@ async function download() {
         <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="previous" type="checkbox" class="check" /> <span>Previous container (before the last restart)</span></label>
         <span class="flex-1" />
         <span v-if="fetched" class="text-xs text-zinc-400">Fetched {{ fmtTime(fetched) }}</span>
-        <IconButton :icon="RefreshCw" :label="loading ? 'Loading logs…' : 'Refresh logs'" :disabled="!ready" :busy="loading" @click="fetchLogs" />
-        <IconButton :icon="Download" :label="dl ? 'Preparing download…' : 'Download logs'" :disabled="!ready" :busy="dl" @click="download" />
+        <IconButton :label="loading ? 'Loading logs…' : 'Refresh logs'" text="Refresh" :disabled="!ready" :busy="loading" @click="fetchLogs" />
+        <IconButton :label="dl ? 'Preparing download…' : 'Download logs'" text="Download" :disabled="!ready" :busy="dl" @click="download" />
       </div>
       <p class="mt-1 text-xs text-zinc-400">Download includes up to the last 10,000 lines. Downloads are recorded in the audit log.</p>
       <div v-if="error" role="alert" class="alert-error mt-2">{{ error }}</div>
       <p v-if="truncated" class="mt-2 text-xs text-amber-400" role="status">Showing the newest lines only; the output was cut to fit. Use Download for more.</p>
       <pre
         ref="viewer" tabindex="0" aria-label="Log output"
-        class="mono mt-2 h-80 overflow-auto whitespace-pre rounded-sm border border-pico-border bg-pico-inset p-2 text-xs leading-4 text-zinc-200"
+        class="mono mt-2 h-80 overflow-auto whitespace-pre rounded-md border border-pico-border bg-pico-inset p-2 text-xs leading-4 text-zinc-200"
       >{{ lines.length ? lines.join('\n') : (ready ? (loading ? '' : (fetched ? 'No log lines.' : 'Press Refresh to load logs.')) : 'Pick a namespace, pod and container.') }}</pre>
     </div>
   </section>

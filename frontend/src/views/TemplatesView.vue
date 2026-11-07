@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../stores/auth'
 import { ApiError } from '../api/client'
 import { dbEngineLabel } from '../composables/appUi'
@@ -37,42 +36,46 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
-    <main id="main" tabindex="-1" class="page-main">
-      <nav class="meta mb-2" aria-label="Breadcrumb">
-        <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
-      </nav>
-      <h1 class="page-title">Templates</h1>
-      <p class="help mb-3">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
+  <main id="main" tabindex="-1" class="page-main">
+    <nav class="meta mb-2" aria-label="Breadcrumb">
+      <RouterLink to="/apps" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
+    </nav>
+    <h1 class="page-title">Templates</h1>
+    <p class="help mb-3 max-w-3xl">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
 
-      <p v-if="offNotes.length" class="alert-warn mb-3">Off on this instance: {{ offNotes.join(', ') }}. Templates that need them are marked below; templates with an optional volume deploy without it, and data on scratch disk is lost on restart.</p>
+    <p v-if="offNotes.length" class="alert-warn mb-3 max-w-3xl">Off on this instance: {{ offNotes.join(', ') }}. Templates that need them are marked below; templates with an optional volume deploy without it, and data on scratch disk is lost on restart.</p>
 
-      <div v-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
-      <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>
-      <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <section v-for="t in templates" :key="t.id" class="card card-pad flex min-w-0 flex-col gap-2">
-          <h2 class="section-title wrap-break-word">{{ t.name }}</h2>
-          <p class="text-sm text-zinc-300">{{ t.description }}</p>
-          <div class="flex flex-wrap gap-1">
-            <span v-if="t.wants_db" class="badge badge-info">{{ dbEngineLabel(t.db_engine) }}</span>
-            <span v-if="t.wants_storage" class="badge badge-info">Object Storage</span>
-            <span v-if="t.volume" class="badge badge-info">Block Storage{{ t.volume.required ? '' : ' (optional)' }}</span>
-            <span v-if="!t.wants_db && !t.wants_storage && !t.volume" class="badge badge-neutral">No add-ons</span>
-            <span v-if="t.secrets.length" class="badge badge-neutral">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }}</span>
-          </div>
-          <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
-          <p v-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
-          <p class="mono text-xs text-zinc-400"><span class="break-all">{{ t.image }}</span> <span class="whitespace-nowrap">· port {{ t.port }}</span></p>
-          <div class="mt-auto pt-2">
-            <RouterLink :to="{ path: '/apps/new', query: { template: t.id } }" class="btn-primary">Use this template</RouterLink>
-            <p class="meta mt-2 flex flex-wrap gap-x-3">
-              <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="link">Setup guide</a>
-              <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="link">{{ docsName(t) }} docs</a>
-            </p>
-          </div>
-        </section>
-      </div>
-    </main>
-  </div>
+    <div v-if="loading" class="text-sm text-zinc-400" aria-busy="true">Loading…</div>
+    <div v-else-if="error" role="alert" class="alert-error">{{ error }}</div>
+    <p v-else-if="!templates.length" class="meta">No templates are available.</p>
+    <table v-else class="tbl tbl-stack">
+      <colgroup><col class="w-[14%]"><col><col class="w-[12%]"><col class="w-[22%]"><col class="w-56"></colgroup>
+      <thead><tr><th>Template</th><th>Description</th><th>Add-ons</th><th>Image</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        <tr v-for="t in templates" :key="t.id" class="align-top">
+          <td class="font-medium text-white wrap-break-word">{{ t.name }}</td>
+          <td class="wrap-break-word text-zinc-300">
+            {{ t.description }}
+            <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
+            <p v-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
+          </td>
+          <td class="text-zinc-300">
+            <template v-if="!t.wants_db && !t.wants_storage && !t.volume && !t.secrets.length"><span class="meta">None</span></template>
+            <span v-if="t.wants_db" class="block">{{ dbEngineLabel(t.db_engine) }}</span>
+            <span v-if="t.wants_storage" class="block">Object Storage</span>
+            <span v-if="t.volume" class="block">Block Storage{{ t.volume.required ? '' : ' (optional)' }}</span>
+            <span v-if="t.secrets.length" class="meta block">{{ t.secrets.length }} secret{{ t.secrets.length === 1 ? '' : 's' }}</span>
+          </td>
+          <td class="mono"><span class="break-all">{{ t.image }}</span><span class="block text-zinc-400">port {{ t.port }}</span></td>
+          <td>
+            <div class="row-acts flex-wrap gap-x-4 md:flex-nowrap md:whitespace-nowrap [&>*]:ml-0!">
+              <RouterLink :to="{ path: '/apps/new', query: { template: t.id } }" class="row-act text-white">Use this template</RouterLink>
+              <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="row-act">Setup guide</a>
+              <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="row-act" :title="`${docsName(t)} documentation`">Docs<span class="sr-only"> ({{ docsName(t) }})</span></a>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
 </template>

@@ -32,34 +32,33 @@ async function onSubmit() {
 </script>
 
 <template>
-  <div class="flex min-h-[calc(100vh-2rem)] items-center justify-center px-4 py-8">
-    <div class="w-full max-w-sm">
-      <!-- eslint-disable-next-line vuejs-accessibility/heading-has-content -- BrandMark renders the visible "PicoPaaS" text; the rule cannot see into components -->
-      <h1 class="mb-1 flex justify-center"><BrandMark :size="40" /></h1>
-      <p class="mb-5 text-center text-sm text-zinc-300">Log in to PicoPaaS</p>
-      <div class="card card-pad">
-        <form class="space-y-4" @submit.prevent="onSubmit">
-          <div>
-            <label :for="emailId" class="label">Email</label>
-            <input :id="emailId" v-model="form.email" type="email" required autocomplete="username" class="input" :aria-invalid="error ? 'true' : undefined" />
-          </div>
-          <PasswordField v-model="form.password" :invalid="!!error" />
-          <div v-if="route.query.registered && !error" class="alert-info" role="status">
-            If you already have an account, log in below. Otherwise, if your account is approved, a PicoPaaS platform admin will reach out, usually within a day.
-          </div>
-          <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
-          <button type="submit" :disabled="loading" class="btn-primary btn-block">
-            {{ loading ? 'Logging in…' : 'Log in' }}
-          </button>
-        </form>
-        <p class="help mt-4 text-center">Forgot your password? Ask the administrator to reset it.</p>
-        <p class="mt-3 text-center text-sm text-zinc-300">
+  <div class="flex min-h-screen items-center justify-center px-4 py-8">
+    <main id="main" tabindex="-1" class="page-narrow w-full"><div class="mx-auto w-full max-w-xs">
+      <div class="mb-3 text-center"><BrandMark /></div>
+      <h1 class="mb-4 text-center text-sm text-zinc-300">Log in to PicoPaaS</h1>
+      <form class="space-y-3" @submit.prevent="onSubmit">
+        <div>
+          <label :for="emailId" class="label">Email</label>
+          <input :id="emailId" v-model="form.email" type="email" required autocomplete="username" class="input" :aria-invalid="error ? 'true' : undefined" />
+        </div>
+        <PasswordField v-model="form.password" :invalid="!!error" />
+        <div v-if="route.query.registered && !error" class="alert-info" role="status">
+          If you already have an account, log in below. Otherwise, if your account is approved, a PicoPaaS platform admin will reach out, usually within a day.
+        </div>
+        <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
+        <button type="submit" :disabled="loading" class="btn-primary btn-block">
+          {{ loading ? 'Logging in…' : 'Log in' }}
+        </button>
+      </form>
+      <div class="mt-4 border-t border-pico-border pt-3 text-center">
+        <p class="help mt-0">Forgot your password? Ask the administrator to reset it.</p>
+        <p class="mt-2 text-sm text-zinc-300">
           Need access? <RouterLink to="/register" class="link">Request access</RouterLink>
         </p>
+        <p class="mt-3 text-xs text-zinc-400">
+          <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a>
+        </p>
       </div>
-      <p class="mt-4 text-center text-xs text-zinc-400">
-        <RouterLink to="/guide" class="link">Docs</RouterLink> · <a href="/privacy" class="link">Privacy</a>
-      </p>
-    </div>
+    </div></main>
   </div>
 </template>

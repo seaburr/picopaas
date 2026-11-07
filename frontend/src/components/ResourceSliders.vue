@@ -89,10 +89,10 @@ const adminCeiling = (r: Row) => {
 </script>
 
 <template>
-  <details class="rounded-md border border-pico-border bg-pico-card px-3 py-2" :open="isOpen" @toggle="isOpen = ($event.target as HTMLDetailsElement).open">
-    <summary class="cursor-pointer text-sm text-zinc-200">
+  <details class="disc border-y border-pico-border py-2" :open="isOpen" @toggle="isOpen = ($event.target as HTMLDetailsElement).open">
+    <summary class="cursor-pointer text-sm font-semibold text-white">
       Resources
-      <span class="ml-1 text-xs text-zinc-400">{{ summary }}<template v-if="lowered"> (lowered)</template></span>
+      <span class="ml-1 text-xs font-normal text-zinc-400">{{ summary }}<template v-if="lowered"> (lowered)</template></span>
     </summary>
     <div class="mt-3 space-y-4">
       <p class="help mt-0!">Each limit starts at its maximum. Lower one if your app needs less, such as a static site.</p>

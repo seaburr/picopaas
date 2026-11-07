@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Plus, Trash2 } from 'lucide-vue-next'
 import IconButton from './IconButton.vue'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -73,7 +72,7 @@ async function apply() {
 </script>
 
 <template>
-  <form class="card card-pad space-y-3" @submit.prevent="apply">
+  <form class="sec sec-pad space-y-3" @submit.prevent="apply">
     <div>
       <div class="flex flex-wrap items-center justify-between gap-2">
         <label for="spec-text" class="label mb-0!">
@@ -101,10 +100,10 @@ async function apply() {
       <div v-for="(s, i) in secrets" :key="i" class="mb-2 flex flex-col gap-2 sm:flex-row">
         <input v-model="s.key" placeholder="KEY" autocomplete="off" aria-label="Secret name" class="input mono sm:w-56" />
         <input v-model="s.value" type="password" placeholder="value" autocomplete="new-password" aria-label="Secret value" class="input mono sm:flex-1" />
-        <IconButton :icon="Trash2" label="Remove secret" danger class="self-start sm:self-center" @click="secrets.splice(i, 1)" />
+        <IconButton label="Remove secret" danger class="self-start sm:self-center" @click="secrets.splice(i, 1)" />
       </div>
     </div>
-    <IconButton :icon="Plus" label="Add secret" @click="secrets.push({ key: '', value: '' })" />
+    <IconButton label="Add secret" @click="secrets.push({ key: '', value: '' })" />
 
     <pre v-if="error" role="alert" class="alert-error whitespace-pre-wrap font-sans">{{ error }}</pre>
 

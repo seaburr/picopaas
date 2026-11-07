@@ -73,9 +73,6 @@ async function confirmUnsuspend() {
     busy.value = false
   }
 }
-
-const grid = 'md:grid md:grid-cols-[4.5rem_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.5fr)_9rem_8rem] md:items-start md:gap-3'
-const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
 </script>
 
 <template>
@@ -83,65 +80,58 @@ const rowBase = 'row-pad flex flex-col gap-1 text-sm text-zinc-200'
     <p class="help">Everything that is stopped on purpose. Unsuspending restores only what that suspension stopped.</p>
     <p v-if="err" role="alert" class="alert-error">{{ err }}</p>
     <p v-if="!loaded" class="meta" aria-busy="true">Loading suspensions…</p>
-    <p v-else-if="rows.length === 0" class="card card-pad meta">Nothing is suspended. To suspend a project, use the Projects tab; for a user, the Users tab.</p>
-    <div v-else class="card overflow-hidden">
-      <div :class="[grid, 'table-th row-pad hidden border-b border-pico-border']">
-        <span>Type</span><span>Name</span><span>Owner / project</span><span>Reason</span><span>Suspended</span><span class="text-right">Action</span>
-      </div>
-      <ul class="divide-y divide-pico-border">
-        <template v-for="r in rows" :key="rowId(r)">
-          <li :id="rowId(r)">
-            <div :class="[rowBase, grid]">
-              <div class="flex flex-wrap items-center gap-1.5 md:block">
-                <span class="badge-info">{{ typeLabel[r.type] }}</span>
-                <RouterLink :to="nameTo(r)" class="link min-w-0 break-all md:hidden">{{ r.name }}</RouterLink>
-              </div>
-              <div class="min-w-0">
-                <RouterLink :to="nameTo(r)" class="link hidden break-all md:inline">{{ r.name }}</RouterLink>
+    <p v-else-if="rows.length === 0" class="sec meta py-2">Nothing is suspended. To suspend a project, use the Projects tab; for a user, the Users tab.</p>
+    <div v-else class="overflow-x-auto">
+      <table class="tbl min-w-[56rem]">
+        <colgroup><col class="w-20" /><col class="w-56" /><col class="w-56" /><col /><col class="w-40" /><col class="w-44" /></colgroup>
+        <thead>
+          <tr><th scope="col">Type</th><th scope="col">Name</th><th scope="col">Owner / project</th><th scope="col">Reason</th><th scope="col">Suspended</th><th scope="col"><span class="sr-only">Action</span></th></tr>
+        </thead>
+        <tbody class="text-zinc-200">
+          <template v-for="r in rows" :key="rowId(r)">
+            <tr :id="rowId(r)" class="align-top">
+              <td>{{ typeLabel[r.type] }}</td>
+              <td class="wrap-break-word">
+                <RouterLink :to="nameTo(r)" class="link mono break-all">{{ r.name }}</RouterLink>
                 <div v-if="kids(r).length">
-                  <button type="button" class="link text-xs" :aria-expanded="!!open[rowId(r)]" @click="open[rowId(r)] = !open[rowId(r)]">
-                    <span aria-hidden="true">{{ open[rowId(r)] ? '▾' : '▸' }} </span>{{ kids(r).length }} {{ kids(r).length === 1 ? 'app' : 'apps' }} stopped
+                  <button type="button" class="row-act text-xs" :aria-expanded="!!open[rowId(r)]" @click="open[rowId(r)] = !open[rowId(r)]">
+                    {{ open[rowId(r)] ? 'Hide' : 'Show' }} {{ kids(r).length }} {{ kids(r).length === 1 ? 'app' : 'apps' }} stopped
                   </button>
                 </div>
-              </div>
-              <div class="meta wrap-break-word">
+              </td>
+              <td class="meta wrap-break-word">
                 <template v-if="r.type === 'project'">owner {{ r.owner_email ?? 'none' }}</template>
                 <template v-else-if="r.type === 'user'">personal project included</template>
                 <template v-else>{{ r.project_name ?? 'No project' }}<template v-if="r.owner_email"> · {{ r.owner_email }}</template></template>
-              </div>
-              <div class="wrap-break-word">
+              </td>
+              <td class="wrap-break-word">
                 <template v-if="r.reason">{{ r.reason }}</template>
-                <span v-else-if="hasCause(r)" class="badge-warn">Via {{ causeWord(r) }}</span>
+                <span v-else-if="hasCause(r)" class="meta">Via {{ causeWord(r) }}</span>
                 <span v-else class="text-zinc-400">No reason recorded <span class="meta">(suspended before reasons existed)</span></span>
-              </div>
-              <div>
+              </td>
+              <td>
                 <span v-if="r.suspended_at" :title="fullDate(r.suspended_at)">{{ humanDate(r.suspended_at) }}</span>
                 <span v-else class="text-zinc-400">Unknown</span>
                 <div v-if="r.suspended_by_email" class="meta break-all">by {{ r.suspended_by_email }}</div>
-              </div>
-              <div class="md:text-right">
-                <RouterLink v-if="hasCause(r)" :to="{ path: '/admin', query: r.cause_type === 'user' ? {} : { tab: 'projects' } }" class="link text-xs">Unsuspend the {{ causeWord(r) }}</RouterLink>
-                <button v-else type="button" class="btn-secondary btn-sm" data-unsuspend :aria-label="`Unsuspend ${r.name}`" @click="target = r">Unsuspend</button>
-              </div>
-            </div>
-          </li>
-          <li v-for="c in open[rowId(r)] ? kids(r) : []" :key="rowId(c)" class="bg-pico-bg/40">
-            <div :class="[rowBase, grid]">
-              <div class="flex flex-wrap items-center gap-1.5 md:block"><span class="badge-neutral">App</span></div>
-              <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                <RouterLink :to="`/apps/${c.id}`" class="link break-all">{{ c.name }}</RouterLink>
-                <span class="badge-warn md:hidden">Via {{ causeWord(c) }}</span>
-              </div>
-              <div class="meta hidden break-all md:block">{{ c.project_name ?? '' }}</div>
-              <div class="hidden md:block"><span class="badge-warn">Via {{ causeWord(c) }}</span> <span class="meta">same reason</span></div>
-              <div class="meta hidden md:block">with the {{ causeWord(c) }}</div>
-              <div class="md:text-right">
-                <button type="button" class="link text-xs" @click="jumpToCause(c)">Unsuspend the {{ causeWord(c) }}</button>
-              </div>
-            </div>
-          </li>
-        </template>
-      </ul>
+              </td>
+              <td>
+                <div class="row-acts">
+                  <RouterLink v-if="hasCause(r)" :to="{ path: '/admin', query: r.cause_type === 'user' ? {} : { tab: 'projects' } }" class="row-act">Unsuspend the {{ causeWord(r) }}</RouterLink>
+                  <button v-else type="button" class="row-act" data-unsuspend :aria-label="`Unsuspend ${r.name}`" @click="target = r">Unsuspend</button>
+                </div>
+              </td>
+            </tr>
+            <tr v-for="c in open[rowId(r)] ? kids(r) : []" :key="rowId(c)" class="align-top">
+              <td class="text-zinc-400">App</td>
+              <td class="wrap-break-word"><RouterLink :to="`/apps/${c.id}`" class="link mono break-all">{{ c.name }}</RouterLink></td>
+              <td class="meta break-all">{{ c.project_name ?? '' }}</td>
+              <td class="meta">Via {{ causeWord(c) }}, same reason</td>
+              <td class="meta">with the {{ causeWord(c) }}</td>
+              <td><div class="row-acts"><button type="button" class="row-act" @click="jumpToCause(c)">Unsuspend the {{ causeWord(c) }}</button></div></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
     </div>
 
     <ConfirmDialog

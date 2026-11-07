@@ -2,8 +2,6 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LogOut, Pencil, Plus, RotateCw, Trash2, X } from 'lucide-vue-next'
-import NavBar from '../components/NavBar.vue'
 import IconButton from '../components/IconButton.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import CopyButton from '../components/CopyButton.vue'
@@ -213,14 +211,14 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-pico-bg">
-    <NavBar />
+  <div>
     <main id="main" tabindex="-1" class="page-main space-y-3">
-      <!-- create -->
       <RouterLink to="/projects" class="link inline-block text-sm">Back to Projects</RouterLink>
+
+      <!-- create -->
       <template v-if="pid === null">
         <h1 class="page-title">New project</h1>
-        <form class="card card-pad space-y-3 [&_.input]:max-w-3xl" @submit.prevent="onCreate">
+        <form class="sec max-w-3xl space-y-3 pt-3" @submit.prevent="onCreate">
           <div>
             <label for="p-name" class="label">Name</label>
             <input id="p-name" v-model="newName" class="input" maxlength="80" required :aria-invalid="!!createError" autocomplete="off" />
@@ -236,38 +234,96 @@ async function confirmDelete() {
 
       <!-- detail -->
       <template v-else>
-        <div v-if="loading" class="card card-pad" aria-busy="true" aria-label="Loading project">
+        <div v-if="loading" class="sec pt-3" aria-busy="true" aria-label="Loading project">
           <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
         </div>
         <AppNotFound v-else-if="gone" />
         <div v-else-if="loadError" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
           <span>{{ loadError }}</span>
-          <IconButton :icon="RotateCw" label="Retry" @click="load" />
+          <IconButton text="Retry" label="Retry" @click="load" />
         </div>
         <template v-else-if="project">
           <SuspendedBanner :project="project" />
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <h1 class="page-title break-all">{{ project.is_personal ? 'Personal project' : project.name }}</h1>
-            <span class="meta">{{ project.app_count }} of {{ project.app_limit_effective }} apps · {{ project.member_count }} {{ project.member_count === 1 ? 'member' : 'members' }}</span>
+            <span class="meta"><span class="mono">{{ project.app_count }} of {{ project.app_limit_effective }}</span> apps · {{ project.member_count }} {{ project.member_count === 1 ? 'member' : 'members' }}</span>
           </div>
           <p v-if="project.is_personal" class="help">
             Your personal project can't be shared, renamed or deleted. To work with others, <RouterLink to="/projects/new" class="underline">create a new project</RouterLink> and invite them to it.
           </p>
           <p v-if="memberError" role="alert" class="alert-error">{{ memberError }}</p>
 
-          <form v-if="shared && isOwner" class="card card-pad" @submit.prevent="onRename">
+          <form v-if="shared && isOwner" class="sec max-w-3xl pt-3" @submit.prevent="onRename">
             <label for="p-rename" class="label">Name</label>
             <div class="flex gap-2">
               <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" :disabled="susp" :aria-invalid="!!renameError" />
-              <IconButton :icon="Pencil" :label="susp ? 'Rename project (project is suspended)' : 'Rename project'" :busy="renaming" :disabled="susp" @click="onRename" />
+              <IconButton text="Rename" :label="susp ? 'Rename project (project is suspended)' : 'Rename project'" :busy="renaming" :disabled="susp" @click="onRename" />
             </div>
             <p v-if="renameError" role="alert" class="field-error mt-1">{{ renameError }}</p>
           </form>
 
-          <section v-if="shared && isOwner" id="invite" class="card card-pad" aria-labelledby="h-invite">
+          <section v-if="shared" class="sec pt-3" aria-labelledby="h-members">
+            <h2 id="h-members" class="section-title">Members</h2>
+            <p v-if="members.length === 0" class="meta mt-1">No members.</p>
+            <template v-else>
+              <table class="tbl mt-1 max-[759px]:hidden">
+                <colgroup>
+                  <col />
+                  <col class="w-40" />
+                  <col class="w-32" />
+                  <col class="w-28" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Joined</th>
+                    <th scope="col">Role</th>
+                    <th scope="col" class="text-right"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="m in members" :key="m.user_id">
+                    <td class="truncate" :title="m.email"><span class="text-white">{{ m.email }}</span><span v-if="isMe(m)" class="meta ml-1">(you)</span></td>
+                    <td class="meta" :title="fullDate(m.added_at)">{{ humanDate(m.added_at) }}</td>
+                    <td>
+                      <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id || susp" :title="suspTitle" @change="onRole(m, $event)">
+                        <option value="owner">Owner</option>
+                        <option value="member">Member</option>
+                      </select>
+                      <span v-else class="text-zinc-300">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
+                    </td>
+                    <td class="text-right">
+                      <div class="row-acts">
+                        <button v-if="isMe(m)" type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? 'Leave project (project is suspended)' : 'Leave project'" :title="susp ? SUSPENDED_TITLE : undefined" :disabled="susp" @click="leaving = true">Leave</button>
+                        <button v-else-if="isOwner" type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? `Remove ${m.email} (project is suspended)` : `Remove ${m.email}`" :disabled="susp" @click="removing = m">Remove</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <ul class="mt-1 divide-y divide-pico-border border-y border-pico-border min-[760px]:hidden">
+                <li v-for="m in members" :key="m.user_id" class="py-2">
+                  <div class="break-all text-sm text-white">{{ m.email }}<span v-if="isMe(m)" class="meta ml-1">(you)</span></div>
+                  <div class="meta" :title="fullDate(m.added_at)">Joined {{ humanDate(m.added_at) }}</div>
+                  <div class="mt-1 flex flex-wrap items-center gap-x-4">
+                    <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id || susp" :title="suspTitle" @change="onRole(m, $event)">
+                      <option value="owner">Owner</option>
+                      <option value="member">Member</option>
+                    </select>
+                    <span v-else class="text-sm text-zinc-300">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
+                    <button v-if="isMe(m)" type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? 'Leave project (project is suspended)' : 'Leave project'" :title="susp ? SUSPENDED_TITLE : undefined" :disabled="susp" @click="leaving = true">Leave</button>
+                    <button v-else-if="isOwner" type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? `Remove ${m.email} (project is suspended)` : `Remove ${m.email}`" :disabled="susp" @click="removing = m">Remove</button>
+                  </div>
+                </li>
+              </ul>
+            </template>
+          </section>
+
+          <section v-if="shared && isOwner" id="invite" class="sec scroll-mt-4 pt-3" aria-labelledby="h-invite">
             <h2 id="h-invite" class="section-title">Invite people to this project</h2>
-            <p class="help">No email is sent. Create an invite and share the link. It works once and expires in 7 days. Leave the email blank to let anyone with an approved account use it.</p>
-            <form class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onInvite">
+            <p class="help max-w-3xl">No email is sent. Create an invite and share the link. It works once and expires in 7 days. Leave the email blank to let anyone with an approved account use it.</p>
+            <form class="mt-2 flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onInvite">
               <div class="min-w-0 flex-1">
                 <label for="inv-email" class="label">Email (optional)</label>
                 <input id="inv-email" v-model="inviteEmail" type="email" class="input" autocomplete="off" />
@@ -279,7 +335,7 @@ async function confirmDelete() {
                   <option v-if="inviteEmail.trim()" value="owner">Owner (email required)</option>
                 </select>
               </div>
-              <button type="submit" class="btn-secondary" :disabled="inviting || susp" :title="suspTitle" :aria-busy="inviting"><Plus :size="16" aria-hidden="true" /> {{ inviting ? 'Creating…' : 'Create invite' }}</button>
+              <button type="submit" class="btn-secondary" :disabled="inviting || susp" :title="suspTitle" :aria-busy="inviting">{{ inviting ? 'Creating…' : 'Create invite' }}</button>
             </form>
             <p v-if="inviteError" role="alert" class="field-error mt-2">{{ inviteError }}</p>
             <div v-if="created" class="alert-info mt-3" role="status">
@@ -291,50 +347,57 @@ async function confirmDelete() {
             </div>
 
             <h3 class="mt-4 text-sm font-medium text-white">Pending invites</h3>
-            <ul v-if="invites.length" class="mt-1 divide-y divide-pico-border">
-              <li v-for="i in invites" :key="i.id" class="flex items-center justify-between gap-2 py-1.5">
-                <div class="min-w-0 text-sm">
-                  <span class="truncate text-white">{{ i.email ?? 'Anyone with the link' }}</span>
-                  <span class="meta ml-2">{{ i.role }} · expires {{ humanDate(i.expires_at) }}</span>
-                </div>
-                <IconButton :icon="X" :label="susp ? 'Revoke invite (project is suspended)' : 'Revoke invite'" danger sm :disabled="susp" @click="onRevoke(i)" />
-              </li>
-            </ul>
+            <template v-if="invites.length">
+              <table class="tbl mt-1 max-[759px]:hidden">
+                <colgroup>
+                  <col />
+                  <col class="w-28" />
+                  <col class="w-40" />
+                  <col class="w-28" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">Invited</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Expires</th>
+                    <th scope="col" class="text-right"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="i in invites" :key="i.id">
+                    <td class="truncate text-white">{{ i.email ?? 'Anyone with the link' }}</td>
+                    <td class="text-zinc-300">{{ i.role }}</td>
+                    <td class="meta" :title="fullDate(i.expires_at)">{{ humanDate(i.expires_at) }}</td>
+                    <td class="text-right">
+                      <div class="row-acts">
+                        <button type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? 'Revoke invite (project is suspended)' : 'Revoke invite'" :disabled="susp" @click="onRevoke(i)">Revoke</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <ul class="mt-1 divide-y divide-pico-border border-y border-pico-border min-[760px]:hidden">
+                <li v-for="i in invites" :key="i.id" class="flex items-center justify-between gap-2 py-1">
+                  <div class="min-w-0 text-sm">
+                    <div class="break-all text-white">{{ i.email ?? 'Anyone with the link' }}</div>
+                    <div class="meta">{{ i.role }} · expires {{ humanDate(i.expires_at) }}</div>
+                  </div>
+                  <button type="button" class="row-act row-act-danger max-[759px]:!min-h-[44px]" :aria-label="susp ? 'Revoke invite (project is suspended)' : 'Revoke invite'" :disabled="susp" @click="onRevoke(i)">Revoke</button>
+                </li>
+              </ul>
+            </template>
             <p v-else class="meta mt-1">No pending invites.</p>
           </section>
 
-          <section v-if="shared" class="card" aria-labelledby="h-members">
-            <h2 id="h-members" class="section-title card-pad pb-0">Members</h2>
-            <ul class="divide-y divide-pico-border">
-              <li v-for="m in members" :key="m.user_id" class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-4">
-                <div class="min-w-0">
-                  <div class="truncate text-sm text-white" :title="m.email">{{ m.email }}<span v-if="isMe(m)" class="meta ml-1">(you)</span></div>
-                  <div class="meta" :title="fullDate(m.added_at)">Joined {{ humanDate(m.added_at) }}</div>
-                </div>
-                <div class="flex shrink-0 items-center gap-1">
-                  <select v-if="isOwner" class="input w-auto" :aria-label="`Role of ${m.email}`" :value="m.role" :disabled="busyUser === m.user_id || susp" :title="suspTitle" @change="onRole(m, $event)">
-                    <option value="owner">Owner</option>
-                    <option value="member">Member</option>
-                  </select>
-                  <span v-else class="badge-info">{{ m.role === 'owner' ? 'Owner' : 'Member' }}</span>
-                  <IconButton v-if="isMe(m)" :icon="LogOut" :label="susp ? 'Leave project (project is suspended)' : 'Leave project'" danger :disabled="susp" @click="leaving = true" />
-                  <IconButton v-else-if="isOwner" :icon="X" :label="susp ? `Remove ${m.email} (project is suspended)` : `Remove ${m.email}`" danger :disabled="susp" @click="removing = m" />
-                </div>
-              </li>
-            </ul>
-            <p v-if="members.length === 0" class="meta px-4 py-3">No members.</p>
-          </section>
-
-          <section v-if="shared && isOwner" class="card card-pad border-danger/40" aria-labelledby="h-pdanger">
+          <section v-if="shared && isOwner" class="sec pt-3" aria-labelledby="h-pdanger">
             <h2 id="h-pdanger" class="section-title text-danger-light">Danger zone</h2>
             <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-zinc-300">Delete this project. It must have no apps; move or delete them first.</p>
               <button type="button" class="btn-danger shrink-0" :disabled="project.app_count > 0 || susp" :title="suspTitle" @click="deleteOpen = true">
-                <Trash2 :size="16" aria-hidden="true" /> Delete project…
+                Delete project…
               </button>
             </div>
           </section>
-          <RouterLink to="/projects" class="btn-secondary inline-flex">Back to Projects</RouterLink>
         </template>
       </template>
     </main>
