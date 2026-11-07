@@ -73,6 +73,8 @@ background on each item if you want it.
 
 ## Resolved
 
+- [security-reviewer 2026-11-07] Backup image `safe_reason` (see K124/K125 in docs/PENTEST.md): OK to switch it to an allowlist of fixed phrases for restic errors (safer, but app owners lose the exact first line), and to fix the awk loop before the image is re-pinned? **Resolved (decided by Claude 2026-11-07: fixed allowlist, no restic text).** Built: six fixed phrases; K124/K125 fixed.
+
 - **To-do: try one platform backup download (2026-11-06).** Chas tried it twice. The first failed ("the snapshot is not a MySQL dump": the export Job had no writable scratch disk), and after the fix in 2e4c7a0 the download worked and Chas checked that the contents looked good.
 
 - **Version the brief asks for vs the package steward (2026-11-05).** Chas 2026-11-06: a version the request names wins, and it is flagged. Built: the platform (not the model) leaves such a package out of the fix round and lists it as "Kept as your request names" with the latest stable version.
@@ -229,3 +231,4 @@ background on each item if you want it.
 
 
 - [x] [security-reviewer 2026-11-04] Kaisen self-harm guards: (a) OK to accept that python/node preview apps are protected only by the prompt rule (K90)? Option: boot refuses to start a server app whose start command is a known static-root pattern (heuristic, cheap). (b) Filter `.env*`/key files out of the GitHub push for legacy builds (K91, small change in pushing.py)? (c) Runtime image needs publish + re-pin for K87/K88. See docs/PENTEST.md K87-K91. **Chas 2026-11-04: agreed with the manager's calls: (a) K90 accepted; (b) K91 fix (push skips secret files); (c) publish + re-pin after this wave's deploy.**
+

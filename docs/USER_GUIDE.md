@@ -26,7 +26,7 @@ administrator restores the account.
 
 **Timezone.** On the **Account** page you can pick your timezone so times show in local time; leave it unset to use your browser's. Server-written text (audit CSV, notices) stays in UTC.
 
-**The left tree.** Everything is reached from the tree on the left; on a phone it sits behind the **Menu** button. **Projects** holds each project you belong to, with its app count; open a project to list its apps and click one to see its **Health** and **Settings** links. **Kaisen** (when it is on for you) has **Builds** and **Settings**. Below those are **Templates** and **Docs**, and at the bottom your **Account** and **Log out**. A small triangle opens or closes a node; clicking a name goes to that page. The tree remembers which nodes you opened or closed in this browser, and it always opens the path to the page you are on. Clicking a project in the tree also makes it the project you work in (the Apps page, the new-app form and Kaisen new build follow it). Administrators also see an **Administration** node.
+**The left tree.** Everything is reached from the tree on the left; on a phone it sits behind the **Menu** button. **Projects** holds each project you belong to, with its app count. Under each project are **Apps** (its apps with their status; click one to see the **Health** and **Settings** links for the app you are on) and then **Kaisen** (marked Preview, when it is on for you) with **Builds** and **Settings**. There is no top-level Kaisen section: Kaisen lives inside each project. Apps built by Kaisen carry a **Kaisen** tag on the Apps page. Below the projects are **Templates** and **Docs**, and at the bottom your **Account**, **Log out** and one **Legal** link (the privacy page, with the terms of use and how to report abuse, and an **On this page** list). A small triangle opens or closes a node; clicking a name goes to that page. Pages name their project in the title, and the page address carries the project: a project's apps are at `/projects/<id>/apps`, a new app at `/projects/<id>/apps/new`, and Kaisen at `/projects/<id>/kaisen` (also `/new` and `/settings`). Older bookmarks to `/apps`, `/apps/new`, `/kaisen`, `/kaisen/new` and `/kaisen/settings` redirect to the same page of the project you work in. App pages stay at `/apps/<id>` and `/apps/<id>/edit`, and a build stays at `/kaisen/<id>`. The tree remembers which nodes you opened or closed in this browser, and it always opens the path to the page you are on. Clicking a project in the tree also makes it the project you work in (the Apps page, the new-app form and Kaisen new build follow it). Administrators also see an **Administration** node.
 
 **Theme.** Also on **Account**, **Theme** switches the app between **Dark** (the default) and **Light**. The choice is saved on your account, so it follows you to other browsers. Each browser also keeps a copy, so the page loads in your theme without a flash, including the sign-in page; the copy stays after you sign out and your account's value replaces it the next time you sign in.
 
@@ -65,12 +65,12 @@ You can deploy four ways. All of them save the same app record; the platform the
 2. Enter a name, image and container port.
 3. Tick **Database** and **Blob storage** if you need them. If you tick **Database**, pick the engine (MySQL or PostgreSQL; see section 5a). You can't change these, or the engine, after you create the app.
 4. Add env vars. Tick **secret** on any value you want encrypted.
-5. Optional: open **Advanced: health check**, turn it on, and set the path and (optionally) a timeout.
+5. Optional: open **Advanced options**. It holds **Enable HTTP health check** (set the path and, optionally, a timeout) and **Serve sensitive paths**.
 6. Optional: open **Resources** to lower CPU, memory, scratch disk or the bucket size (see "Lowering resources").
 7. Click **Create app**.
 
 Each app has two pages. **App health** (`/apps/:id`) shows status, resource usage, quotas, logs, recent events and
-versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, health check) plus **Custom domain**,
+versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port, env, and under **Advanced options** the health check and **Serve sensitive paths**) plus **Custom domain**,
 the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. A button at the top of each page links to
 the other (**Settings** on the health page, **App health** on Settings). Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
 
@@ -211,7 +211,7 @@ Types are strict: `port: "8080"` (a string) or `db: "yes"` is rejected.
 
 Bots scan every website for files like `/.env` and `/.git/config`, hoping to find passwords. PicoPaaS answers 404 for these paths before the request reaches your app, on every hostname including custom domains. The block covers hundreds of names at any folder depth, such as `.env*`, `.git`, `.aws`, `.ssh`, `.htpasswd`, `.pgpass`, shell history files, database dumps like `backup.sql.gz`, `wp-config.php`, private key names such as `id_rsa`, and Terraform state files. The list is based on the [OWASP Core Rule Set](https://coreruleset.org/) and we review its updates. `/.well-known` and ordinary paths like `/wp-admin` or `/config.json` are not affected.
 
-If your app really serves paths like these, such as a Git host showing repository files, turn on **Serve sensitive paths** in the app's settings (`allowSensitivePaths: true` in a spec, `allow_sensitive_paths` in the API). The Forgejo template does this for you.
+If your app really serves paths like these, such as a Git host showing repository files, turn on **Serve sensitive paths** (under **Advanced options** in the app's settings) (`allowSensitivePaths: true` in a spec, `allow_sensitive_paths` in the API). The Forgejo template does this for you.
 
 This is a safety net, not a guarantee: don't put secrets in files your app serves. Use env vars and secrets instead.
 
@@ -686,7 +686,7 @@ The **Templates** page (`/templates`, or **Deploy from a template** on the New a
 
 Each template has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. A template warns when the instance has volumes, databases or blob storage turned off.
 
-**Use this template** opens the new-app form prefilled (`/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
+**Use this template** opens the new-app form prefilled (`/projects/<project>/apps/new?template=<id>`): add-ons, database engine, health check, volume (only if the instance has volumes on), env vars and the names of the secrets you must set (the form says how to generate each value). Anything the app needs you to know first shows on the form as **Before you deploy**, with the Setup guide link. Static-file templates (IT-Tools, Excalidraw, the nginx site) also come with the **Resources** sliders already lowered (section 3, "Lowering resources"); you can move them. Nothing is created until you click **Create app**, and the one-app default limit still applies. See [Recipes](RECIPES.md) for the full walkthroughs, including Ghost.
 
 ## 15. Projects (teams)
 
@@ -748,7 +748,7 @@ A built app is a normal app in the build's project. It appears in the apps list 
 
 ### Before you start
 
-Kaisen uses your project's own Anthropic API key, so model cost is billed to you (or your team), not to PicoPaaS. Open **Kaisen > Settings** (`/kaisen/settings`). Settings belong to the project, so a team project has its own key, model and caps. In a team project, owners edit settings; members can build and spend the project's key. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
+Kaisen uses your project's own Anthropic API key, so model cost is billed to you (or your team), not to PicoPaaS. Open your project's **Kaisen > Settings** in the left tree (`/projects/<project>/kaisen/settings`). The page says which project the settings apply to and whether you are an owner or a member. Settings belong to the project, so a team project has its own key, model and caps. In a team project, owners edit settings; members can build and spend the project's key. A project with no Anthropic key shows a setup step instead of a working **New build** button; members are told to ask an owner to add the key. Saved keys and tokens are encrypted and write-only: the page shows only "set, ends in ...abcd".
 
 1. Open console.anthropic.com > API keys and create a key named `picopaas-kaisen`.
 2. Set a spend limit on the Anthropic side too. PicoPaaS caps are a second guard, not a replacement.
@@ -765,7 +765,7 @@ Also in settings:
 
 ### Your first build
 
-1. Press **New app** on the Apps page, which opens a chooser: *Deploy an image*, *Deploy from a template* or *Build with Kaisen*. Pick **Build with Kaisen**, or open **Kaisen** in the left tree and press **New build**.
+1. Press **New app** on the Apps page, which opens a chooser: *Deploy an image*, *Deploy from a template* or *Build with Kaisen*. Pick **Build with Kaisen**, or open **Kaisen** under your project in the left tree and press **New build**.
 2. Give it a name (up to 60 characters) and a brief (up to 8000 characters). The page shows **In project: X**; a project holds at most 20 builds. You can attach files to the brief (see "Attach files").
 3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why. If you attached files, the build is first saved as a draft, each file is uploaded, then the run starts (see "Attach files").
 4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off; after a long run, Resume starts a fresh model context from `PLAN.md` and the files instead of the whole conversation. Work happens in steps of up to 15 minutes and 40 model calls; a long build continues on its own in a fresh context (the plan, brief and files carry over) for up to 4 steps before it stops and waits for you; the transcript is redacted and trimmed 14 days after a run ends.
@@ -780,7 +780,7 @@ If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from
 
 The build page is a chat. The thread holds your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run (**Run details**). The box at the bottom is pinned, so it stays in view while the thread scrolls; it sends the next change request, or your answer when Kaisen has asked a question. In it, **Enter** adds a line; **Ctrl+Enter** (Cmd+Enter on a Mac) or the **Send to Kaisen** button sends. Files you attached appear on the message they were sent with.
 
-On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
+On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Project files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
 
 ### Ask for changes
 
@@ -836,6 +836,10 @@ Build a habit tracker as a static page that saves to the browser's localStorage,
 Build a recipe scaler as a static page with no server and nothing saved. I paste a recipe's ingredient list, one ingredient per line (like "1 1/2 cups flour"), and set the original and wanted number of servings. The page shows the scaled list, handling fractions and decimals and showing results as friendly fractions. A toggle converts between metric and US units (cups, tablespoons, teaspoons, ounces, pounds, grams, millilitres) and leaves lines it cannot parse unchanged. Include a print view that shows only the scaled recipe in a clean layout. Light theme only. Out of scope: saving recipes, importing from web pages, nutrition information.
 ```
 
+### Read project files
+
+**Project files** in the side panel lists how many files Kaisen wrote. **Read project files** opens a full-screen code reader: a folder tree on the left with a **Filter files** box, and the file on the right with line numbers, a **Wrap** switch and a **Copy file** button. Keyboard: **j** / **k** or the up and down arrows move through the tree, **Left** and **Right** fold and unfold a folder, **Enter** opens the file, **/** jumps to the filter, and **Escape** closes the reader. The changes of a run (its diff) open in the same reader, with changed, added and removed files tagged in the tree. This is separate from **Uploads**, which are the files you attached.
+
 ### Download or push to GitHub
 
 - **Download** (`.tar.gz`) is always available from the build page. It holds the files plus `CONVERSATION.md`: your brief, feedback and answers, and Kaisen's replies, questions and summaries for every run (no internal agent detail; saved keys are redacted).
@@ -866,10 +870,10 @@ Kaisen sees the names only and is told to read them from the environment; values
 
 ### Attach files
 
-You can attach files to the brief on **New build**, to each change request in the box under the thread. Answers can't carry files. An administrator turns file uploads on per project; until then attaching is grayed out with a note "Not enabled for this project yet" (you can still delete files you uploaded earlier).
+You can attach files (they show as **Uploads**) to the brief on **New build**, to each change request in the box under the thread. Answers can't carry files. An administrator turns file uploads on per project; until then attaching is grayed out with a note "Not enabled for this project yet" (you can still delete files you uploaded earlier).
 
 - **How.** Press **Attach**, drag files onto the box, or paste an image. Each file shows as a chip with its progress; a refused file shows the reason with **Try again** and a remove button, and sending waits until uploads finish or you remove the refused ones. Files are sent with the message, and Kaisen is told they came with it.
-- **Files N of 20** (next to **Attach**) opens the **Files for this build** drawer: every file on the build, with its description, replace, delete, quota bars, and **Deploy now** when files changed since the live app. Files not yet sent are marked "Not sent yet" and come back as chips if you reload. Clicking a file on a message opens it in the drawer.
+- **Uploads N of 20** (next to **Attach**) opens the **Uploads for this build** drawer: every file on the build, with its description, replace, delete, quota bars, and **Deploy now** when files changed since the live app. Files not yet sent are marked "Not sent yet" and come back as chips if you reload. Clicking a file on a message opens it in the drawer.
 - **New build with files.** The build is saved as a draft, files upload one by one, then the run starts. If some fail, the draft is kept and you can **Retry failed files**, **Start building without them** or **Open the draft** (its page has a **Start building** button).
 - **Error messages state the limit and your file's value**, for example "That image is 9.4 megapixels (4000 x 2350). The most allowed is 8 megapixels; resize it and try again." Quota messages give what is used, the limit and the size of this file.
 
