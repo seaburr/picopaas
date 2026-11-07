@@ -255,7 +255,7 @@ def test_export_failure_paths_do_not_touch_backup_fields(pb):
                                    repo_bytes=500, bytes_added=9)
     pb.add(src)
     pb.commit()
-    ex, created = platform_backup.enqueue_export(pb, src, now)
+    ex, created = platform_backup.enqueue_export(pb, src, 1, now)
     assert created
     r = FakeBackupRunner()
     r.fail_start = True

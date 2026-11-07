@@ -52,6 +52,12 @@ async function poll(id: number, my: number) {
     else if (next.status === 'ready' && !next.url) timer = window.setTimeout(() => poll(id, my), POLL_MS)
   } catch (e) {
     if (my !== gen) return
+    if (e instanceof ApiError && e.status === 404) {
+      // Not ours (another admin's) or gone: back to the start state instead of an error.
+      ex.value = null
+      emit('changed')
+      return
+    }
     error.value = plain(e, "Couldn't check the download.")
   }
 }
@@ -115,7 +121,7 @@ const working = computed(() => ex.value?.status === 'queued' || ex.value?.status
       <template v-if="!ex">
         <div class="alert-warn mt-3 text-xs" role="note">
           This file contains every account's password hash, all encrypted app secrets and audit data. Store it somewhere safe and delete it when you're done.
-          The download link works for 10 minutes. The prepared file is removed after about an hour.
+          The file is available for 15 minutes, only to you (the admin who started it). Each download link lasts up to 10 minutes. The file is removed from storage within about an hour.
         </div>
         <div class="mt-3">
           <PasswordField v-model="password" label="Your password" autocomplete="current-password" help="Enter your own admin password to continue." />
@@ -130,14 +136,14 @@ const working = computed(() => ex.value?.status === 'queued' || ex.value?.status
       <div v-else-if="ex.status === 'ready' && ex.url" class="mt-4 space-y-2 text-sm" role="status">
         <p class="text-zinc-200">Your file is ready<template v-if="ex.size_bytes"> ({{ formatBytes(ex.size_bytes) }})</template>.</p>
         <a :href="ex.url" :download="ex.filename || undefined" rel="noopener noreferrer" class="btn-primary inline-flex">Download {{ ex.filename || 'backup' }}</a>
-        <p class="help">The link works for 10 minutes<template v-if="ex.available_until"> (until {{ stamp(ex.available_until) }})</template>. Close this window to hide it.</p>
+        <p class="help">This link works for up to 10 minutes; the file stays available<template v-if="ex.available_until"> until {{ stamp(ex.available_until) }}</template>. Close this window to hide it.</p>
       </div>
 
       <div v-else-if="ex.status === 'failed'" class="alert-error mt-4 text-sm" role="alert">
         The download failed{{ ex.error ? `: ${ex.error}` : '.' }}
       </div>
 
-      <div v-else class="alert-info mt-4 text-sm" role="status">This download has expired. Start a new one.</div>
+      <div v-else class="alert-info mt-4 text-sm" role="status">This download has expired (it is available for 15 minutes). Start a new one.</div>
 
       <p v-if="error" class="alert-error mt-3 text-xs" role="alert">{{ error }}</p>
 

@@ -455,7 +455,8 @@ BACKUP_UPLOAD_LIMIT_KIB = int(os.environ.get("BACKUP_UPLOAD_LIMIT_KIB", 2048))  
 # backed up (the default bucket quota is 100 MB; admin overrides can go higher). Bigger buckets fail with a clear error.
 BACKUP_EXPORT_PREFIX = "exports/"  # owner download staging objects in the backup bucket
 BACKUP_EXPORT_TTL_SECONDS = int(os.environ.get("BACKUP_EXPORT_TTL_SECONDS", 3600))  # export objects are swept after this
-BACKUP_EXPORT_URL_SECONDS = 600  # presigned GET lifetime
+BACKUP_EXPORT_URL_SECONDS = 600  # presigned GET lifetime (never past the window below for a platform export)
+PLATFORM_EXPORT_READY_SECONDS = 900  # a platform DB download stays available this long, to the admin who started it (K108)
 BACKUP_EXPORT_MAX_PER_HOUR = int(os.environ.get("BACKUP_EXPORT_MAX_PER_HOUR", 3))  # download requests per app per hour
 BACKUP_BUCKET_MAX_BYTES = int(os.environ.get("BACKUP_BUCKET_MAX_BYTES", 512 * 1024**2))  # keep 2 Jobs inside deploy/platform/backup.yaml quota
 # Volume backups ("volume" kind) run in the TENANT namespace and put the backup key in a per-run Secret there, so they stay off

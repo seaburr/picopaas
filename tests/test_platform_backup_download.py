@@ -154,7 +154,8 @@ def test_failed_export_reported_and_retry_allowed(pdb, admin, db_session, runner
     got = admin.get(f"/admin/platform-backups/exports/{ex['export_id']}").json()
     assert got["status"] == "failed" and got["url"] is None and "repository" in got["error"]
     assert _audit(db_session, "platform_backup.export_failed")
-    s = platform_backup.summary(db_session)
+    me = db_session.query(models.User).filter_by(email="admin@example.com").one().id
+    s = platform_backup.summary(db_session, admin_id=me)
     assert s["failed_download"]["id"] == ex["export_id"] and s["runs"][0]["export"] is None
     assert _post(admin, b.id).status_code == 202  # a failed one doesn't block or count
 
@@ -269,3 +270,139 @@ def test_export_sweep_covers_platform_prefix(pdb, admin, db_session, runner):
     ex = _post(admin, _backup(db_session).id).json()
     assert platform_backup.export_key(db_session.get(models.PlatformBackupRun, ex["export_id"])).startswith(config.BACKUP_EXPORT_PREFIX)
     assert config.backup_export_prefix_ok()
+
+
+# ---- K108: 15 minute window, tied to the admin who started it ---------------------------------------------------------
+
+@pytest.fixture()
+def admin2(make_client, admin, db_session):
+    c = make_client()
+    register_and_login(c, "admin2@example.com")
+    db_session.query(models.User).filter_by(email="admin2@example.com").update({"role": "platform_admin"})
+    db_session.commit()
+    return c
+
+
+def _ready(admin, db_session, runner, **kw):
+    b = _backup(db_session, **kw)
+    ex = _post(admin, b.id).json()
+    _run_export(db_session, runner)
+    return b, ex["export_id"]
+
+
+def test_export_records_who_started_it(pdb, admin, db_session, runner):
+    b = _backup(db_session)
+    ex = _post(admin, b.id).json()
+    me = db_session.query(models.User).filter_by(email="admin@example.com").one()
+    assert db_session.get(models.PlatformBackupRun, ex["export_id"]).requested_by == me.id
+    assert db_session.get(models.PlatformBackupRun, b.id).requested_by is None
+
+
+def test_another_admin_gets_404_and_an_audit_entry(pdb, admin, admin2, db_session, runner):
+    _, eid = _ready(admin, db_session, runner)
+    r = admin2.get(f"/admin/platform-backups/exports/{eid}")
+    assert r.status_code == 404 and r.json() == admin2.get("/admin/platform-backups/exports/9999").json()
+    assert runner.presigned == [] and not _audit(db_session, "platform_backup.download_link")
+    (a,) = [x for x in _audit(db_session, "platform_backup.download_refused") if "other_admin" in x.detail]
+    assert a.actor_email == "admin2@example.com" and f"export={eid}" in a.detail
+    assert admin.get(f"/admin/platform-backups/exports/{eid}").status_code == 200  # the owner is unaffected
+
+
+def test_export_without_an_owner_is_fetchable_by_nobody(pdb, admin, admin2, db_session, runner):
+    _, eid = _ready(admin, db_session, runner)
+    db_session.get(models.PlatformBackupRun, eid).requested_by = None
+    db_session.commit()
+    for c in (admin, admin2):
+        assert c.get(f"/admin/platform-backups/exports/{eid}").status_code == 404
+    assert runner.presigned == []
+
+
+def test_window_boundary_is_15_minutes(pdb, admin, db_session, runner):
+    _, eid = _ready(admin, db_session, runner)
+    row = db_session.get(models.PlatformBackupRun, eid)
+    sec = config.PLATFORM_EXPORT_READY_SECONDS
+    assert sec == 900
+    row.finished_at = utcnow_naive() - timedelta(seconds=sec - 30)
+    db_session.commit()
+    got = admin.get(f"/admin/platform-backups/exports/{eid}").json()
+    assert got["status"] == "ready" and got["url"]
+    row.finished_at = utcnow_naive() - timedelta(seconds=sec + 1)
+    db_session.commit()
+    got = admin.get(f"/admin/platform-backups/exports/{eid}").json()
+    assert got["status"] == "expired" and got["url"] is None and len(runner.presigned) == 1
+
+
+def test_link_lifetime_is_clamped_to_the_time_left(pdb, admin, db_session, runner):
+    _, eid = _ready(admin, db_session, runner)
+    admin.get(f"/admin/platform-backups/exports/{eid}")
+    assert runner.presigned[-1][1] == config.BACKUP_EXPORT_URL_SECONDS  # plenty of time left: the normal lifetime
+    row = db_session.get(models.PlatformBackupRun, eid)
+    row.finished_at = utcnow_naive() - timedelta(seconds=config.PLATFORM_EXPORT_READY_SECONDS - 120)
+    db_session.commit()
+    admin.get(f"/admin/platform-backups/exports/{eid}")
+    assert 100 <= runner.presigned[-1][1] <= 120
+    (_, last) = _audit(db_session, "platform_backup.download_link")
+    assert f"expires_in={runner.presigned[-1][1]}" in last.detail
+
+
+def test_another_admin_can_start_their_own_while_the_first_is_ready(pdb, admin, admin2, db_session, runner):
+    b, first = _ready(admin, db_session, runner)
+    r = _post(admin2, b.id)
+    assert r.status_code == 202 and r.json()["export_id"] != first and r.json()["status"] == "queued"
+    again = _post(admin2, b.id)
+    assert again.json()["export_id"] == r.json()["export_id"]  # idempotent for the same admin
+    assert db_session.get(models.PlatformBackupRun, r.json()["export_id"]).requested_by != \
+        db_session.get(models.PlatformBackupRun, first).requested_by
+
+
+def test_another_admins_active_export_is_still_a_409(pdb, admin, admin2, db_session, runner):
+    b = _backup(db_session)
+    assert _post(admin, b.id).status_code == 202
+    assert _post(admin2, b.id).status_code == 409
+    assert _post(admin2, _backup(db_session, snap="bbbbbbbb").id).status_code == 409
+
+
+def test_summary_and_health_show_only_the_viewers_own_download(pdb, admin, admin2, db_session, runner):
+    b, eid = _ready(admin, db_session, runner)
+    mine = admin.get("/admin/health/backups").json()["platform_db"]["runs"][0]["export"]
+    assert mine["id"] == eid and mine["status"] == "ready"
+    theirs = admin2.get("/admin/health/backups").json()["platform_db"]
+    assert theirs["runs"][0]["export"] is None and theirs["failed_download"] is None
+    assert platform_backup.summary(db_session)["runs"][0]["export"] is None  # no viewer: nothing
+    row = db_session.get(models.PlatformBackupRun, eid)  # a failed one is theirs alone as well
+    row.status, row.error = "failed", "reading the snapshot from the repository failed"
+    db_session.commit()
+    assert admin.get("/admin/health/backups").json()["platform_db"]["failed_download"]["id"] == eid
+    assert admin2.get("/admin/health/backups").json()["platform_db"]["failed_download"] is None
+
+
+def test_migration_adds_requested_by_and_keeps_rows(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from sqlalchemy import create_engine, inspect, text
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    root = os.path.join(os.path.dirname(__file__), "..")
+    env = {**os.environ, "DATABASE_URL": url}
+
+    def alembic(*args):
+        subprocess.run([sys.executable, "-m", "alembic", *args], cwd=root, env=env, check=True, capture_output=True)
+
+    def cols():
+        return {c["name"] for c in inspect(create_engine(url)).get_columns("platform_backup_runs")}
+    alembic("upgrade", "b3c8e5a1d7f4")
+    assert "requested_by" not in cols()
+    eng = create_engine(url)
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO platform_backup_runs (trigger, status, created_at, snapshot_id) "
+                       "VALUES ('export', 'succeeded', '2026-11-05 10:00:00', 'aa11bb22')"))
+    alembic("upgrade", "head")
+    assert "requested_by" in cols()
+    with eng.begin() as c:
+        assert c.execute(text("SELECT requested_by FROM platform_backup_runs")).all() == [(None,)]
+    alembic("downgrade", "b3c8e5a1d7f4")
+    assert "requested_by" not in cols()
+    with eng.begin() as c:
+        assert c.execute(text("SELECT snapshot_id FROM platform_backup_runs")).all() == [("aa11bb22",)]
+    alembic("upgrade", "head")
+    assert "requested_by" in cols()

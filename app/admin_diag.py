@@ -91,7 +91,7 @@ def failures_and_stuck(db: Session, days: int = 7, now: Optional[datetime] = Non
     return {"days": days, "failures": out, "stuck": stuck}
 
 
-def backup_health(db: Session, days: int = 7) -> dict[str, Any]:
+def backup_health(db: Session, days: int = 7, admin_id: Optional[int] = None) -> dict[str, Any]:
     return {"enabled": backups.enabled(), "configured": config.backups_configured(),
             "storage": storage(db), **failures_and_stuck(db, days), "sweeper": backup_sweeper.last_sweep(db),
-            "platform_db": platform_backup.summary(db)}
+            "platform_db": platform_backup.summary(db, admin_id=admin_id)}

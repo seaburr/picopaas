@@ -28,9 +28,9 @@ MAX_SINCE_SECONDS = 7 * 86400
 
 
 @router.get("/backups")
-def health_backups(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db)):
+def health_backups(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db), admin=Depends(require_platform_admin)):
     """Backup storage vs the platform cap (+ top apps), failed backups in the last `days` days with the reason, stuck runs."""
-    return admin_diag.backup_health(db, days)
+    return admin_diag.backup_health(db, days, admin.id)
 
 
 @router.post("/backups/platform-db/run", status_code=202, dependencies=[Depends(require_admin_session)])

@@ -1105,7 +1105,7 @@ class PlatformDownloadOut(BaseModel):
     created_at: datetime
     filename: Optional[str] = None
     available_until: Optional[datetime] = None  # while ready
-    url: Optional[str] = None  # only from GET .../exports/{id}, while ready: a fresh 10 minute link
+    url: Optional[str] = None  # only from GET .../exports/{id}, while ready: a fresh link of at most 10 minutes
     size_bytes: Optional[int] = None
     error: Optional[str] = None
 
@@ -1119,9 +1119,10 @@ def _platform_export_out(db: Session, run: models.PlatformBackupRun, runner: Opt
         out.filename = platform_backup.export_filename(db, run)
         out.available_until = platform_backup.export_available_until(run)
         out.size_bytes = run.bytes_added
-        if runner is not None:
+        secs = platform_backup.link_seconds(run)
+        if runner is not None and secs > 0:  # never a link that outlives the window
             try:
-                out.url = runner.presign_export(platform_backup.export_key(run), config.BACKUP_EXPORT_URL_SECONDS, out.filename)
+                out.url = runner.presign_export(platform_backup.export_key(run), secs, out.filename)
             except BackupRunnerError:
                 raise HTTPException(status_code=503, detail="The download link couldn't be created. Try again in a moment.") from None
     return out
@@ -1141,7 +1142,7 @@ def start_platform_backup_download(run_id: int, payload: PlatformDownloadIn, req
     if src is None or src.trigger == platform_backup.EXPORT:
         raise HTTPException(status_code=404, detail="We can't find that platform backup.")
     try:
-        run, new = platform_backup.enqueue_export(db, src)
+        run, new = platform_backup.enqueue_export(db, src, admin.id)
     except backups.ExportRefused as exc:
         db.rollback()
         audit.record(db, admin, "platform_backup.download_refused", "platform", "db", f"run={run_id} reason={exc.status}")
@@ -1156,12 +1157,15 @@ def start_platform_backup_download(run_id: int, payload: PlatformDownloadIn, req
 @router.get("/platform-backups/exports/{export_id}", response_model=PlatformDownloadOut)
 def get_platform_backup_download(export_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_session),
                                  runner: BackupRunner = Depends(get_backup_runner)):
-    """Poll an export; when ready, `url` is a fresh 10 minute presigned link (audited as platform_backup.download_link)."""
+    """Poll an export; when ready, `url` is a fresh presigned link, 10 minutes at most and never past the window (audited as platform_backup.download_link)."""
     run = db.get(models.PlatformBackupRun, export_id)
     if run is None or run.trigger != platform_backup.EXPORT:
+        raise HTTPException(status_code=404, detail="We can't find that download.")
+    if not platform_backup.owned_by(run, admin.id):  # same answer as an unknown id; older rows have no owner
+        audit.record(db, admin, "platform_backup.download_refused", "platform", "db", f"export={run.id} reason=other_admin")
         raise HTTPException(status_code=404, detail="We can't find that download.")
     out = _platform_export_out(db, run, runner)
     if out.url:
         audit.record(db, admin, "platform_backup.download_link", "platform", "db",
-                     f"export={run.id} run={out.run_id} expires_in={config.BACKUP_EXPORT_URL_SECONDS}")
+                     f"export={run.id} run={out.run_id} expires_in={platform_backup.link_seconds(run)}")
     return out

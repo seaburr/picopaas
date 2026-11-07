@@ -521,6 +521,8 @@ class PlatformBackupRun(Base):
     snapshot_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     job_name: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
+    # trigger="export" only: the admin who started the download; nobody else may poll or fetch it. Null on older rows = nobody.
+    requested_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class AuditLog(Base):

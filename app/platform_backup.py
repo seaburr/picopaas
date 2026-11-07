@@ -216,16 +216,17 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt is not None else None
 
 
-def summary(session: Session, limit: int = 10, now: datetime | None = None) -> dict[str, Any]:
-    """Admin Health > Backups block. `now` (naive UTC) is for tests; default is the wall clock."""
+def summary(session: Session, limit: int = 10, now: datetime | None = None, admin_id: Optional[int] = None) -> dict[str, Any]:
+    """Admin Health > Backups block. `now` (naive UTC) is for tests; default is the wall clock. Downloads shown (`export`,
+    `failed_download`) are only the viewing admin's own (`admin_id`), so the UI never resumes one it would get a 404 for."""
     runs = session.execute(select(models.PlatformBackupRun).where(_backups_only())
                            .order_by(models.PlatformBackupRun.id.desc()).limit(limit)).scalars().all()
     ok = next((r for r in runs if r.status == "succeeded"), None) or session.execute(
         select(models.PlatformBackupRun).where(models.PlatformBackupRun.status == "succeeded", _backups_only())
         .order_by(models.PlatformBackupRun.id.desc()).limit(1)).scalar()
     can_download = active() and config.backup_export_prefix_ok()
-    live = live_exports_by_snapshot(session, _now(now))
-    failed = recent_failed_export(session, _now(now))
+    live = live_exports_by_snapshot(session, _now(now), admin_id)
+    failed = recent_failed_export(session, _now(now), admin_id)
     stale = ok is None or backups._now(now) - backups._naive(ok.finished_at or ok.created_at) > timedelta(
         hours=config.PLATFORM_BACKUP_INTERVAL_HOURS * 1.5 + 1)
     return {
@@ -240,14 +241,14 @@ def summary(session: Session, limit: int = 10, now: datetime | None = None) -> d
                   "finished_at": _iso(r.finished_at), "bytes_added": r.bytes_added, "repo_bytes": r.repo_bytes,
                   "snapshot_id": r.snapshot_id,
                   "downloadable": bool(can_download and r.status == "succeeded" and r.snapshot_id),
-                  "export": _export_brief(live.get(r.snapshot_id or "")) if r.status == "succeeded" else None}
+                  "export": _export_brief(live.get(r.snapshot_id or ""), _now(now)) if r.status == "succeeded" else None}
                  for r in runs],
     }
 
 
 # --- admin download (export) ------------------------------------------------------------------
 # The platform repo is restic, so a download is the same export Job app backups use (MODE=export KIND=db: `restic dump
-# <snapshot> db.sql | gzip` to one object under exports/, swept after BACKUP_EXPORT_TTL_SECONDS with all the others). Bookkeeping
+# <snapshot> db.sql | gzip` to one object under exports/, swept after BACKUP_EXPORT_TTL_SECONDS with all the others; the download is only offered for PLATFORM_EXPORT_READY_SECONDS, to requested_by). Bookkeeping
 # lives in platform_backup_runs with trigger="export" (no schema change): snapshot_id = the exported snapshot, bytes_added = the
 # file size, the object key is derived from the row id (export_key). Exports are excluded from the backup list, "last success",
 # scheduling, the in-flight check and KEPT_RUNS pruning.
@@ -260,12 +261,23 @@ def export_state(run: models.PlatformBackupRun, now: Optional[datetime] = None) 
     """queued | running | ready | failed | expired (same rules as backups.export_state)."""
     if run.status == "succeeded":
         age = _now(now) - backups._naive(run.finished_at or run.created_at)
-        return "expired" if age >= timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS) else "ready"
+        return "expired" if age >= timedelta(seconds=config.PLATFORM_EXPORT_READY_SECONDS) else "ready"
     return run.status
 
 
 def export_available_until(run: models.PlatformBackupRun) -> datetime:
-    return backups._naive(run.finished_at or run.created_at) + timedelta(seconds=config.BACKUP_EXPORT_TTL_SECONDS)
+    return backups._naive(run.finished_at or run.created_at) + timedelta(seconds=config.PLATFORM_EXPORT_READY_SECONDS)
+
+
+def link_seconds(run: models.PlatformBackupRun, now: Optional[datetime] = None) -> int:
+    """Lifetime of a presigned link: BACKUP_EXPORT_URL_SECONDS, but never past the end of the availability window. 0 = no link."""
+    left = int((export_available_until(run) - _now(now)).total_seconds())
+    return max(0, min(config.BACKUP_EXPORT_URL_SECONDS, left))
+
+
+def owned_by(run: models.PlatformBackupRun, admin_id: Optional[int]) -> bool:
+    """A download belongs to the admin who started it; rows without an owner (older ones) belong to nobody."""
+    return admin_id is not None and run.requested_by == admin_id
 
 
 def source_run(session: Session, run: models.PlatformBackupRun) -> Optional[models.PlatformBackupRun]:
@@ -288,19 +300,24 @@ def _exports(session: Session) -> list[models.PlatformBackupRun]:
                                 .order_by(models.PlatformBackupRun.id.desc())).scalars())
 
 
-def live_exports_by_snapshot(session: Session, now: Optional[datetime] = None) -> dict[str, models.PlatformBackupRun]:
-    """Latest queued / running / ready export per snapshot id."""
+def live_exports_by_snapshot(session: Session, now: Optional[datetime] = None,
+                             admin_id: Optional[int] = None) -> dict[str, models.PlatformBackupRun]:
+    """Latest queued / running / ready export per snapshot id, among the exports `admin_id` started (none for None)."""
     now, found = _now(now), {}
     for e in _exports(session):
-        if e.snapshot_id and e.snapshot_id not in found and export_state(e, now) in ("queued", "running", "ready"):
+        if owned_by(e, admin_id) and e.snapshot_id and e.snapshot_id not in found and export_state(e, now) in ("queued", "running", "ready"):
             found[e.snapshot_id] = e
     return found
 
 
-def recent_failed_export(session: Session, now: Optional[datetime] = None) -> Optional[models.PlatformBackupRun]:
-    """The newest failed export from the last hour, unless a newer live one exists (so the UI can say why a retry is on offer)."""
+def recent_failed_export(session: Session, now: Optional[datetime] = None,
+                         admin_id: Optional[int] = None) -> Optional[models.PlatformBackupRun]:
+    """The newest failed export of `admin_id` from the last hour, unless a newer live one of theirs exists (so the UI can say
+    why a retry is on offer). Another admin's export is never shown."""
     now = _now(now)
     for e in _exports(session):
+        if not owned_by(e, admin_id):
+            continue
         st = export_state(e, now)
         if st in ("queued", "running", "ready"):
             return None
@@ -309,10 +326,10 @@ def recent_failed_export(session: Session, now: Optional[datetime] = None) -> Op
     return None
 
 
-def _export_brief(e: Optional[models.PlatformBackupRun]) -> Optional[dict[str, Any]]:
+def _export_brief(e: Optional[models.PlatformBackupRun], now: Optional[datetime] = None) -> Optional[dict[str, Any]]:
     if e is None:
         return None
-    state = export_state(e)
+    state = export_state(e, now)
     return {"id": e.id, "status": state, "available_until": _iso(export_available_until(e)) if state == "ready" else None}
 
 
@@ -327,10 +344,11 @@ def build_export_env(session: Session, run: models.PlatformBackupRun) -> dict[st
             "EXPORT_ENDPOINT": cloud.backup_target().endpoint(), "EXPORT_BUCKET": config.BACKUP_BUCKET, "EXPORT_KEY": export_key(run)}
 
 
-def enqueue_export(session: Session, source: models.PlatformBackupRun,
+def enqueue_export(session: Session, source: models.PlatformBackupRun, admin_id: int,
                    now: Optional[datetime] = None) -> tuple[models.PlatformBackupRun, bool]:
-    """Queue the materialisation of `source` (a succeeded backup) as one .sql.gz. Idempotent for a snapshot that already has a
-    live export (created=False). One export in flight at a time, and `backup_export_max_per_hour` new ones per hour for the whole
+    """Queue the materialisation of `source` (a succeeded backup) as one .sql.gz. Idempotent for a snapshot for which `admin_id`
+    already has a live export (created=False); another admin's ready export doesn't count (they start their own), another
+    admin's active one is the usual 409. One export in flight at a time, and `backup_export_max_per_hour` new ones per hour for the whole
     platform (failed ones don't count). Raises backups.ExportRefused. The caller commits."""
     now = _now(now)
     if not active() or not config.backup_export_prefix_ok():
@@ -338,7 +356,7 @@ def enqueue_export(session: Session, source: models.PlatformBackupRun,
     if source.trigger == EXPORT or source.status != "succeeded" or not source.snapshot_id:
         raise backups.ExportRefused("That backup run didn't finish successfully, so there is nothing to download.")
     exports = _exports(session)
-    live = live_exports_by_snapshot(session, now).get(source.snapshot_id)
+    live = live_exports_by_snapshot(session, now, admin_id).get(source.snapshot_id)
     if live is not None:
         return live, False
     if any(e.status in ACTIVE for e in exports):
@@ -349,7 +367,8 @@ def enqueue_export(session: Session, source: models.PlatformBackupRun,
         wait = int((recent[len(recent) - limit] + timedelta(hours=1) - now).total_seconds()) + 1
         raise backups.ExportRefused(f"{limit} platform download{'' if limit == 1 else 's'} per hour is the limit (failed ones don't count). "
                                     f"Try again in {max(1, wait // 60)} minutes.", 429, retry_after=wait)
-    run = models.PlatformBackupRun(trigger=EXPORT, status="queued", created_at=now, snapshot_id=source.snapshot_id)
+    run = models.PlatformBackupRun(trigger=EXPORT, status="queued", created_at=now, snapshot_id=source.snapshot_id,
+                                  requested_by=admin_id)
     session.add(run)
     session.flush()
     return run, True
