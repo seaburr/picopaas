@@ -135,3 +135,49 @@ def test_stat_job_manifest_short_deadline_readonly_claim_no_serviceaccount():
     assert job["spec"]["activeDeadlineSeconds"] == 120 and "serviceAccountName" not in pod
     assert pod["volumes"][-1]["persistentVolumeClaim"]["readOnly"] is True
     assert pod["containers"][0]["resources"]["limits"] == {"cpu": "50m", "memory": "32Mi", "ephemeral-storage": "16Mi"}
+
+
+def test_status_blip_keeps_the_job_for_the_next_tick(user, vol, db_session, runner, monkeypatch):
+    now = utcnow_naive()
+    backups.tick(db_session, runner, now)
+    monkeypatch.setattr(runner, "status", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("api down")))
+    backups.tick(db_session, runner, now + timedelta(seconds=15))
+    assert db_session.get(models.App, vol).volume_stat_job == f"vs-{vol}"  # not dropped, not measured
+    assert quota(user, vol)["volume"] is None
+
+
+def test_cleanup_failure_still_releases_the_app_and_keeps_the_measurement(user, vol, db_session, runner, monkeypatch):
+    now = utcnow_naive()
+    backups.tick(db_session, runner, now)
+    runner.finish(f"vs-{vol}", {"used_bytes": 5 * 1024**2})
+    monkeypatch.setattr(runner, "cleanup", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("api down")))
+    backups.tick(db_session, runner, now + timedelta(seconds=15))
+    db_session.expire_all()
+    app = db_session.get(models.App, vol)
+    assert app.volume_stat_job is None and app.volume_used_bytes == 5 * 1024**2
+
+
+def test_start_failure_is_throttled_and_leaves_no_job_recorded(user, vol, db_session, runner):
+    now = utcnow_naive()
+    runner.fail_start = True
+    backups.tick(db_session, runner, now)
+    app = db_session.get(models.App, vol)
+    assert app.volume_stat_job is None and app.volume_stat_at is not None
+    runner.fail_start = False
+    backups.tick(db_session, runner, now + timedelta(seconds=15))  # within the interval: no retry storm
+    assert runner.started == []
+
+
+def test_per_tick_cap_limits_new_stat_jobs(user, vol, db_session, runner, monkeypatch):
+    monkeypatch.setattr(config, "VOLUME_STAT_MAX_PER_TICK", 1)
+    r = user.post("/apps", json={"name": "v2", "image": "ghcr.io/example/demo:1.0", "port": 8080, "env": [],
+                                 "volume": {"size_gi": 1, "mount_path": "/data"}})
+    assert r.status_code == 201, r.text
+    a2 = db_session.get(models.App, r.json()["id"])
+    a2.status, a2.volume_phase = "running", "Bound"
+    db_session.commit()
+    now = utcnow_naive()
+    backups.tick(db_session, runner, now)
+    assert len([s for s in runner.started if s.env.get("MODE") == "stat"]) == 1
+    backups.tick(db_session, runner, now + timedelta(seconds=15))
+    assert len([s for s in runner.started if s.env.get("MODE") == "stat"]) == 2

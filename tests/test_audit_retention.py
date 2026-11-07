@@ -113,3 +113,15 @@ def test_export_json_is_array_with_same_columns(admin, db_session):
 def test_export_empty_json_is_valid(admin, db_session, monkeypatch):
     out = "".join(admin_router._audit_export_stream(db_session.get_bind(), 0, 10, "json"))
     assert out == "[]"
+
+
+def test_record_never_raises_when_the_write_fails_and_rolls_back(db_session, monkeypatch, caplog):
+    """The audit helper sits in request paths: a failing commit must not propagate, and the session must stay usable."""
+    def boom():
+        raise RuntimeError("db gone")
+    monkeypatch.setattr(db_session, "commit", boom)
+    audit.record(db_session, None, "test.action", "app", 1, "detail", actor_email="system")  # must not raise
+    monkeypatch.undo()
+    assert db_session.query(models.AuditLog).filter_by(action="test.action").count() == 0
+    audit.record(db_session, None, "test.after", actor_email="system")
+    assert db_session.query(models.AuditLog).filter_by(action="test.after").count() == 1
