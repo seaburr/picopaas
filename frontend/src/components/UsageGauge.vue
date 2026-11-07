@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Sparkline from './Sparkline.vue'
 
 // One resource as a gauge row: label, "used / limit unit" and percent in mono, a 10px bar coloured by state
-// (ok < 75%, warn >= 75%, err >= 90% or over its cap), and an optional trend (CPU / memory history).
+// (ok < 75%, warn >= 75%, err >= 90% or over its cap).
 // Limits and values come from the API; this only formats them.
 const props = defineProps<{
   label: string
@@ -12,9 +11,6 @@ const props = defineProps<{
   unit: string // ("MB")
   pct: number // 0..100+
   over?: boolean
-  values?: number[] // trend, raw units
-  limitRaw?: number
-  rawUnit?: string
 }>()
 const WARN = 75
 const ERR = 90
@@ -44,6 +40,5 @@ const word = computed(() => (props.over ? ' over cap' : level.value === 'err' ? 
     >
       <div class="h-full" :style="{ width: width + '%', background: `var(--${level})` }" />
     </div>
-    <Sparkline v-if="values && values.length > 1" class="mt-1.5" :label="label" :unit="rawUnit ?? ''" :values="values" :limit="limitRaw ?? 0" :level="level" />
   </li>
 </template>

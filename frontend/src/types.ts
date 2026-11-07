@@ -12,6 +12,7 @@ export interface User {
   created_at: string
   timezone?: string | null // IANA name; null/absent = browser zone
   theme?: 'dark' | 'light' // colour theme; absent (older backend) = dark
+  onboarding_dismissed?: boolean // GET /auth/me; true = the Getting started dialog is never shown again
   must_change_password?: boolean // true after an admin password reset
   // GET /auth/me only (optional until the backend ships them; treat undefined as "unknown, allow").
   features?: Features

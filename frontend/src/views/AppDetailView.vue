@@ -342,14 +342,14 @@ onBeforeUnmount(() => wideQuery?.removeEventListener('change', onWide))
 const keepOpen = (e: Event) => { const d = e.target as HTMLDetailsElement; if (wide.value && !d.open) d.open = true }
 
 // Rows of the Resource usage table: live CPU / memory from the metrics history, then the add-on usages.
-interface MetricRow { name: string; unit: string; used: number; limit: number; pct: number; values: number[]; near: boolean }
+interface MetricRow { name: string; unit: string; used: number; limit: number; pct: number }
 const metricRows = computed<MetricRow[]>(() => {
   const m = metrics.value
   if (!m || suspended.value || !m.points.length) return []
   const mk = (name: string, unit: string, values: number[], limit: number): MetricRow => {
     const used = values[values.length - 1] ?? 0
     const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
-    return { name, unit, used, limit, pct, values, near: limit > 0 && used >= limit * 0.8 }
+    return { name, unit, used, limit, pct }
   }
   return [
     mk('CPU', 'm', m.points.map((p) => p.cpu_m), m.cpu_capacity_m ?? m.cpu_limit_m),
@@ -438,7 +438,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <details :class="wide ? '' : 'disc'" open @toggle="keepOpen">
             <summary class="flex flex-wrap items-baseline gap-x-3 pt-2 [&::-webkit-details-marker]:hidden" :class="wide ? 'list-none' : ''">
               <h2 id="h-usage" class="section-title">Resource usage</h2>
-              <span v-if="metrics && !suspended" class="meta">{{ podCount }} pod{{ podCount === 1 ? '' : 's' }}, last few hours</span>
+              <span v-if="metrics && !suspended" class="meta">{{ podCount }} pod{{ podCount === 1 ? '' : 's' }}, latest sample</span>
             </summary>
             <ul class="mt-1">
               <UsageGauge
@@ -449,9 +449,6 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
                 :limit="String(m.limit)"
                 :unit="m.unit"
                 :pct="m.pct"
-                :values="m.values"
-                :limit-raw="m.limit"
-                :raw-unit="m.unit"
               />
               <UsageGauge v-for="q in quotaRows" :key="q.label" v-bind="q" />
               <li v-if="app.volume && !app.quota?.volume" class="border-b border-pico-border py-2.5 text-sm">

@@ -5,6 +5,7 @@ import { useAuthStore } from './stores/auth'
 import AppSidebar from './components/AppSidebar.vue'
 import DevBanner from './components/DevBanner.vue'
 import PasswordBanner from './components/PasswordBanner.vue'
+import GettingStartedDialog from './components/GettingStartedDialog.vue'
 import ToastHost from './components/ToastHost.vue'
 
 // Last-resort boundary: a view that throws while rendering shows this instead of a blank page.
@@ -48,5 +49,6 @@ const shell = computed(() => ready.value && !BARE.has(route.path))
       </footer>
     </div>
   </div>
+  <GettingStartedDialog />
   <ToastHost />
 </template>

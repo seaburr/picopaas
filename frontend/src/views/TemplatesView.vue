@@ -74,7 +74,6 @@ onMounted(async () => {
       <RouterLink :to="target ? projectApps(target.id) : projects.appsHome" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>Templates
     </nav>
     <h1 class="page-title">Templates</h1>
-    <p v-if="target" class="help">New apps from a template go in <strong class="font-medium text-zinc-200">{{ projectLabel(target) }}</strong>.</p>
     <p class="help mb-3 max-w-3xl">Pick a ready-made app. "Use this template" opens the new-app form prefilled with add-ons, environment variables, health check and volume, and you can change anything before creating. Secrets are listed but not generated: you set their values.</p>
 
     <p v-if="offNotes.length" class="alert-warn mb-3 max-w-3xl">Off on this instance: {{ offNotes.join(', ') }}. Templates that need them are marked below; templates with an optional volume deploy without it, and data on scratch disk is lost on restart.</p>

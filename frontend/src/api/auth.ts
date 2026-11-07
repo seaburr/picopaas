@@ -31,3 +31,7 @@ export const setTheme = (theme: 'dark' | 'light') =>
 // PATCH /auth/me: 422 "Unknown timezone" on bad input. null = browser default.
 export const setTimezone = (timezone: string | null) =>
   apiFetch<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ timezone }) })
+
+// PATCH /auth/me {onboarding_dismissed: true}: stop showing the Getting started dialog.
+export const dismissOnboarding = () =>
+  apiFetch<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ onboarding_dismissed: true }) })

@@ -8,6 +8,7 @@ import { applyTheme, type Theme } from '../utils/theme'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
+import { useOnboarding } from '../composables/useOnboarding'
 import { fullDate } from '../utils/format'
 import { effectiveZone, listZones } from '../utils/tz'
 
@@ -68,6 +69,7 @@ function onThemeKey(e: KeyboardEvent) {
 }
 
 const auth = useAuthStore()
+const onboarding = useOnboarding()
 const toast = useToastStore()
 const projects = useProjectsStore()
 onMounted(() => { void projects.load() })
@@ -112,6 +114,8 @@ async function onSubmit() {
           <dd class="mono text-white">{{ auth.user?.app_limit_effective ?? auth.user?.app_limit }}</dd>
           <dt class="text-zinc-400">Joined</dt>
           <dd class="mono text-white">{{ auth.user ? fullDate(auth.user.created_at) : '' }}</dd>
+          <dt class="text-zinc-400">Getting started</dt>
+          <dd><button type="button" class="row-act" @click="onboarding.show()">Show getting started</button></dd>
           <dt id="theme-label" class="text-zinc-400">Theme</dt>
           <dd class="min-w-0">
             <div role="radiogroup" aria-labelledby="theme-label" class="inline-flex rounded-md border border-zinc-500 p-0.5">
