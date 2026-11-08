@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [scm-security] START: committing and pushing UI spacing + landing page (Chas approved); pushed without separate security review (CSS/markup only, no new scripts or external resources).
+- 2026-11-08 [manager] DONE: landing page per Chas: hero text centered (header kept logo-left, links-right), footer centered, hero "Log in" removed (header has it), third path card "Start from a template" (chips moved up from their own section) mirroring the in-app chooser (image | template | Kaisen), hero/meta copy mention templates, Quick start links #0-getting-started. Own Playwright shots 1440/390, no overflow. Also AppsListView Created cell pr-4! (.tbl td padding beat the utility). Committed 125f599, 3414d92.
+- 2026-11-08 [ui-ux-designer] DONE: UI decompression (SLIGHT, +2-4px), frontend/src only (125f599): new tokens --row-py/--alert-py/--field-gap in style.css; section/table/field/sidebar/line-height rhythm. typecheck, lint, check:layout, build green; full e2e 42/42. Before/after + compare-*.png in scratchpad decompress/.
+- 2026-11-08 [ui-ux-designer] START: UI decompression (slightly more vertical spacing).
 - 2026-11-08 [scm-security] START: committing and pushing the sensitive-path edge block extension (5d2f1c6 + docs); K132 LOW security-reviewed and accepted, Chas approved.
 - 2026-11-08 [infra-ops] DONE: sensitive-path block extended (Chas approved): new `extra` fragments in scripts/sensitive_paths/rules.yaml, regenerated deploy/error-pages/sensitive-paths.yaml, tests/test_sensitive_paths.py (174 pass, ruff clean, kubeconform valid, Go regexp cross-check 0 mismatches), OPERATIONS/USER_GUIDE/landing copy. Cost delta $0. NOT applied by infra-ops: deploy.yml applies on push. Rollback: revert rules.yaml + build.py --write. Changed expectations: /foo.env and /.github/... are now blocked.
 - 2026-11-08 [infra-ops] START: extend sensitive-path edge block.
