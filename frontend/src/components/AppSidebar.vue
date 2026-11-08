@@ -10,7 +10,7 @@ import { useProjectsStore } from '../stores/projects'
 import { useSidebarStore } from '../stores/sidebar'
 import type { Project } from '../types'
 import { projectApps, projectKaisen, projectNewApp } from '../utils/paths'
-import KaisenTag from './KaisenTag.vue'
+import SideAppName from './SideAppName.vue'
 import SideLink from './SideLink.vue'
 
 const logo = `${import.meta.env.BASE_URL}icon-64.png`
@@ -207,9 +207,6 @@ const projectName = (p: Project) => p.name
 const inProject = (p: Project) => pathProject.value?.pid === p.id || routeAppProject.value === p.id || routeBuildProject.value === p.id
 const appsCur = (p: Project) => path.value === projectApps(p.id) || path.value === projectNewApp(p.id)
 const kaisenCur = (p: Project) => pathProject.value?.pid === p.id && pathProject.value.area === 'kaisen' ? true : routeBuildProject.value === p.id
-// Kaisen tag beside an app name in the tree only when the name still fits at the sidebar width (232px, three levels deep).
-const TAG_FITS = 9
-const tagFits = (name: string) => name.length <= TAG_FITS
 
 // ---- phone menu ----
 const menuOpen = ref(false)
@@ -306,14 +303,14 @@ const DOCS = [
                           <li v-for="a in appsFor(p)" :key="a.id">
                             <details v-if="a.id === routeAppId" class="disc" :open="isOpen(`a:${a.id}`)" @toggle="onToggle(`a:${a.id}`, $event)">
                               <summary>
-                                <SideLink :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
+                                <SideLink :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><SideAppName :name="a.name" :kaisen="!!a.kaisen_build_id" /></SideLink>
                               </summary>
                               <ul>
                                 <li><SideLink :to="`/apps/${a.id}`" :cur="path === `/apps/${a.id}`">Health</SideLink></li>
                                 <li><SideLink :to="`/apps/${a.id}/edit`" :cur="path === `/apps/${a.id}/edit`">Settings</SideLink></li>
                               </ul>
                             </details>
-                            <SideLink v-else :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
+                            <SideLink v-else :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><SideAppName :name="a.name" :kaisen="!!a.kaisen_build_id" /></SideLink>
                           </li>
                         </ul>
                       </details>

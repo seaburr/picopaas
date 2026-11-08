@@ -524,6 +524,7 @@ select.input {
   .tree.adm { margin-top: 16px }
   .tree .lbl { padding: 3px 6px; color: var(--mut); font-size: 13px }
   .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; color: var(--mut); font-weight: 400 }
+  .tree .ktag { flex: none }
   .tree .sub-note { margin: 0 0 0 14px; padding: 3px 6px; color: var(--mut); font-size: 13px }
   .tree .sub-note button { text-decoration: underline; color: inherit; cursor: pointer }
   .side-foot { margin-top: auto; padding: 16px 6px 2px; color: var(--mut); display: flex; flex-direction: column; gap: 2px }
