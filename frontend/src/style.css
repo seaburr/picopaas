@@ -25,6 +25,10 @@
   --warn: #e0b040;
   --err: #f47d7a;
   --off: #a0a5ac;
+  /* Vertical rhythm (2026-11 decompression, +2-4px over the first redesign). Change these, not per-view classes. */
+  --row-py: 0.3125rem; /* table cell padding top/bottom (was 4px) */
+  --alert-py: 0.5625rem; /* alert box padding top/bottom (was 8px) */
+  --field-gap: 1.25rem; /* between form fields (was 16px) */
 }
 :root[data-theme='light'] {
   color-scheme: light;
@@ -47,11 +51,11 @@
   /* Type scale (desktop): body/text-sm 14px, labels/meta/text-xs 13px, text-base 15px. Below 760px every step is +1px
      (see the :root override after this block). */
   --text-xs: 0.8125rem;
-  --text-xs--line-height: 1.4;
+  --text-xs--line-height: 1.45;
   --text-sm: 0.875rem;
-  --text-sm--line-height: 1.45;
+  --text-sm--line-height: 1.5;
   --text-base: 0.9375rem;
-  --text-base--line-height: 1.45;
+  --text-base--line-height: 1.5;
   --text-lg: 1.1875rem;
   --text-lg--line-height: 1.35;
 
@@ -173,7 +177,7 @@
    width with a max-w-* on an inner element, never on <main>. Only the small centered sign-in/status pages use
    page-narrow. Enforced by scripts/check-page-width.mjs (npm run check:layout, CI). */
 @utility page-main {
-  @apply w-full px-4 py-3 min-[760px]:px-5;
+  @apply w-full px-4 py-4 min-[760px]:px-5;
 }
 @utility page-narrow {
   @apply mx-auto max-w-md px-4;
@@ -258,15 +262,15 @@ select.input {
 }
 
 @utility label {
-  @apply mb-1 block text-xs font-medium text-zinc-200;
+  @apply mb-1.5 block text-xs font-medium text-zinc-200;
 }
 
 @utility help {
-  @apply mt-1 text-xs text-zinc-400;
+  @apply mt-1.5 text-xs text-zinc-400;
 }
 
 @utility field-error {
-  @apply mt-1 text-xs text-danger-light;
+  @apply mt-1.5 text-xs text-danger-light;
 }
 
 @utility check {
@@ -299,7 +303,7 @@ select.input {
 
 @utility sec-pad {
   /* Vertical padding only (sections align to the page edge, not inset). */
-  @apply pt-2 pb-4;
+  @apply pt-3 pb-5;
 }
 
 @layer components {
@@ -308,7 +312,7 @@ select.input {
      The heading, whatever its level, is coloured --err automatically; put the rows (text + .btn-danger) below it.
      State colour only: 1px --err border, 6px radius, no fill. */
   .sec-danger {
-    margin-top: 1.5rem;
+    margin-top: 1.75rem;
     padding: 0.75rem 0.875rem 0.875rem;
     border: 1px solid var(--err);
     border-radius: 6px;
@@ -317,23 +321,23 @@ select.input {
 }
 
 @utility alert-error {
-  @apply rounded-md border px-3 py-2 text-sm;
+  @apply rounded-md border px-3 py-(--alert-py) text-sm;
   @apply border-danger text-danger-light;
 }
 
 @utility alert-warn {
-  @apply rounded-md border px-3 py-2 text-sm;
+  @apply rounded-md border px-3 py-(--alert-py) text-sm;
   @apply border-amber-500 text-amber-300;
 }
 
 @utility alert-info {
   /* Neutral: information is not a state. */
-  @apply rounded-md border px-3 py-2 text-sm;
+  @apply rounded-md border px-3 py-(--alert-py) text-sm;
   @apply border-pico-edge bg-pico-card text-white;
 }
 
 @utility alert-success {
-  @apply rounded-md border px-3 py-2 text-sm;
+  @apply rounded-md border px-3 py-(--alert-py) text-sm;
   @apply border-emerald-500 text-emerald-300;
 }
 
@@ -396,10 +400,10 @@ select.input {
    */
   @apply w-full table-fixed border-collapse text-sm;
   & th {
-    @apply table-th border-b border-pico-border px-2.5 py-1 align-middle whitespace-nowrap;
+    @apply table-th border-b border-pico-border px-2.5 py-(--row-py) align-middle whitespace-nowrap;
   }
   & td {
-    @apply border-b border-pico-border px-2.5 py-1 align-middle;
+    @apply border-b border-pico-border px-2.5 py-(--row-py) align-middle;
   }
   /* First and last cells keep the full cell padding so text (and the last character of a row action) never touches the
      edge of the table or a scroll box. */
@@ -419,7 +423,7 @@ select.input {
   @media (max-width: 767px) {
     &, & tbody, & tr, & td { display: block; width: 100%; }
     & colgroup, & thead { display: none; }
-    & tr { border-bottom: 1px solid var(--line); padding: 0.5rem 0; }
+    & tr { border-bottom: 1px solid var(--line); padding: 0.625rem 0; }
     & td { border: 0; padding: 0.125rem 0.625rem; }
     & .row-acts { justify-content: flex-start; }
   }
@@ -427,7 +431,7 @@ select.input {
 
 @utility row-pad {
   /* Grid-row lists (stacked below md): header and rows use the same fixed template via the *-cols classes. */
-  @apply px-2.5 py-1;
+  @apply px-2.5 py-(--row-py);
 }
 
 /* State markers. Colour is never the only signal: dots differ by shape (ok solid circle, warn/off hollow circle, err
@@ -464,7 +468,7 @@ select.input {
     position: relative;
     display: flex;
     align-items: center;
-    min-height: 23px;
+    min-height: 25px;
     padding-left: 14px;
     list-style: none;
     cursor: pointer;
@@ -504,7 +508,7 @@ select.input {
   .side a { text-decoration: none; color: inherit }
   .tree, .tree ul { list-style: none; margin: 0; padding: 0 }
   .tree ul { margin-left: 11px; padding-left: 6px; border-left: 1px solid var(--line) }
-  .tree a { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px }
+  .tree a { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 4px }
   .tree a:hover { background: var(--raise); text-decoration: none }
   .tree a.cur { background: var(--raise); font-weight: 600 }
   .tree .n { margin-left: auto; color: var(--mut) }
@@ -512,10 +516,10 @@ select.input {
   .tree li > a { margin-left: 14px }
   .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
   .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
-  .tree.adm { margin-top: 14px }
-  .tree .lbl { padding: 2px 6px; color: var(--mut); font-size: 13px }
+  .tree.adm { margin-top: 16px }
+  .tree .lbl { padding: 3px 6px; color: var(--mut); font-size: 13px }
   .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; color: var(--mut); font-weight: 400 }
-  .tree .sub-note { margin: 0 0 0 14px; padding: 2px 6px; color: var(--mut); font-size: 13px }
+  .tree .sub-note { margin: 0 0 0 14px; padding: 3px 6px; color: var(--mut); font-size: 13px }
   .tree .sub-note button { text-decoration: underline; color: inherit; cursor: pointer }
   .side-foot { margin-top: auto; padding: 16px 6px 2px; color: var(--mut); display: flex; flex-direction: column; gap: 2px }
   .side-foot .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
@@ -595,7 +599,7 @@ select.input {
   body {
     @apply bg-pico-bg text-white font-sans antialiased;
     font-size: var(--text-sm);
-    line-height: 1.45;
+    line-height: 1.5;
     /* Belt-and-suspenders against stray page-level horizontal overflow on small screens
        (e.g. a non-shrinking flex child). `clip` doesn't create a scroll container, so
        inner overflow-x-auto tables and position: sticky keep working. */

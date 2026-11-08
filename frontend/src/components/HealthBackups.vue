@@ -75,8 +75,8 @@ const label = (f: BackupFailure) => f.app_name ?? `app ${f.app_id}`
 </script>
 
 <template>
-  <section id="sec-backups" class="sec scroll-mt-4 pt-2" aria-label="Backups">
-    <h2 class="section-title mb-1">Backups</h2>
+  <section id="sec-backups" class="sec scroll-mt-4 pt-3" aria-label="Backups">
+    <h2 class="section-title mb-2">Backups</h2>
     <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
     <p v-else-if="!data" class="text-sm text-zinc-400" role="status">Loading backup health…</p>
     <div v-else class="space-y-4">

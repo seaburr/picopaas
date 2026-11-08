@@ -387,7 +387,7 @@ async function doDelete() {
     <main id="main" tabindex="-1" class="page-main">
       <div class="sr-only" role="status">{{ announce }}</div>
 
-      <div v-if="notFound" class="sec pt-3">
+      <div v-if="notFound" class="sec pt-4">
         <h1 class="page-title">Build not found</h1>
         <p class="mt-1 text-sm text-zinc-300">This build doesn't exist or was deleted.</p>
         <RouterLink :to="projects.current ? projectKaisen(projects.current.id) : '/kaisen'" class="btn-secondary mt-4">Back to Kaisen</RouterLink>

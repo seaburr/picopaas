@@ -56,7 +56,7 @@ const onSchedule = (e: Event) => save(info.value!.enabled, (e.target as HTMLSele
 
 <template>
   <section v-if="visible && info" id="backups" class="sec sec-pad scroll-mt-4 min-w-0" aria-labelledby="h-backup-settings">
-    <h2 id="h-backup-settings" class="section-title mb-1">Backups</h2>
+    <h2 id="h-backup-settings" class="section-title mb-2">Backups</h2>
     <p class="help mt-0!">Saved as soon as you change it. Backups are encrypted and stored outside the cluster.</p>
     <p v-if="suspended" class="help">This app is suspended, so backup settings can't be changed.</p>
     <div class="mt-3 space-y-3">

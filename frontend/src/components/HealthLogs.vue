@@ -87,8 +87,8 @@ async function download() {
 </script>
 
 <template>
-  <section id="sec-logs" class="sec scroll-mt-4 pt-2" aria-label="Platform logs">
-    <h2 class="section-title mb-1">Platform logs</h2>
+  <section id="sec-logs" class="sec scroll-mt-4 pt-3" aria-label="Platform logs">
+    <h2 class="section-title mb-2">Platform logs</h2>
     <div v-if="podsError" role="alert" class="alert-error">{{ podsError }}</div>
     <div v-else class="min-w-0">
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">

@@ -510,9 +510,9 @@ async function onSubmit() {
       <div>
       <div class="min-w-0">
       <h2 v-if="isEdit" class="section-title mb-2">Deployment <span class="text-sm font-normal text-zinc-400">(managed by your YAML spec)</span></h2>
-      <form class="sec sec-pad space-y-4" novalidate @submit.prevent="onSubmit">
+      <form class="sec sec-pad space-y-(--field-gap)" novalidate @submit.prevent="onSubmit">
         <div v-if="appSuspended && !projSuspended" class="alert-warn">Suspended by an administrator. This app can't be edited. Contact the administrator to restore it.</div>
-        <fieldset :disabled="suspended" :class="'space-y-4'">
+        <fieldset :disabled="suspended" :class="'space-y-(--field-gap)'">
           <div>
             <label for="f-name" class="label">Name</label>
             <input

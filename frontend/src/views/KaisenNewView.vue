@@ -207,7 +207,7 @@ async function startWithout() {
         <template v-else>Kaisen isn't set up in {{ projName }} yet. Ask an owner to add an Anthropic API key.</template>
       </p>
 
-      <form class="sec space-y-4 pt-3 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
+      <form class="sec space-y-4 pt-4 [&_.input]:max-w-3xl" novalidate @submit.prevent="submit">
         <div>
           <label for="kb-name" class="label">Name</label>
           <input id="kb-name" v-model="name" class="input" autocomplete="off" maxlength="60" :aria-invalid="nameError ? 'true' : undefined" aria-describedby="kb-name-help" placeholder="Todo list" />

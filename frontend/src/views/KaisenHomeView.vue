@@ -138,7 +138,7 @@ function askDelete(b: KaisenBuild) {
         </li>
       </ul>
 
-      <div v-else-if="!error && store.builds.length === 0" class="sec grid gap-x-12 gap-y-6 pt-3 lg:grid-cols-2">
+      <div v-else-if="!error && store.builds.length === 0" class="sec grid gap-x-12 gap-y-6 pt-4 lg:grid-cols-2">
         <div>
           <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
           <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in {{ projName }}. You can download the code or push it to GitHub.</p>
@@ -159,7 +159,7 @@ function askDelete(b: KaisenBuild) {
         </div>
         <div>
           <h2 class="section-title">How it works</h2>
-          <table class="tbl mt-1">
+          <table class="tbl mt-2">
             <tbody>
               <tr><th scope="row" class="w-28">1. Describe</th><td class="!whitespace-normal">Say what the app should do. Kaisen asks if it needs to know something.</td></tr>
               <tr><th scope="row">2. Build</th><td class="!whitespace-normal">It writes the code, runs it and fixes what fails. Your replies steer it.</td></tr>

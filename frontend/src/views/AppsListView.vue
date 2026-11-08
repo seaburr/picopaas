@@ -229,7 +229,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
                 <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.db)" :title="app.want_db ? undefined : 'No database'">{{ usageText(app.quota?.db, app.want_db) }}</td>
                 <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.storage)" :title="app.want_storage ? undefined : 'No bucket'">{{ usageText(app.quota?.storage, app.want_storage) }}</td>
                 <td class="min-w-0"><HostLink compact :hostname="primaryHost(app)" /></td>
-                <td class="mono whitespace-nowrap pr-4" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</td>
+                <td class="mono whitespace-nowrap pr-4!" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</td>
                 <td>
                   <div class="row-acts [&>*]:ml-0! flex-nowrap gap-x-2.5 whitespace-nowrap">
                     <RouterLink :to="`/apps/${app.id}`" class="row-act" :aria-label="`View health of ${app.name}`">Health</RouterLink>

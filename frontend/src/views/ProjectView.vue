@@ -212,13 +212,13 @@ async function confirmDelete() {
 
 <template>
   <div>
-    <main id="main" tabindex="-1" class="page-main space-y-3">
+    <main id="main" tabindex="-1" class="page-main space-y-4">
       <RouterLink to="/projects" class="link inline-block text-sm">Back to Projects</RouterLink>
 
       <!-- create -->
       <template v-if="pid === null">
         <h1 class="page-title">New project</h1>
-        <form class="sec max-w-3xl space-y-3 pt-3" @submit.prevent="onCreate">
+        <form class="sec max-w-3xl space-y-3 pt-4" @submit.prevent="onCreate">
           <div>
             <label for="p-name" class="label">Name</label>
             <input id="p-name" v-model="newName" class="input" maxlength="80" required :aria-invalid="!!createError" autocomplete="off" />
@@ -234,7 +234,7 @@ async function confirmDelete() {
 
       <!-- detail -->
       <template v-else>
-        <div v-if="loading" class="sec pt-3" aria-busy="true" aria-label="Loading project">
+        <div v-if="loading" class="sec pt-4" aria-busy="true" aria-label="Loading project">
           <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
         </div>
         <AppNotFound v-else-if="gone" />
@@ -253,7 +253,7 @@ async function confirmDelete() {
           </p>
           <p v-if="memberError" role="alert" class="alert-error">{{ memberError }}</p>
 
-          <form v-if="shared && isOwner" class="sec max-w-3xl pt-3" @submit.prevent="onRename">
+          <form v-if="shared && isOwner" class="sec max-w-3xl pt-4" @submit.prevent="onRename">
             <label for="p-rename" class="label">Name</label>
             <div class="flex gap-2">
               <input id="p-rename" v-model="nameDraft" class="input" maxlength="80" required autocomplete="off" :disabled="susp" :aria-invalid="!!renameError" />
@@ -262,7 +262,7 @@ async function confirmDelete() {
             <p v-if="renameError" role="alert" class="field-error mt-1">{{ renameError }}</p>
           </form>
 
-          <section v-if="shared" class="sec pt-3" aria-labelledby="h-members">
+          <section v-if="shared" class="sec pt-4" aria-labelledby="h-members">
             <h2 id="h-members" class="section-title">Members</h2>
             <p v-if="members.length === 0" class="meta mt-1">No members.</p>
             <template v-else>
@@ -320,7 +320,7 @@ async function confirmDelete() {
             </template>
           </section>
 
-          <section v-if="shared && isOwner" id="invite" class="sec scroll-mt-4 pt-3" aria-labelledby="h-invite">
+          <section v-if="shared && isOwner" id="invite" class="sec scroll-mt-4 pt-4" aria-labelledby="h-invite">
             <h2 id="h-invite" class="section-title">Invite people to this project</h2>
             <p class="help max-w-3xl">No email is sent. Create an invite and share the link. It works once and expires in 7 days. Leave the email blank to let anyone with an approved account use it.</p>
             <form class="mt-2 flex max-w-3xl flex-col gap-2 sm:flex-row sm:items-end" @submit.prevent="onInvite">

@@ -115,7 +115,7 @@ const scopeLabel = (s?: ApiKeyScope) => (s === 'read' ? 'Read-only' : 'Full')
 </script>
 
 <template>
-  <section id="api-keys" class="sec scroll-mt-4 pt-3" aria-labelledby="keys-title">
+  <section id="api-keys" class="sec scroll-mt-4 pt-4" aria-labelledby="keys-title">
     <h2 id="keys-title" class="section-title">API keys</h2>
     <p class="mt-1 max-w-3xl text-sm text-zinc-300">
       API keys let the <RouterLink to="/guide/cli" class="link">picopaas CLI</RouterLink> and scripts deploy for

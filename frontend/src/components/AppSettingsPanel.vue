@@ -229,7 +229,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
   <div>
         <div class="space-y-3">
           <section class="sec sec-pad" aria-labelledby="h-domain">
-            <h2 id="h-domain" class="section-title mb-1">Custom domain</h2>
+            <h2 id="h-domain" class="section-title mb-2">Custom domain</h2>
             <p class="help">
               Serve this app on your own domain in addition to <span class="mono">{{ app.hostname }}</span>. We issue a
               free TLS certificate automatically once DNS is verified.
@@ -296,7 +296,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
           </section>
 
           <section v-if="isAdmin" class="sec sec-pad" aria-labelledby="h-sub">
-            <h2 id="h-sub" class="section-title mb-1">Short address <span class="meta ml-1 font-normal">Admin only</span></h2>
+            <h2 id="h-sub" class="section-title mb-2">Short address <span class="meta ml-1 font-normal">Admin only</span></h2>
             <p class="help">
               Also serve this app at a short address on the platform domain, covered by the platform certificate.
             </p>
@@ -314,7 +314,7 @@ const suspTitle = computed(() => (props.projectSuspended ? 'Project is suspended
           </section>
 
           <section v-if="canMove" class="sec sec-pad" aria-labelledby="h-move">
-            <h2 id="h-move" class="section-title mb-1">Project</h2>
+            <h2 id="h-move" class="section-title mb-2">Project</h2>
             <p class="help mt-0! mb-2">Currently in {{ fromProject?.is_personal ? 'Personal' : fromProject?.name }}. Moving keeps the URL, data and credentials.</p>
             <form class="flex flex-col gap-2 sm:flex-row sm:items-center" @submit.prevent="onMove">
               <label for="move-to" class="sr-only">Move to project</label>

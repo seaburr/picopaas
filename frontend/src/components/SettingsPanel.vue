@@ -135,7 +135,7 @@ const canSave = computed(() => (g: SettingsGroup) => busy.value === null && dirt
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-4">
     <div v-if="loadError" role="alert" class="alert-error">{{ loadError }}</div>
     <p v-else-if="!loaded" class="text-sm text-zinc-400" role="status">Loading settings…</p>
     <p v-else class="help">

@@ -389,11 +389,11 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
 
     <template v-else>
       <SuspendedBanner :project="appProject" />
-      <nav class="meta mb-1" aria-label="Breadcrumb">
+      <nav class="meta mb-1.5" aria-label="Breadcrumb">
         <template v-if="appProject"><RouterLink :to="`/projects/${appProject.id}`" class="link">{{ projectLabel(appProject) }}</RouterLink><span aria-hidden="true"> / </span></template><RouterLink :to="appProject ? projectApps(appProject.id) : '/apps'" class="link">Apps</RouterLink><span aria-hidden="true"> / </span>{{ app.name }}
       </nav>
 
-      <header class="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <header class="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div class="min-w-0">
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 class="page-title mono! break-all text-lg!">{{ app.name }}</h1>
@@ -417,7 +417,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
       </header>
 
       <section class="sec sec-pad" aria-labelledby="h-status">
-        <h2 id="h-status" class="section-title mb-1 pt-2">Status</h2>
+        <h2 id="h-status" class="section-title mb-2 pt-2">Status</h2>
         <p v-if="app.status === 'running'" class="text-sm text-zinc-200">
           Running and serving traffic.
           <span v-if="uptime" class="text-zinc-400" :title="'Since ' + fullTime(new Date(now - uptime * 1000).toISOString())">Uptime <span class="mono">{{ uptimeText(uptime) }}</span>.</span>
@@ -440,7 +440,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <h2 id="h-usage" class="section-title">Resource usage</h2>
               <span v-if="metrics && !suspended" class="meta">{{ podCount }} pod{{ podCount === 1 ? '' : 's' }}, latest sample</span>
             </summary>
-            <ul class="mt-1">
+            <ul class="mt-2">
               <UsageGauge
                 v-for="m in metricRows"
                 :key="m.name"
@@ -474,9 +474,9 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <span class="grow" />
               <RouterLink :to="`/apps/${app.id}/edit`" class="meta underline max-md:hidden">Edit</RouterLink>
             </summary>
-            <table class="kv mt-1 w-full table-fixed text-sm">
+            <table class="kv mt-2 w-full table-fixed text-sm">
               <colgroup><col class="w-[38%]"><col></colgroup>
-              <tbody class="[&_td]:border-b [&_td]:border-pico-border [&_td]:py-1 [&_th]:border-b [&_th]:border-pico-border [&_th]:py-1 [&_th]:pr-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-normal [&_th]:text-zinc-400 [&_td]:wrap-break-word [&_th]:align-top [&_td]:align-top">
+              <tbody class="[&_td]:border-b [&_td]:border-pico-border [&_td]:py-(--row-py) [&_th]:border-b [&_th]:border-pico-border [&_th]:py-(--row-py) [&_th]:pr-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-normal [&_th]:text-zinc-400 [&_td]:wrap-break-word [&_th]:align-top [&_td]:align-top">
                 <tr>
                   <th scope="row">Image</th>
                   <td>
@@ -600,7 +600,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
               <h2 id="h-events" class="section-title">Recent events</h2>
               <span class="meta mono md:hidden">{{ events.length }}</span>
             </summary>
-            <table class="tbl mt-1">
+            <table class="tbl mt-2">
               <colgroup><col class="w-[34%]"><col></colgroup>
               <thead><tr><th>Time</th><th>Event</th></tr></thead>
               <tbody>
@@ -620,7 +620,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
             <h2 id="h-versions" class="section-title">Recent versions</h2>
             <span class="meta mono md:hidden">{{ versions.length }}</span>
           </summary>
-          <table class="tbl mt-1">
+          <table class="tbl mt-2">
             <colgroup><col class="w-[34%]"><col><col class="w-[28%]"></colgroup>
             <thead><tr><th>Version</th><th>Deployed</th><th class="text-right"><span class="sr-only">Action</span></th></tr></thead>
             <tbody>

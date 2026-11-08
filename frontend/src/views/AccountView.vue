@@ -100,11 +100,11 @@ async function onSubmit() {
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="page-main space-y-3">
+  <main id="main" tabindex="-1" class="page-main space-y-4">
     <h1 class="page-title">Account</h1>
 
     <div class="grid gap-x-8 gap-y-3 lg:grid-cols-2 lg:items-start">
-      <section class="sec pt-3" aria-label="Profile">
+      <section class="sec pt-4" aria-label="Profile">
         <dl class="grid grid-cols-[7rem_1fr] gap-y-2 text-sm">
           <dt class="text-zinc-400">Email</dt>
           <dd class="mono truncate text-white" :title="auth.user?.email">{{ auth.user?.email }}</dd>
@@ -148,7 +148,7 @@ async function onSubmit() {
         </dl>
       </section>
 
-      <section class="sec pt-3" aria-labelledby="pw-title">
+      <section class="sec pt-4" aria-labelledby="pw-title">
         <h2 id="pw-title" class="section-title">Change password</h2>
         <form class="mt-3 max-w-sm space-y-3" @submit.prevent="onSubmit">
           <PasswordField v-model="form.current" label="Current password" autocomplete="current-password" />
@@ -163,7 +163,7 @@ async function onSubmit() {
       </section>
     </div>
 
-    <section class="sec pt-3" aria-labelledby="proj-title">
+    <section class="sec pt-4" aria-labelledby="proj-title">
       <h2 id="proj-title" class="section-title">Projects</h2>
       <p class="help">Share apps with other people in a project. Your personal project stays private to you.</p>
       <p v-if="projects.loadError" role="alert" class="field-error mt-2">{{ projects.loadError }}</p>

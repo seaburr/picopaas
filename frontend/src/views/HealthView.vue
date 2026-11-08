@@ -173,7 +173,7 @@ function jump(id: string) {
       </div>
       <p v-else class="sr-only" role="status" aria-label="Overall status">All systems normal. Nodes ready, no failed apps, database capacity fine.</p>
 
-      <section id="sec-summary" class="sec pt-2" aria-label="Summary">
+      <section id="sec-summary" class="sec pt-3" aria-label="Summary">
         <dl class="grid grid-cols-2 gap-x-6 gap-y-3 min-[760px]:grid-cols-4 min-[1100px]:grid-cols-7">
           <div>
             <dt class="meta">Nodes</dt>
@@ -216,7 +216,7 @@ function jump(id: string) {
         <p v-if="data.workloads" class="meta mt-2">{{ data.workloads.with_db }} with database · {{ data.workloads.with_storage }} with blob storage<template v-if="data.workloads.with_volume"> · {{ data.workloads.with_volume }} with volume</template><template v-if="data.workloads.by_db_engine"> · {{ data.workloads.by_db_engine.mysql }} MySQL · {{ data.workloads.by_db_engine.postgres }} PostgreSQL</template></p>
       </section>
 
-      <section v-if="data.pending_users?.length" class="sec pt-2" aria-label="Waiting for approval">
+      <section v-if="data.pending_users?.length" class="sec pt-3" aria-label="Waiting for approval">
         <div class="mb-1 flex items-baseline justify-between gap-2">
           <h2 class="section-title">Waiting for approval</h2>
           <RouterLink to="/admin" class="link text-xs">Manage users</RouterLink>
@@ -236,8 +236,8 @@ function jump(id: string) {
         </div>
       </section>
 
-      <section id="sec-nodes" class="sec scroll-mt-4 pt-2">
-        <h2 class="section-title mb-1">Nodes</h2>
+      <section id="sec-nodes" class="sec scroll-mt-4 pt-3">
+        <h2 class="section-title mb-2">Nodes</h2>
         <div class="overflow-x-auto">
           <table class="tbl min-w-[50rem]">
             <colgroup><col /><col class="w-24" /><col class="w-52" /><col class="w-52" /><col class="w-20" /><col class="w-16" /></colgroup>
@@ -270,8 +270,8 @@ function jump(id: string) {
       </section>
 
       <div class="grid gap-x-7 gap-y-4 min-[1100px]:grid-cols-2">
-        <section id="sec-platform" class="sec scroll-mt-4 min-w-0 pt-2">
-          <h2 class="section-title mb-1">Platform components</h2>
+        <section id="sec-platform" class="sec scroll-mt-4 min-w-0 pt-3">
+          <h2 class="section-title mb-2">Platform components</h2>
           <div class="overflow-x-auto">
             <table class="tbl min-w-[40rem]">
               <colgroup><col /><col class="w-32" /><col class="w-24" /><col class="w-16" /><col class="w-20" /><col class="w-24" /></colgroup>
@@ -296,8 +296,8 @@ function jump(id: string) {
           </div>
         </section>
 
-        <section id="sec-db" class="sec scroll-mt-4 min-w-0 pt-2">
-          <h2 class="section-title mb-1">Database servers</h2>
+        <section id="sec-db" class="sec scroll-mt-4 min-w-0 pt-3">
+          <h2 class="section-title mb-2">Database servers</h2>
           <div class="overflow-x-auto">
             <table class="tbl min-w-[38rem]">
               <colgroup><col class="w-24" /><col /><col class="w-36" /><col class="w-44" /><col class="w-20" /></colgroup>
@@ -342,8 +342,8 @@ function jump(id: string) {
         </section>
       </div>
 
-      <section id="sec-apps" class="sec scroll-mt-4 pt-2">
-        <h2 class="section-title mb-1">Apps</h2>
+      <section id="sec-apps" class="sec scroll-mt-4 pt-3">
+        <h2 class="section-title mb-2">Apps</h2>
         <div class="overflow-x-auto">
           <table class="tbl min-w-[60rem]">
             <colgroup><col /><col class="w-44" /><col class="w-28" /><col class="w-20" /><col class="w-20" /><col class="w-40" /><col class="w-48" /></colgroup>
@@ -384,7 +384,7 @@ function jump(id: string) {
       <HealthBackups />
       <HealthLogs />
 
-      <section v-if="data.statistics" id="sec-statistics" class="sec scroll-mt-4 pt-2" aria-label="Lifetime statistics">
+      <section v-if="data.statistics" id="sec-statistics" class="sec scroll-mt-4 pt-3" aria-label="Lifetime statistics">
         <h2 class="section-title">Lifetime statistics</h2>
         <dl class="mt-1 flex flex-wrap gap-x-8 gap-y-1 text-sm">
           <div class="flex items-baseline gap-2"><dt class="meta">Apps ever deployed</dt><dd class="mono">{{ data.statistics.apps_ever_deployed }}</dd><span class="meta">(includes Kaisen previews)</span></div>

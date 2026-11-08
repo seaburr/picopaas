@@ -365,7 +365,7 @@ const overrideSummary = (a: AdminApp) => {
 </script>
 
 <template>
-  <main id="main" tabindex="-1" class="page-main space-y-3">
+  <main id="main" tabindex="-1" class="page-main space-y-4">
       <h1 class="page-title">Admin</h1>
 
       <div v-if="error" class="alert-error" role="alert">{{ error }}</div>
@@ -375,7 +375,7 @@ const overrideSummary = (a: AdminApp) => {
         <button type="button" class="btn-secondary btn-sm" @click="setTab('servers')">Go to database servers</button>
       </div>
 
-      <section v-if="loaded && servers.length === 0" class="sec pt-2" aria-labelledby="setup-title">
+      <section v-if="loaded && servers.length === 0" class="sec pt-3" aria-labelledby="setup-title">
         <h2 id="setup-title" class="section-title">Set up your platform</h2>
         <p class="help">Finish these so users can deploy apps with databases.</p>
         <ol class="mt-2 text-sm text-zinc-200">
@@ -425,7 +425,7 @@ const overrideSummary = (a: AdminApp) => {
 
         <!-- USERS -->
         <template v-if="tab === 'users'">
-          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="sec pt-2">
+          <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="sec pt-3">
             <h2 class="section-title text-amber-300">Waiting for approval ({{ pendingUsers.length }})</h2>
             <div class="overflow-x-auto">
               <table class="tbl min-w-[40rem]">
