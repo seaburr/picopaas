@@ -205,6 +205,11 @@ def _is_suspended_host(host: str) -> bool:
     return result
 
 
+# The 404/suspended pages shown on unknown app hosts load the logo from their own host (CSP img-src 'self'), so these
+# public icons, and nothing else from /static, are served there too.
+_PAGE_ICONS = frozenset({"/static/icon-32.png", "/static/icon-64.png", "/static/icon-180.png"})
+
+
 def _unknown_app_page(host: str = ""):
     headers = {"Cache-Control": "no-store"}
     if host and _is_suspended_host(host):
@@ -227,6 +232,10 @@ async def host_routing(request: Request, call_next):
     if host in config.LEGACY_HOSTS:
         return _to_platform(request)
     if _is_unknown_app_host(host):
+        if request.method in ("GET", "HEAD") and path in _PAGE_ICONS:
+            icon = _STATIC_DIR / path.removeprefix("/static/")
+            if icon.is_file():
+                return FileResponse(icon, headers={"Cache-Control": "public, max-age=86400"})
         return _unknown_app_page(host)
     if host == config.APEX_HOST:
         if path.startswith(("/static/", "/healthz")):

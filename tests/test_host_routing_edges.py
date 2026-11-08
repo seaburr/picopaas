@@ -210,3 +210,15 @@ def test_lifespan_starts_and_stops_scheduler_when_enabled(monkeypatch):
         assert c.get("/healthz").status_code == 200
         assert events == ["rotate", "bootstrap", "start"]  # data rotation + bootstrap happen before jobs start
     assert events[-1] == ("shutdown", False)
+
+
+def test_unknown_app_host_serves_only_the_page_icons(make_client, pages):
+    (pages / "icon-64.png").write_bytes(b"\x89PNG-not-really")
+    (pages / "app.js").write_text("secret-ish bundle")
+    host = f"nothing-here-xyz.{DOMAIN}"
+    r = get(make_client, host, "/static/icon-64.png")
+    assert r.status_code == 200 and r.content == b"\x89PNG-not-really"
+    assert get(make_client, host, "/static/app.js").status_code == 404  # other static files still get the 404 page
+    assert get(make_client, host, "/static/icon-32.png").status_code == 404  # listed but missing: still the 404 page
+    assert get(make_client, host, "/static/../404.html").status_code == 404
+    assert get(make_client, host, "/static/icon-64.png", method="post").status_code == 404
