@@ -140,9 +140,20 @@ def project_root(dest: str) -> str:
     return dest
 
 
-def download(url: str, dest: str, attempts: int = 5, sleep=time.sleep) -> None:
+DOWNLOAD_BUDGET_S = 300  # keep retrying this long: rides out a platform restart or node replacement
+DOWNLOAD_MAX_DELAY_S = 15
+
+
+def download(url: str, dest: str, budget_s: float = DOWNLOAD_BUDGET_S, sleep=time.sleep, clock=time.monotonic) -> None:
+    # The bundle comes from the platform itself, so a platform deploy or a node replacement makes it briefly
+    # unreachable. Retry for a time budget, not a fixed count: a few seconds of retries would exit the container
+    # (a "crashed" restart alert) for what is only maintenance. Kaisen apps run without a liveness probe, so the
+    # wait never gets the container killed; it just stays not-ready.
+    start = clock()
     delay = 2.0
-    for n in range(1, attempts + 1):
+    n = 0
+    while True:
+        n += 1
         try:
             with urllib.request.urlopen(url, timeout=30) as r, open(dest, "wb") as out:
                 size = 0
@@ -158,11 +169,12 @@ def download(url: str, dest: str, attempts: int = 5, sleep=time.sleep) -> None:
         except BootError:
             raise
         except Exception as e:  # network errors, HTTP errors
-            log(f"download attempt {n}/{attempts} failed: {type(e).__name__}: {e}")
-            if n == attempts:
-                raise BootError("could not download the bundle (is KAISEN_BUNDLE_URL reachable from this app?)")
+            waited = clock() - start
+            log(f"download attempt {n} failed after {waited:.0f}s of {budget_s:.0f}s: {type(e).__name__}: {e}")
+            if waited + delay > budget_s:
+                raise BootError(f"could not download the bundle in {budget_s:.0f}s (is KAISEN_BUNDLE_URL reachable from this app?)")
             sleep(delay)
-            delay = min(delay * 2, 20)
+            delay = min(delay * 2, DOWNLOAD_MAX_DELAY_S)
 
 
 def run(cmd: list[str] | str, cwd: str, env: dict, shell: bool = False, timeout: int = 900) -> None:
