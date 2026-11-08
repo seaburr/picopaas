@@ -109,6 +109,13 @@ const composerLocked = computed(() => {
   if (active.value) return 'Kaisen is working. You can send more once this run finishes.'
   return ''
 })
+// What to say when someone tries to attach while the composer is locked.
+const attachLocked = computed(() => {
+  if (projSuspended.value) return SUSPENDED_TITLE
+  if (!canRun.value) return 'You can not attach files to this build.'
+  if (active.value) return 'You can\'t attach files while Kaisen is working. Attach them once this run finishes.'
+  return ''
+})
 // Why "send a change" actions (Fix it, suggestions) are off.
 const feedbackReason = computed(() => composerLocked.value || (hasQuestion.value ? 'Answer Kaisen\'s question first.' : ''))
 const firstRun = computed(() => !!build.value && build.value.runs.length === 0 && build.value.status === 'queued')
@@ -442,7 +449,7 @@ async function doDelete() {
             <h2 id="h-convo" class="sr-only">Conversation</h2>
             <BuildConversation
               v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
-              :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="composerLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
+              :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="composerLocked" :locked-attach="attachLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
               :can-run="canRun" :active-run="activeRun" :first-run="firstRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" :answer-busy="answerBusy"
               @submit="(p) => sendChange(p.text)" @answer="answer" @dismiss="dismiss" @interrupt="interrupt" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
             />

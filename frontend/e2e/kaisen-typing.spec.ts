@@ -108,3 +108,12 @@ test('first deploy says Starting; running and not updating says Deployed', async
   await expect(page.getByText('Deployed', { exact: true })).toBeVisible()
   await expect(page.getByText('Starting your app')).toHaveCount(0)
 })
+
+test('attaching while Kaisen works says why, not a generic "off"', async ({ page }) => {
+  await login(page)
+  await stub(page, active())
+  await page.goto(`/kaisen/${ID}`)
+  await page.getByRole('button', { name: 'Attach' }).click({ force: true })
+  await expect(page.getByRole('alert')).toHaveText("You can't attach files while Kaisen is working. Attach them once this run finishes.")
+  await expect(page.getByText('Attaching is off right now.')).toHaveCount(0)
+})

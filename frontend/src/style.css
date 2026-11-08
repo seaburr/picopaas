@@ -405,6 +405,11 @@ select.input {
   & td {
     @apply border-b border-pico-border px-2.5 py-(--row-py) align-middle;
   }
+  /* No closing hairline under the last row: the next section's top rule (or the content after it) ends the table, so a
+     table at the end of a section never shows a double line. */
+  & tbody tr:last-child td {
+    border-bottom-width: 0;
+  }
   /* First and last cells keep the full cell padding so text (and the last character of a row action) never touches the
      edge of the table or a scroll box. */
   & th.text-right {

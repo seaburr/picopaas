@@ -19,6 +19,7 @@ const props = defineProps<{
   submitLabel?: string
   busy?: boolean
   locked?: string // non-empty: the whole composer is off (reason shown)
+  lockedAttachReason?: string // what to say when someone tries to attach while locked
   canAttach: boolean // the user may change files right now (member, no active run)
   hint?: string
   rows?: number
@@ -51,9 +52,10 @@ const a = useAttachments({ buildId: () => props.buildId, enabled: () => attachOn
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const blockedMsg = ref('')
+const offMsg = () => attachOff.value || (props.locked ? props.lockedAttachReason || 'You can\'t attach files right now.' : '')
 function pick() {
   if (!attachOn.value) {
-    blockedMsg.value = attachOff.value
+    blockedMsg.value = offMsg()
     return
   }
   fileInput.value?.click()
@@ -61,7 +63,7 @@ function pick() {
 function take(files: File[]) {
   blockedMsg.value = ''
   if (!files.length) return
-  if (a.addFiles(files) === 'blocked') blockedMsg.value = attachOff.value || 'Attaching is off right now.'
+  if (a.addFiles(files) === 'blocked') blockedMsg.value = offMsg() || 'You can\'t attach files right now.'
 }
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -145,7 +147,7 @@ const offHelp = computed(() => (props.summary && !props.summary.uploads_enabled 
     <p v-if="locked" class="help mt-1">{{ locked }}</p>
     <div class="mt-2 flex flex-wrap items-center gap-2">
       <input ref="fileInput" type="file" multiple class="sr-only" tabindex="-1" aria-hidden="true" :accept="ATTACH_ACCEPT" @change="onInput" />
-      <button type="button" class="btn-secondary btn-sm" :aria-disabled="!attachOn || undefined" :title="attachOff || 'Attach files'" :class="attachOn ? '' : 'opacity-50'" @click="pick">
+      <button type="button" class="btn-secondary btn-sm" :aria-disabled="!attachOn || undefined" :title="offMsg() || 'Attach files'" :class="attachOn ? '' : 'opacity-50'" @click="pick">
         Attach
       </button>
       <button v-if="summary && buildId !== null && summary.max_files !== undefined" type="button" class="btn-secondary btn-sm" @click="emit('open-files')">

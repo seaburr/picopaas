@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [scm-security] DONE: Chas fixes pushed: edge logo allowlist (3 icon files, host routing, reviewed by manager), attach-off message says why, no double divider under section-ending tables; SHAs and CI/image/deploy ids in the follow-up line.
 - 2026-11-08 [scm-security] DONE: resolves the BLOCKED line below (CI 42441341270): list_apps now selectinloads App.image_history, query count flat again; fix commit follows (SHA/run ids in the next line).
 - 2026-11-08 [scm-security] BLOCKED: CI 42441341270 (0fcee57) backend-tests failed: tests/test_db_scaling.py::test_list_apps_query_count_does_not_grow AssertionError (7, 10), list-apps query count now grows with N apps (likely the new app.updating/image_history access in AppOut, lazy load per app); 3759 passed. Owner: backend-dev. Image 42441341169 green; deploy 42441400033 skipped Roll out (CI not green). Not fixed by scm.
 - 2026-11-08 [scm-security] DONE: Jessi feedback A pushed: f560a6b (api), fce00b2 (ui), 817ffc2 (e2e), docs commit next; gitleaks clean per commit; security-reviewer K133 no issues. CI/image/deploy run ids in the follow-up line.

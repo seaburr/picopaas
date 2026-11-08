@@ -21,6 +21,7 @@ const props = defineProps<{
   canResume: boolean
   resuming: boolean
   locked: string
+  lockedAttach?: string // why attaching is off while the composer is locked
   canAttach: boolean
   busy: boolean
   hint: string
@@ -264,7 +265,7 @@ watch(() => props.build.id, () => stickNow())
       <AttachComposer
         v-model="text" :build-id="build.id" :summary="summary" :label="answering ? 'Your answer to Kaisen' : 'Tell Kaisen what to change'"
         :placeholder="answering ? 'Answer Kaisen\'s question.' : 'Tell Kaisen what to change. Drop, paste or attach files.'"
-        :submit-label="answering ? 'Send answer' : 'Send to Kaisen'" :busy="answerBusy != null || (!answering && busy)" :locked="locked" :can-attach="canAttach && !answering"
+        :submit-label="answering ? 'Send answer' : 'Send to Kaisen'" :busy="answerBusy != null || (!answering && busy)" :locked="locked" :locked-attach-reason="lockedAttach" :can-attach="canAttach && !answering"
         :attach-off-reason="answering ? 'Files can\'t go with an answer. Attach them to your next message.' : undefined" :unsent="unsent" :hint="answering ? '' : (hint || 'Kaisen edits the code and redeploys. About a minute.')"
         :rows="2" autogrow :max-rows="7" key-hint
         @submit="onSubmit" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
