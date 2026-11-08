@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [main] DONE: Kaisen runtime bundle download retries for 5 min (was ~30s), so a node replacement/platform deploy no longer gives Kaisen apps a "crashed, exit 1" restart (seen on apps 292/293 at 04:41). Needs runtime image publish + re-pin (bootstrap.yml). Chas approved 2026-11-08.
+- 2026-11-08 [release-blogger] DONE: devlog posted (published): release-polish-pass-getting-started-kaisen-chat-sidebar (round 2b, Kaisen chat polish, sidebar, edge path block, hotfixes). Chas asked.
 - 2026-11-08 [scm-security] DONE: Sidebar: tree indent compressed (18px → 11px per level, guide line under the parent triangle); app names get ~22px more. Phone menu unchanged. Chas 2026-11-08.
 - 2026-11-08 [scm-security] DONE: Sidebar: Kaisen apps with long names keep their mark (compact K tag when the full tag would clip the name; measured, not counted). Chas 2026-11-08.
 - 2026-11-08 [scm-security] DONE: Chas fixes pushed: edge logo allowlist (3 icon files, host routing, reviewed by manager), attach-off message says why, no double divider under section-ending tables; SHAs and CI/image/deploy ids in the follow-up line.
