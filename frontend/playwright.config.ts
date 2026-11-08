@@ -4,9 +4,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 // Smoke test against the real app: FastAPI in dev mode (SQLite, reconciler off) serving the built frontend
 // from ../static. Run `npm run build` first. Python: E2E_PYTHON, else ../.venv, else `python` (CI).
-const PORT = 8765
+const PORT = Number(process.env.E2E_PORT ?? 8765)
 const python = process.env.E2E_PYTHON ?? (existsSync('../.venv/bin/python') ? resolve('../.venv/bin/python') : 'python')
-const tmpDir = resolve('e2e/.tmp')
+const tmpDir = resolve(process.env.E2E_PORT ? `e2e/.tmp-${PORT}` : 'e2e/.tmp')
 const dbFile = `${tmpDir}/e2e.db`
 
 export default defineConfig({
