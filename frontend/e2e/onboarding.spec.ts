@@ -79,15 +79,14 @@ test('templates page no longer says where new apps go', async ({ page }) => {
   await expect(page.getByText('New apps from a template go in')).toHaveCount(0)
 })
 
-test('Kaisen empty page: Iterate row sits before Spend', async ({ page }) => {
+test('Kaisen empty page: How it works is Describe, Build, Deploy, then Spend', async ({ page }) => {
   await login(page)
   const list = (await (await page.request.get('/projects')).json()) as { id: number; is_personal: boolean }[]
   await page.goto(`/projects/${list.find((p) => p.is_personal)!.id}/kaisen`)
   const rows = page.locator('table').filter({ hasText: '1. Describe' }).locator('tbody tr')
   await expect(rows.first()).toBeVisible()
   const heads = await rows.locator('th').allTextContents()
-  expect(heads.slice(0, 4)).toEqual(['1. Describe', '2. Build', '3. Deploy', '4. Iterate'])
-  await expect(rows.nth(3)).toContainText('Describe the changes you want to refine your app.')
+  expect(heads).toEqual(['1. Describe', '2. Build', '3. Deploy', 'Spend'])
 })
 
 for (const w of [1440, 1920]) {

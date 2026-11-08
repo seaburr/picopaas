@@ -164,7 +164,6 @@ function askDelete(b: KaisenBuild) {
               <tr><th scope="row" class="w-28">1. Describe</th><td class="!whitespace-normal">Say what the app should do. Kaisen asks if it needs to know something.</td></tr>
               <tr><th scope="row">2. Build</th><td class="!whitespace-normal">It writes the code, runs it and fixes what fails. Your replies steer it.</td></tr>
               <tr><th scope="row">3. Deploy</th><td class="!whitespace-normal">It ships the result as an app in {{ projName }}. Keep iterating, download the code or push it to GitHub.</td></tr>
-              <tr><th scope="row">4. Iterate</th><td class="!whitespace-normal">Describe the changes you want to refine your app.</td></tr>
               <tr v-if="store.spend"><th scope="row">Spend</th><td class="!whitespace-normal">Last 30 days <span class="mono">{{ fmtUsd(store.spend.last30_usd) }}</span><template v-if="store.spend.cap_day">, daily cap <span class="mono">{{ fmtUsd(store.spend.cap_day) }}</span> (today <span class="mono">{{ fmtUsd(store.spend.today_usd) }}</span>)</template>, from {{ projName }}'s Anthropic key.</td></tr>
             </tbody>
           </table>
