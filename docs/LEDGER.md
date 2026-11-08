@@ -5,6 +5,10 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [scm-security] START: committing and pushing the sensitive-path edge block extension (5d2f1c6 + docs); K132 LOW security-reviewed and accepted, Chas approved.
+- 2026-11-08 [infra-ops] DONE: sensitive-path block extended (Chas approved): new `extra` fragments in scripts/sensitive_paths/rules.yaml, regenerated deploy/error-pages/sensitive-paths.yaml, tests/test_sensitive_paths.py (174 pass, ruff clean, kubeconform valid, Go regexp cross-check 0 mismatches), OPERATIONS/USER_GUIDE/landing copy. Cost delta $0. NOT applied by infra-ops: deploy.yml applies on push. Rollback: revert rules.yaml + build.py --write. Changed expectations: /foo.env and /.github/... are now blocked.
+- 2026-11-08 [infra-ops] START: extend sensitive-path edge block.
+- 2026-11-07 [manager] DONE: round 2b live: 886110c..8161205 (getting started dialog + USER_GUIDE "0. Getting started", users.onboarding_dismissed migration e6b1d3a8c470, sparklines removed, docs text full width, Kaisen "4. Iterate", templates line removed). CI 42418254113 green after the e2e race fix b4e34ad; deploy 42419039876 Roll out ran; healthz ok. K131 no findings. The round 2b frontend-dev/backend-dev "uncommitted" markers below are superseded by this line.
 - 2026-11-07 [scm-security] DONE: resolves the round 2b e2e-smoke BLOCKED line below: project-urls.spec.ts afterEach unrouteAll(ignoreErrors) fixes the 'route.fetch: Test ended' race (manager ran 3x, 24/24). Commit and CI recorded in the final DONE line.
 - 2026-11-07 [scm-security] BLOCKED: round 2b pushed 886110c, 9fe08f9, 68cb043, 7397475 (gitleaks clean per commit). image 42417236132 success; CI 42417236165 FAILED only in e2e-smoke (41 passed, 1 failed: project-urls.spec.ts:135 'switching projects in the tree...', 'route.fetch: Test ended' on GET /projects/1/kaisen, looks like a race/flaky, spec not touched this round); backend-tests and all other jobs green. Deploy 42417306878 ran before CI finished, 42418140018 skipped: Roll out has NOT run. Owner: qa-tester/frontend-dev (await page.unrouteAll in project-urls.spec.ts helper), then re-run CI.
 - 2026-11-07 [scm-security] START: committing and pushing round 2b (onboarding_dismissed, getting started dialog, e2e, docs); K131 security-reviewed.
@@ -1572,3 +1576,5 @@ DONE [security-reviewer] frontend redesign review: no blockers; 2 LOW (sidebar c
 - [frontend-dev] DONE feedback round 1 APP PAGES: AppFormView 2-col grid (>=1100px) full width, Advanced options disclosure (health check + sensitive paths), Templates port removed and image truncated, Lifetime statistics moved to bottom of HealthView (e2e updated), .sec-danger on app Danger zone, Apps list host col widened. typecheck+eslint green; browser-checked via preview (not built).
 2026-11-07T21:43:15Z START security-reviewer round 2b onboarding review
 2026-11-07T21:43:15Z DONE security-reviewer round 2b: K131 no findings
+2026-11-07T22:10:00Z START security-reviewer sensitive-path block round 2 review
+2026-11-07T22:12:00Z DONE security-reviewer sensitive-path round 2: K132 LOW accepted, no code changes (comment date fix only)
