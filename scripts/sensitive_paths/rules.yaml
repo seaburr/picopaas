@@ -19,3 +19,31 @@ extra:
   - 'private\.(key|pem)'
   - 'server\.key'
   - '[^/]*\.(ppk|tfstate|tfvars)(\.[^/]*)?'
+  # Round 2 (2026-11-07), from scanner probes seen on a static site. Each fragment is whole segments; "a/b" is two segments.
+  # Editor, CI and hosting dot-dirs CRS lacks (.github also covers /.github/workflows/x.yml):
+  - '\.(github|cursor|amplifyrc|ebextensions|elasticbeanstalk)'
+  # Credentials and config with secrets:
+  - '(gcp-)?credentials\.(json|ini)'
+  - 'service-account[^/]*\.json'
+  - 'secrets\.(json|ya?ml)'
+  - '[^/]+\.env'
+  - 'env\.txt'
+  - 'appsettings[^/]*\.json'
+  # Infrastructure as code and container build files:
+  - '[^/]*\.tf'
+  - 'samconfig\.(toml|ya?ml)'
+  - 'cdk\.out'
+  - 'amplify/team-provider-info\.json'
+  - 'Dockerfile'
+  - 'docker-compose[^/]*\.ya?ml'
+  # Logs, dumps and debug endpoints:
+  - 'laravel\.log'
+  - 'wp-content/debug\.log'
+  - '[^/]*\.sql(\.(gz|zip|bz2))?'
+  - 'phpinfo\.php'
+  - '_profiler'
+  - 'actuator/(env|heapdump)'
+  # AI proxy configs:
+  - 'litellm[^/]*\.ya?ml'
+  - 'litellm'
+  - 'openai-proxy[^/]*'

@@ -32,8 +32,8 @@ def test_rule_blocks(path):
 
 
 @pytest.mark.parametrize("path", [
-    "/", "/.well-known/acme-challenge/x", "/.github/workflows/ci.yml", "/repo.git", "/repo.git/info/refs", "/wp-admin/",
-    "/wp-login.php", "/index.php", "/foo.env", "/environment", "/assets/app.key.js", "/id_rsa.pub", "/backup.zip", "/config.json",
+    "/", "/.well-known/acme-challenge/x", "/repo.git", "/repo.git/info/refs", "/wp-admin/",
+    "/wp-login.php", "/index.php", "/environment", "/assets/app.key.js", "/id_rsa.pub", "/backup.zip", "/config.json",
 ])
 def test_rule_leaves_real_app_paths_alone(path):
     assert not _blocked(path)
@@ -55,6 +55,42 @@ def test_rule_blocks_crs_entries(path):
 ])
 def test_rule_leaves_generic_names_alone(path):
     assert not _blocked(path)
+
+
+ROUND2_BLOCKED = [
+    "/.github/workflows/deploy.yml", "/.cursor/mcp.json", "/.amplifyrc", "/.ebextensions/", "/.elasticbeanstalk/config.yml",
+    "/credentials.json", "/credentials.ini", "/gcp-credentials.json", "/service-account.json", "/service-account-prod.json",
+    "/secrets.yml", "/config/secrets.yaml", "/secrets.json", "/sendgrid.env", "/config.env", "/env.txt",
+    "/appsettings.Production.json", "/appsettings.json", "/main.tf", "/variables.tf", "/outputs.tf", "/samconfig.toml",
+    "/cdk.out/", "/amplify/team-provider-info.json", "/Dockerfile", "/docker-compose.yml", "/docker-compose.prod.yaml",
+    "/storage/logs/laravel.log", "/wp-content/debug.log", "/database.sql", "/dump.sql.gz", "/phpinfo.php", "/_profiler/phpinfo",
+    "/actuator/env", "/api/actuator/env", "/actuator/heapdump", "/litellm_config.yaml", "/litellm/config.yaml",
+    "/openai-proxy/config.yaml", "/.GITHUB/workflows/x.yml", "/DOCKERFILE", "/Docker-Compose.YML", "/CREDENTIALS.JSON",
+    "/APPSETTINGS.development.json", "/Wp-Content/DEBUG.LOG", "/Config/Secrets.YAML", "/LiteLLM/config.yaml", "/a/b/main.tf;x",
+]
+ROUND2_ALLOWED = [
+    "/ansible-roles/", "/terraform-tips/", "/tag/vmware/", "/app.js", "/index.js", "/config.json", "/config.js",
+    "/settings.json", "/composer.json", "/wp-login.php", "/index.php", "/wp-admin/", "/xmlrpc.php", "/api/pages/2", "/game.js",
+    "/style.css", "/blog/my.sql.tutorial/", "/docs/dockerfile-best-practices/", "/secrets-of-css/", "/environment/",
+    "/.well-known/acme-challenge/x", "/debug.log", "/blog/debug.log.html", "/main.tfx", "/credentials/", "/litellm-intro/",
+    "/actuator/health", "/actuator", "/openai/", "/env/", "/wp-content/uploads/x.png", "/cdk.outputs/",
+]
+
+
+@pytest.mark.parametrize("path", ROUND2_BLOCKED)
+def test_rule_blocks_round2_probes(path):
+    assert _blocked(path)
+
+
+@pytest.mark.parametrize("path", ROUND2_ALLOWED)
+def test_rule_leaves_round2_lookalikes_alone(path):
+    assert not _blocked(path)
+
+
+def test_rule_uses_only_re2_syntax_and_fits_kubernetes_limits():
+    regex = RULE["spec"]["rules"][0]["http"]["paths"][0]["path"]
+    assert not re.search(r"\(\?(=|!|<=|<!|>|P?<)|\\[1-9]", regex)  # no lookaround or backreferences: Go regexp rejects them
+    assert len(regex) < 8000 and len(yaml.safe_dump(RULE)) < 100_000  # annotations cap 256 KiB, objects far above
 
 
 def test_manifest_matches_its_generator():
