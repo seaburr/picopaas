@@ -33,6 +33,7 @@ const auth = useAuthStore()
 const toast = useToastStore()
 const projects = useProjectsStore()
 // New apps: the project in the URL. Settings: the app's own project.
+const loadedApp = ref<App | null>(null)
 const projectId = computed<number | null>(() => (props.pid !== undefined ? Number(props.pid) : (loadedApp.value?.project_id ?? null)))
 const projectRef = computed(() => projects.projects.find((x) => x.id === projectId.value) ?? null)
 const projectName = computed(() => projectLabel(projectRef.value))
@@ -47,7 +48,6 @@ onMounted(async () => {
 
 const isEdit = computed(() => props.id !== undefined)
 const appId = computed(() => (props.id !== undefined ? Number(props.id) : null))
-const loadedApp = ref<App | null>(null)
 
 const form = reactive({
   name: '',

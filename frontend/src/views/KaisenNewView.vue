@@ -47,8 +47,8 @@ function undoStarter() {
 }
 const projectId = computed(() => Number(props.pid))
 const projName = computed(() => projectLabel(curProject.value))
-useProjectTitle('New build', projName)
 const { project: curProject, suspended: projSuspended } = useProjectSuspension(projectId)
+useProjectTitle('New build', projName) // after curProject: its immediate watch reads projName (TDZ crash otherwise)
 const busy = ref(false)
 const error = ref('')
 const nameError = ref('')
