@@ -415,6 +415,7 @@ class AppOut(BaseModel):
     replicas: int = 1
     volume: Optional[VolumeOut] = None
     status: str
+    updating: bool = False  # queued/deploying while an earlier version still serves (no volume); status is unchanged
     status_detail: Optional[str] = None
     status_reason: Optional[str] = None  # machine code for status=error (image_pull, crash_loop, oom, not_ready, quota, ...)
     retry_at: Optional[datetime] = None  # when an errored app will next be retried (null = not retrying)

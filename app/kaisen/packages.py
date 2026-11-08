@@ -155,6 +155,21 @@ _LEAVING_BEFORE = re.compile(r"\bfrom\s+(?:\S+\s*)?$", re.I)
 _LEAVING_AFTER = re.compile(r"\s*(?:->|=>|\u2192|to\s+v?\d)", re.I)
 
 
+def feedback_text(run: KaisenRun | None) -> str | None:
+    """The change request of a feedback run: the text inside <feedback> of the FULL stored first user message (before any
+    display clipping). None for other kinds or when the messages are trimmed or hold no marker."""
+    if run is None or run.kind != "feedback":
+        return None
+    msgs = run.messages if isinstance(run.messages, list) else []
+    first = msgs[0] if msgs and isinstance(msgs[0], dict) else {}
+    c = first.get("content") if first.get("role") == "user" else None
+    if isinstance(c, str) and (i := c.rfind(_FEEDBACK_OPEN)) >= 0:
+        start = i + len(_FEEDBACK_OPEN)
+        if (end := c.find(_FEEDBACK_CLOSE, start)) >= 0:
+            return c[start:end]
+    return None
+
+
 def request_text(brief: str | None, run: KaisenRun | None) -> str:
     """What the human asked for, nothing else: the brief plus, for a change request, the text inside <feedback> of the run's
     first message. Project files, the previous summary and anything the model wrote never reach this."""

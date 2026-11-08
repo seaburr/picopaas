@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import audit, config, models, platform_settings, projects, ratelimit
+from app import audit, config, image_history, models, platform_settings, projects, ratelimit
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.kaisen import builder, buildsecrets, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, packages, reviewing, settings as ksettings, snapshots, testresults, watchdog
@@ -235,7 +235,8 @@ def _app_view(db: Session, b: KaisenBuild) -> Optional[dict]:
     a = deploy_mod.live_app(db, b)
     if a is None:
         return None
-    return {"id": a.id, "name": a.name, "hostname": f"{a.hostname}.{config.APP_DOMAIN}", "status": a.status}
+    return {"id": a.id, "name": a.name, "hostname": f"{a.hostname}.{config.APP_DOMAIN}", "status": a.status,
+            "updating": image_history.is_updating(a)}
 
 
 def _list_item(db: Session, b: KaisenBuild) -> dict:
@@ -273,6 +274,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         "files": [{"path": p, "size": n} for p, n in builder.Workspace(db, b.id).list()],
         "runs": [{
             "id": r.id, "kind": r.kind, "status": r.status, "has_diff": r.id in with_diff,
+            "request": (redact(t, sec) if (t := packages.feedback_text(r)) is not None else None),
             "summary": redact(r.summary, sec) if r.summary else None,
             "suggestions": [redact(x, sec) for x in (r.suggestions or [])],
             "error": redact(r.error, sec) if r.error else None,

@@ -32,6 +32,13 @@ def record_running(session: Session, app: models.App) -> bool:
     return True
 
 
+def is_updating(app: models.App) -> bool:
+    """A new version is rolling out while an older one still serves: the app is waiting for (pending, shown as queued)
+    or in a rollout (deploying), it has reached running before (image history holds a digest it ran on), and it has no
+    volume (RollingUpdate, maxUnavailable 0; a volume app uses Recreate, which is real downtime). Status is untouched."""
+    return app.status in ("pending", "queued", "deploying") and app.volume_size_gi is None and bool(app.image_history)
+
+
 def known_digests(app: models.App) -> set[str]:
     return {h.digest for h in app.image_history}
 

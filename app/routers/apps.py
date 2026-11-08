@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import quota, audit, config, crypto, custom_domains, image_check, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
+from app import quota, audit, config, crypto, custom_domains, image_check, image_history, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.kaisen.models import KaisenBuild
@@ -120,6 +120,7 @@ def _app_out(app: models.App) -> schemas.AppOut:
         replicas=app.replicas,
         volume=volumes.out(app),
         status=app.status,
+        updating=image_history.is_updating(app),
         status_detail=app.status_detail,
         status_reason=app.status_reason if app.status == "error" else None,
         retry_at=reconciler.retry_at(app),
