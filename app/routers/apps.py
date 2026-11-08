@@ -295,6 +295,7 @@ def list_apps(
             selectinload(models.App.database),
             selectinload(models.App.storage),
             selectinload(models.App.events),
+            selectinload(models.App.image_history),  # AppOut.updating reads it (no per-app query)
         )
         .order_by(models.App.created_at.desc())
         .all()
