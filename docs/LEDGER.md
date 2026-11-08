@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [scm-security] DONE: Sidebar: tree indent compressed (18px → 11px per level, guide line under the parent triangle); app names get ~22px more. Phone menu unchanged. Chas 2026-11-08.
 - 2026-11-08 [scm-security] DONE: Sidebar: Kaisen apps with long names keep their mark (compact K tag when the full tag would clip the name; measured, not counted). Chas 2026-11-08.
 - 2026-11-08 [scm-security] DONE: Chas fixes pushed: edge logo allowlist (3 icon files, host routing, reviewed by manager), attach-off message says why, no double divider under section-ending tables; SHAs and CI/image/deploy ids in the follow-up line.
 - 2026-11-08 [scm-security] DONE: resolves the BLOCKED line below (CI 42441341270): list_apps now selectinloads App.image_history, query count flat again; fix commit follows (SHA/run ids in the next line).

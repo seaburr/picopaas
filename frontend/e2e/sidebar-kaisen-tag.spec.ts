@@ -22,14 +22,14 @@ test('every Kaisen app keeps a mark; short names get the full tag, long ones K',
   await page.goto(`/projects/${list.find((p) => p.is_personal)!.id}/apps`)
   await expect(row(page, 'jamtunez')).toBeVisible()
   await expect(row(page, 'jamtunez').locator('.ktag')).toHaveText(/^Kaisen/)
-  for (const n of ['Guitar Tuner', 'A really long app name here']) {
+  for (const n of ['A really long app name here']) {
     const tag = row(page, n).locator('.ktag')
     await expect(tag).toBeVisible()
     await expect(tag.locator('[aria-hidden]')).toHaveText('K')
     await expect(tag).toHaveAttribute('title', /Built with Kaisen/)
     await expect(tag).toContainText('Kaisen') // screen-reader text
   }
-  await expect(row(page, 'Platformer').locator('.ktag')).toBeVisible()
+  for (const n of ['Platformer', 'Guitar Tuner']) await expect(row(page, n).locator('.ktag')).toBeVisible()
   await expect(row(page, 'Plain long name app').locator('.ktag')).toHaveCount(0)
   // The tag never pushes past the row: its right edge stays inside the link.
   for (const n of APPS.filter((a) => a.kaisen_build_id).map((a) => a.name)) {

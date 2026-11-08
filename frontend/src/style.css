@@ -512,8 +512,9 @@ select.input {
   .side-brand img { width: 20px; height: 20px; flex: none; border-radius: 4px }
   .side a { text-decoration: none; color: inherit }
   .tree, .tree ul { list-style: none; margin: 0; padding: 0 }
-  .tree ul { margin-left: 11px; padding-left: 6px; border-left: 1px solid var(--line) }
-  .tree a { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 4px }
+  /* Guide line straight under the parent's triangle; 11px per level keeps names roomy in the 232px sidebar. */
+  .tree ul { margin-left: 7px; padding-left: 3px; border-left: 1px solid var(--line) }
+  .tree a { display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 4px }
   .tree a:hover { background: var(--raise); text-decoration: none }
   .tree a.cur { background: var(--raise); font-weight: 600 }
   .tree .n { margin-left: auto; color: var(--mut) }
@@ -563,7 +564,7 @@ select.input {
     .side[data-open='true'] { display: flex }
     .tree { padding: 4px 8px 0 }
     .tree a { min-height: 44px; padding: 0 8px; gap: 8px }
-    .tree ul { margin-left: 13px }
+    .tree ul { margin-left: 13px; padding-left: 6px }
     .tree summary { min-height: 44px; padding-left: 32px }
     .tree summary::before { left: 12px; border-left-width: 6px }
     .tree ul summary { padding-left: 26px }
