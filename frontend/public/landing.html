@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#121417">
 <script src="/static/public-theme.js"></script>
 <title>PicoPaaS: put a small project on the internet today</title>
-<meta name="description" content="Bring a container or describe an app and let Kaisen (in preview) build it. Get an HTTPS address, an optional PostgreSQL or MySQL database, file storage and backups. A small, approval-only platform for demos, side projects and class work.">
+<meta name="description" content="Bring a container, start from a template, or describe an app and let Kaisen (in preview) build it. Get an HTTPS address, an optional PostgreSQL or MySQL database, file storage and backups. A small, approval-only platform for demos, side projects and class work.">
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/icon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-180.png">
@@ -27,26 +27,27 @@ h1,h2,h3{line-height:1.25;font-weight:600;overflow-wrap:anywhere}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:8px;top:-60px;z-index:10;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px 10px}.skip:focus{top:8px}
 .dev{border-bottom:2px solid var(--warn);color:var(--warn);text-align:center;font-size:14px;line-height:1.45;padding:6px 20px}
-header.t{border-bottom:1px solid var(--line)}header.t .w{display:flex;justify-content:space-between;align-items:center;height:48px;gap:12px}
+header.t{border-bottom:1px solid var(--line)}header.t .w{display:flex;justify-content:space-between;gap:12px;align-items:center;min-height:48px}
 .logo{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--fg);text-decoration:none}
 nav.r{display:flex;align-items:center;gap:14px}nav.r a.l{color:var(--mut);text-decoration:none}nav.r a.l:hover{color:var(--fg);text-decoration:underline}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 12px;border-radius:4px;background:var(--fg);color:var(--bg);text-decoration:none;font-weight:500;font-size:14px;border:1px solid var(--fg);white-space:nowrap}.btn:hover{opacity:.88;text-decoration:none}
 .btn.s{background:transparent;color:var(--fg);border-color:var(--edge)}.btn.s:hover{background:var(--raise);opacity:1}.btn:focus-visible{outline-offset:2px}
-footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:14px}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:20px 0;color:var(--mut);font-size:14px;text-align:center}footer a{color:var(--mut);white-space:nowrap}footer a:hover{color:var(--fg)}
 @media(max-width:480px){.w{padding:0 16px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 .w.hd{max-width:960px}
 h2{font-size:15px;margin:44px 0 0;padding-top:12px;border-top:1px solid var(--line)}
-.hero{padding:44px 0 8px}.hero h1{font-size:clamp(26px,5.5vw,40px);margin:0 0 14px;letter-spacing:-.02em;max-width:720px}.hero p{max-width:640px;margin:0 0 20px;color:var(--mut);font-size:16px}.hero p.eyebrow{margin:0 0 10px;font-size:14px}
-.cta{display:flex;gap:10px;flex-wrap:wrap}.hero p.sub{margin:10px 0 0;font-size:14px}
+.hero{padding:44px 0 8px;text-align:center}.hero h1{font-size:clamp(26px,5.5vw,40px);margin:0 auto 14px;letter-spacing:-.02em;max-width:720px}.hero p{max-width:640px;margin:0 auto 20px;color:var(--mut);font-size:16px}.hero p.eyebrow{margin:0 auto 10px;font-size:14px}
+.cta{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.hero p.sub{margin:10px auto 0;font-size:14px}
 .tag{display:inline-block;margin-left:8px;padding:0 6px;border:1px solid var(--line);border-radius:4px;color:var(--mut);font-size:11px;font-weight:400;vertical-align:middle}
-.paths .grid{display:grid;gap:0 40px;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));margin-top:20px}
+.paths .grid{display:grid;gap:0 32px;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-top:20px}
 .paths .card{border-top:1px solid var(--line);padding:12px 0}.paths h2{margin:0 0 8px;padding:0;border:0;font-size:15px}.paths p{margin:0;color:var(--mut)}.paths p+p{margin-top:8px}.paths a.go{display:inline-block;margin-top:10px}
 .grid.rows{display:block;margin-top:12px}
 .rows .card{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:2px 28px;padding:9px 0;border-top:1px solid var(--line)}.rows .card:first-child{border-top:0}
 .rows h3{margin:0;font-size:14px}.rows p{margin:0;color:var(--mut)}.rows .n{color:var(--mut);margin-right:8px}
 @media(max-width:600px){.rows .card{grid-template-columns:1fr}}
 .pre{margin:12px 0 0;color:var(--mut)}.pre strong{color:var(--fg)}
+.paths .chips{margin-top:10px}.paths .chips li{font-size:13px;padding:1px 6px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;list-style:none}.chips li{padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--fg);font-size:14px}
 table{width:100%;border-collapse:collapse;margin-top:12px}td{padding:6px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}tr:first-child td{border-top:0}td:first-child{color:var(--mut)}td:last-child{text-align:right;font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;padding-left:16px}
 details{border-top:1px solid var(--line);padding:9px 0}details:first-of-type{margin-top:12px}summary{cursor:pointer;font-weight:600}details p{margin:8px 0 0;color:var(--mut)}
@@ -61,13 +62,16 @@ details{border-top:1px solid var(--line);padding:9px 0}details:first-of-type{mar
 <section class="hero">
 <p class="eyebrow">small hosting for small projects</p>
 <h1>Put a small project on the internet today.</h1>
-<p>Bring a container, or just describe the app you want and let Kaisen build it. Either way it goes live on its own HTTPS address, with a database, file storage and backups when you want them.</p>
-<div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a><a class="btn s" href="https://platform.picopaas.xyz/login">Log in</a></div>
+<p>Bring a container, start from a template, or just describe the app you want and let Kaisen build it. Either way it goes live on its own HTTPS address, with a database, file storage and backups when you want them.</p>
+<div class="cta"><a class="btn" href="https://platform.picopaas.xyz/register">Request access</a></div>
 <p class="sub">Access is approved by hand, so there is a short wait.</p>
 </section>
 <section class="paths">
 <div class="grid grid-4">
-<div class="card"><h2>Bring a container</h2><p>Got an image on a public registry? Give us the image and a port. You get a live HTTPS address in about a minute. Change a setting and it redeploys. If an update won&rsquo;t start, we roll it back for you.</p><p>Prefer not to write anything? Deploy from a template and fill in a few fields.</p><a class="go" href="https://platform.picopaas.xyz/guide/user">Quick start</a></div>
+<div class="card"><h2>Bring a container</h2><p>Got an image on a public registry? Give us the image and a port. You get a live HTTPS address in about a minute. Change a setting and it redeploys. If an update won&rsquo;t start, we roll it back for you.</p><a class="go" href="https://platform.picopaas.xyz/guide/user#0-getting-started">Quick start</a></div>
+<div class="card"><h2>Start from a template</h2><p>Pick a ready-made app, choose the project, and fill in a few fields. The database, storage and settings it needs are filled in for you.</p><ul class="chips" aria-label="Templates">
+<li>Ghost</li><li>WordPress</li><li>Directus</li><li>Grafana</li><li>n8n</li><li>Shlink</li><li>Miniflux</li><li>Forgejo</li><li>Memos</li><li>Vaultwarden</li><li>Wiki.js</li><li>Vikunja</li><li>Umami</li><li>ntfy</li><li>IT-Tools</li><li>Excalidraw</li><li>Gatus status page</li><li>Static website</li>
+</ul><a class="go" href="https://platform.picopaas.xyz/guide/user#14-templates">About templates</a></div>
 <div class="card"><h2>Describe an app<span class="tag">Preview</span></h2><p>Tell Kaisen what you want in plain words. It writes the app, tests it, and deploys it as a normal app. Ask for a change and it ships again.</p><p>Bring your idea and an Anthropic API key. Your app can be running on PicoPaaS in minutes, for as little as a few cents.</p><a class="go" href="#kaisen">More about Kaisen</a></div>
 </div>
 </section>
@@ -82,12 +86,6 @@ details{border-top:1px solid var(--line);padding:9px 0}details:first-of-type{mar
 <div class="card"><h3>Secret-hunting bots turned away</h3><p>Scanners looking for leaked <code>.env</code> files, Git folders and database dumps are stopped before they reach your app. It&rsquo;s on for every app, with a list based on the OWASP Core Rule Set plus our own additions.</p></div>
 <div class="card"><h3>Work with others</h3><p>Share apps in a team project. Use the CLI or an API key if you&rsquo;d rather script it.</p></div>
 </div>
-</section>
-<section>
-<h2>Deploy from a template</h2>
-<ul class="chips" aria-label="Templates">
-<li>Ghost</li><li>WordPress</li><li>Directus</li><li>Grafana</li><li>n8n</li><li>Shlink</li><li>Miniflux</li><li>Forgejo</li><li>Memos</li><li>Vaultwarden</li><li>Wiki.js</li><li>Vikunja</li><li>Umami</li><li>ntfy</li><li>IT-Tools</li><li>Excalidraw</li><li>Gatus status page</li><li>Static website</li>
-</ul>
 </section>
 <section id="kaisen">
 <h2>Kaisen: describe it, then use it<span class="tag">Preview</span></h2>
