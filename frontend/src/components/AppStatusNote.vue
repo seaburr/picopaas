@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { failureInfo, retryText, useNow } from '../composables/appUi'
+import { appStatus } from '../composables/statusTone'
 import type { App } from '../types'
 
 // Human status line + recovery actions for an app. `compact` is the list-row variant.
@@ -10,6 +11,7 @@ const now = useNow()
 
 const failure = computed(() => (props.app.status === 'error' ? failureInfo(props.app) : null))
 const retry = computed(() => (props.app.status === 'error' && props.app.retry_at ? retryText(props.app.retry_at, now.value) : ''))
+const updating = computed(() => appStatus(props.app) === 'updating')
 const busy = computed(() => props.app.status === 'deploying')
 </script>
 
@@ -17,6 +19,10 @@ const busy = computed(() => props.app.status === 'deploying')
   <div v-if="app.status === 'suspended'" class="text-sm text-amber-300">
     Suspended by an administrator. Contact the administrator to restore it.
   </div>
+
+  <p v-else-if="updating" class="text-sm text-zinc-300">
+    <template v-if="!compact">A new version is being rolled out. The current version stays live until it's ready.</template>
+  </p>
 
   <div v-else-if="app.status === 'pending' || app.status === 'deploying'" class="text-sm">
     <p class="text-zinc-300">

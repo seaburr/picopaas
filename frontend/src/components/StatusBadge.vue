@@ -9,6 +9,7 @@ const props = defineProps<{ status: string; kind?: 'app' | 'build' }>()
 
 const TIPS: Record<string, string> = {
   running: 'The app is up and serving traffic.',
+  updating: 'The app is up. A new version is being rolled out and the current one stays live.',
   deploying: 'Starting your app. Usually under a minute.',
   pending: 'Waiting to be deployed.',
   retrying: 'The last attempt failed. Retrying automatically.',

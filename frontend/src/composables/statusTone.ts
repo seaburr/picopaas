@@ -5,6 +5,8 @@ export type Tone = 'ok' | 'warn' | 'err' | 'off'
 const APP: Record<string, { tone: Tone; label: string }> = {
   running: { tone: 'ok', label: 'Running' },
   active: { tone: 'ok', label: 'Active' },
+  // Pseudo-status: a running app whose new version is rolling out (see appStatus).
+  updating: { tone: 'ok', label: 'Running · updating' },
   deploying: { tone: 'warn', label: 'Deploying' },
   pending: { tone: 'warn', label: 'Queued' },
   retrying: { tone: 'warn', label: 'Retrying' },
@@ -34,3 +36,7 @@ export function statusLook(status: string, kind: 'app' | 'build' = 'app'): { ton
 // In-flight states get a gentle pulse (motion-safe) on the dot.
 export const isBusyStatus = (status: string, kind: 'app' | 'build' = 'app') =>
   statusLook(status, kind).tone === 'warn' && status !== 'pending' && status !== 'queued' && status !== 'waiting'
+
+// The status key to show for an app: a running app with a new version rolling out stays "running" for the user.
+export const appStatus = (a: { status: string; updating?: boolean }) =>
+  a.updating && ['running', 'pending', 'queued', 'deploying'].includes(a.status) ? 'updating' : a.status

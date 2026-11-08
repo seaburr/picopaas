@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listUsers } from '../api/admin'
 import { getBuild } from '../api/kaisen'
-import { statusLook } from '../composables/statusTone'
+import { appStatus, statusLook } from '../composables/statusTone'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
@@ -306,14 +306,14 @@ const DOCS = [
                           <li v-for="a in appsFor(p)" :key="a.id">
                             <details v-if="a.id === routeAppId" class="disc" :open="isOpen(`a:${a.id}`)" @toggle="onToggle(`a:${a.id}`, $event)">
                               <summary>
-                                <SideLink :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(a.status).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(a.status) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
+                                <SideLink :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
                               </summary>
                               <ul>
                                 <li><SideLink :to="`/apps/${a.id}`" :cur="path === `/apps/${a.id}`">Health</SideLink></li>
                                 <li><SideLink :to="`/apps/${a.id}/edit`" :cur="path === `/apps/${a.id}/edit`">Settings</SideLink></li>
                               </ul>
                             </details>
-                            <SideLink v-else :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(a.status).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(a.status) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
+                            <SideLink v-else :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><span class="m mono nm">{{ a.name }}</span><KaisenTag v-if="a.kaisen_build_id && tagFits(a.name)" /></SideLink>
                           </li>
                         </ul>
                       </details>

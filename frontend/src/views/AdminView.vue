@@ -5,6 +5,7 @@ import PasswordField from '../components/PasswordField.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { appStatus } from '../composables/statusTone'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
@@ -507,7 +508,7 @@ const overrideSummary = (a: AdminApp) => {
                   <div class="mono truncate text-zinc-400">{{ a.hostname }}</div>
                 </td>
                 <td class="mono truncate text-zinc-300" :title="a.owner_email">{{ a.owner_email }}</td>
-                <td><StatusBadge :status="a.status" /></td>
+                <td><StatusBadge :status="appStatus(a)" /></td>
                 <td>
                   <template v-if="a.resources">
                     <div class="mono truncate" :title="resSummary(a)">{{ resSummary(a) }}</div>

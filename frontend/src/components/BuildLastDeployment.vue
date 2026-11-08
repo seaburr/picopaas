@@ -3,13 +3,16 @@ import { computed } from 'vue'
 import { relTime } from '../composables/appUi'
 import type { KaisenInboxItem } from '../types'
 
-const props = defineProps<{ items: KaisenInboxItem[]; now: number }>()
+const props = defineProps<{ items: KaisenInboxItem[]; now: number; phase?: 'updating' | 'starting' | 'live' | 'other' }>()
 
 // The newest deploy record, whatever its status: it stays on the page as a record, there is nothing to dismiss.
 const item = computed(() => props.items.filter((i) => i.kind === 'deploy').reduce<KaisenInboxItem | null>((a, i) => (!a || i.id > a.id ? i : a), null))
 const OK = 'Preview deployed: '
 const UNHEALTHY = 'Preview deployed but not healthy yet: '
 const look = computed(() => {
+  // The record says the deploy went out; the app may not be running the new version yet. Say so until it is.
+  if (props.phase === 'updating') return { label: 'Running · updating', tone: 'ok', quiet: true }
+  if (props.phase === 'starting') return { label: 'Starting', tone: 'off', quiet: true }
   const t = item.value?.text ?? ''
   if (t.startsWith(OK)) return { label: 'Deployed', tone: 'ok', quiet: true }
   if (t.startsWith(UNHEALTHY)) return { label: 'Not healthy yet', tone: 'warn', quiet: false }

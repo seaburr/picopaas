@@ -12,6 +12,7 @@ import HostLink from '../components/HostLink.vue'
 import KaisenChooser from '../components/KaisenChooser.vue'
 import SpecEditor from '../components/SpecEditor.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { appStatus } from '../composables/statusTone'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
 import { ApiError } from '../api/client'
@@ -455,7 +456,7 @@ async function onSubmit() {
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="page-title break-all">{{ isEdit ? (loadedApp?.name ?? 'Settings') : projectName ? `New app in ${projectName}` : 'New app' }}</h1>
-            <StatusBadge v-if="loadedApp" :status="loadedApp.status" />
+            <StatusBadge v-if="loadedApp" :status="appStatus(loadedApp)" />
           </div>
           <HostLink v-if="loadedApp" :hostname="primaryHost(loadedApp)" class="mt-1" />
           <p v-if="!isEdit" class="help">

@@ -11,6 +11,7 @@ import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
+import { appStatus } from '../composables/statusTone'
 import { eventNote, primaryHost, relTime, fullTime, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
@@ -37,7 +38,7 @@ const atLimit = computed(() => limit.value > 0 && store.apps.length >= limit.val
 // Poll while anything is queued, deploying or failed (a failed app can recover on its own).
 let timer: ReturnType<typeof setInterval> | null = null
 function inFlight() {
-  return store.apps.some((a) => a.status === 'pending' || a.status === 'deploying' || a.status === 'error')
+  return store.apps.some((a) => a.updating || a.status === 'pending' || a.status === 'deploying' || a.status === 'error')
 }
 function syncPolling() {
   if (inFlight() && !timer) {
@@ -131,7 +132,7 @@ function overCapTip(app: App) {
 
 const projectName = computed(() => projectLabel(project.value))
 useProjectTitle('Apps', projectName)
-const noteRow = (a: App) => !!a.last_event || ['suspended', 'pending', 'deploying', 'error'].includes(a.status)
+const noteRow = (a: App) => !!a.last_event || ['suspended', 'pending', 'deploying', 'error'].includes(appStatus(a))
 
 // List cells. Limits come from the API (app.resources / app.quota), never constants.
 const limits = computed(() => auth.user?.limits)
@@ -219,7 +220,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
                   </div>
                 </td>
                 <td>
-                  <StatusBadge :status="app.status" />
+                  <StatusBadge :status="appStatus(app)" />
                   <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="block text-xs text-danger-light" :title="overCapTip(app)">over cap</span>
                 </td>
                 <td class="mono truncate" :title="app.image">{{ app.image }}</td>
@@ -243,7 +244,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
               <tr v-if="noteRow(app)">
                 <td colspan="11" class="!pt-0 text-sm">
                   <p v-if="app.last_event" class="meta">{{ eventNote(app.last_event, now) }}</p>
-                  <AppStatusNote v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
+                  <AppStatusNote v-if="['suspended', 'pending', 'deploying', 'error'].includes(appStatus(app))" compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
                 </td>
               </tr>
             </template>
@@ -256,7 +257,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
         <li v-for="app in store.apps" :key="app.id" class="border-b border-pico-border py-2.5">
           <div class="flex items-baseline justify-between gap-2">
             <RouterLink :to="`/apps/${app.id}`" class="mono min-w-0 truncate text-sm font-medium text-white" :title="app.name">{{ app.name }}</RouterLink>
-            <StatusBadge :status="app.status" class="shrink-0" />
+            <StatusBadge :status="appStatus(app)" class="shrink-0" />
           </div>
           <p class="mono mt-0.5 truncate text-zinc-400" :title="app.image">{{ app.image }}</p>
           <div class="mt-0.5"><HostLink compact :hostname="primaryHost(app)" /></div>
@@ -268,7 +269,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
             <KaisenTag v-if="app.kaisen_build_id" :to="`/kaisen/${app.kaisen_build_id}`" />
           </p>
           <p v-if="app.last_event" class="meta mt-1">{{ eventNote(app.last_event, now) }}</p>
-          <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(app.status)" class="mt-1">
+          <div v-if="['suspended', 'pending', 'deploying', 'error'].includes(appStatus(app))" class="mt-1">
             <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
           </div>
           <div class="row-acts mt-1 justify-start gap-x-5">

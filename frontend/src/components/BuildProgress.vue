@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { elapsed, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
+import { elapsed, fmtUsd } from '../composables/kaisen'
 import type { KaisenRun } from '../types'
 
 // An inline Kaisen message at the end of the thread while a run is active.
@@ -9,16 +9,21 @@ const emit = defineEmits<{ interrupt: [runId: number] }>()
 const t = ref(Date.now())
 const tick = setInterval(() => (t.value = Date.now()), 1000)
 onBeforeUnmount(() => clearInterval(tick))
-const label = computed(() => RUN_KIND_LABEL[props.run.kind] ?? props.run.kind)
-const headline = computed(() => (props.run.status === 'queued' ? `${label.value} queued, starting again` : 'Kaisen is working…'))
+const headline = computed(() => (props.run.status === 'queued' ? 'Kaisen is getting ready' : 'Kaisen is working'))
+const slow = computed(() => props.run.status === 'running' && props.run.step != null && props.run.step > 0)
 </script>
 
 <template>
   <div role="group" aria-label="Run progress">
-    <p class="text-sm text-zinc-200"><span class="motion-safe:animate-pulse" aria-live="polite">{{ headline }}</span></p>
+    <!-- iMessage-style: a Kaisen bubble with three animated dots (a static "…" under reduced motion). -->
+    <div class="bubble-kaisen inline-flex items-center gap-2 rounded-md px-3 py-2" role="status" aria-live="polite" data-testid="typing">
+      <span class="typing-dots" aria-hidden="true"><i /><i /><i /></span>
+      <span class="typing-static text-sm text-zinc-300" aria-hidden="true">…</span>
+      <span class="sr-only">{{ headline }}</span>
+    </div>
+    <p class="meta mt-1">{{ slow ? 'Still working. Longer changes can take a few minutes.' : 'This usually takes about a minute.' }}</p>
     <p class="meta mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-      <span v-if="run.step">step <span class="mono">{{ run.step }}</span></span>
-      <span v-if="run.last_tool" class="mono">{{ run.last_tool }}</span>
+            <span v-if="run.last_tool" class="mono">{{ run.last_tool }}</span>
       <span v-if="run.context_resets">fresh context ×<span class="mono">{{ run.context_resets }}</span></span>
       <span class="mono">{{ elapsed(run.started_at, t) }}</span>
       <span><span class="mono">{{ fmtUsd(run.cost_usd) }}</span> this run</span>

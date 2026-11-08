@@ -222,6 +222,15 @@ const TEST_LOOK: Record<string, { label: string; tone: string }> = {
 async function fixTests() {
   await act('feedback', () => sendFeedback(buildId.value, TESTS_FIX_TEXT))
 }
+// Where the live app is, in the words the page uses. 'updating': a new version is rolling out and the old one is still
+// live; 'starting': first deploy, nothing live yet; 'live': running the current version; 'other': error, stopped, ...
+const deployPhase = computed<'updating' | 'starting' | 'live' | 'other'>(() => {
+  const status = app.value?.status ?? build.value?.app?.status ?? build.value?.app_status ?? ''
+  if (app.value?.updating ?? build.value?.app?.updating) return 'updating'
+  if (status === 'pending' || status === 'deploying') return 'starting'
+  if (status === 'running') return 'live'
+  return 'other'
+})
 const appBroken = computed(() => ['error', 'retrying'].includes(app.value?.status ?? build.value?.app_status ?? ''))
 async function fixIt() {
   // One Fix it: the app-failure text wins when the app is down (and mentions failing tests too); the tests row
@@ -449,7 +458,9 @@ async function doDelete() {
                   <template v-if="build.app_id && build.app_hostname">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <HostLink :hostname="build.app_hostname" />
-                      <StatusBadge v-if="app || build.app_status" :status="app?.status ?? build.app_status ?? ''" />
+                      <StatusBadge v-if="deployPhase === 'updating'" status="updating" />
+                      <span v-else-if="deployPhase === 'starting'" class="st tone-off" role="status"><span class="dot dot-off" aria-hidden="true" />Starting</span>
+                      <StatusBadge v-else-if="app || build.app_status" :status="app?.status ?? build.app_status ?? ''" />
                     </div>
                     <div v-if="appBroken && build.app_id" class="mt-2 flex flex-wrap items-center gap-2">
                       <button type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixIt">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
@@ -470,8 +481,10 @@ async function doDelete() {
                         <pre class="mono mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-pico-card p-3 text-zinc-200 [overflow-wrap:anywhere]" tabindex="0" aria-label="Test output">{{ build.tests.tail }}</pre>
                       </details>
                     </div>
-                    <BuildLastDeployment :items="inbox" :now="now" />
-                    <div v-if="app && ['pending', 'deploying', 'error'].includes(app.status)" class="mt-2"><AppStatusNote compact :app="app" /></div>
+                    <p v-if="deployPhase === 'updating'" class="mt-2 text-sm text-zinc-300" role="status">Updating your app. The current version stays live until the new one is ready.</p>
+                    <p v-else-if="deployPhase === 'starting'" class="mt-2 text-sm text-zinc-300" role="status">Starting your app. This usually takes about a minute.</p>
+                    <BuildLastDeployment :items="inbox" :now="now" :phase="deployPhase" />
+                    <div v-if="app && app.status === 'error'" class="mt-2"><AppStatusNote compact :app="app" /></div>
                     <div class="mt-3 flex flex-wrap gap-2">
                       <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary btn-sm">App health</RouterLink>
                       <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary btn-sm">App settings</RouterLink>

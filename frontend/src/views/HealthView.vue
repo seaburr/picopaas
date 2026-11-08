@@ -12,6 +12,7 @@ const hostHigh = (v: number | null | undefined) => v != null && v > 80
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import IconButton from '../components/IconButton.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { appStatus } from '../composables/statusTone'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
 import HealthBackups from '../components/HealthBackups.vue'
 import HealthLogs from '../components/HealthLogs.vue'
@@ -363,7 +364,7 @@ function jump(id: string) {
               <tr v-for="a in sortedApps" :key="a.id">
                 <td class="truncate" :title="`${a.name} (${a.namespace})`"><span class="mono text-white">{{ a.name }}</span> <span class="mono text-zinc-400">{{ a.namespace }}</span></td>
                 <td class="truncate" :title="a.owner_email">{{ a.owner_email }}</td>
-                <td><StatusBadge :status="a.status" /></td>
+                <td><StatusBadge :status="appStatus(a)" /></td>
                 <td class="mono whitespace-nowrap text-right" :class="a.pods_ready < a.pods_total ? 'text-amber-400' : ''" :title="podTitle(a)">{{ a.pods_ready }}/{{ a.pods_total }}{{ podsWanted(a) }}</td>
                 <td class="mono text-right" :class="a.restarts > 0 ? 'font-semibold text-amber-400' : ''">{{ a.restarts }}</td>
                 <td class="mono whitespace-nowrap text-right" :class="hot(pct(a.cpu_used_m, cpuCap(a))) ? 'font-semibold text-amber-400' : ''">

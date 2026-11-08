@@ -81,7 +81,7 @@ const items = computed<Item[]>(() => {
   runsAsc.value.forEach(({ r, i }, n) => {
     const files = filesOf(r.id)
     if (n === 0 && r.kind === 'build') out[0].files = files
-    else if (r.kind === 'feedback') out.push({ key: `c${r.id}`, at: ts(r.started_at) - 1, iso: r.started_at, who: 'you', kind: 'change', text: changeText(i) || 'Sent a change.', runIdx: null, files })
+    else if (r.kind === 'feedback') out.push({ key: `c${r.id}`, at: ts(r.started_at) - 1, iso: r.started_at, who: 'you', kind: 'change', text: (props.build.runs[i].request ?? '').trim() || changeText(i) || 'Your change (text not available)', runIdx: null, files })
     else if (files.length) out.push({ key: `f${r.id}`, at: ts(r.started_at) - 1, iso: r.started_at, who: 'you', kind: 'files', text: '', runIdx: null, files })
     // The active run is the "working" message at the end of the thread.
     // A run with no reply text of its own reads as: the question it asked, then its status line and details.
@@ -167,10 +167,10 @@ watch(() => props.build.id, () => stickNow())
       <div ref="scroller" class="h-full overflow-y-auto pr-1" tabindex="0" role="region" aria-label="Conversation messages" @scroll.passive="onScroll" @click.capture="onClickCapture">
         <ol ref="listEl" class="flex flex-col gap-4 pb-2">
           <li v-for="it in items" :key="it.key" class="min-w-0">
-            <!-- yours: a plain raised box on the right -->
+            <!-- yours: a filled, bordered bubble on the right -->
             <div v-if="it.who === 'you'" class="flex flex-col items-end">
               <p v-if="it.kind === 'brief' && !you" class="meta mb-0.5">{{ build.created_by.email }}</p>
-              <div class="min-w-0 max-w-[75%] rounded-md bg-pico-card px-3 py-2 text-sm text-zinc-100 max-sm:max-w-[88%]">
+              <div class="min-w-0 max-w-[75%] bubble-you rounded-md px-3 py-2 text-sm text-zinc-100 max-sm:max-w-[88%]">
                 <p v-if="it.text" class="whitespace-pre-wrap [overflow-wrap:anywhere]">{{ it.text }}</p>
                 <ul v-if="it.files.length" class="flex flex-wrap gap-1.5" :class="it.text ? 'mt-2' : ''" aria-label="Attached files">
                   <li v-for="u in it.files" :key="u.id" class="min-w-0 max-w-full">
@@ -225,7 +225,14 @@ watch(() => props.build.id, () => stickNow())
           <li v-if="activeRun" class="max-w-3xl min-w-0">
             <BuildProgress :run="activeRun" :build-usd="build.spend.build_usd" :cap-build="build.spend.cap_build" :can-run="canRun" :interrupting="interrupting" :interrupt-error="interruptError" @interrupt="emit('interrupt', $event)" />
           </li>
-          <li v-else-if="firstRun" class="text-sm text-zinc-200" role="status"><span class="motion-safe:animate-pulse">Your first build is queued.</span></li>
+          <li v-else-if="firstRun" class="min-w-0" role="status" aria-live="polite" data-testid="typing">
+            <div class="bubble-kaisen inline-flex items-center gap-2 rounded-md px-3 py-2">
+              <span class="typing-dots" aria-hidden="true"><i /><i /><i /></span>
+              <span class="typing-static text-sm text-zinc-300" aria-hidden="true">…</span>
+              <span class="sr-only">Kaisen is getting ready</span>
+            </div>
+            <p class="meta mt-1">Your first build is about to start.</p>
+          </li>
         </ol>
       </div>
       <button v-if="!atBottom" type="button" class="absolute bottom-2 right-3 rounded-md border border-pico-border bg-pico-bg px-2.5 py-0.5 text-xs text-zinc-300 hover:text-white max-md:min-h-[36px]" aria-label="Jump to latest message" @click="atBottom = true; toBottom(true)">Latest</button>

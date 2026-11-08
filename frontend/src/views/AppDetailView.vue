@@ -10,6 +10,7 @@ import UsageGauge from '../components/UsageGauge.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { appStatus } from '../composables/statusTone'
 import { dismissAlert, deleteStorageObjects, getAppEvents, downloadPodEvents, getAppLogs, getImageHistory, getMetricsHistory, type AppLogs } from '../api/apps'
 import { ApiError } from '../api/client'
 import { stamp } from '../utils/format'
@@ -56,7 +57,7 @@ let poll: ReturnType<typeof setInterval> | null = null
 let pollMs = 0
 function syncPoll() {
   const st = app.value?.status
-  const want = st === 'pending' || st === 'deploying' ? 3000 : st === 'error' ? 10000 : 0
+  const want = app.value?.updating || st === 'pending' || st === 'deploying' ? 3000 : st === 'error' ? 10000 : 0
   if (poll && want !== pollMs) {
     clearInterval(poll)
     poll = null
@@ -397,7 +398,7 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
         <div class="min-w-0">
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h1 class="page-title mono! break-all text-lg!">{{ app.name }}</h1>
-            <StatusBadge :status="app.status" />
+            <StatusBadge :status="appStatus(app)" />
             <RouterLink v-if="app.kaisen_build_id" :to="`/kaisen/${app.kaisen_build_id}`" class="meta underline" title="Built with Kaisen (Preview)">Built with Kaisen · Preview</RouterLink>
           </div>
           <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-3">

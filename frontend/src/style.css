@@ -643,3 +643,37 @@ select.input {
 .doc a {
   text-decoration: underline;
 }
+
+/* Chat bubbles. Yours: a clearly filled, bordered box (a plain --raise fill vanishes into the dark background).
+   Kaisen's typing bubble: lighter fill, hairline border, so the two never read alike. */
+.bubble-you {
+  background: color-mix(in srgb, var(--fg) 14%, var(--bg));
+  border: 1px solid var(--edge);
+}
+.bubble-kaisen {
+  background: var(--raise);
+  border: 1px solid var(--line);
+}
+.typing-dots {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.typing-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mut);
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.4s; }
+.typing-static { display: none; }
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots { display: none; }
+  .typing-static { display: inline; }
+}

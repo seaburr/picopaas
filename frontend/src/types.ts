@@ -155,6 +155,7 @@ export interface App {
   want_storage: boolean
   allow_sensitive_paths?: boolean
   status: string
+  updating?: boolean // true = a new version is rolling out while the current one stays live
   status_detail: string | null
   // short machine code: image_pull | crash_loop | oom | not_ready | quota | root_image | unknown
   status_reason?: string | null
@@ -722,6 +723,7 @@ export interface KaisenBuild {
   app_id: number | null
   app_hostname: string | null
   app_status: string | null
+  app?: { status?: string; updating?: boolean } | null
   file_count: number
   cost_usd: number
   last_run_at: string | null
@@ -736,6 +738,7 @@ export interface KaisenRun {
   kind: 'build' | 'feedback' | 'resume'
   status: BuildStatus
   summary: string | null
+  request?: string | null // the full message that started a feedback run
   error: string | null
   cost_usd: number
   started_at: string
