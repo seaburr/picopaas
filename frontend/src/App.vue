@@ -40,7 +40,9 @@ const shell = computed(() => ready.value && !BARE.has(route.path))
         <p class="help">The page failed to load. Reloading usually fixes it.</p>
         <button type="button" class="btn-primary mt-4" @click="reload">Reload</button>
       </div>
-      <div v-else class="flex-1"><RouterView /></div>
+      <!-- Pages for one thing (/apps/:id, /kaisen/:id, ...) load it on mount; a fresh instance per id, so going from
+           one app's Health to another's loads the other app instead of keeping the first. -->
+      <div v-else class="flex-1"><RouterView v-slot="{ Component, route: r }"><component :is="Component" :key="r.params.id ? r.path : undefined" /></RouterView></div>
       <!-- Pages without the sidebar (account status): the legal links the sidebar foot would carry. -->
       <footer v-if="!shell && auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-400">
         <a href="/privacy" class="hover:text-white hover:underline" title="Privacy, terms of use and how to report abuse">Legal</a>
