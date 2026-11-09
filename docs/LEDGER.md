@@ -5,6 +5,8 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-08 [main] DONE: Nav bug: going from one app's Health to another app (sidebar) changed the URL but kept the first app's page, so Health under the new app did nothing. Detail pages load on mount and never watched :id; App.vue now keys the RouterView by path for routes with an :id (apps, app settings, Kaisen builds, projects). Reproduced on prod, e2e nav-between-apps fails without the fix. Chas 2026-11-08.
+- 2026-11-08 [main] DONE: Kaisen runtime re-pinned to sha256:59e90bba… (99f80dd, 5-min bundle retry) via bootstrap run 42500774436; backup image kept at sha256:6537bee8…. Existing Kaisen apps pick it up on their next redeploy.
 - 2026-11-08 [main] DONE: Kaisen runtime bundle download retries for 5 min (was ~30s), so a node replacement/platform deploy no longer gives Kaisen apps a "crashed, exit 1" restart (seen on apps 292/293 at 04:41). Needs runtime image publish + re-pin (bootstrap.yml). Chas approved 2026-11-08.
 - 2026-11-08 [release-blogger] DONE: devlog posted (published): release-polish-pass-getting-started-kaisen-chat-sidebar (round 2b, Kaisen chat polish, sidebar, edge path block, hotfixes). Chas asked.
 - 2026-11-08 [scm-security] DONE: Sidebar: tree indent compressed (18px → 11px per level, guide line under the parent triangle); app names get ~22px more. Phone menu unchanged. Chas 2026-11-08.
