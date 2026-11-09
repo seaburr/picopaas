@@ -3,11 +3,14 @@ import { login } from './helpers'
 
 // Going from one app's Health (or Settings) straight to another's must show the other app, not keep the first.
 // Real apps on the dev server (reconciler off); only their status is reported as running.
+const made: number[] = []
 async function makeApp(page: Page, prefix: string) {
   const name = `${prefix}-${Date.now().toString(36)}`
   const r = await page.request.post('/apps', { data: { name, image: 'nginxinc/nginx-unprivileged:1.27', port: 8080 } })
   expect(r.status(), await r.text()).toBeLessThan(300)
-  return { id: ((await r.json()) as { id: number }).id, name }
+  const id = ((await r.json()) as { id: number }).id
+  made.push(id)
+  return { id, name }
 }
 const h1 = (page: Page) => page.getByRole('heading', { level: 1 })
 
@@ -35,4 +38,9 @@ test("Health to another app's Health, and Settings to Settings, load the other a
   await expect(page).toHaveURL(new RegExp(`/apps/${b.id}/edit$`))
   await expect(page.locator('main')).toContainText(b.name)
   await expect(page.getByText('Something went wrong')).toHaveCount(0)
+})
+
+// The dev DB is shared by every spec (one worker): later ones expect an empty apps list, so leave nothing behind.
+test.afterEach(async ({ page }) => {
+  for (const id of made.splice(0)) await page.request.delete(`/apps/${id}`)
 })
