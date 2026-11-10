@@ -161,7 +161,7 @@ async function test(which: 'anthropic') {
         <div class="sec sec-pad h-24 animate-pulse" />
       </div>
 
-      <form v-else class="grid gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start 2xl:grid-cols-3 [&_.input]:max-w-xl" novalidate @submit.prevent="save">
+      <form v-else class="grid gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start 2xl:grid-cols-3 [&_.input]:max-w-xl [&_.field-wrap]:max-w-xl" novalidate @submit.prevent="save">
         <p class="help col-span-full">Applies to every build in {{ projName }}. You are {{ s.can_edit ? 'an owner' : 'a member' }}<template v-if="!s.can_edit">: you can see what is set, not change it</template>. Everyone who can run builds here spends from this key.</p>
         <p v-if="readOnly && !projSuspended" class="alert-info col-span-full" role="status">Only project owners can change these settings. <template v-if="!s.anthropic_key.set">Kaisen isn't set up in {{ projName }} yet: ask an owner to add an Anthropic API key.</template></p>
 

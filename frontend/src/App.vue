@@ -44,7 +44,7 @@ const shell = computed(() => ready.value && !BARE.has(route.path))
            one app's Health to another's loads the other app instead of keeping the first. -->
       <div v-else class="flex-1"><RouterView v-slot="{ Component, route: r }"><component :is="Component" :key="r.params.id ? r.path : undefined" /></RouterView></div>
       <!-- Pages without the sidebar (account status): the legal links the sidebar foot would carry. -->
-      <footer v-if="!shell && auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-400">
+      <footer v-if="ready && !shell && auth.user" class="mx-auto flex max-w-6xl flex-wrap justify-center gap-x-4 gap-y-1 px-4 py-6 text-xs text-zinc-400">
         <a href="/privacy" class="hover:text-white hover:underline" title="Privacy, terms of use and how to report abuse">Legal</a>
         <RouterLink to="/guide" class="hover:text-white hover:underline">Docs</RouterLink>
         <a href="https://blog.picopaas.xyz" target="_blank" rel="noopener" class="hover:text-white hover:underline">Blog</a>

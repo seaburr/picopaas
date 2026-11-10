@@ -22,7 +22,8 @@ const shown = ref(false)
 <template>
   <div>
     <label :for="id" class="label">{{ label }}</label>
-    <div class="relative">
+    <!-- field-wrap: a page that caps .input width caps this too, so the toggle stays inside the field. -->
+    <div class="field-wrap relative">
       <input
         :id="id"
         :value="modelValue"

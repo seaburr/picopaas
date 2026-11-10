@@ -213,7 +213,9 @@ async function confirmDelete() {
 <template>
   <div>
     <main id="main" tabindex="-1" class="page-main space-y-4">
-      <RouterLink to="/projects" class="link inline-block text-sm">Back to Projects</RouterLink>
+      <nav class="meta" aria-label="Breadcrumb">
+        <RouterLink to="/projects" class="link">Projects</RouterLink><span aria-hidden="true"> / </span>{{ pid === null ? 'New project' : project ? (project.is_personal ? 'Personal project' : project.name) : 'Project' }}
+      </nav>
 
       <!-- create -->
       <template v-if="pid === null">
