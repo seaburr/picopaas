@@ -3,6 +3,7 @@
 Plain text only. Public read (`GET /api/banner`, it shows on /login); admin read/write under `/admin/banner`.
 Reads go through the platform_settings per-database cache, so the public route costs no query on a hit.
 """
+import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import Literal
@@ -17,6 +18,12 @@ from app.dependencies import require_platform_admin
 
 # Cc control, Cf format (bidi overrides/isolates, zero-width, joiners, BOM), Zl/Zp line/paragraph separators, Cs, Co, Cn
 _BAD_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp", "Cs", "Co", "Cn"})
+# Links are blocked (K134: a hijacked admin could phish on /login): URL schemes, www., scheme-like prefixes, bare domains
+_LINK_RE = re.compile(
+    r"://|(?<![a-z0-9])www\.|(?<![a-z0-9])(?:mailto|javascript|vbscript)\s*:|(?<![a-z0-9])data:\S"
+    r"|(?<![\w.-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![\w-])",
+    re.IGNORECASE)
+LINK_ERROR = "Links aren't allowed in the banner."
 KEYS = ("banner_enabled", "banner_level", "banner_title", "banner_text")
 
 
@@ -40,6 +47,8 @@ class BannerIn(BaseModel):
         v = v.strip()
         if any(ord(c) < 32 or ord(c) == 127 or unicodedata.category(c) in _BAD_CATEGORIES for c in v):
             raise ValueError("can't contain newlines, control or invisible formatting characters")
+        if _LINK_RE.search(v):
+            raise ValueError(LINK_ERROR)
         return v
 
     @model_validator(mode="after")

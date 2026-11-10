@@ -46,8 +46,7 @@ def choose_server(session: Session, engine: str = "mysql") -> DbServer:
     return best
 
 
-PG_UNAVAILABLE_MSG = ("PostgreSQL isn't available on this platform: no PostgreSQL server is attached. "
-                      "Use MySQL or ask an admin.")
+PG_UNAVAILABLE_MSG = "PostgreSQL is not available. Contact your platform administrator."
 
 
 def engine_has_server(session: Session, engine: str) -> bool:

@@ -160,3 +160,32 @@ def test_api_keys_on_banner_routes(make_client):
     assert other.get("/api/banner", headers=hdr(ukey)).status_code == 200
     # the banner is not a session-only route: an admin key is accepted (documents current behaviour)
     assert other.put("/admin/banner", json=GOOD, headers=hdr(akey)).status_code == 200
+
+
+LINKS = ["https://evil.example/login", "HTTP://x", "see WWW.evil", "mailto:a@b", "JavaScript:alert(1)", "javascript: x",
+         "data:text/html,hi", "go to evil.com now", "example.co/login", "Evil.COM", "a.b.example.org", "x.io."]
+FINE = ["No uptime guarantees; don't store personal data.", "Use e.g. a small app, i.e. one image.", "Runs v1.2 now.",
+        "Limit is 3.0 GiB.", "Data: none. Note: fine.", "Release 1.2.3 is out."]
+
+
+def test_default_banner_passes_validation(make_client):
+    admin = _admin(make_client)
+    body = {"enabled": True, "level": "warning", "title": config.BANNER_TITLE, "text": config.BANNER_TEXT}
+    assert admin.put("/admin/banner", json=body).status_code == 200
+
+
+def test_links_rejected_in_title_and_text(make_client):
+    admin = _admin(make_client)
+    for link in LINKS:
+        for field in ("title", "text"):
+            r = admin.put("/admin/banner", json={**GOOD, field: link})
+            assert r.status_code == 422, (field, link)
+            assert "Links aren't allowed in the banner." in r.text
+    assert admin.get("/admin/banner").json()["text"] == config.BANNER_TEXT
+
+
+def test_normal_sentences_accepted(make_client):
+    admin = _admin(make_client)
+    for s in FINE:
+        for field in ("title", "text"):
+            assert admin.put("/admin/banner", json={**GOOD, field: s}).status_code == 200, (field, s)
