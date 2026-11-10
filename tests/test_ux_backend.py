@@ -46,7 +46,7 @@ def test_spa_html_is_no_cache_and_vary(client, tmp_path, monkeypatch):
     r = client.get("/apps", headers={"Sec-Fetch-Mode": "navigate", "Accept": "text/html"})
     assert "<title>spa</title>" in r.text
     assert r.headers["cache-control"] == "no-cache"
-    assert r.headers["vary"] == "Sec-Fetch-Mode, Accept"
+    assert r.headers["vary"] == "Sec-Fetch-Mode, Accept, Accept-Encoding"  # gzip middleware merges Accept-Encoding
     r = client.get("/some/client/route")
     assert r.headers["cache-control"] == "no-cache"
 

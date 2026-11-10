@@ -759,3 +759,9 @@ BANNER_TEXT = ("Sign up, and if your account is approved, a PicoPaaS platform ad
 BANNER_TITLE_MAX = 80
 BANNER_TEXT_MAX = 255
 BANNER_LEVELS = ("info", "warning")
+
+# Static file caching/compression (app/static_cache.py). Hashed /static/assets/* are immutable for a year; other
+# /static files are unhashed so only a short max-age. gzip never applies to JSON (BREACH).
+STATIC_ASSET_MAX_AGE_S = 31536000
+STATIC_OTHER_MAX_AGE_S = 3600
+STATIC_GZIP_MIN_BYTES = 1000

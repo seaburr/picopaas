@@ -16,6 +16,7 @@ from app import models, metrics
 from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
 from app import banner as banner_module
+from app.static_cache import StaticCacheMiddleware
 from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
@@ -302,6 +303,7 @@ def _add_security_headers(response, path: str) -> None:
         response.headers["Content-Security-Policy"] = _csp()
 
 
+app.add_middleware(StaticCacheMiddleware)  # compress + cache /static and HTML only, never JSON
 app.middleware("http")(metrics.middleware)  # inside robots_and_noindex (security headers) but sees every routed request
 
 
