@@ -44,3 +44,20 @@ def choose_server(session: Session, engine: str = "mysql") -> DbServer:
     if best is None:
         raise NoDbCapacity("no active DbServer has a free slot")
     return best
+
+
+PG_UNAVAILABLE_MSG = ("PostgreSQL isn't available on this platform: no PostgreSQL server is attached. "
+                      "Use MySQL or ask an admin.")
+
+
+def engine_has_server(session: Session, engine: str) -> bool:
+    """True when any DbServer of `engine` exists, in any status (full or draining servers still count)."""
+    return session.execute(select(DbServer.id).where(DbServer.engine == engine).limit(1)).first() is not None
+
+
+def require_engine_server(session: Session, want_db: bool, engine: str) -> None:
+    """Fail up front (422) when a new database wants PostgreSQL and no PG server exists at all. MySQL is never
+    checked here (the reconciler reports db_capacity as before)."""
+    if want_db and engine == "pg" and not engine_has_server(session, "pg"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=PG_UNAVAILABLE_MSG)

@@ -3,8 +3,10 @@ from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from app import models
+from app import db_placement, models
+from app.db import get_db
 from app.dependencies import get_active_user
 
 
@@ -52,6 +54,7 @@ class TemplateOut(BaseModel):
     wants_db: bool
     db_engine: Literal["mysql", "pg"] = "mysql"
     wants_storage: bool
+    available: bool = True  # False when the template needs PostgreSQL and no PostgreSQL server is attached (list_templates sets it)
     env: Dict[str, str]
     secrets: List[TemplateSecret] = []  # prefilled as empty secret env vars; the user must set each value
     health_check: Optional[TemplateHealthCheck] = None  # None = health check off
@@ -647,5 +650,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 
 
 @router.get("", response_model=List[TemplateOut])
-def list_templates(_user: models.User = Depends(get_active_user)) -> List[TemplateOut]:
-    return CATALOG
+def list_templates(db: Session = Depends(get_db), _user: models.User = Depends(get_active_user)) -> List[TemplateOut]:
+    pg_ok = db_placement.engine_has_server(db, "pg")
+    return [t if (pg_ok or not (t.wants_db and t.db_engine == "pg")) else t.model_copy(update={"available": False})
+            for t in CATALOG]

@@ -7,7 +7,7 @@ from pydantic import ConfigDict, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app import quota, audit, config, crypto, custom_domains, image_check, image_history, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
+from app import quota, audit, config, crypto, custom_domains, db_placement, image_check, image_history, k8s_manifests, models, projects, reconciler, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.kaisen.models import KaisenBuild
@@ -230,6 +230,7 @@ def create_app(
     project = _target_project(db, current_user, payload.project_id)
     projects.check_app_limit(db, project)
 
+    db_placement.require_engine_server(db, payload.want_db, payload.db_engine)
     run_as_uid, digest = _check_image_cap(registry, payload.image)
     _validate_env(payload.env, want_db=payload.want_db, want_storage=payload.want_storage)
 

@@ -6,7 +6,7 @@ from pydantic import ConfigDict, BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import audit, crypto, models, projects, resources, schemas, volumes
+from app import audit, crypto, db_placement, models, projects, resources, schemas, volumes
 from app.db import get_db
 from app.dependencies import get_active_user, get_registry
 from app.naming import generate_unique_hostname
@@ -118,6 +118,8 @@ def deploy_spec(
                 "the app if you really want to switch (this destroys the data)."
             ),
         )
+    if app is None or not app.want_db:
+        db_placement.require_engine_server(db, spec.resources.db, spec.resources.db_engine)
     missing = [s for s in spec.secrets if s not in payload.secrets and s not in existing_secrets]
     if missing:
         raise HTTPException(status_code=422, detail=(

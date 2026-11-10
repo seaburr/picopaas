@@ -748,3 +748,14 @@ KAISEN_PUSH_STALE_S = 15 * 60  # a push still "running" after this long (pod res
 # Admin > Projects paging (GET /admin/projects?limit=&offset=)
 ADMIN_PROJECTS_PAGE_DEFAULT = 25
 ADMIN_PROJECTS_PAGE_MAX = 100
+
+# Platform banner (GET /api/banner, admin PUT /admin/banner). Defaults apply until an admin saves one; limits fit the
+# platform_settings.value column (String(255)).
+BANNER_ENABLED = True
+BANNER_LEVEL = "warning"  # "info" | "warning"
+BANNER_TITLE = "Dev/test platform."
+BANNER_TEXT = ("Sign up, and if your account is approved, a PicoPaaS platform admin will reach out. "
+               "No uptime guarantees; don't store personal data.")
+BANNER_TITLE_MAX = 80
+BANNER_TEXT_MAX = 255
+BANNER_LEVELS = ("info", "warning")

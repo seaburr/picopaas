@@ -1088,6 +1088,26 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
     return _server_out(db, server)
 
 
+@router.delete("/db-servers/{server_id}", status_code=204)
+def delete_db_server(server_id: int, db: Session = Depends(get_db),
+                     admin: models.User = Depends(require_platform_admin)):
+    """Detach a database server. Refused while any app database (including a soft-deleted app's not yet torn down)
+    still lives on it."""
+    server = db.get(models.DbServer, server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="We can't find that database server. Refresh the list.")
+    in_use = db.query(func.count(models.AppDatabase.id)).filter(models.AppDatabase.db_server_id == server.id).scalar() or 0
+    if in_use:
+        raise HTTPException(status_code=409, detail=(
+            f"This server still hosts {in_use} app database(s). Delete those apps (or wait for their teardown) first."))
+    name, engine = server.name, server.engine
+    db.delete(server)
+    db.commit()
+    health.invalidate_db_server(server_id)
+    audit.record(db, admin, "db_server.delete", "db_server", server_id, f"name={name} engine={engine}")
+    return Response(status_code=204)
+
+
 # --- download a platform database backup ------------------------------------------------------
 # The dump holds every account's password hash, every encrypted tenant secret and all audit data, so: browser admin session only
 # (no API key, however scoped), the admin's CURRENT password re-entered on each request (same check, throttle and failure

@@ -262,8 +262,11 @@ def test_deleting_the_build_deletes_its_secrets(team):
 
 # ---- F8b: postgres, bucket, volume --------------------------------------------------------------
 
-def test_deploy_with_postgres_bucket_and_volume(team, monkeypatch):
+def test_deploy_with_postgres_bucket_and_volume(team, monkeypatch, db_session):
     _, a, b, c, pid = team
+    db_session.add(models.DbServer(name="pg1", engine="pg", host="pg.example.internal", port=25060, admin_user="admin",
+                                   admin_password_encrypted=crypto.encrypt("not-the-password")))
+    db_session.commit()
     monkeypatch.setattr(config, "VOLUMES_ENABLED", True)
     manifest = '{"runtime": "python", "start": "python app.py", "database": "postgres", "bucket": true, "volume": {"path": "/data"}}'
     bid = _new_build(a, pid, files={"kaisen.json": manifest, "app.py": "print(1)"})
@@ -280,6 +283,16 @@ def test_deploy_with_postgres_bucket_and_volume(team, monkeypatch):
         assert env[k] == "${{ storage.%s }}" % ref
     row = db().get(models.App, app_id)
     assert row.volume_size_gi == config.VOLUME_DEFAULT_GI and row.volume_mount_path == "/data"
+
+
+def test_deploy_with_postgres_but_no_pg_server_is_refused(team):
+    _, a, b, c, pid = team
+    bid = _new_build(a, pid, files={"kaisen.json": '{"runtime": "python", "start": "python app.py", "database": "postgres"}',
+                                    "app.py": "print(1)"})
+    r = _deploy(a, bid)
+    assert r.status_code == 422, r.text
+    assert "PostgreSQL" in str(r.json())
+    assert db().query(models.App).count() == 0
 
 
 def test_mysql_deploy_has_no_pg_or_bucket_env(team):

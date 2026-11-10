@@ -142,7 +142,10 @@ def test_vikunja_umami_ntfy_itools_excalidraw_templates(client):
     assert "planka" not in by_id
 
 
-def test_new_pg_templates_create_app_with_empty_secrets(client):
+def test_new_pg_templates_create_app_with_empty_secrets(client, db_session):
+    from app import models
+    db_session.add(models.DbServer(name="pg1", engine="pg", host="h", port=5432, admin_user="u", admin_password_encrypted="x"))
+    db_session.commit()
     register_and_login(client, "ntfyc@example.com")
     t = {x["id"]: x for x in client.get("/templates").json()}["ntfy"]
     env = [{"key": k, "value": v, "is_secret": False} for k, v in t["env"].items()]

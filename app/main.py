@@ -15,6 +15,7 @@ from app import config, logging_setup
 from app import models, metrics
 from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
+from app import banner as banner_module
 from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
@@ -58,6 +59,8 @@ app.include_router(spec.router)
 app.include_router(templates.router)
 app.include_router(admin.router)
 app.include_router(admin_settings.router)
+app.include_router(banner_module.public_router)
+app.include_router(banner_module.admin_router)
 app.include_router(admin_diag.router)
 app.include_router(backups.admin_router)
 app.include_router(admin_docs.router)

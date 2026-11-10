@@ -149,11 +149,13 @@ def test_quota_mysql_path_gets_no_hard_kwarg(db_session):
 
 # --- API / spec ---------------------------------------------------------------------------------------------
 
-def test_api_db_engine_field(client):
+def test_api_db_engine_field(client, db_session):
     register_and_login(client, "pg@example.com")
     base = {"name": "a", "image": "ghcr.io/example/demo:1.0", "port": 8080, "want_db": True}
     r = client.post("/apps", json=base)
     assert r.status_code == 201 and r.json()["db_engine"] == "mysql"
+    assert client.post("/apps", json={**base, "name": "b0", "db_engine": "pg"}).status_code == 422  # no pg server yet
+    _server(db_session, "pg1", "pg")
     r = client.post("/apps", json={**base, "name": "b", "db_engine": "pg"})
     assert r.status_code == 201 and r.json()["db_engine"] == "pg"
     assert client.post("/apps", json={**base, "name": "c", "db_engine": "oracle"}).status_code == 422
@@ -169,8 +171,9 @@ resources:
 """
 
 
-def test_spec_db_engine_and_immutability(client):
+def test_spec_db_engine_and_immutability(client, db_session):
     register_and_login(client, "spec@example.com")
+    _server(db_session, "pg1", "pg")
     r = client.post("/apps/spec", json={"spec": SPEC, "secrets": {}})
     assert r.status_code in (200, 201), r.text
     assert r.json()["db_engine"] == "pg"
