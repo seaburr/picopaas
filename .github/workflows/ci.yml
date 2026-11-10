@@ -97,7 +97,7 @@ jobs:
       # see mysql-integration, postgres-integration and garage-integration below.
       # Coverage floor (fail_under in .coveragerc) is enforced here only.
       # 3 workers: the cap agreed with Chas, on a 4-core runner. Tests must not depend on run order or shared state.
-      - run: python -m pytest tests/ -q -n 3 --cov=app --cov-report=term-missing:skip-covered
+      - run: python -m pytest tests/ -q -n 3 --cov=app --cov=images/kaisen-runtime --cov-report=term-missing:skip-covered
 
   mysql-integration:
     runs-on: ubuntu-latest

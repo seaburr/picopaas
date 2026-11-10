@@ -5,7 +5,10 @@
 # with --cov (backend-tests job); the mysql-integration subset does not pass --cov, so it never
 # hits the floor. Raise it by re-measuring and applying the same rule; never lower it to pass.
 [run]
-source = app
+# The Kaisen runtime's boot script runs inside every preview pod; its tests load it by path, so it is listed here.
+source =
+    app
+    images/kaisen-runtime
 
 [report]
 fail_under = 93
