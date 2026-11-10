@@ -717,7 +717,7 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 
 The **Templates** page (`/templates`, or **Deploy from a template** on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (a MySQL and a PostgreSQL entry), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo (MySQL, volume) and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card.
 
-Templates that need PostgreSQL show as unavailable (and cannot be used) while no PostgreSQL server is attached, which is the case on the hosted platform today.
+Templates that need PostgreSQL show as unavailable (and cannot be used) while the platform has no PostgreSQL available (creating one returns 422 "PostgreSQL is not available. Contact your platform administrator."), which is the case on the hosted platform today.
 
 Each template has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. A template warns when the instance has volumes, databases or blob storage turned off.
 

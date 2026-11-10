@@ -449,7 +449,7 @@ as **one row per tunable** with a **Default** and a **Ceiling** column (API: `ro
 
 **Admin > Settings > Platform banner** (API: `GET/PUT /admin/banner`) edits the one-line notice shown on every page and the
 login page. Set **Enabled**, a **Level** (`info` or `warning`), an optional **Title** (up to 80 characters) and the **Text**
-(up to 255, required while enabled). Plain text only: line breaks, control characters and invisible Unicode are rejected.
+(up to 255, required while enabled). Plain text only: line breaks, control characters and invisible Unicode are rejected, and so are links (`://`, `www.`, `mailto:`, bare domains such as `example.com`; 422 "Links aren't allowed in the banner.").
 Until you save one, the defaults from `BANNER_*` in `app/config.py` apply. Changes are audit-logged (`banner.update`).
 The unauthenticated `GET /api/banner` serves it to the login page. See [API.md](API.md#platform-banner).
 

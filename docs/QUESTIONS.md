@@ -56,7 +56,6 @@ background on each item if you want it.
   for password/CA changes but not for a flavor change, so a wrong flavor (wrong admin DB) breaks provisioning until fixed.
   Recommend verifying on flavor change too (one line). Admin-only, availability only. OK to add?
 
-- **Banner may contain URLs/instructions (LOW, security-reviewer 2026-11-10, K134)**: the admin banner shows on /login and may hold a link or "re-enter your password at ...". Only a compromised admin can set it. Allow (current), or reject `://` / `www.` in banner text? Bidi/invisible characters are already rejected.
 
 ## To-dos (only you can do these)
 
@@ -74,6 +73,8 @@ background on each item if you want it.
   Also decide: (a) existing password accounts: require a password-confirmed "Link Google" from Account (recommended) or auto-link; (b) restrict by Google Workspace domain? Reply here.
 
 ## Resolved
+
+- 2026-11-10: **Banner URLs (K134)**: Chas: "Let's block links for now." Done: `PUT /admin/banner` rejects links (422 "Links aren't allowed in the banner.").
 
 - [security-reviewer 2026-11-07] Backup image `safe_reason` (see K124/K125 in docs/PENTEST.md): OK to switch it to an allowlist of fixed phrases for restic errors (safer, but app owners lose the exact first line), and to fix the awk loop before the image is re-pinned? **Resolved (decided by Claude 2026-11-07: fixed allowlist, no restic text).** Built: six fixed phrases; K124/K125 fixed.
 
