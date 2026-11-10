@@ -62,16 +62,20 @@ async function go(to: string) {
     @click="m.onBackdrop"
   >
     <div class="p-4">
-      <h2 :id="titleId" class="section-title">Getting started</h2>
-      <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-300">
-        <li>The left tree is your map. Projects hold your apps (and Kaisen builds). Templates and Docs are linked below them.</li>
-        <li>
-          Deploy your first app: pick a template, or choose New app and give it a public image, for example
-          <span class="mono">nginxinc/nginx-unprivileged:alpine</span> on port <span class="mono">8080</span>.
-        </li>
-        <li>Every app gets a URL and a health page with logs, usage and versions. Settings holds environment variables, add-ons, domain and backups.</li>
-        <li>Need help? Docs has a guide for each feature.</li>
-      </ol>
+      <h2 :id="titleId" class="section-title">Getting Started with PicoPaaS</h2>
+      <div class="mt-3 space-y-2 text-sm text-zinc-300">
+        <p>PicoPaaS is a platform to host applications simply. You can bring your app, use one of our pre-rolled app templates, or build an app conversationally using Kaisen.</p>
+        <p>Create your first app in your personal project (see the left navigation tree) or create a new project if you want to invite other users to collaborate and manage.</p>
+        <p>
+          Once you're in the correct project click on "New app". Select "Deploy an image" if you've got your image URL handy and know it can run in
+          PicoPaaS (see docs for platform limitations). If you want to deploy from our template library, select "Deploy from a template".
+        </p>
+        <p>
+          Finally, if you want to build an application conversationally, add an Anthropic API key to the Kaisen settings page in the project, then
+          select "Build with Kaisen" and start prompting your way to your app.
+        </p>
+        <p>Need help? Please review the docs for in depth guides, troubleshooting info, and everything else.</p>
+      </div>
       <label v-if="!auth.user?.onboarding_dismissed" class="mt-4 flex items-center gap-2 text-sm text-zinc-300">
         <input v-model="never" type="checkbox" /> Don't show this again
       </label>

@@ -8,7 +8,7 @@ const shot = async (page: Page, name: string) => {
 }
 const setDismissed = async (page: Page, v: boolean) =>
   expect((await page.request.patch('/auth/me', { data: { onboarding_dismissed: v } })).ok()).toBeTruthy()
-const dialog = (page: Page) => page.getByRole('dialog', { name: 'Getting started' })
+const dialog = (page: Page) => page.getByRole('dialog', { name: 'Getting Started with PicoPaaS' })
 
 test.describe('getting started dialog', () => {
   test.afterEach(async ({ browser }) => {
@@ -24,7 +24,7 @@ test.describe('getting started dialog', () => {
     await setDismissed(page, false)
     await page.reload()
     await expect(dialog(page)).toBeVisible()
-    await expect(dialog(page).getByRole('listitem')).toHaveCount(4)
+    await expect(dialog(page).getByText('build an app conversationally using Kaisen')).toBeVisible()
     await shot(page, 'dialog')
 
     await page.keyboard.press('Escape')
