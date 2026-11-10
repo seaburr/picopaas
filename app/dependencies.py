@@ -131,13 +131,6 @@ def require_session_auth(request: Request, current_user: models.User = Depends(g
     return current_user
 
 
-def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
-    try:
-        return _user_from_request(request, db)
-    except Exception:
-        return None
-
-
 def require_session_user(request: Request, current_user: models.User = Depends(get_active_user)) -> models.User:
     """Active user on a browser session only: membership management must not be possible with a (leaked) API key."""
     if getattr(request.state, "auth_via", None) != "cookie":
