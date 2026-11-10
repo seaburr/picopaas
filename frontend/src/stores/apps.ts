@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { checkImage as checkImageApi, createApp, deleteApp, getApp, listApps, restartApp, rollbackApp, updateApp } from '../api/apps'
+import { checkImage as checkImageApi, createApp, deleteApp, getApp, getAppSwr, listApps, restartApp, rollbackApp, updateApp } from '../api/apps'
 import { useProjectsStore } from './projects'
 import type { App, AppCreatePayload, AppUpdatePayload } from '../types'
 
@@ -30,6 +30,10 @@ export const useAppsStore = defineStore('apps', () => {
 
   async function fetchOne(id: number) {
     return getApp(id)
+  }
+  // First load of a page: a recent copy at once, `onFresh` gets the refreshed one. Polls and post-action reloads use fetchOne.
+  async function fetchOneSwr(id: number, onFresh?: (a: App) => void) {
+    return getAppSwr(id, onFresh)
   }
 
   async function create(payload: AppCreatePayload) {
@@ -80,5 +84,5 @@ export const useAppsStore = defineStore('apps', () => {
     loaded.value = false
   }
 
-  return { apps, loaded, pid, reset, clear, load, fetchOne, create, update, remove, restart, rollback, checkImage, upsert }
+  return { apps, loaded, pid, reset, clear, load, fetchOne, fetchOneSwr, create, update, remove, restart, rollback, checkImage, upsert }
 })

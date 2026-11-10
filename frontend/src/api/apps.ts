@@ -1,10 +1,12 @@
 import type { App, AppEvent, MetricsHistory, ImageVersion, AppCreatePayload, AppUpdatePayload, AppWithCreated } from '../types'
-import { apiFetch, downloadFile } from './client'
+import { apiFetch, apiGetSwr, downloadFile } from './client'
 
 // Matches app/routers/apps.py exactly (prefix "/apps").
 export const listApps = (projectId?: number | null) => apiFetch<App[]>(projectId ? `/apps?project_id=${projectId}` : '/apps')
 
 export const getApp = (id: number) => apiFetch<App>(`/apps/${id}`)
+// Page-load variant: a recent copy is returned at once and `onFresh` gets the refreshed one (see apiGetSwr). Not for polls.
+export const getAppSwr = (id: number, onFresh?: (a: App) => void) => apiGetSwr<App>(`/apps/${id}`, onFresh)
 
 export const createApp = (payload: AppCreatePayload) =>
   apiFetch<App>('/apps', {
@@ -53,9 +55,9 @@ export interface AppLogs {
 export const getAppLogs = (id: number, tail = 200, pod?: string) =>
   apiFetch<AppLogs>(`/apps/${id}/logs?tail=${tail}${pod ? `&pod=${encodeURIComponent(pod)}` : ''}`)
 
-export const getMetricsHistory = (id: number) => apiFetch<MetricsHistory>(`/apps/${id}/metrics-history`)
+export const getMetricsHistory = (id: number, onFresh?: (m: MetricsHistory) => void) => (onFresh ? apiGetSwr<MetricsHistory>(`/apps/${id}/metrics-history`, onFresh) : apiFetch<MetricsHistory>(`/apps/${id}/metrics-history`))
 
-export const getAppEvents = (id: number) => apiFetch<AppEvent[]>(`/apps/${id}/events`)
+export const getAppEvents = (id: number, onFresh?: (e: AppEvent[]) => void) => (onFresh ? apiGetSwr<AppEvent[]>(`/apps/${id}/events`, onFresh) : apiFetch<AppEvent[]>(`/apps/${id}/events`))
 
 export const checkImage = (id: number) => apiFetch<App>(`/apps/${id}/check-image`, { method: 'POST' })
 
@@ -72,7 +74,7 @@ export interface StorageDeleteResult {
 export const deleteStorageObjects = (id: number, body: { prefix: string } | { all: true }) =>
   apiFetch<StorageDeleteResult>(`/apps/${id}/storage/delete`, { method: 'POST', body: JSON.stringify(body) })
 
-export const getImageHistory = (id: number) => apiFetch<ImageVersion[]>(`/apps/${id}/image-history`)
+export const getImageHistory = (id: number, onFresh?: (v: ImageVersion[]) => void) => (onFresh ? apiGetSwr<ImageVersion[]>(`/apps/${id}/image-history`, onFresh) : apiFetch<ImageVersion[]>(`/apps/${id}/image-history`))
 
 export const rollbackApp = (id: number, digest: string) =>
   apiFetch<App>(`/apps/${id}/rollback`, { method: 'POST', body: JSON.stringify({ digest }) })

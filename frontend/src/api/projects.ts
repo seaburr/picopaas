@@ -1,10 +1,10 @@
 import type { App, Project, ProjectInvite, ProjectInviteCreated, ProjectMember, ProjectRole } from '../types'
-import { apiFetch } from './client'
+import { apiFetch, apiGetSwr } from './client'
 
 // Matches app/routers/projects.py.
 const json = (method: string, body: unknown) => ({ method, body: JSON.stringify(body) })
 
-export const listProjects = () => apiFetch<Project[]>('/projects')
+export const listProjects = (onFresh?: (p: Project[]) => void) => (onFresh ? apiGetSwr<Project[]>('/projects', onFresh) : apiFetch<Project[]>('/projects'))
 export const createProject = (name: string) => apiFetch<Project>('/projects', json('POST', { name }))
 export const getProject = (id: number) => apiFetch<Project>(`/projects/${id}`)
 export const renameProject = (id: number, name: string) => apiFetch<Project>(`/projects/${id}`, json('PATCH', { name }))

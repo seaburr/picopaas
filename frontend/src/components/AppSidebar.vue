@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listUsers } from '../api/admin'
+import { apiGeneration } from '../api/client'
 import { getBuild } from '../api/kaisen'
 import { appStatus, statusLook } from '../composables/statusTone'
 import { useAppsStore } from '../stores/apps'
@@ -32,8 +33,14 @@ const signedIn = computed(() => !!auth.user)
 
 // ---- pending approvals (admin) ----
 const pending = ref(0)
+let pendingAt = 0
+let pendingGen = -1
 async function refreshPending() {
   if (!isAdmin.value) return
+  // A badge, not a live counter: once a minute, or sooner when anything was written since (an approval, a signup).
+  if (Date.now() - pendingAt < 60_000 && pendingGen === apiGeneration()) return
+  pendingAt = Date.now()
+  pendingGen = apiGeneration()
   try {
     pending.value = ((await listUsers()) ?? []).filter((u) => u.status === 'pending').length
   } catch {

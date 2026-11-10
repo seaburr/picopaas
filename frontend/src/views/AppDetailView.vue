@@ -19,6 +19,7 @@ import { refLabel, refsIn } from '../composables/envKeys'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { useProjectSuspension } from '../composables/projectSuspension'
 import { useAppsStore } from '../stores/apps'
+import { useSidebarStore } from '../stores/sidebar'
 import { projectApps, projectLabel } from '../utils/paths'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -31,22 +32,30 @@ const auth = useAuthStore()
 const toast = useToastStore()
 const now = useNow()
 
-const app = ref<App | null>(null)
+// Seeded from the sidebar's cached app list (if it has this app) so the page paints before the request returns;
+// the fetch in onMounted replaces it, or clears it if the app is gone / the request fails.
+const app = ref<App | null>(useSidebarStore().find(Number(props.id)) ?? null)
 const loadError = ref('')
 const fetchedAt = ref(Date.now())
 const notFound = ref(false)
 
-async function loadApp(quiet = false) {
+function showApp(a: App | undefined) {
+  app.value = a ?? null
+  fetchedAt.value = Date.now()
+  if (app.value) {
+    store.upsert(app.value)
+    document.title = `${app.value.name} · PicoPaaS`
+  }
+}
+// `quiet` = a poll tick or a reload after an action: always asks the server. The first load may show a recent copy
+// at once (the refreshed one replaces it when it arrives).
+async function loadApp(quiet = false, first = false) {
   try {
-    app.value = await store.fetchOne(Number(props.id))
-    fetchedAt.value = Date.now()
-    if (app.value) {
-      store.upsert(app.value)
-      document.title = `${app.value.name} · PicoPaaS`
-    }
+    showApp(first ? await store.fetchOneSwr(Number(props.id), showApp) : await store.fetchOne(Number(props.id)))
     loadError.value = ''
     loadVersions()
   } catch (e) {
+    if (first) app.value = null // drop the seeded copy: show the error state, not a page that looks loaded
     if (e instanceof ApiError && e.status === 404) notFound.value = true
     else if (!quiet || !app.value) loadError.value = e instanceof ApiError ? e.message : "Couldn't load this app."
   }
@@ -73,7 +82,7 @@ watch(app, syncPoll)
 const events = ref<AppEvent[]>([])
 async function loadEvents() {
   try {
-    events.value = await getAppEvents(Number(props.id))
+    events.value = await getAppEvents(Number(props.id), (e) => (events.value = e))
   } catch {
     events.value = [] // older backend or a transient error: the section just stays empty
   }
@@ -84,7 +93,7 @@ const metrics = ref<MetricsHistory | null>(null)
 const podCount = computed(() => Math.max(metrics.value?.replicas ?? 1, metrics.value?.pods ?? 1))
 async function loadMetrics() {
   try {
-    metrics.value = await getMetricsHistory(Number(props.id))
+    metrics.value = await getMetricsHistory(Number(props.id), (m) => (metrics.value = m))
   } catch {
     metrics.value = null // older backend or a transient error: the panel stays hidden
   }
@@ -95,7 +104,7 @@ let metricsTimer: ReturnType<typeof setInterval> | null = null
 const versions = ref<ImageVersion[]>([])
 async function loadVersions() {
   try {
-    versions.value = await getImageHistory(Number(props.id))
+    versions.value = await getImageHistory(Number(props.id), (v) => (versions.value = v))
   } catch {
     versions.value = [] // older backend or a transient error: the section just stays empty
   }
@@ -214,11 +223,10 @@ watch(autoRefresh, (v) => {
 })
 
 onMounted(async () => {
-  await loadApp()
+  await loadApp(false, true)
   syncPoll()
-  if (app.value && app.value.status !== 'suspended') await loadLogs()
-  await loadEvents()
-  loadMetrics()
+  // Independent requests: run side by side instead of one after another.
+  await Promise.all([app.value && app.value.status !== 'suspended' ? loadLogs() : undefined, loadEvents(), loadMetrics()])
   metricsTimer = setInterval(loadMetrics, 60000)
   if (route.hash === '#logs') document.getElementById('logs')?.scrollIntoView()
 })

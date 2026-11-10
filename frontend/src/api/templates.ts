@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, apiGetSwr } from './client'
 
 // Matches app/routers/templates.py (GET /templates).
 export interface TemplateSecret {
@@ -27,4 +27,4 @@ export interface AppTemplate {
   upstream_docs_url?: string | null
 }
 
-export const listTemplates = () => apiFetch<AppTemplate[]>('/templates')
+export const listTemplates = (onFresh?: (t: AppTemplate[]) => void) => (onFresh ? apiGetSwr<AppTemplate[]>('/templates', onFresh) : apiFetch<AppTemplate[]>('/templates'))

@@ -59,7 +59,7 @@ function go(t: AppTemplate, pid: number | null) {
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
   try {
-    templates.value = await listTemplates()
+    templates.value = await listTemplates((t) => (templates.value = t))
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : "Couldn't load templates."
   } finally {

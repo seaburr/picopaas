@@ -3,7 +3,7 @@ import { ref, watch, watchEffect } from 'vue'
 import { userZone } from '../utils/tz'
 import { applyTheme } from '../utils/theme'
 import { getMe, login as apiLogin, logout as apiLogout, register as apiRegister } from '../api/auth'
-import { ApiError } from '../api/client'
+import { ApiError, clearApiCache } from '../api/client'
 import type { User } from '../types'
 import { useAppsStore } from './apps'
 import { useKaisenStore } from './kaisen'
@@ -24,7 +24,9 @@ export const useAuthStore = defineStore('auth', () => {
   watch(
     () => user.value?.id ?? null,
     (id, prev) => {
-      if (id === prev || id !== null) return
+      if (id === prev) return
+      clearApiCache() // a different account (or none): nothing fetched for the previous one may be shown
+      if (id !== null) return
       useSidebarStore().reset()
       useAppsStore().reset()
       useProjectsStore().reset()

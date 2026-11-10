@@ -54,7 +54,7 @@ export function formatDetail(detail: unknown): { message: string; fields: Record
   return { message: '', fields: {} }
 }
 
-export async function apiFetch<T = unknown>(url: string, options?: RequestInit): Promise<T> {
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const method = options?.method?.toUpperCase() ?? 'GET'
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (options?.headers) Object.assign(headers, options.headers)
@@ -132,4 +132,76 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
   el.click()
   el.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+// ---- GET sharing + short-lived cache ----
+// Concurrent identical GETs share one request (two components asking for /projects at once cost one round trip).
+// Every GET result is also remembered for CACHE_TTL_MS, but only apiGetSwr reads it: plain apiFetch always hits the
+// network, so polls and "refresh" buttons stay fresh. Any non-GET (success or failure) and every sign-in/sign-out drops
+// the whole cache, so a list shown after a save/delete is never the old one and no account sees another's data.
+const CACHE_TTL_MS = 30_000 // beyond this a cached value is not shown at all
+const FRESH_MS = 8_000 // within this a cached value is used as is, with no revalidation
+const cache = new Map<string, { at: number; json: string }>()
+const inflight = new Map<string, Promise<string>>()
+let generation = 0
+
+export function clearApiCache() {
+  generation++
+  cache.clear()
+  inflight.clear()
+}
+
+// Changes whenever something was written (or the account changed): lets a caller know its own earlier GET may be stale.
+export const apiGeneration = () => generation
+
+const parse = <T>(json: string): T => (json === '' ? (undefined as T) : (JSON.parse(json) as T))
+
+// GET as a JSON string (cheap to share between callers: each gets its own parsed copy, nobody can mutate another's).
+function getJson(url: string, options?: RequestInit): Promise<string> {
+  const shared = !options?.signal
+  const hit = shared ? inflight.get(url) : undefined
+  if (hit) return hit
+  const gen = generation
+  const p = request<unknown>(url, options).then((v) => {
+    const json = v === undefined ? '' : JSON.stringify(v)
+    if (gen === generation && !url.startsWith('/auth/')) cache.set(url, { at: Date.now(), json })
+    return json
+  })
+  if (shared) {
+    inflight.set(url, p)
+    const done = () => {
+      if (inflight.get(url) === p) inflight.delete(url)
+    }
+    p.then(done, done)
+  }
+  return p
+}
+
+export async function apiFetch<T = unknown>(url: string, options?: RequestInit): Promise<T> {
+  const method = options?.method?.toUpperCase() ?? 'GET'
+  if (method === 'GET') return parse<T>(await getJson(url, options))
+  try {
+    return await request<T>(url, options)
+  } finally {
+    clearApiCache()
+  }
+}
+
+// Stale-while-revalidate GET for page loads: a result under CACHE_TTL_MS old is returned at once; unless it is under
+// FRESH_MS old it is also re-fetched in the background and `onFresh` gets the new value if it differs. Older or missing:
+// a normal request. Not for polling, and not for anything that decides auth.
+export async function apiGetSwr<T = unknown>(url: string, onFresh?: (value: T) => void): Promise<T> {
+  const hit = cache.get(url)
+  const age = hit ? Date.now() - hit.at : Infinity
+  if (!hit || age >= CACHE_TTL_MS) return parse<T>(await getJson(url))
+  if (age >= FRESH_MS) {
+    const gen = generation
+    getJson(url).then(
+      (json) => {
+        if (json !== hit.json && gen === generation) onFresh?.(parse<T>(json))
+      },
+      () => {}, // the cached value stays; a 401 was already handled by request()
+    )
+  }
+  return parse<T>(hit.json)
 }

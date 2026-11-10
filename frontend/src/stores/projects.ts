@@ -38,9 +38,13 @@ export const useProjectsStore = defineStore('projects', () => {
 
   async function load() {
     try {
-      projects.value = (await listProjects()) ?? []
+      const apply = (list: Project[]) => {
+        projects.value = list ?? []
+        if (currentId.value !== null && !projects.value.some((p) => p.id === currentId.value)) currentId.value = null
+      }
+      // A recent copy shows at once; a changed answer lands when the background refresh returns.
+      apply((await listProjects(apply)) ?? [])
       loadError.value = ''
-      if (currentId.value !== null && !projects.value.some((p) => p.id === currentId.value)) currentId.value = null
     } catch (e) {
       loadError.value = e instanceof Error ? e.message : "Couldn't load projects."
     } finally {

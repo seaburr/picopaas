@@ -36,3 +36,21 @@ router.onError((err, to) => {
 })
 
 app.mount('#app')
+
+// Once the first page is up and the browser is idle, fetch the other lazy page chunks (the ones a signed-in user
+// reaches from the sidebar) so the first click on each is not a network round trip. Errors are ignored: the real
+// navigation retries and router.onError above handles a stale chunk.
+const idle = (fn: () => void) => ('requestIdleCallback' in window ? window.requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1500))
+router.isReady().then(() => {
+  if (!useAuthStore(pinia).user) return
+  idle(() => {
+    for (const load of [
+      () => import('./views/AppDetailView.vue'),
+      () => import('./views/AppFormView.vue'),
+      () => import('./views/AppsListView.vue'),
+      () => import('./views/TemplatesView.vue'),
+      () => import('./views/ProjectsListView.vue'),
+      () => import('./views/AccountView.vue'),
+    ]) void load().catch(() => {})
+  })
+})
