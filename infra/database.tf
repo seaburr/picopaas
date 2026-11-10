@@ -64,9 +64,8 @@ resource "digitalocean_database_cluster" "postgres" {
 
   tags = ["picopaas"]
 
-  lifecycle {
-    prevent_destroy = true # will hold tenant data
-  }
+  # No prevent_destroy here (removed 2026-11-10): it makes any plan that destroys the cluster (use_managed_postgres = false)
+  # fail with "Instance cannot be destroyed". Chas approved the teardown in writing. Re-add it if you bring PG back with data.
 }
 
 # Same trusted sources as MySQL: the k8s cluster, plus the private VPC range (the k8s rule alone missed autoscaled nodes).

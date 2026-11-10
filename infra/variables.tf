@@ -88,10 +88,10 @@ variable "control_plane_allowed_cidrs" {
 variable "use_managed_postgres" {
   description = <<-EOT
     true  = provision a DO managed PostgreSQL cluster (request 0006, APPROVED 2026-10-22).
-    false = skip it.
+    false = skip it. Default false: torn down 2026-11-10 to save cost (Chas); set true to bring it back, see request 0006.
   EOT
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "postgres_size" {
