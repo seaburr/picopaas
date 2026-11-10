@@ -91,7 +91,7 @@ onMounted(async () => {
           <td class="wrap-break-word text-zinc-300">
             {{ t.description }}
             <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
-            <p v-if="t.available === false" class="meta">Needs PostgreSQL, which isn't available right now.</p>
+            <p v-if="t.available === false" class="meta text-amber-300!">PostgreSQL is not available. Contact your platform administrator.</p>
             <p v-else-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
           </td>
           <td class="text-zinc-300">

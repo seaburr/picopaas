@@ -41,6 +41,6 @@ watch(() => [props.name, props.kaisen], measure)
 </script>
 
 <template>
-  <span ref="nm" class="m mono nm">{{ name }}</span>
+  <span ref="nm" class="m mono nm" :title="name">{{ name }}</span>
   <span v-if="kaisen" class="tag ktag" :data-compact="compact || undefined" title="Built with Kaisen (Preview)"><span aria-hidden="true">{{ compact ? 'K' : 'Kaisen' }}</span><span class="sr-only">{{ compact ? ' Kaisen' : '' }} (built with Kaisen)</span></span>
 </template>

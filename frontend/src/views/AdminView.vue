@@ -432,15 +432,15 @@ const overrideSummary = (a: AdminApp) => {
         <template v-if="tab === 'users'">
           <section v-if="pendingUsers.length" aria-label="Waiting for approval" class="sec pt-3">
             <h2 class="section-title text-amber-300">Waiting for approval ({{ pendingUsers.length }})</h2>
-            <div class="overflow-x-auto">
-              <table class="tbl min-w-[40rem]">
+            <div class="md:overflow-x-auto">
+              <table class="tbl tbl-stack md:min-w-[40rem]">
                 <colgroup><col /><col class="w-56" /><col class="w-20" /><col class="w-40" /></colgroup>
                 <thead><tr><th scope="col">User</th><th scope="col">Requested</th><th scope="col" class="text-right">App limit</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
                 <tbody>
                   <tr v-for="u in pendingUsers" :key="u.id">
                     <td class="truncate font-medium text-white" :title="u.email">{{ u.email }}</td>
-                    <td class="meta" :title="fullDate(u.created_at)">{{ humanDate(u.created_at) }}</td>
-                    <td class="mono text-right">{{ u.app_limit_effective }}</td>
+                    <td data-label="Requested" class="meta" :title="fullDate(u.created_at)">{{ humanDate(u.created_at) }}</td>
+                    <td data-label="App limit" class="mono text-right">{{ u.app_limit_effective }}</td>
                     <td>
                       <div class="row-acts">
                         <button type="button" class="row-act" :aria-label="approving === u.id ? 'Approving…' : `Approve ${u.email}`" :disabled="approving === u.id" @click="approve(u)">Approve</button>
@@ -547,19 +547,19 @@ const overrideSummary = (a: AdminApp) => {
             <p class="text-sm text-zinc-300">Database servers (MySQL or PostgreSQL) that app databases are placed on.</p>
             <IconButton label="Add database server" text="Add server" class="shrink-0" @click="openAdd" />
           </div>
-          <div class="overflow-x-auto">
-            <table class="tbl min-w-[48rem]">
-              <colgroup><col class="w-32" /><col /><col class="w-28" /><col class="w-36" /><col class="w-36" /><col class="w-28" /></colgroup>
+          <div class="md:overflow-x-auto">
+            <table class="tbl tbl-stack md:min-w-[48rem]">
+              <colgroup><col class="w-32" /><col /><col class="w-28" /><col class="w-36" /><col class="w-36" /><col class="w-44" /></colgroup>
               <thead>
                 <tr><th scope="col">Name</th><th scope="col">Host</th><th scope="col">Engine</th><th scope="col">Capacity</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
               </thead>
               <tbody class="text-zinc-200">
                 <tr v-for="s in servers" :key="s.id">
-                  <td class="truncate font-medium text-white" :title="s.name">{{ s.name }}</td>
-                  <td class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</td>
-                  <td>{{ dbEngineLabel(s.engine) }}</td>
-                  <td><DbCapacityBar :server="s" /></td>
-                  <td>
+                  <td data-label="Name" class="truncate font-medium text-white" :title="s.name">{{ s.name }}</td>
+                  <td data-label="Host" class="mono truncate text-zinc-300" :title="`${s.host}:${s.port}`">{{ s.host }}:{{ s.port }}</td>
+                  <td data-label="Engine">{{ dbEngineLabel(s.engine) }}</td>
+                  <td data-label="Capacity"><DbCapacityBar :server="s" /></td>
+                  <td data-label="Status">
                     <select
                       :value="s.status"
                       :aria-label="`Status of ${s.name}`"
@@ -572,7 +572,7 @@ const overrideSummary = (a: AdminApp) => {
                       <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
                     </select>
                   </td>
-                  <td><div class="row-acts"><button type="button" class="row-act" :aria-label="`Change admin password of ${s.name}`" @click="openPw(s)">Password</button><button type="button" class="row-act row-act-danger" :aria-label="`Detach ${s.name}`" @click="askDetachServer(s)">Detach</button></div></td>
+                  <td><div class="row-acts flex-nowrap whitespace-nowrap"><button type="button" class="row-act" :aria-label="`Change admin password of ${s.name}`" @click="openPw(s)">Password</button><button type="button" class="row-act row-act-danger" :aria-label="`Detach ${s.name}`" @click="askDetachServer(s)">Detach</button></div></td>
                 </tr>
                 <tr v-if="loaded && servers.length === 0">
                   <td colspan="6" class="py-4 text-center">

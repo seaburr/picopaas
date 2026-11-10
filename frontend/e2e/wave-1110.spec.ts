@@ -74,6 +74,6 @@ test('new app: PostgreSQL option explains why it is disabled', async ({ page }) 
   const list = (await (await page.request.get('/projects')).json()) as { id: number; is_personal: boolean }[]
   await page.goto(`/projects/${list.find((p) => p.is_personal)!.id}/apps/new?from=image`)
   await page.getByRole('checkbox', { name: /^Database/ }).check()
-  await expect(page.getByTestId('pg-unavailable')).toHaveText('No PostgreSQL server is attached.')
+  await expect(page.getByTestId('pg-unavailable')).toHaveText('PostgreSQL is not available. Contact your platform administrator.')
   await expect(page.getByRole('radio', { name: 'PostgreSQL' })).toBeDisabled()
 })

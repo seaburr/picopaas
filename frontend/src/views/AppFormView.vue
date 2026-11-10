@@ -278,7 +278,7 @@ onMounted(async () => {
         if (t.volume && !volumesOn.value) hints.push('This instance has persistent volumes turned off, so the volume was skipped.')
         if (t.wants_db && dbOff.value) hints.push('Databases are turned off here, so the database was skipped.')
         if (t.wants_storage && storageOff.value) hints.push('Blob storage is turned off here, so the bucket was skipped.')
-        if (t.wants_db && t.db_engine === 'pg' && !dbOff.value && !availableEngines.value.includes('pg')) hints.push("This template needs PostgreSQL, which isn't available right now.")
+        if (t.wants_db && t.db_engine === 'pg' && !dbOff.value && !availableEngines.value.includes('pg')) hints.push('PostgreSQL is not available. Contact your platform administrator.')
         templateSecrets.value = t.secrets ?? []
         templateHints.value = hints
         templateNote.value = { name: t.name, notes: t.notes ?? '', docs: t.docs_url ?? '' }
@@ -609,7 +609,7 @@ async function onSubmit() {
                 </label>
                 <span v-if="isEdit" class="help mt-0! self-center">Engine can't be changed after creation.</span>
               </fieldset>
-              <p v-if="form.want_db && !isEdit && !availableEngines.includes('pg')" class="help ml-6 mt-0!" data-testid="pg-unavailable">No PostgreSQL server is attached.</p>
+              <p v-if="form.want_db && !isEdit && !availableEngines.includes('pg')" class="help ml-6 mt-0! text-amber-300!" data-testid="pg-unavailable">PostgreSQL is not available. Contact your platform administrator.</p>
               <label class="flex items-start gap-2 text-sm text-zinc-200">
                 <input v-model="form.want_storage" type="checkbox" :disabled="isEdit || storageOff" class="check mt-0.5" />
                 <span>

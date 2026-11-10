@@ -431,6 +431,11 @@ select.input {
     & tr { border-bottom: 1px solid var(--line); padding: 0.625rem 0; }
     & td { border: 0; padding: 0.125rem 0.625rem; }
     & .row-acts { justify-content: flex-start; }
+    /* Optional per-cell label (data-label="Capacity"): label left, value right of it. */
+    & td[data-label] { display: flex; align-items: center; gap: 0.5rem; min-height: 1.75rem; }
+    & td[data-label]::before { content: attr(data-label); flex: none; width: 5.5rem; font: 0.75rem var(--font-sans); color: var(--mut); }
+    & td[data-label] { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+    & td[data-label] > * { min-width: 0; }
   }
 }
 
