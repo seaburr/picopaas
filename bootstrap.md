@@ -23,7 +23,7 @@ raised by amendment (see log).
 
 While this will require some research to validate, the goal is to host this on DigitalOcean using the following technologies:
 
-- Managed MySQL and managed PostgreSQL (one server each, isolated per-app databases and roles)
+- Managed MySQL (isolated per-app databases and roles); PostgreSQL is supported when an admin attaches a server (the managed one was torn down 2026-11-10)
 - Spaces (S3-compatible storage), region ATL1
 - Kubernetes (DOKS, compute in NYC3; ATL1 had no capacity) behind a managed load balancer
 
@@ -43,7 +43,7 @@ Use picopaas.xyz (nameservers in DigitalOcean; the platform lives at platform.pi
 
 ## Budget
 
-This project is on an extremely tight budget both from a build budget but also a hosting budget. The goal is a usable hosting platform with all the trimming needed to host storage and DBs. The baseline today is about $75/mo including approved requests (CLAUDE.md keeps a ~$60/mo working target; anything above it needs a request Chas approves). This is being built on a Claude Pro account so expect to run out of tokens and need to stop often. You should keep a ledger of work being done and spawn small agents to do reasonable chunks when possible so work is not lost when tokens are gone.
+This project is on an extremely tight budget both from a build budget but also a hosting budget. The goal is a usable hosting platform with all the trimming needed to host storage and DBs. The baseline today is about $60/mo including approved requests (CLAUDE.md keeps the same ~$60/mo working target; anything above it needs a request Chas approves). This is being built on a Claude Pro account so expect to run out of tokens and need to stop often. You should keep a ledger of work being done and spawn small agents to do reasonable chunks when possible so work is not lost when tokens are gone.
 
 ## Tracking Notes
 
@@ -71,6 +71,8 @@ for Chas live only in `docs/QUESTIONS.md`. Agents proceed on unblocked work and 
 
 Dated, append-only. The contract above is kept current; this records why it changed.
 
+- 2026-11-10 Managed PostgreSQL torn down to save $15.15/mo (Chas). PostgreSQL support code is kept: it works whenever an
+  admin attaches a server, but the hosted platform has none, so baseline is ~$60/mo. Hosting bullet and budget sentence updated.
 - 2026-10-28 Contract refreshed to match reality (Chas permitted updating bootstrap.md): domain seaburr.io -> picopaas.xyz
   (cutover done 2026-10-21); budget "<$40/mo" -> ~$75/mo baseline with approved requests; hosting: compute NYC3, Spaces
   ATL1, managed MySQL + PostgreSQL, managed load balancer; caps now sourced from `app/config.py`; roster 5 -> 13 roles

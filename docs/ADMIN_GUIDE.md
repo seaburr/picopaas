@@ -37,7 +37,7 @@ Container registry                  images are pulled by the cluster; the platfo
 | Ingress controller | Traefik is what the manifests in `deploy/` assume (`INGRESS_CLASS`, `INGRESS_NAMESPACE`). |
 | cert-manager | Wildcard certificate by DNS-01 for the generated hosts; per-host HTTP-01 certificates for custom domains. |
 | metrics-server | Optional but needed for CPU/memory on the Health page. |
-| SQL server(s) | MySQL 8 and/or PostgreSQL 13+, with TLS, an admin account that can create databases and users, reachable from the cluster. MySQL and PostgreSQL are equal choices; run one or both. |
+| SQL server(s) | MySQL 8 and/or PostgreSQL 13+, with TLS, an admin account that can create databases and users, reachable from the cluster. MySQL and PostgreSQL are equal choices; run one or both. With no PostgreSQL server attached, PostgreSQL deploys are refused up front (422) and the UI hides the option. Detach an empty server with `DELETE /admin/db-servers/{id}`; unset `BOOTSTRAP_PG_*` first, or the platform re-adds `primary-pg` on restart. |
 | Blob storage | S3-compatible, able to create buckets and per-bucket access keys. A provider-specific key API is used for provisioning (the reference deployment uses DigitalOcean Spaces). |
 | Container registry | Reachable from the nodes. Public images need nothing more. |
 | DNS and a domain | A wildcard record to the load balancer and a name for the platform itself. |
@@ -444,6 +444,14 @@ as **one row per tunable** with a **Default** and a **Ceiling** column (API: `ro
   10 GiB: the most an admin can set on one app, also bounded by the platform total), platform total (Ceiling only), backups
   kept per app, on-demand backups and downloads per hour, and whether new apps start with scheduled backups on. Backups kept,
   rate limits and the toggle have no per-app override, so they have a Default only.
+
+### Platform banner
+
+**Admin > Settings > Platform banner** (API: `GET/PUT /admin/banner`) edits the one-line notice shown on every page and the
+login page. Set **Enabled**, a **Level** (`info` or `warning`), an optional **Title** (up to 80 characters) and the **Text**
+(up to 255, required while enabled). Plain text only: line breaks, control characters and invisible Unicode are rejected.
+Until you save one, the defaults from `BANNER_*` in `app/config.py` apply. Changes are audit-logged (`banner.update`).
+The unauthenticated `GET /api/banner` serves it to the login page. See [API.md](API.md#platform-banner).
 
 The CPU and memory ceilings can't exceed what one node can schedule (`NODE_CPU_CAP_M`, default 1500m, and
 `NODE_MEM_CAP_MI`, default 2560 MiB, for the 2 vCPU / 4 GB node; raise them with the node size). Per-app overrides

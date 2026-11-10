@@ -56,6 +56,8 @@ background on each item if you want it.
   for password/CA changes but not for a flavor change, so a wrong flavor (wrong admin DB) breaks provisioning until fixed.
   Recommend verifying on flavor change too (one line). Admin-only, availability only. OK to add?
 
+- **Banner may contain URLs/instructions (LOW, security-reviewer 2026-11-10, K134)**: the admin banner shows on /login and may hold a link or "re-enter your password at ...". Only a compromised admin can set it. Allow (current), or reject `://` / `www.` in banner text? Bidi/invisible characters are already rejected.
+
 ## To-dos (only you can do these)
 
 - [ ] **Before turning Kaisen uploads on for your test project (2026-11-03):** (1) ~~managed MySQL `max_allowed_packet`~~ DONE 2026-11-03 (qa-tester, live via a throwaway Adminer app, deleted): `@@global.max_allowed_packet` = 67108864 (64 MiB, well above the 16 MiB needed), MySQL 8.4.11, node `picopaas-mysql-nyc3-2`, host = the `primary` db-server (`private-picopaas-mysql-nyc3-do-user-1298308-0...`); (2) ~~kaisen-imgproc running~~ and (3) ~~node room~~ confirmed by the successful rollout of kaisen-imgproc in deploy 41716416534 (still worth a glance at `kubectl top pod` for peak memory with an ~8 MP image). Remaining for you: turn it on in Admin, Projects, Kaisen uploads.

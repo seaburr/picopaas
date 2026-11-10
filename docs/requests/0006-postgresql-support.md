@@ -1,4 +1,21 @@
-# 0006: Managed PostgreSQL support (status: IMPLEMENTED / LIVE 2026-10-22, managed single-node SKU applied and in production)
+# 0006: Managed PostgreSQL support (status: TORN DOWN 2026-11-10 to save cost; was LIVE 2026-10-22)
+
+## Torn down 2026-11-10 (Chas, in writing)
+
+**Status: PREP DONE, NOT applied.** The managed PostgreSQL cluster `picopaas-pg-nyc3` is being removed to save money
+("my ask is that at the end of this, the server is gone so I can recoup the cost", Chas, 2026-11-10). The live DbServer
+`primary-pg` had 0 databases in use (checked through the admin API on 2026-11-10), so no tenant data is lost.
+
+- **Saving:** $15.15/mo (`db-s-1vcpu-1gb`, single node). Baseline goes from about $75.30 to about $60.15 (`docs/ARCHITECTURE.md` section 1).
+- **Terraform change:** `use_managed_postgres` now defaults to `false` (`infra/variables.tf`). `prevent_destroy` was removed from
+  `digitalocean_database_cluster.postgres` (it cannot be conditional, and it would make the destroy plan fail). The resources,
+  outputs and the CA data source all use `count = var.use_managed_postgres ? 1 : 0`, so nothing else changes (MySQL cluster,
+  DOKS, Spaces `pico-paas-s3-a`, DNS, MySQL firewall are untouched). `terraform.yml` skips the PG slug check while the flag is false.
+- **Order (the manager runs it):** see `docs/OPERATIONS.md` "Tearing down / restoring managed PostgreSQL".
+- **Bring it back:** set `use_managed_postgres = true` (change the default, or `TF_VAR_use_managed_postgres=true`), run the
+  `terraform` workflow (plan, then apply; about $15.15/mo again, this request's approval still stands but ask Chas first), then run
+  `bootstrap` so `BOOTSTRAP_PG_*` and the CA are written, and the app re-registers `primary-pg` at startup. Data is not recoverable
+  from this teardown; tenant PG databases would have to be restored from their app backups.
 
 ## IMPLEMENTED / LIVE (2026-10-22)
 

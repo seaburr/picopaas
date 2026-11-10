@@ -1,7 +1,7 @@
 # PicoPaaS
 
 A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
-and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB), plus an optional persistent volume, with opt-in daily or weekly backups of all three. Each app gets its own HTTPS
+and optionally get a MySQL database (50 MB; PostgreSQL when an admin attaches a server) and an S3-compatible blob storage bucket (100 MB), plus an optional persistent volume, with opt-in daily or weekly backups of all three. Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 DigitalOcean is the reference cloud. The platform is built to run wherever you deploy it: `CLOUD_PROVIDER=generic` runs it on any Kubernetes with Garage for blob storage and in-cluster databases ([deploy/generic](deploy/generic/README.md)); AWS and GCP are planned ([portability plan](docs/PORTABILITY_PLAN.md)).
@@ -30,7 +30,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - Build with Kaisen (in preview): describe a small app in plain words and Kaisen (Claude) writes it and deploys it into your project as a normal app. You bring your own Anthropic API key and set spend caps per project.
 - One Docker image per app, public registries (GHCR, Docker Hub, etc.).
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
-- Optional MySQL or PostgreSQL database and S3-compatible blob storage bucket per app, each with its own credentials.
+- Optional MySQL database (PostgreSQL is supported when an admin attaches a server; the hosted platform currently has none) and S3-compatible blob storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.picopaas.xyz`) from a wildcard certificate.
 - Custom domains: point your own domain at an app and its certificate is issued and renewed for you.
 - Optional persistent volume (1 GB) for apps that keep files on disk.
@@ -58,7 +58,7 @@ Single source of truth: [`app/config.py`](app/config.py) (env-overridable).
 | Memory | 384 MB limit (128 MB request) |
 | Scratch disk | 250 MB (pod is evicted over it) |
 | Image size | 512 MB compressed |
-| MySQL or PostgreSQL database | 50 MB (writes revoked over it) |
+| MySQL (or PostgreSQL, if attached) database | 50 MB (writes revoked over it) |
 | Blob storage bucket (S3-compatible) | 100 MB (key goes read-only over it) |
 | Outbound bandwidth | 20 Mbit/s per app (about 2.5 MB/s), counting everything the app sends, HTTP responses to visitors included |
 | Apps per user | 1 by default (`app_limit`; an administrator can raise it). Hard cap of 5 active apps per user account (`MAX_APPS_PER_USER`); platform admins have their own pair (default 5, cap 10) |
@@ -88,7 +88,7 @@ flowchart TB
 
   subgraph data["Data (DigitalOcean)"]
     mysql[("Managed MySQL 8.4<br/>platform DB + per-app MySQL DBs")]
-    pg[("Managed PostgreSQL 17<br/>per-app PostgreSQL DBs")]
+    pg[("PostgreSQL (optional)<br/>none attached on the hosted platform")]
     spaces[("Spaces<br/>one bucket + key per app")]
   end
 
@@ -155,10 +155,10 @@ sequenceDiagram
 | Ingress | Traefik (standard Ingress API) | ingress-nginx is retired; one default TLS store serves the wildcard cert |
 | TLS | cert-manager, Let's Encrypt, DNS-01 via DO | One wildcard cert, so no per-app issuance or rate limits |
 | Metrics | metrics-server | CPU and memory in the admin health view |
-| Database | DO Managed MySQL 8.4 and Managed PostgreSQL 17 | MySQL holds the platform DB. Each app's database (MySQL or PostgreSQL, chosen by `resources.db_engine`) gets its own database and user/role, over the VPC with TLS |
+| Database | DO Managed MySQL 8.4 (PostgreSQL optional) | MySQL holds the platform DB. Each app's database (MySQL or PostgreSQL, chosen by `resources.db_engine`) gets its own database and user/role, over the VPC with TLS |
 | Blob storage | DO Spaces (S3 API, boto3) | A bucket and access key per app |
 | Secrets at rest | Fernet (`cryptography`), MultiFernet for rotation | One platform key encrypts env secrets, DB and bucket credentials |
-| Infra as code | Terraform with Terraform Cloud state | Cluster, VPC, MySQL, PostgreSQL, firewall, Spaces bucket, DNS |
+| Infra as code | Terraform with Terraform Cloud state | Cluster, VPC, MySQL, firewall, Spaces bucket, DNS |
 | CI/CD | GitHub Actions, GHCR | Public repo and images, so both are free |
 | Secret scanning | gitleaks pre-commit hook, plus a CI guard against allowlists | Keeps keys out of git |
 | Tests | pytest (SQLite in memory, real login flow), Playwright e2e | Infra clients are faked behind interfaces; e2e and pentest suites run against the live site |
@@ -190,7 +190,7 @@ rotation is supported.
 
 ## Cost
 
-About $75/mo baseline (node, managed MySQL, managed PostgreSQL, load balancer, Spaces) and about $103 while the autoscaler runs a second
+About $60/mo baseline (node, managed MySQL, load balancer, Spaces) and about $88 while the autoscaler runs a second
 node. Per-app cost is about $0 until the node fills up. Details, sources and what we couldn't verify:
 [docs/ARCHITECTURE.md §1](docs/ARCHITECTURE.md#1-hosting-cost).
 

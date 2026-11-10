@@ -14,6 +14,18 @@ The platform DB is backed up daily into restic repo `s3:<endpoint>/<BACKUP_BUCKE
 5. Point `DATABASE_URL` at it if it is a new database, run `alembic upgrade head` (the dump may predate the newest migration), then scale the deployment back up.
 6. Check login, Admin > Health, and that tenant apps still reconcile. Backups of tenant apps are unaffected (their repos are separate).
 
+## Tearing down / restoring managed PostgreSQL
+
+Torn down 2026-11-10 to save $15.15/mo (request 0006; Chas approved in writing). `infra/variables.tf` defaults `use_managed_postgres = false`. Run in this order; do not skip (c) or app startup re-inserts `primary-pg`:
+
+1. **Code first.** Push app code that rejects PG deploys when no PG server exists and adds `DELETE /admin/db-servers/{id}`.
+2. **Terraform.** Plan only: `gh workflow run terraform.yml -f apply=false`, then read the plan in the run log. Expected, exactly: destroy `digitalocean_database_cluster.postgres[0]` and `digitalocean_database_firewall.postgres[0]`; the `digitalocean_database_ca` data source and outputs just disappear; nothing else (anything touching MySQL, DOKS, Spaces or DNS: stop). Then apply: `gh workflow run terraform.yml -f apply=true`. (Workflow input `apply` is a boolean, default true; unticked = plan only.) Check TFC workspace `seaburr/picopaas` has no variable `use_managed_postgres=true` (it would override the default; none is set in the workflow or repo).
+3. **Bootstrap.** `gh workflow run bootstrap.yml` (no inputs needed). It logs "managed PostgreSQL ... not found; skipping BOOTSTRAP_PG_*" and writes empty `BOOTSTRAP_PG_HOST/USER/PASSWORD` into `picopaas-env` (then restart/roll out the platform if it does not pick them up on its own). `PG_EGRESS_CIDR` stays (set to the VPC CIDR); the backup NetworkPolicy egress rule to it (`deploy/platform/backup.yaml`) is harmless (the CIDR is the VPC range already allowed for MySQL) and is left in place so bringing PG back needs no manifest change.
+4. **Remove the row.** `DELETE /admin/db-servers/{id}` for `primary-pg` (admin API; 0 databases in use).
+5. **Verify.** `doctl databases list` shows no `picopaas-pg-nyc3` (only the MySQL cluster), and the DO billing page stops accruing it.
+
+Rollback (bring it back): set `use_managed_postgres = true`, plan then apply the `terraform` workflow, run `bootstrap`; the app re-registers `primary-pg` from `BOOTSTRAP_PG_*`. The destroyed cluster's data cannot be restored.
+
 ## Ghost log noise: IMAGE_SIZE_URL
 
 Ghost 6.72 and 6.75 (blog apps on `picopaas-example-ghost6`) log `IMAGE_SIZE_URL` with "non-permitted private IP block" on page renders when the site icon lives on Spaces. Pages still render (150 to 330 ms in Ghost's own log, 2026-11-05), so it is noise, not an outage. The cause has not been investigated. Don't confuse it with the 5 s self-fetch delay when no icon is set. Details: `examples/ghost/README.md`.

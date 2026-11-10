@@ -4,6 +4,8 @@ PicoPaaS hosts real apps, not just toy images. Each recipe below follows the sam
 spec as YAML, an env var table, gotchas, and the steps after the first boot. The general lessons for bringing your own
 image come after the recipes.
 
+**PostgreSQL recipes need a PostgreSQL server.** PostgreSQL is supported when an admin attaches a server; the hosted platform currently has none, so the PostgreSQL-backed recipes below (n8n, Miniflux, Memos, Wiki.js, Vikunja, Umami, ntfy, Planka, Grafana-pg) are verified but unavailable there. Where a recipe also works on MySQL or SQLite, use that.
+
 Recipes with a one-click template: Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden,
 Wiki.js, Vikunja, Umami, ntfy, IT-Tools, Excalidraw, Gatus and a static site. Planka is a recipe only (a spec in
 `examples/planka/`, no template; licence decision). All specs are in [`examples/`](../examples/).

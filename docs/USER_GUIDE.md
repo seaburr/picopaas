@@ -225,7 +225,7 @@ secrets:
 | `image` | string | yes | | 1 to 512 chars. Public, non-root `USER`, at most 512 MB. |
 | `port` | integer | **yes** | none | 1024 to 65535 (non-root containers cannot bind lower ports). There is no default. |
 | `resources.db` | boolean | no | `false` | Provisions a database (engine chosen by `resources.db_engine`). Cannot be removed from an existing app via spec (422). |
-| `resources.db_engine` | string | no | `mysql` | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
+| `resources.db_engine` | string | no | `mysql` | `mysql` or `pg` (PostgreSQL). Chooses the engine for `db: true`. `pg` is refused (422) on a platform with no PostgreSQL server attached. Immutable once the app has a database. The `${{ db.* }}` refs work the same either way. Specs written before PostgreSQL existed don't set it, so when it is omitted the platform provisions MySQL (backward compatibility); set it explicitly in new specs. |
 | `resources.storage` | boolean | no | `false` | Provisions a blob storage bucket. Same removal rule. |
 | `resources.volume` | map | no | none | Persistent volume (only where the platform has enabled them): `sizeGi` (integer, default 1, at most the platform limit) and `mountPath` (default `/data`). Cannot be removed once added. See section 7a. |
 | `resources.cpuM` | integer | no | platform default | CPU limit in millicores, from the floor up to the app's ceiling (section 3, "Lowering resources"). Omitted on a re-apply leaves the current value; `null` goes back to the ceiling. Out of range is a `422` naming the allowed range. |
@@ -299,7 +299,7 @@ You pick your own variable names. The platform does not inject `DATABASE_URL` an
 
 ## 5a. Choosing a DB engine
 
-MySQL and PostgreSQL are equal choices on PicoPaaS: pick whichever your app supports best. Set `resources.db_engine`
+MySQL and PostgreSQL are equal choices on PicoPaaS: pick whichever your app supports best. PostgreSQL works only when an admin has attached a PostgreSQL server; the hosted platform currently has none, so PostgreSQL apps are refused (422) and PostgreSQL templates show as unavailable. Set `resources.db_engine`
 (`mysql` or `pg`) in the spec or choose it in the form. The engine is fixed after the database is created; to switch,
 create a new app and move your data.
 
@@ -716,6 +716,8 @@ to tell a CPU-bound app (the 200m limit throttles rather than kills) from one ne
 ## 14. Templates
 
 The **Templates** page (`/templates`, or **Deploy from a template** on the New app page) lists ready-made apps: Ghost, WordPress, Directus, Grafana (a MySQL and a PostgreSQL entry), n8n (PostgreSQL), Shlink, Miniflux, Memos and Wiki.js (PostgreSQL), Forgejo (MySQL, volume) and Vaultwarden (volume), Vikunja (PostgreSQL + bucket), Umami and ntfy (PostgreSQL), IT-Tools and Excalidraw (static), a Gatus status page and a static nginx site. Planka is also tested and has a spec in `examples/` and a section in [`RECIPES.md`](RECIPES.md) but no template card.
+
+Templates that need PostgreSQL show as unavailable (and cannot be used) while no PostgreSQL server is attached, which is the case on the hosted platform today.
 
 Each template has a one-sentence description, pills for what it needs (**MySQL** or **PostgreSQL**, **Object Storage**, **Block Storage**, and **N secrets** for the values you must set yourself) and two links: **Setup guide** (the example README on GitHub) and the app's own docs. A template warns when the instance has volumes, databases or blob storage turned off.
 

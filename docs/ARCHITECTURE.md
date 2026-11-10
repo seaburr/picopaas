@@ -18,12 +18,12 @@ numbers below are what actually runs. `infra/variables.tf` is the source of trut
 | DOKS control plane | non-HA, NYC3 | $0 |
 | Worker node | 1 × `s-2vcpu-4gb-amd` (Premium AMD, 2 vCPU / 4 GB) | $28 (*) |
 | Managed MySQL | `db-s-1vcpu-1gb`, MySQL 8.4, single node, NYC3 (platform DB + MySQL app DBs) | $15.15 |
-| Managed PostgreSQL | `db-s-1vcpu-1gb`, PostgreSQL 17, single node, NYC3 (`picopaas-pg-nyc3`, PostgreSQL app DBs; added 2026-10-22) | $15.15 |
+| Managed PostgreSQL | none since 2026-11-10 (torn down by Chas to save cost; was `db-s-1vcpu-1gb`, `picopaas-pg-nyc3`, request 0006; `use_managed_postgres = false`) | $0 (was $15.15) |
 | Load balancer | 1 × regional DO LB (created by the Traefik Service) | $12 |
 | Spaces | 1 subscription (bucket `pico-paas-s3-a` in ATL1 plus one bucket per blob-storage app) | $5 |
 | DNS, VPC, GHCR (public images), Terraform Cloud (state only), GitHub Actions (public repo), Let's Encrypt | | $0 |
-| **Baseline** | | **about $75.30** |
-| **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $103.30** |
+| **Baseline** | | **about $60.15** |
+| **Worst case** (autoscaler at `max_nodes = 2`) | + 1 node while it is up | **about $88.15** |
 
 (*) Confirmed by Chas from the DO bill (2026-10-20); DO's public pages don't list this size.
 
@@ -54,7 +54,7 @@ adds nothing inside the Spaces allowance.
   same-size Regular Droplet is $24 (https://www.digitalocean.com/pricing/droplets).
 - Droplet transfer allowance for the node is not counted; app egress is small at these caps.
 
-CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $75.30 (about $60.15 before managed PostgreSQL was added, 2026-10-22), tracked in `docs/QUESTIONS.md`.
+CLAUDE.md's hard rule still says "under $40/mo". The approved setup is about $60.15 (managed PostgreSQL added 2026-10-22 for +$15.15, torn down again 2026-11-10), tracked in `docs/QUESTIONS.md`.
 
 ## 2. Components
 

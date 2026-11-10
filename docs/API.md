@@ -59,7 +59,9 @@ everywhere a user is accepted except where marked "session only".
 | PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin |
 | PUT | `/admin/apps/{app_id}/replicas` | admin |
 | PATCH | `/admin/apps/{app_id}/resources` | admin |
-| POST, PATCH | `/admin/db-servers`, `/admin/db-servers/{server_id}` | admin |
+| POST, PATCH, DELETE | `/admin/db-servers`, `/admin/db-servers/{server_id}` | admin |
+| GET | `/api/banner` | none (public) |
+| GET, PUT | `/admin/banner` | admin |
 
 ## Authentication
 
@@ -450,6 +452,7 @@ temporary password once and sets `must_change_password`). They use the app's `DA
 | GET | `/admin/db-servers` | none | List of `DbServer`. |
 | POST | `/admin/db-servers` | `{name, host, port=3306, engine="mysql"\|"pg", admin_user, admin_password, max_databases, ca_cert?}` | 201 `DbServer` (status `active`). The port default is 3306 whatever the engine, so send 5432 for `pg`. `ca_cert` must be PEM (422). 409 if the name exists. The admin password is stored encrypted and never returned. Before saving, the platform connects as `admin_user` (TLS, `ca_cert` as in provisioning, 5 s timeout) and runs `SELECT 1`; on failure 422 with a classified detail (`Couldn't connect to host:port as user: authentication failed` / `connection timed out` / `connection refused` / `TLS handshake failed` / `host name could not be resolved`) and nothing is saved. |
 | PATCH | `/admin/db-servers/{server_id}` | any of `{status, max_databases, ca_cert, admin_password}` (`ca_cert: ""` clears it; `admin_password` is write-only, min 1 char) | `DbServer`. 404 if unknown. `engine` can't be changed. Changing `admin_password` or `ca_cert` runs the same connection check as create (422 on failure, nothing saved, old password kept); the new password is stored encrypted, never returned, and the audit row says `admin_password=changed` without the value. Cached health metrics for the server are dropped. |
+| DELETE | `/admin/db-servers/{server_id}` | | 204. 404 if unknown. 409 while any app database (including one of a deleted app not yet torn down) is on the server. Audited as `db_server.delete`. With no `pg` server attached, creating or turning on a PostgreSQL database (`POST /apps`, `POST /apps/spec`, Kaisen deploys) fails with 422 "PostgreSQL isn't available on this platform..."; MySQL is unchanged. A `pg` server that exists but is full or draining still accepts the request (the app then waits with `db_capacity`). `GET /auth/me` `features.db_engines` leaves out `pg` when no server has room, and `GET /templates` marks templates that need PostgreSQL `available: false` when no `pg` server exists. |
 
 ### Health
 
@@ -578,3 +581,13 @@ curl -X PUT -H "Content-Length: 3000" --data-binary @bundle.tar.gz "$URL"
 ```
 
 GitHub push (`POST /kaisen/builds/{id}/push`) leaves out `.env*` and private-key/keystore files (legacy builds); the job `message` lists their names, never contents.
+
+## Platform banner
+
+A one-line notice shown on every page (and on the login page). Plain text only. Until an admin saves one, the default applies: enabled, level `warning`, title "Dev/test platform." and the sign-up/no-uptime sentence (`BANNER_*` in `app/config.py`).
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/banner` | none, no authentication | `{enabled, level ("info"\|"warning"), title, text}` |
+| GET | `/admin/banner` | | Same shape (admin). |
+| PUT | `/admin/banner` | `{enabled, level, title (max 80), text (max 255)}`, no other keys | The saved banner. Whitespace is trimmed; newlines and control characters are rejected; 422 if `enabled` is true and `text` is empty, a field is too long or `level` is unknown. Audited as `banner.update`. |

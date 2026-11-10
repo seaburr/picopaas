@@ -14,7 +14,7 @@ MySQL DB (50MB) and Spaces bucket (100MB). Caps: 384MB RAM, 512MB image, CPU per
   runtime image pin via bootstrap), test accounts and traps. Read it before any Kaisen work.
 
 ## Hard rules
-- Budget: approx. $60/mo target (baseline ~$75 with approved requests). Any new paid resource needs a request in `docs/requests/`.
+- Budget: approx. $60/mo target (baseline ~$60 with approved requests). Any new paid resource needs a request in `docs/requests/`.
 - Tokens are scarce (Claude Pro). Work in small chunks, add a ledger line at the START and END of each chunk,
   and prefer `sonnet` subagents for implementation.
 - **Only the `scm-security` agent commits and pushes.** Other agents leave changes in the working tree and
