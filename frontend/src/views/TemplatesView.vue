@@ -91,7 +91,8 @@ onMounted(async () => {
           <td class="wrap-break-word text-zinc-300">
             {{ t.description }}
             <p v-if="t.volume && !volumesOn" class="meta">{{ t.volume.required ? 'Needs a persistent volume, which is off here.' : 'Deploys without the optional volume.' }}</p>
-            <p v-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
+            <p v-if="t.available === false" class="meta">Needs PostgreSQL, which isn't available right now.</p>
+            <p v-else-if="(t.wants_db && dbOff) || (t.wants_storage && storageOff)" class="meta">Needs an add-on that is off here.</p>
           </td>
           <td class="text-zinc-300">
             <template v-if="!t.wants_db && !t.wants_storage && !t.volume && !t.secrets.length"><span class="meta">None</span></template>
@@ -103,7 +104,7 @@ onMounted(async () => {
           <td class="mono"><span class="block truncate" :title="t.image">{{ t.image }}</span></td>
           <td>
             <div class="row-acts flex-wrap gap-x-4 md:flex-nowrap md:whitespace-nowrap [&>*]:ml-0!">
-              <button type="button" class="row-act text-white" :data-use-template="t.id" @click="chooseTemplate(t)">Use this template</button>
+              <button type="button" class="row-act" :class="t.available !== false && 'text-white'" :disabled="t.available === false" :data-use-template="t.id" @click="chooseTemplate(t)">Use this template</button>
               <a v-if="t.docs_url" :href="t.docs_url" target="_blank" rel="noopener noreferrer" class="row-act">Setup guide</a>
               <a v-if="t.upstream_docs_url" :href="t.upstream_docs_url" target="_blank" rel="noopener noreferrer" class="row-act" :title="`${docsName(t)} documentation`">Docs<span class="sr-only"> ({{ docsName(t) }})</span></a>
             </div>

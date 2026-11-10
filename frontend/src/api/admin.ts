@@ -14,6 +14,13 @@ export const createDbServer = (payload: DbServerCreate) =>
 export const patchDbServer = (id: number, payload: { status?: string; max_databases?: number; admin_password?: string; ca_cert?: string }) =>
   apiFetch<DbServer>(`/admin/db-servers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
 
+// 204; 409 when the server still holds databases (detail says how many).
+export const detachDbServer = (id: number) => apiFetch<void>(`/admin/db-servers/${id}`, { method: 'DELETE' })
+
+export interface Banner { enabled: boolean; level: 'info' | 'warning'; title: string; text: string }
+export const getAdminBanner = () => apiFetch<Banner>('/admin/banner')
+export const putAdminBanner = (b: Banner) => apiFetch<Banner>('/admin/banner', { method: 'PUT', body: JSON.stringify(b) })
+
 const post = (path: string) => apiFetch<void>(path, { method: 'POST' })
 export const approveUser = (id: number) => post(`/admin/users/${id}/approve`)
 const withReason = (path: string, reason?: string) =>

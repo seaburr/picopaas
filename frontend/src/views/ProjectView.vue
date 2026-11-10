@@ -236,10 +236,10 @@ async function confirmDelete() {
 
       <!-- detail -->
       <template v-else>
-        <div v-if="loading" class="sec pt-4" aria-busy="true" aria-label="Loading project">
+        <div v-if="loading" class="pt-4" aria-busy="true" aria-label="Loading project">
           <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
         </div>
-        <AppNotFound v-else-if="gone" />
+        <AppNotFound v-else-if="gone" kind="project" />
         <div v-else-if="loadError" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
           <span>{{ loadError }}</span>
           <IconButton text="Retry" label="Retry" @click="load" />

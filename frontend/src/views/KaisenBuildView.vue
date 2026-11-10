@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AppNotFound from '../components/AppNotFound.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
 import BuildFiles from '../components/BuildFiles.vue'
 import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
@@ -22,7 +23,6 @@ import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
-import { useProjectsStore } from '../stores/projects'
 import { projectKaisen, projectLabel } from '../utils/paths'
 import { useToastStore } from '../stores/toast'
 import type { App, KaisenBuildDetail, KaisenPushJob, KaisenSettings } from '../types'
@@ -96,7 +96,6 @@ const deleting = ref(false)
 
 const buildId = computed(() => Number(props.id))
 const active = computed(() => !!build.value && isActive(build.value.status))
-const projects = useProjectsStore()
 const { project: buildProject, suspended: projSuspended } = useProjectSuspension(() => build.value?.project_id)
 const canRun = computed(() => !!build.value?.can_run && auth.user?.features?.kaisen !== false && !projSuspended.value)
 const you = computed(() => build.value?.created_by.id === auth.user?.id)
@@ -403,11 +402,7 @@ async function doDelete() {
     <main id="main" tabindex="-1" class="page-main">
       <div class="sr-only" role="status">{{ announce }}</div>
 
-      <div v-if="notFound" class="sec pt-4">
-        <h1 class="page-title">Build not found</h1>
-        <p class="mt-1 text-sm text-zinc-300">This build doesn't exist or was deleted.</p>
-        <RouterLink :to="projects.current ? projectKaisen(projects.current.id) : '/kaisen'" class="btn-secondary mt-4">Back to Kaisen</RouterLink>
-      </div>
+      <AppNotFound v-if="notFound" kind="build" />
 
       <div v-else-if="loadError && !build" role="alert" class="alert-error flex flex-wrap items-center justify-between gap-2">
         <span>{{ loadError }}</span>

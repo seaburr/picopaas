@@ -13,6 +13,7 @@ export interface AppTemplate {
   image: string
   port: number
   wants_db: boolean
+  available?: boolean // false: needs a database engine with no server attached (e.g. PostgreSQL torn down)
   db_engine: 'mysql' | 'pg'
   wants_storage: boolean
   allow_sensitive_paths?: boolean

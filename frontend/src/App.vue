@@ -2,8 +2,9 @@
 import { computed, onErrorCaptured, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useBannerStore } from './stores/banner'
 import AppSidebar from './components/AppSidebar.vue'
-import DevBanner from './components/DevBanner.vue'
+import PlatformBanner from './components/PlatformBanner.vue'
 import PasswordBanner from './components/PasswordBanner.vue'
 import GettingStartedDialog from './components/GettingStartedDialog.vue'
 import ToastHost from './components/ToastHost.vue'
@@ -18,6 +19,8 @@ onErrorCaptured((err) => {
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const bannerStore = useBannerStore()
+bannerStore.load()
 watch(() => route.fullPath, () => (crashed.value = false))
 const reload = () => window.location.reload()
 
@@ -33,7 +36,7 @@ const shell = computed(() => ready.value && !BARE.has(route.path))
   <div class="flex min-h-screen min-[760px]:flex-row max-[759px]:flex-col">
     <AppSidebar v-if="shell" />
     <div class="flex min-w-0 flex-1 flex-col">
-      <DevBanner slim />
+      <PlatformBanner v-if="bannerStore.banner" :banner="bannerStore.banner" slim />
       <PasswordBanner />
       <div v-if="crashed" role="alert" class="mx-auto max-w-md px-4 py-16 text-center">
         <h1 class="page-title">Something went wrong</h1>

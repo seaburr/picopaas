@@ -296,7 +296,7 @@ const DOCS = [
                         <summary>
                           <SideLink :to="projectApps(p.id)" :cur="appsCur(p)" :exact="path === projectApps(p.id)">Apps <span class="n m">{{ countFor(p) }}</span></SideLink>
                         </summary>
-                        <ul>
+                        <ul class="apps">
                           <li v-if="side.errors[p.id] && !appsFor(p).length"><p class="sub-note">Couldn't load apps. <button type="button" @click="side.loadProject(p.id)">Retry</button></p></li>
                           <li v-else-if="side.loading[p.id] && !appsFor(p).length"><p class="sub-note" aria-busy="true">Loading…</p></li>
                           <li v-else-if="!appsFor(p).length"><p class="sub-note">No apps</p></li>

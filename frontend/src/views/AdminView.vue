@@ -6,6 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DbCapacityBar from '../components/DbCapacityBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { appStatus } from '../composables/statusTone'
+import AdminBanner from '../components/AdminBanner.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import ResourcesDialog from '../components/ResourcesDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
@@ -14,7 +15,7 @@ import AdminProjects from '../components/AdminProjects.vue'
 import AdminSuspensions from '../components/AdminSuspensions.vue'
 import SuspendDialog from '../components/SuspendDialog.vue'
 import {
-  approveUser, createDbServer, deleteAdminApp, deleteUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
+  approveUser, createDbServer, deleteAdminApp, detachDbServer, deleteUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -171,6 +172,9 @@ function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) 
     confirm.value = { title: `Reset password for ${u.email}`, message: 'This generates a temporary password. Their current password stops working immediately. Give them the new one; they should change it right away.', label: 'Reset password', run: () => resetPassword(u) }
   else
     confirm.value = { title: `Delete ${u.email}`, message: 'This permanently deletes the user and all of their apps, databases and blob storage. This cannot be undone.', label: 'Delete user and data', require: u.email, run: () => act(() => deleteUser(u.id), `${u.email} deleted.`, "Couldn't delete the user") }
+}
+function askDetachServer(s: DbServer) {
+  confirm.value = { title: `Detach ${s.name}`, message: `Removes ${s.name} (${s.host}:${s.port}) from the platform. It is refused while any database still lives on it. The server itself is not touched.`, label: 'Detach server', require: s.name, run: () => act(() => detachDbServer(s.id), `${s.name} detached.`, "Couldn't detach the server") }
 }
 // Suspending a single app is no longer offered here (suspend its project or user); the API stays.
 function askDeleteApp(a: AdminApp) {
@@ -568,7 +572,7 @@ const overrideSummary = (a: AdminApp) => {
                       <option v-if="s.status === 'full'" value="full">Full (legacy)</option>
                     </select>
                   </td>
-                  <td><div class="row-acts"><button type="button" class="row-act" :aria-label="`Change admin password of ${s.name}`" @click="openPw(s)">Password</button></div></td>
+                  <td><div class="row-acts"><button type="button" class="row-act" :aria-label="`Change admin password of ${s.name}`" @click="openPw(s)">Password</button><button type="button" class="row-act row-act-danger" :aria-label="`Detach ${s.name}`" @click="askDetachServer(s)">Detach</button></div></td>
                 </tr>
                 <tr v-if="loaded && servers.length === 0">
                   <td colspan="6" class="py-4 text-center">
@@ -591,7 +595,7 @@ const overrideSummary = (a: AdminApp) => {
         <!-- SETTINGS -->
         <AdminProjects v-else-if="tab === 'projects'" @changed="refreshSuspensions" />
         <AdminSuspensions v-else-if="tab === 'suspensions'" :items="suspensions" :loaded="loaded" @changed="load" />
-        <SettingsPanel v-else-if="tab === 'settings'" />
+        <div v-else-if="tab === 'settings'" class="space-y-4"><AdminBanner /><SettingsPanel /></div>
 
         <!-- AUDIT -->
         <template v-else>

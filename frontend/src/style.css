@@ -526,6 +526,16 @@ select.input {
   /* A group of plain links only (Administration, Kaisen, an open app): no empty triangle slot to line up with. */
   .tree ul.leaves > li > a { margin-left: 0 }
   .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
+  /* App rows: dot as close to the guide line as the triangles above sit. The slot is only as wide as the triangle, so
+     names still do not move when an app opens (its summary uses the same 7px slot). Desktop only; the phone overrides below win there. */
+  @media (min-width: 760px) {
+    .tree ul.apps { padding-left: 3px }
+    .tree ul.apps > li > a { margin-left: 7px; padding-left: 2px }
+    .tree ul.apps > li > details > summary { padding-left: 7px }
+    .tree ul.apps > li > details > summary::before { left: 0 }
+    .tree ul.apps > li > details > summary > a { padding-left: 2px }
+    .tree ul.apps .sub-note { margin-left: 7px; padding-left: 2px }
+  }
   .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
   .tree.adm { margin-top: 16px }
   .tree .lbl { padding: 3px 6px 3px 4px; color: var(--mut); font-size: 13px }
