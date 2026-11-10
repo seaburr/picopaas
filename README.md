@@ -1,7 +1,7 @@
 # PicoPaaS
 
 A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
-and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB), with nightly automatic backups of both and of an optional persistent volume. Each app gets its own HTTPS
+and optionally get a MySQL or PostgreSQL database (50 MB) and an S3-compatible blob storage bucket (100 MB), plus an optional persistent volume, with opt-in daily or weekly backups of all three. Each app gets its own HTTPS
 subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
 
 DigitalOcean is the reference cloud. The platform is built to run wherever you deploy it: `CLOUD_PROVIDER=generic` runs it on any Kubernetes with Garage for blob storage and in-cluster databases ([deploy/generic](deploy/generic/README.md)); AWS and GCP are planned ([portability plan](docs/PORTABILITY_PLAN.md)).
@@ -32,6 +32,10 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - Env vars and encrypted secrets. Reference values with `${{ db.url }}`, `${{ storage.bucket }}` and friends.
 - Optional MySQL or PostgreSQL database and S3-compatible blob storage bucket per app, each with its own credentials.
 - HTTPS subdomain per app (`<adjective>-<animal>-<id>.picopaas.xyz`) from a wildcard certificate.
+- Custom domains: point your own domain at an app and its certificate is issued and renewed for you.
+- Optional persistent volume (1 GB) for apps that keep files on disk.
+- Projects: share apps and Kaisen builds with other people through single-use invite links, with owner and member roles.
+- Sensitive paths blocked at the edge for every app (`/.env`, `/.git/`, database dumps and the like), from a list generated from the OWASP Core Rule Set. An app that needs one of them can opt out in its spec.
 - Logs (with download), restart, and live status in the UI.
 - One-click templates (Ghost, WordPress, Directus, Grafana, n8n, Shlink, Miniflux, Forgejo, Memos, Vaultwarden, Wiki.js, Vikunja, Umami, ntfy, IT-Tools, Excalidraw, a Gatus status page, an nginx static site) that prefill the new-app form.
 - Instant rollback: the last few image versions are kept, and one click redeploys an older one.
@@ -39,7 +43,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 - Per-app CPU and memory history (usage gauges and a trend, about 3 hours) on the app page.
 - Digest pinning: every deploy runs a `sha256` digest. Floating tags (`:latest`) are re-checked every 10 minutes and
   auto-redeployed when they move.
-- Backups: nightly, automatic, for the database, bucket and volume. Back up now, download a whole backup as one package, delete backups, per-app on/off, the newest 14 kept (failed ones cleaned first), a per-app storage cap, and a final backup kept 14 days after an app is deleted.
+- Backups: opt-in per app, daily or weekly, for the database, bucket and volume. Back up now, download a whole backup as one package, delete backups, a per-app storage cap (2 GiB by default). The latest daily, weekly and monthly copies are kept, and an app's backups stay for 14 days after it is deleted.
 - Quotas on CPU, memory, scratch disk, image size, database size and bucket size.
 - Administrator approval for new accounts, user and app suspend or delete, and an audit log.
 - API keys, a CLI, and a YAML app spec.
