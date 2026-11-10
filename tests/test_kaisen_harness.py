@@ -493,7 +493,7 @@ def test_reviewer_cannot_use_http_request_or_write(env):
 # ---- security review 2026-10-30 (PENTEST K22-K26) --------------------------------------------------
 
 @pytest.mark.parametrize("pattern", [
-    r"(a|a)*b", r"(?:a|aa)+$", r"(?:.*a){12}b", r"(?:a?){30}a{30}", r"(a+)+b", r"a*a*a*a*b", r"(a)\1", r"(?=(a+))\1+b",
+    r"(a|a)*b", r"(?:a|aa)+$", r"(?:.*a){12}b", r"(?:a?){30}a{30}", r"(a+)+b", r"a*a*a*a*b", r"a*a*a*b", r".*.*.*x", r"[a-z]*[a-z]*[a-z]*\d", r"(a)\1", r"(?=(a+))\1+b",
 ])
 def test_regex_problem_rejects_catastrophic_patterns(pattern):
     assert "regex rejected" in checks.regex_problem(pattern)
@@ -589,3 +589,9 @@ def test_platform_request_has_a_total_deadline_against_slow_drip(local_server, m
     t = time.monotonic()
     code, _, data = deploy.PlatformRuntime(None).request("GET", local_server + "/drip", None, {}, 5000)
     assert code == 200 and time.monotonic() - t < 5 and 0 < len(data) < 20
+
+
+def test_deeply_nested_json_is_a_warning_not_a_crash():
+    """K99: json.loads raises RecursionError (not ValueError) on 100k nested brackets; write_file must not crash the run."""
+    for name in ("data.json", "kaisen.json"):
+        assert "nested too deeply" in checks.check(name, "[" * 100000)

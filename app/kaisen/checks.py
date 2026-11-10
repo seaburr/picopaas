@@ -52,6 +52,8 @@ def check(path: str, content: str) -> str:
             data = json.loads(content)
         except ValueError as e:
             problems.append(f"invalid JSON at line {getattr(e, 'lineno', '?')}: {getattr(e, 'msg', e)}")
+        except (RecursionError, MemoryError):  # K99: "[" * 100000 is not a ValueError and used to escape to the run loop
+            problems.append("JSON is nested too deeply to parse")
         else:
             if path == "kaisen.json":
                 problems += _manifest_problems(data)
@@ -62,7 +64,7 @@ def check(path: str, content: str) -> str:
 # Python's re has no timeout and the worker is one process, so a model-chosen pattern must be rejected up front unless
 # its worst case is polynomial and small. We parse it (nothing is matched here) and refuse: a repeat that contains a
 # repeat or an alternation, back-references and look-arounds, and more than MAX_VARIABLE_REPEATS variable repeats.
-MAX_VARIABLE_REPEATS = 3
+MAX_VARIABLE_REPEATS = 2  # K98: three unanchored repeats are O(n^4): 1000 chars ran over 15 s, and re holds the GIL
 _REPEATS = (_c.MAX_REPEAT, _c.MIN_REPEAT, getattr(_c, "POSSESSIVE_REPEAT", _c.MAX_REPEAT))
 
 
