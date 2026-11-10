@@ -305,7 +305,7 @@ const DOCS = [
                               <summary>
                                 <SideLink :to="`/apps/${a.id}`"><span :class="['dot', `dot-${statusLook(appStatus(a)).tone}`]" aria-hidden="true" /><span class="sr-only">{{ appLabel(appStatus(a)) }}</span><SideAppName :name="a.name" :kaisen="!!a.kaisen_build_id" /></SideLink>
                               </summary>
-                              <ul>
+                              <ul class="leaves">
                                 <li><SideLink :to="`/apps/${a.id}`" :cur="path === `/apps/${a.id}`">Health</SideLink></li>
                                 <li><SideLink :to="`/apps/${a.id}/edit`" :cur="path === `/apps/${a.id}/edit`">Settings</SideLink></li>
                               </ul>
@@ -318,7 +318,7 @@ const DOCS = [
                     <li v-if="auth.user?.features?.kaisen">
                       <details class="disc" :open="isOpen(`k:${p.id}`)" @toggle="onToggle(`k:${p.id}`, $event)">
                         <summary><SideLink :to="projectKaisen(p.id)" :cur="kaisenCur(p)" :exact="false">Kaisen <span class="tag">Preview</span></SideLink></summary>
-                        <ul>
+                        <ul class="leaves">
                           <li><SideLink :to="projectKaisen(p.id)" :cur="path === projectKaisen(p.id) || path === projectKaisen(p.id, '/new') || routeBuildProject === p.id">Builds</SideLink></li>
                           <li><SideLink :to="projectKaisen(p.id, '/settings')" :cur="path === projectKaisen(p.id, '/settings')">Settings</SideLink></li>
                         </ul>
@@ -338,7 +338,7 @@ const DOCS = [
         <li>
           <details class="disc" :open="isOpen('admin')" @toggle="onToggle('admin', $event)">
             <summary><span class="lbl">Administration</span></summary>
-            <ul>
+            <ul class="leaves">
               <li><SideLink to="/admin" :cur="path === '/admin'">Admin <span v-if="pending > 0" class="n m">{{ pending }} pending</span></SideLink></li>
               <li><SideLink to="/admin/health" :cur="path === '/admin/health'">Health</SideLink></li>
             </ul>

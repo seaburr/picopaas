@@ -520,6 +520,8 @@ select.input {
   .tree .n { margin-left: auto; color: var(--mut) }
   .tree .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .tree li > a { margin-left: 14px }
+  /* A group of plain links only (Administration, Kaisen, an open app): no empty triangle slot to line up with. */
+  .tree ul.leaves > li > a { margin-left: 0 }
   .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
   .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
   .tree.adm { margin-top: 16px }
