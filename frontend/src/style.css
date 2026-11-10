@@ -513,22 +513,25 @@ select.input {
   .side a { text-decoration: none; color: inherit }
   .tree, .tree ul { list-style: none; margin: 0; padding: 0 }
   /* Guide line straight under the parent's triangle; 11px per level keeps names roomy in the 232px sidebar. */
-  .tree ul { margin-left: 7px; padding-left: 3px; border-left: 1px solid var(--line) }
-  .tree a { display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 4px }
+  .tree ul { margin-left: 5px; padding-left: 5px; border-left: 1px solid var(--line) }
+  .tree a { display: flex; align-items: center; gap: 5px; padding: 3px 6px 3px 4px; border-radius: 4px }
   .tree a:hover { background: var(--raise); text-decoration: none }
   .tree a.cur { background: var(--raise); font-weight: 600 }
   .tree .n { margin-left: auto; color: var(--mut) }
   .tree .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-  .tree li > a { margin-left: 14px }
+  /* Tighter triangle slot than the generic .disc (14px): leaf rows line up with it. */
+  .tree summary { padding-left: 11px }
+  .tree summary::before { left: 3px }
+  .tree li > a { margin-left: 11px }
   /* A group of plain links only (Administration, Kaisen, an open app): no empty triangle slot to line up with. */
   .tree ul.leaves > li > a { margin-left: 0 }
   .tree summary > a { flex: 1; min-width: 0; margin-left: 0 }
   .tree summary:focus-visible { outline: 2px solid var(--fg); outline-offset: -1px }
   .tree.adm { margin-top: 16px }
-  .tree .lbl { padding: 3px 6px; color: var(--mut); font-size: 13px }
+  .tree .lbl { padding: 3px 6px 3px 4px; color: var(--mut); font-size: 13px }
   .tree .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; color: var(--mut); font-weight: 400 }
   .tree .ktag { flex: none }
-  .tree .sub-note { margin: 0 0 0 14px; padding: 3px 6px; color: var(--mut); font-size: 13px }
+  .tree .sub-note { margin: 0 0 0 11px; padding: 3px 6px 3px 4px; color: var(--mut); font-size: 13px }
   .tree .sub-note button { text-decoration: underline; color: inherit; cursor: pointer }
   .side-foot { margin-top: auto; padding: 16px 6px 2px; color: var(--mut); display: flex; flex-direction: column; gap: 2px }
   .side-foot .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
