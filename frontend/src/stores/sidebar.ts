@@ -17,7 +17,10 @@ export const useSidebarStore = defineStore('sidebar', () => {
     if (maxAgeMs > 0 && stamps[id] && Date.now() - stamps[id] < maxAgeMs) return
     loading.value = { ...loading.value, [id]: true }
     try {
-      byProject.value = { ...byProject.value, [id]: (await listApps(id)) ?? [] }
+      // Await first: spreading byProject before the await would snapshot it, so projects loading at the same time
+      // would overwrite each other and all but the last would show "No apps".
+      const list = (await listApps(id)) ?? []
+      byProject.value = { ...byProject.value, [id]: list }
       stamps[id] = Date.now()
       const rest = { ...errors.value }
       delete rest[id]
