@@ -7,6 +7,14 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Health advisor, rule-based, no LLM (2026-11-11).** Research: [research/health-advisor-2026-11-11.md](research/health-advisor-2026-11-11.md).
+  Phase 1 is about 1 day, $0/mo, existing data only (OOM, near-limit memory/CPU, crash loops, quotas, unused add-ons,
+  mutable image tags, health checks, backups). Please answer: (1) show owners "lower your limit" advice, or info-only for
+  owners and counted for admin only (recommended)? (2) one-click Apply with a confirm for owners within their ceiling, or
+  advice-only at first? (3) app at its cap: "ask an admin" text only, or an item in the admin overview? (4) phase 3 go-ahead
+  for (a) `nodes/metrics` RBAC for real CPU throttling, (b) a Traefik metrics scrape for idle/error rate? (5) after 30 idle
+  days: admin list only, or a suggestion to the owner? (6) in-app only, or email/webhook too? (7) build phase 1 now?
+
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the
