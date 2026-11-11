@@ -259,7 +259,7 @@ async function startWithout() {
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : undefined" @click="improve">{{ improving ? 'Improving...' : 'Improve brief' }}</button>
-            <span class="help">One short Haiku call, well under a cent. Nothing changes until you press Use this.</span>
+            <span class="help">Sends the brief to Haiku once (well under a cent) and shows a suggested rewrite below. Your brief changes only if you then press "Use this" on the suggestion.</span>
           </div>
           <p v-if="noKey" class="help">This project has no Anthropic API key yet. A project owner can add one in Kaisen settings.</p>
           <p v-if="improveError" class="field-error" role="alert" data-testid="improve-error">{{ improveError }}</p>
