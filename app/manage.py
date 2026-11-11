@@ -20,7 +20,7 @@ ACTOR = "manage-cli"
 
 def _find(db: Session, email: str) -> Optional[models.User]:
     return (db.query(models.User)
-            .filter(models.User.email == email.strip().lower(), models.User.status != "deleted").first())
+            .filter(models.User.email == email.strip().lower(), models.User.status.notin_(("deleted", "rejected"))).first())
 
 
 def grant_admin(db: Session, email: str) -> str:

@@ -65,7 +65,7 @@ async def middleware(request, call_next):
 
 def refresh_gauges(db: Session) -> None:
     A = models.App
-    USERS.set(db.query(func.count(models.User.id)).filter(models.User.status != "deleted").scalar() or 0)
+    USERS.set(db.query(func.count(models.User.id)).filter(models.User.status.notin_(("deleted", "rejected"))).scalar() or 0)
     APPS.set(db.query(func.count(A.id)).filter(A.deleted_at.is_(None)).scalar() or 0)
     by_type = {"mysql": 0, "psql": 0}
     for engine, n in db.query(models.DbServer.engine, func.count(models.DbServer.id)).group_by(models.DbServer.engine).all():

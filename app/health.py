@@ -288,8 +288,8 @@ def db_counts(db: Session) -> dict[str, Any]:
     U, A = models.User, models.App
     # Every non-deleted account (admins included), so the numbers match the Admin users list; `admins` is a subset.
     users = {"total": 0, "active": 0, "pending": 0, "suspended": 0, "admins": 0}
-    users["admins"] = db.query(func.count(U.id)).filter(U.role == "platform_admin", U.status != "deleted").scalar() or 0
-    for status, n in (db.query(U.status, func.count(U.id)).filter(U.status != "deleted")
+    users["admins"] = db.query(func.count(U.id)).filter(U.role == "platform_admin", U.status.notin_(("deleted", "rejected"))).scalar() or 0
+    for status, n in (db.query(U.status, func.count(U.id)).filter(U.status.notin_(("deleted", "rejected")))
                       .group_by(U.status).all()):
         users["total"] += n
         if status in users:

@@ -23,7 +23,7 @@ class User(Base):
     # 'platform_admin' (first registered user, unlimited apps) or 'user'.
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     app_limit: Mapped[int] = mapped_column(default=1, nullable=False)
-    # 'pending' (awaiting platform_admin approval) | 'active' | 'suspended' | 'deleted' (soft).
+    # 'pending' (awaiting platform_admin approval) | 'active' | 'suspended' | 'deleted' (soft) | 'rejected' (signup turned down; login says so, email stays taken).
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="active")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
     terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

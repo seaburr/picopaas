@@ -487,15 +487,18 @@ def list_suspensions(db: Session = Depends(get_db)):
 @router.post("/users/{user_id}/approve", response_model=AdminUserOut)
 def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
     user = _get_user_or_404(db, user_id)
-    if user.status != "pending":
+    if user.status not in ("pending", "rejected"):
         if user.status == "active":
             msg = "This user was already approved. Refresh the list."
         else:
             msg = f"This user isn't waiting for approval (their status is {user.status}). Refresh the list."
         raise HTTPException(status_code=409, detail=msg)
+    was = user.status
+    if was == "rejected":
+        projects.restore_personal_project(db, user)  # reject soft-deleted it; revoked API keys stay revoked
     user.status = "active"
     db.commit()
-    audit.record(db, admin, "user.approve", "user", user.id)
+    audit.record(db, admin, "user.approve", "user", user.id, "from=rejected" if was == "rejected" else None)
     return _user_out(db, user)
 
 
@@ -506,6 +509,8 @@ def suspend_user(user_id: int, payload: SuspendIn, db: Session = Depends(get_db)
     (via the Kaisen worker's checks) stop every Kaisen run this person started. Shared projects keep running."""
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
+    if user.status == "rejected":
+        raise HTTPException(status_code=409, detail="This signup was rejected. Approve it first if you want to give them access.")
     reason = payload.reason
     if user.status != "suspended":  # a re-suspend (new reason) keeps the status from before the first one
         user.suspended_from = user.status
@@ -583,10 +588,10 @@ def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.Us
     return schemas.TemporaryPasswordOut(temporary_password=temp)
 
 
-@router.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
-    user = _get_user_or_404(db, user_id)
-    _protect_platform_admin(user, db)
+def _retire_user(db: Session, user: models.User, new_status: str) -> None:
+    """Shared by delete and reject: drop memberships (soft-deleting ownerless app-less projects, so the personal
+    project goes), tear down their apps, revoke API keys, set the status. Caller audits. 409 if they solely own a
+    project that still has apps."""
     shared = sorted(_shared_memberships(db, user.id), key=lambda m: m.project_id)  # fixed lock order: no deadlocks
     for m in shared:
         projects.lock_project(db, m.project_id)
@@ -606,9 +611,29 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
         a.deleted_at = now  # the reconciler tears these down
     for k in db.query(models.ApiKey).filter(models.ApiKey.user_id == user.id, models.ApiKey.revoked_at.is_(None)):
         k.revoked_at = now
-    user.status = "deleted"
+    user.status = new_status
     db.commit()
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+    user = _get_user_or_404(db, user_id)
+    _protect_platform_admin(user, db)
+    _retire_user(db, user, "deleted")
     audit.record(db, admin, "user.delete", "user", user.id)
+    return None
+
+
+@router.post("/users/{user_id}/reject", status_code=204)
+def reject_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+    """Turn down a pending signup. They can log in only to be told so (403); the email stays taken, so they can't
+    re-request. Approve unlocks them again."""
+    user = _get_user_or_404(db, user_id)
+    _protect_platform_admin(user, db)
+    if user.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Only a user waiting for approval can be rejected (their status is {user.status}). Refresh the list.")
+    _retire_user(db, user, "rejected")
+    audit.record(db, admin, "user.reject", "user", user.id)
     return None
 
 

@@ -53,6 +53,19 @@ def create_personal_project(db: Session, user: models.User) -> models.Project:
     return project
 
 
+def restore_personal_project(db: Session, user: models.User) -> models.Project:
+    """Undo a soft delete of the personal project (rejected signup approved later): clear deleted_at and make sure
+    the user is an owner member; creates a fresh one when none exists. Flushes; caller commits."""
+    project = db.query(models.Project).filter(models.Project.slug == personal_slug(user.id)).first()
+    if project is None:
+        return create_personal_project(db, user)
+    project.deleted_at = None
+    if not any(m.user_id == user.id for m in project.members):
+        project.members.append(models.ProjectMember(user_id=user.id, role="owner"))
+    db.flush()
+    return project
+
+
 def get_personal_project(db: Session, user: models.User) -> models.Project:
     project = db.query(models.Project).filter(models.Project.slug == personal_slug(user.id)).first()
     if project is None:  # defensive: users created before the backfill ran
@@ -162,7 +175,7 @@ def owner_emails_map(db: Session, project_ids) -> dict[int, list[str]]:
     rows = (db.query(models.ProjectMember.project_id, models.User.email)
             .join(models.User, models.User.id == models.ProjectMember.user_id)
             .filter(models.ProjectMember.project_id.in_(ids), models.ProjectMember.role == "owner",
-                    models.User.status != "deleted").order_by(models.User.email).all())
+                    models.User.status.notin_(("deleted", "rejected"))).order_by(models.User.email).all())
     out: dict[int, list[str]] = {}
     for pid, email in rows:
         out.setdefault(pid, []).append(email)

@@ -208,7 +208,7 @@ def list_members(project_id: int, db: Session = Depends(get_db), user: models.Us
     projects.get_project_for_member(db, project_id, user)
     rows = (db.query(models.ProjectMember, models.User.email)
             .join(models.User, models.User.id == models.ProjectMember.user_id)
-            .filter(models.ProjectMember.project_id == project_id, models.User.status != "deleted")
+            .filter(models.ProjectMember.project_id == project_id, models.User.status.notin_(("deleted", "rejected")))
             .order_by(models.ProjectMember.added_at, models.ProjectMember.id).all())
     return [MemberOut(user_id=m.user_id, email=email, role=m.role, added_at=m.added_at) for m, email in rows]
 

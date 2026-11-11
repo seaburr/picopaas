@@ -58,7 +58,7 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
         user_id = decode_access_token(token)
         if user_id is not None:
             user = db.get(models.User, user_id)
-            if user is not None and user.status != "deleted":
+            if user is not None and user.status not in ("deleted", "rejected"):
                 request.state.auth_via = "cookie"
                 request.state.api_scope = "full"  # a browser session always has full access
                 return user
@@ -83,7 +83,7 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             request.state.auth_via = "api_key"
             request.state.api_scope = api_key.scope or "full"
             user = db.get(models.User, api_key.user_id)
-            if user is not None and user.status != "deleted":
+            if user is not None and user.status not in ("deleted", "rejected"):
                 return user
 
     return None

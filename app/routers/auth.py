@@ -108,11 +108,19 @@ def register(payload: schemas.UserRegister, request: Request, response: Response
     return user
 
 
+_DUMMY_HASH = hash_password("not-a-real-account-password")
+REJECTED_MESSAGE = "Your access request wasn't approved. Contact the platform administrator if you think this is a mistake."
+
+
 @router.post("/login", response_model=schemas.UserOut)
 def login(payload: schemas.UserLogin, request: Request, response: Response, db: Session = Depends(get_db)):
     ratelimit.check_login(db, request, payload.email)
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
-    if user is None or user.status == "deleted" or not verify_password(payload.password, user.password_hash):
+    # Always run one bcrypt check (against a dummy hash when there is no usable account) so response time doesn't
+    # reveal whether an email has an account.
+    gone = user is None or user.status == "deleted"
+    pw_ok = verify_password(payload.password, _DUMMY_HASH if gone else user.password_hash)
+    if gone or not pw_ok:
         ratelimit.record_login_failure(db, request, payload.email)
         audit.record(db, None, "login.failed", "user", user.id if user else None,
                      "invalid credentials", actor_email=payload.email.lower()[:255])
@@ -121,6 +129,9 @@ def login(payload: schemas.UserLogin, request: Request, response: Response, db: 
             detail="Email or password is wrong. Try again, or ask an administrator to reset your password.",
         )
     ratelimit.clear_login_failures(db, payload.email)
+    if user.status == "rejected":  # said only after the password verified, so it can't be used to probe emails
+        audit.record(db, None, "login.rejected", "user", user.id, "rejected user logged in", actor_email=user.email[:255])
+        raise HTTPException(status_code=403, detail=REJECTED_MESSAGE)
     _set_session_cookie(response, user.id)
     return user
 
