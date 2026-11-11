@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listUsers } from '../api/admin'
-import { apiGeneration } from '../api/client'
+import { apiGeneration, onApiCacheCleared } from '../api/client'
 import { getBuild } from '../api/kaisen'
 import { appStatus, statusLook } from '../composables/statusTone'
 import { useAppsStore } from '../stores/apps'
@@ -47,6 +47,18 @@ async function refreshPending() {
     pending.value = 0
   }
 }
+
+// An approval/rejection (or any write) refreshes the badge right away instead of on the next navigation;
+// debounced so a burst of writes costs one request.
+let pendingTimer: ReturnType<typeof setTimeout> | undefined
+const offCleared = onApiCacheCleared(() => {
+  clearTimeout(pendingTimer)
+  pendingTimer = setTimeout(refreshPending, 300)
+})
+onUnmounted(() => {
+  offCleared()
+  clearTimeout(pendingTimer)
+})
 
 // ---- open/closed state ----
 const KEY = 'picopaas.nav'

@@ -145,10 +145,20 @@ const cache = new Map<string, { at: number; json: string }>()
 const inflight = new Map<string, Promise<string>>()
 let generation = 0
 
+const clearListeners = new Set<() => void>()
+
 export function clearApiCache() {
   generation++
   cache.clear()
   inflight.clear()
+  clearListeners.forEach((fn) => fn())
+}
+
+// Called after every cache clear (any write, sign-in/out): for small badges that should follow a write at once.
+// Returns the unsubscribe function.
+export function onApiCacheCleared(fn: () => void): () => void {
+  clearListeners.add(fn)
+  return () => clearListeners.delete(fn)
 }
 
 // Changes whenever something was written (or the account changed): lets a caller know its own earlier GET may be stale.

@@ -13,6 +13,7 @@ const APP: Record<string, { tone: Tone; label: string }> = {
   error: { tone: 'err', label: 'Failed' },
   suspended: { tone: 'off', label: 'Suspended' },
   stopped: { tone: 'off', label: 'Stopped' },
+  rejected: { tone: 'off', label: 'Rejected' },
   revoked: { tone: 'off', label: 'Revoked' },
 }
 

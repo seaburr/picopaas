@@ -5,14 +5,13 @@ import { useRouter } from 'vue-router'
 import { projectLabel, projectNewApp } from '../utils/paths'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
-import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import KaisenTag from '../components/KaisenTag.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { appStatus } from '../composables/statusTone'
-import { eventNote, primaryHost, relTime, fullTime, SAMPLE_APP, useNow } from '../composables/appUi'
+import { eventNote, primaryHost, shortAge, fullTime, SAMPLE_APP, useNow } from '../composables/appUi'
 import { useAppsStore } from '../stores/apps'
 import { useAuthStore } from '../stores/auth'
 import { useProjectsStore } from '../stores/projects'
@@ -82,23 +81,6 @@ onMounted(load)
 // The route guard selects the project in the path; a change of :pid reloads the list.
 watch(() => props.pid, () => { if (projects.loaded) load() })
 
-const pendingDelete = ref<App | null>(null)
-const deleting = ref(false)
-async function confirmDelete() {
-  const app = pendingDelete.value
-  if (!app) return
-  deleting.value = true
-  try {
-    await store.remove(app.id)
-    toast.success(`Deleted ${app.name}.`)
-    pendingDelete.value = null
-  } catch (e) {
-    toast.error(`Couldn't delete ${app.name}: ${e instanceof ApiError ? e.message : 'unknown error'}`)
-  } finally {
-    deleting.value = false
-  }
-}
-
 const pendingRestart = ref<App | null>(null)
 function askRestart(app: App) {
   if (restarting.value === app.id) return
@@ -134,22 +116,16 @@ const projectName = computed(() => projectLabel(project.value))
 useProjectTitle('Apps', projectName)
 const noteRow = (a: App) => !!a.last_event || ['suspended', 'pending', 'deploying', 'error'].includes(appStatus(a))
 
-// List cells. Limits come from the API (app.resources / app.quota), never constants.
-const limits = computed(() => auth.user?.limits)
-const memText = (a: App) => `${a.resources?.mem_limit_mi ?? limits.value?.mem_limit_mi ?? '–'} MB`
-const cpuText = (a: App) => `${a.resources?.cpu_limit_m ?? limits.value?.cpu_limit_m ?? '–'}m`
-const MB = 1024 * 1024
-const mbNum = (n: number) => (n >= 10 * MB || n === 0 ? Math.round(n / MB) : +(n / MB).toFixed(1))
-function usageText(u: { size_bytes: number; limit_bytes: number } | null | undefined, on: boolean): string {
-  if (!on) return '–'
-  if (!u) return 'attached'
-  return `${mbNum(u.size_bytes)} / ${mbNum(u.limit_bytes)} MB`
-}
-function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boolean } | null | undefined): string {
-  if (!u) return ''
-  if (u.over_quota) return 'text-danger-light'
-  return u.limit_bytes && u.size_bytes / u.limit_bytes >= 0.8 ? 'text-amber-400' : ''
-}
+// Attached add-ons: PSQL | MySQL | Block | Blob.
+const isPg = (a: App) => !!a.want_db && a.db_engine === 'pg'
+const isMysql = (a: App) => !!a.want_db && a.db_engine !== 'pg'
+const addOns = (a: App) => [isPg(a) && 'PSQL', isMysql(a) && 'MySQL', !!a.volume && 'Block', !!a.want_storage && 'Blob'].filter(Boolean).join(' · ')
+const MARKS = [
+  { key: 'pg', head: 'PSQL', title: 'PostgreSQL database', on: isPg },
+  { key: 'mysql', head: 'MySQL', title: 'MySQL database', on: isMysql },
+  { key: 'block', head: 'Block', title: 'Block storage (persistent volume)', on: (a: App) => !!a.volume },
+  { key: 'blob', head: 'Blob', title: 'Blob storage (bucket)', on: (a: App) => !!a.want_storage },
+]
 </script>
 
 <template>
@@ -199,15 +175,16 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
     <template v-else-if="store.apps.length">
       <!-- Wide: one table. -->
       <div class="overflow-x-auto max-md:hidden">
-        <table class="tbl min-w-[1100px]">
+        <table class="tbl min-w-[1000px]">
           <caption class="sr-only">Apps</caption>
           <colgroup>
-            <col class="w-[11%]"><col class="w-[7%]"><col class="w-[8%]"><col class="w-[4%]"><col class="w-[7%]"><col class="w-[6%]"><col class="w-[9%]"><col class="w-[9%]"><col class="w-[16%]"><col class="w-[6%]"><col class="w-[17%]">
+            <col class="w-[19%]"><col class="w-[8%]"><col class="w-[22%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[13%]"><col class="w-[5%]"><col class="w-[15%]">
           </colgroup>
           <thead>
             <tr>
-              <th>Name</th><th>Status</th><th>Image</th><th class="text-right">Port</th><th class="text-right">Mem limit</th><th class="text-right">CPU limit</th>
-              <th class="text-right">Database</th><th class="text-right">Bucket</th><th>Host</th><th>Created</th><th class="text-right"><span class="sr-only">Actions</span></th>
+              <th>Name</th><th>Status</th><th>Image</th>
+              <th v-for="m in MARKS" :key="m.key" class="px-0.5! text-center" :title="m.title">{{ m.head }}</th>
+              <th>Host</th><th class="text-right">Age</th><th class="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -215,7 +192,7 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
               <tr :class="noteRow(app) ? '[&>td]:border-b-0' : ''">
                 <td>
                   <div class="flex min-w-0 items-center gap-1.5">
-                    <RouterLink :to="`/apps/${app.id}`" class="mono min-w-0 truncate font-medium text-white hover:underline" :title="app.name">{{ app.name }}</RouterLink>
+                    <span class="mono min-w-0 truncate font-medium text-white" :title="app.name">{{ app.name }}</span>
                     <KaisenTag v-if="app.kaisen_build_id" :to="`/kaisen/${app.kaisen_build_id}`" class="shrink-0" />
                   </div>
                 </td>
@@ -224,25 +201,22 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
                   <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="block text-xs text-danger-light" :title="overCapTip(app)">over cap</span>
                 </td>
                 <td class="mono truncate" :title="app.image">{{ app.image }}</td>
-                <td class="mono text-right">{{ app.port }}</td>
-                <td class="mono text-right">{{ memText(app) }}</td>
-                <td class="mono text-right">{{ cpuText(app) }}</td>
-                <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.db)" :title="app.want_db ? undefined : 'No database'">{{ usageText(app.quota?.db, app.want_db) }}</td>
-                <td class="mono whitespace-nowrap text-right" :class="usageTone(app.quota?.storage)" :title="app.want_storage ? undefined : 'No bucket'">{{ usageText(app.quota?.storage, app.want_storage) }}</td>
+                <td v-for="m in MARKS" :key="m.key" class="px-0.5! text-center">
+                  <template v-if="m.on(app)"><span aria-hidden="true">✓</span><span class="sr-only">Yes</span></template>
+                </td>
                 <td class="min-w-0"><HostLink compact :hostname="primaryHost(app)" /></td>
-                <td class="mono whitespace-nowrap pr-4!" :title="fullTime(app.created_at)">{{ relTime(app.created_at, now) }}</td>
+                <td class="mono whitespace-nowrap text-right" :title="fullTime(app.created_at)">{{ shortAge(app.created_at, now) }}</td>
                 <td>
                   <div class="row-acts [&>*]:ml-0! flex-nowrap gap-x-2.5 whitespace-nowrap">
                     <RouterLink :to="`/apps/${app.id}`" class="row-act" :aria-label="`View health of ${app.name}`">Health</RouterLink>
                     <button type="button" class="row-act" :aria-label="app.status === 'suspended' ? `Restart ${app.name} (unavailable while suspended)` : `Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
                     <span v-if="app.status === 'suspended'" class="row-act" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended: contact the administrator)`">Settings</span>
                     <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
-                    <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${app.name}`" @click="pendingDelete = app">Delete</button>
                   </div>
                 </td>
               </tr>
               <tr v-if="noteRow(app)">
-                <td colspan="11" class="!pt-0 text-sm">
+                <td colspan="10" class="!pt-0 text-sm">
                   <p v-if="app.last_event" class="meta">{{ eventNote(app.last_event, now) }}</p>
                   <AppStatusNote v-if="['suspended', 'pending', 'deploying', 'error'].includes(appStatus(app))" compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
                 </td>
@@ -256,15 +230,14 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
       <ul class="border-t border-pico-border md:hidden">
         <li v-for="app in store.apps" :key="app.id" class="border-b border-pico-border py-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <RouterLink :to="`/apps/${app.id}`" class="mono min-w-0 truncate text-sm font-medium text-white" :title="app.name">{{ app.name }}</RouterLink>
+            <span class="mono min-w-0 truncate text-sm font-medium text-white" :title="app.name">{{ app.name }}</span>
             <StatusBadge :status="appStatus(app)" class="shrink-0" />
           </div>
           <p class="mono mt-0.5 truncate text-zinc-400" :title="app.image">{{ app.image }}</p>
           <div class="mt-0.5"><HostLink compact :hostname="primaryHost(app)" /></div>
           <p class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
-            <span><span class="text-zinc-400">Mem limit </span><span class="mono">{{ memText(app) }}</span></span>
-            <span><span class="text-zinc-400">DB </span><span class="mono" :class="usageTone(app.quota?.db)">{{ usageText(app.quota?.db, app.want_db) }}</span></span>
-            <span><span class="text-zinc-400">Bucket </span><span class="mono" :class="usageTone(app.quota?.storage)">{{ usageText(app.quota?.storage, app.want_storage) }}</span></span>
+            <span v-if="addOns(app)"><span class="text-zinc-400">Add-ons </span><span class="mono">{{ addOns(app) }}</span></span>
+            <span :title="fullTime(app.created_at)"><span class="text-zinc-400">Age </span><span class="mono">{{ shortAge(app.created_at, now) }}</span></span>
             <span v-if="app.quota?.db?.over_quota || app.quota?.storage?.over_quota" class="text-danger-light" :title="overCapTip(app)">over cap</span>
             <KaisenTag v-if="app.kaisen_build_id" :to="`/kaisen/${app.kaisen_build_id}`" />
           </p>
@@ -277,7 +250,6 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
             <button type="button" class="row-act max-md:min-h-11!" :aria-label="`Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
             <span v-if="app.status === 'suspended'" class="row-act max-md:min-h-11!" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended)`">Settings</span>
             <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act max-md:min-h-11!" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
-            <button type="button" class="row-act row-act-danger max-md:min-h-11!" :aria-label="`Delete ${app.name}`" @click="pendingDelete = app">Delete</button>
           </div>
         </li>
       </ul>
@@ -291,6 +263,5 @@ function usageTone(u: { size_bytes: number; limit_bytes: number; over_quota: boo
       @confirm="pendingRestart && restart(pendingRestart)"
       @cancel="pendingRestart = null"
     />
-    <DeleteAppDialog :app="pendingDelete" :busy="deleting" @confirm="confirmDelete" @cancel="pendingDelete = null" />
   </main>
 </template>

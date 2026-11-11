@@ -45,6 +45,20 @@ function span(sec: number): string {
   return `${Math.round(s / 86400)} d`
 }
 
+// Compact age without "ago": 45s, 12m, 5h, 3d, 8w, 5mo, 2y.
+export function shortAge(iso: string, now = Date.now()): string {
+  const d = parseTs(iso)
+  if (isNaN(d.getTime())) return iso
+  const s = Math.max(0, Math.round((now - d.getTime()) / 1000))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  const days = Math.floor(s / 86400)
+  if (days < 56) return days < 14 ? `${days}d` : `${Math.floor(days / 7)}w`
+  if (days < 365) return `${Math.floor(days / 30)}mo`
+  return `${Math.floor(days / 365)}y`
+}
+
 export function relTime(iso: string, now = Date.now()): string {
   const d = parseTs(iso)
   if (isNaN(d.getTime())) return iso

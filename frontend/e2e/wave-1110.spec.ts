@@ -51,7 +51,7 @@ test('admin edits the banner with a live preview and saves; PUT detail is shown 
   await page.goto('/admin')
   await page.getByRole('tab', { name: /Settings/ }).click()
   const sec = page.getByTestId('admin-banner')
-  await expect(sec.getByRole('heading', { name: 'Banner' })).toBeVisible()
+  await expect(sec.getByRole('heading', { name: 'Announcement Banner' })).toBeVisible()
   await sec.getByLabel('Title').fill('bad')
   await sec.getByRole('button', { name: 'Save banner' }).click()
   await expect(sec.getByRole('alert')).toContainText('title: not allowed')

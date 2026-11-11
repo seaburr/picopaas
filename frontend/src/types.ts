@@ -67,7 +67,7 @@ export interface AppVolume {
   phase: 'Pending' | 'Bound' | null
 }
 
-export type UserStatus = 'pending' | 'active' | 'suspended' | 'deleted'
+export type UserStatus = 'pending' | 'active' | 'suspended' | 'rejected' | 'deleted'
 
 export interface EnvVar {
   key: string

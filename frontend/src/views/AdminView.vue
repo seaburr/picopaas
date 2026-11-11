@@ -15,7 +15,7 @@ import AdminProjects from '../components/AdminProjects.vue'
 import AdminSuspensions from '../components/AdminSuspensions.vue'
 import SuspendDialog from '../components/SuspendDialog.vue'
 import {
-  approveUser, createDbServer, deleteAdminApp, detachDbServer, deleteUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
+  approveUser, createDbServer, deleteAdminApp, detachDbServer, deleteUser, rejectUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
   patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
@@ -162,12 +162,14 @@ function askAdmin(u: AdminUser, promote: boolean) {
     ? { title: `Make ${u.email} an admin`, message: 'They get full platform admin access: all users, apps, limits and audit logs.', label: 'Make admin', run: () => setAdmin(u, true) }
     : { title: `Remove admin from ${u.email}`, message: 'They become a regular user. Their apps are kept.', label: 'Remove admin', run: () => setAdmin(u, false) }
 }
-function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset', u: AdminUser) {
+function askUser(kind: 'suspend' | 'delete' | 'reject' | 'reset' | 'approve', u: AdminUser) {
   if (kind === 'suspend') {
     susError.value = ''
     suspendTarget.value = u
   } else if (kind === 'reject')
-    confirm.value = { title: `Reject ${u.email}`, message: 'This removes their request. They can request access again.', label: 'Reject request', run: () => act(() => deleteUser(u.id), `${u.email} rejected.`, "Couldn't reject the request") }
+    confirm.value = { title: `Reject ${u.email}`, message: "They won't be able to sign in or request access again with this email.", label: 'Reject request', run: () => act(() => rejectUser(u.id), `${u.email} rejected.`, "Couldn't reject the request") }
+  else if (kind === 'approve')
+    confirm.value = { title: `Approve ${u.email}`, message: 'This unlocks their account and lets them sign in.', label: 'Approve', run: () => act(() => approveUser(u.id), `${u.email} approved.`, "Couldn't approve the user") }
   else if (kind === 'reset')
     confirm.value = { title: `Reset password for ${u.email}`, message: 'This generates a temporary password. Their current password stops working immediately. Give them the new one; they should change it right away.', label: 'Reset password', run: () => resetPassword(u) }
   else
@@ -462,7 +464,7 @@ const overrideSummary = (a: AdminApp) => {
               <tbody class="text-zinc-200">
                 <tr v-for="u in otherUsers" :key="u.id">
                   <td class="truncate" :title="u.email">
-                    <span class="font-medium text-white">{{ u.email }}</span>
+                    <span class="font-medium" :class="u.status === 'rejected' ? 'text-zinc-400' : 'text-white'">{{ u.email }}</span>
                     <span v-if="u.role === 'platform_admin'" class="meta ml-1.5">Admin</span>
                     <span class="meta ml-1.5" :title="fullDate(u.created_at)">joined {{ humanDate(u.created_at) }}</span>
                   </td>
@@ -470,7 +472,7 @@ const overrideSummary = (a: AdminApp) => {
                   <td class="mono whitespace-nowrap text-right">{{ u.app_count }}<span class="text-zinc-400"> / {{ u.app_limit_effective }}</span></td>
                   <td class="mono text-right">{{ u.api_key_count ?? 0 }}</td>
                   <td>
-                    <span v-if="u.role === 'platform_admin'" class="mono">{{ u.app_limit_effective }}</span>
+                    <span v-if="u.role === 'platform_admin' || u.status === 'rejected'" class="mono" :class="u.status === 'rejected' ? 'text-zinc-400' : ''">{{ u.app_limit_effective }}</span>
                     <form v-else class="flex items-center gap-1 whitespace-nowrap" @submit.prevent="saveLimit(u)">
                       <input v-model.number="limits[u.id]" type="text" inputmode="numeric" pattern="[0-9]*" :max="maxApps" :aria-label="`App limit for ${u.email}`" class="input mono w-14" />
                       <button v-if="limits[u.id] !== u.app_limit_effective" type="submit" class="row-act" :aria-label="`Save app limit for ${u.email}`" title="Save limit">Save</button>
@@ -479,13 +481,14 @@ const overrideSummary = (a: AdminApp) => {
                   </td>
                   <td>
                     <div class="row-acts">
-                      <button type="button" class="row-act" :aria-label="`API keys of ${u.email}`" @click="keysUser = u">API keys</button>
+                      <button v-if="u.status !== 'rejected'" type="button" class="row-act" :aria-label="`API keys of ${u.email}`" @click="keysUser = u">API keys</button>
                       <button v-if="u.role === 'platform_admin'" type="button" class="row-act" :aria-label="demoteBlocked(u) ? 'Remove admin (you are the only admin)' : `Remove admin from ${u.email}`" :disabled="demoteBlocked(u)" @click="askAdmin(u, false)">Remove admin</button>
                       <button v-else-if="u.status === 'active'" type="button" class="row-act" :aria-label="`Make ${u.email} an admin`" @click="askAdmin(u, true)">Make admin</button>
                       <template v-if="u.role !== 'platform_admin'">
+                        <button v-if="u.status === 'rejected'" type="button" class="row-act" :aria-label="`Approve ${u.email}`" @click="askUser('approve', u)">Approve</button>
                         <button v-if="u.status === 'suspended'" type="button" class="row-act" :aria-label="`Unsuspend ${u.email}`" @click="act(() => unsuspendUser(u.id), `${u.email} unsuspended.`, 'Couldn\'t unsuspend the user')">Unsuspend</button>
                         <button v-if="u.status === 'active'" type="button" class="row-act" :aria-label="`Suspend ${u.email}`" @click="askUser('suspend', u)">Suspend</button>
-                        <button type="button" class="row-act" :aria-label="`Reset password for ${u.email}`" @click="askUser('reset', u)">Reset password</button>
+                        <button v-if="u.status !== 'rejected'" type="button" class="row-act" :aria-label="`Reset password for ${u.email}`" @click="askUser('reset', u)">Reset password</button>
                         <button type="button" class="row-act row-act-danger" :aria-label="`Delete ${u.email}`" @click="askUser('delete', u)">Delete</button>
                       </template>
                     </div>
@@ -749,7 +752,7 @@ const overrideSummary = (a: AdminApp) => {
       :confirm-label="confirm?.label"
       :require-text="confirm?.require"
       :busy="confirmBusy"
-      danger
+      :danger="confirm?.label !== 'Approve'"
       @confirm="runConfirm"
       @cancel="confirm = null"
     />

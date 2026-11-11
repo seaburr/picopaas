@@ -27,6 +27,7 @@ const withReason = (path: string, reason?: string) =>
   apiFetch<void>(path, { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) })
 export const suspendUser = (id: number, reason: string) => withReason(`/admin/users/${id}/suspend`, reason)
 export const unsuspendUser = (id: number) => post(`/admin/users/${id}/unsuspend`)
+export const rejectUser = (id: number) => apiFetch<void>(`/admin/users/${id}/reject`, { method: 'POST' })
 export const deleteUser = (id: number) => apiFetch<void>(`/admin/users/${id}`, { method: 'DELETE' })
 
 export const listAllApps = () => apiFetch<AdminApp[]>('/admin/apps')

@@ -54,7 +54,7 @@ async function save() {
 <template>
   <section class="sec" :aria-labelledby="`${uid}-h`" data-testid="admin-banner">
     <div class="border-b border-pico-border px-3 py-2">
-      <h2 :id="`${uid}-h`" class="section-title">Banner</h2>
+      <h2 :id="`${uid}-h`" class="section-title">Announcement Banner</h2>
     </div>
     <div class="space-y-(--field-gap) px-3 py-3">
       <div v-if="loadError" role="alert" class="alert-error">{{ loadError }}</div>
