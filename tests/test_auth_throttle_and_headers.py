@@ -138,3 +138,12 @@ def test_domain_suffix_comes_from_config(make_client, monkeypatch):
     from app.routers import admin, apps
     assert not hasattr(apps, "DOMAIN_SUFFIX") and not hasattr(admin, "DOMAIN_SUFFIX")
     assert apps.APP_DOMAIN == config.APP_DOMAIN == admin.APP_DOMAIN
+
+
+def test_csp_frame_src_is_only_the_apps_domain(make_client):
+    from app import config
+    csp = make_client().get("/healthz").headers["content-security-policy"]
+    assert f"frame-src https://*.{config.APP_DOMAIN};" in csp
+    assert "frame-src *" not in csp and "frame-src 'self'" not in csp
+    assert csp.endswith("frame-ancestors 'none'")
+    assert "default-src 'self'" in csp

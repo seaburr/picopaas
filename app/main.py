@@ -289,7 +289,9 @@ def _csp() -> str:
     return (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         f"img-src 'self' data: https://{config.PLATFORM_HOST}; font-src 'self'; connect-src 'self'; "
-        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        "object-src 'none'; base-uri 'self'; form-action 'self'; "
+        # Kaisen build page previews: the SPA frames tenant apps (sandboxed, no allow-same-origin). Only the apps domain.
+        f"frame-src https://*.{config.APP_DOMAIN}; frame-ancestors 'none'"
     )
 
 

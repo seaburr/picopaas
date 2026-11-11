@@ -8,6 +8,7 @@ import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
 import BuildConversation from '../components/BuildConversation.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildLastDeployment from '../components/BuildLastDeployment.vue'
+import BuildPreviewPane from '../components/BuildPreviewPane.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -487,6 +488,7 @@ async function doDelete() {
                     <p v-else-if="deployPhase === 'starting'" class="mt-2 text-sm text-zinc-300" role="status">Starting your app. This usually takes about a minute.</p>
                     <BuildLastDeployment :items="inbox" :now="now" :phase="deployPhase" />
                     <div v-if="app && app.status === 'error'" class="mt-2"><AppStatusNote compact :app="app" /></div>
+                    <BuildPreviewPane :hostname="build.app_hostname" :status="app?.status ?? build.app_status ?? ''" />
                     <div class="mt-3 flex flex-wrap gap-2">
                       <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary btn-sm">App health</RouterLink>
                       <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary btn-sm">App settings</RouterLink>
