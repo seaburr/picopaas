@@ -47,6 +47,9 @@ The Getting started dialog shown after sign-in can be reopened from the Account 
 2. New accounts start as `pending`. You can log in, but the API refuses app and key calls with `403` ("Your account is
    waiting for administrator approval...") until an administrator approves you. The UI shows a waiting page and
    checks every 20 seconds, so you land on your apps as soon as you're approved.
+   If an administrator declines your request, logging in with your correct password shows "Your access request wasn't
+   approved. Contact the platform administrator if you think this is a mistake." Registering again with the same email
+   does nothing; ask the administrator, who can still approve you later.
 3. Once approved (`active`) you can create apps and API keys.
 
 If you request access with an email that already has an account, you see the same response as a new request, so
@@ -108,7 +111,7 @@ versions. **Settings** (`/apps/:id/edit`) holds the deployment form (image, port
 the **Danger zone** (rotate credentials, delete) and, for administrators, **Short address**. Below the form, a full-width **Other settings** section holds everything that is not in the YAML spec: custom domain, short address, moving the app to another project, backups and the danger zone. A button at the top of each page links to
 the other (**Settings** on the health page, **App health** on Settings). Saving the deployment form redeploys the app. Settings also has the same **Resources** sliders as the new-app form.
 
-The **Apps** list is a table with these columns: Name, Status, Image, Port, **Memory limit**, **CPU limit** (the limits the app runs with, not its current use), Database and Bucket (use against the cap), Host and Created. Each row ends with the text actions **Health**, **Restart**, **Settings** and **Delete**. **Restart** asks you to confirm first (it briefly interrupts the app), and so does the restart button in an app's status note.
+The **Apps** list is a table with these columns: Name (plain text, not a link), Status, Image, PSQL, MySQL, Block, Blob, Host and Age. The four add-on columns show a check mark when the app has that add-on attached (PostgreSQL, MySQL, a persistent volume, blob storage); Age is how long ago the app was created. Each row ends with the text actions **Health**, **Restart** and **Settings**. There is no Delete in the list: delete an app from its own **Settings** page (Danger zone). Port and the resource limits are on the app's Settings page. **Restart** asks you to confirm first (it briefly interrupts the app), and so does the restart button in an app's status note.
 
 ### 3b. YAML in the UI
 
@@ -666,7 +669,7 @@ The UI and CLI show friendly names. The API uses the raw value in the second col
 | Suspended | `suspended` | Stopped (scaled to zero) by an administrator: the app itself, its project, or your account. You can't edit, rotate or delete it. |
 | Deleted | `deleted` | Torn down. Deleted apps normally disappear from your list. |
 
-Deleting an app removes its namespace, database and blob storage bucket. The UI asks you to type the app's name before it deletes.
+Deleting an app (Settings > Danger zone; not from the Apps list) removes its namespace, database and blob storage bucket. The UI asks you to type the app's name before it deletes.
 
 **App page details.** Each app's URLs (the generated one and any custom domain) are listed, with the primary one marked. The
 page shows how long the app has been up (`uptime_seconds` in the API). A restart or image-update notice can be dismissed with

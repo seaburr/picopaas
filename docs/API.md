@@ -111,13 +111,13 @@ The web UI and the API share the same host. When scripting, request JSON and do 
 | Method | Path | Auth | Body | Response |
 |---|---|---|---|---|
 | POST | `/auth/register` | public | `{email, password, accept_terms}` (email valid, password 8 to 256, `accept_terms` must be `true` else 422) | 201 `User`; sets cookie. The first user is `platform_admin`/`active`; later users are `user`/`pending`. Enumeration-safe: registering an email that already has an account also returns 201 with a `pending` `User` and a cookie, but the cookie authenticates nobody (`/auth/me` is 401) and nothing changes; the owner just logs in. No email is sent. |
-| POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 401 "Email or password is wrong..." (same for unknown emails and deleted users; failures are audited as `login.failed`). |
+| POST | `/auth/login` | public | `{email, password}` | 200 `User`; sets cookie. 403 "Your access request wasn't approved. Contact the platform administrator if you think this is a mistake." (no cookie) when the password is CORRECT and the account is `rejected`; a wrong password or unknown email stays the generic 401, so it reveals nothing. 401 "Email or password is wrong..." (same for unknown emails and deleted users; failures are audited as `login.failed`). |
 | POST | `/auth/logout` | public | none | 204; clears cookie. |
 | GET | `/auth/me` | user | none | `User` plus `max_apps`, `app_limit_effective`, `features` and `limits` |
 | PATCH | `/auth/me` | user (session or API key, same as change-password) | `{timezone?: string \| null, theme?: "dark" \| "light", onboarding_dismissed?: boolean}`. An omitted field is unchanged. `timezone`: an IANA name such as `America/New_York`, or `UTC`; an explicit `null` clears it (the browser's timezone is used). `theme`: `dark` or `light`, never `null`. `onboarding_dismissed`: `true`/`false` (the getting-started dialog was dismissed), never `null`. | 200 `MeOut`. 422 "Unknown timezone" for a name not in the tz database, 422 for any other `theme` (including `null`). Unknown fields are rejected. Audited as `user.update_profile` (the detail has the resulting timezone, theme and onboarding_dismissed). |
 | POST | `/auth/change-password` | user (any status) | `{current_password, new_password}` (new: 8 to 256, must differ) | 204. 400 if `current_password` is wrong; 422 for a bad new password. Clears `must_change_password`. Audited as `user.change_password`. |
 
-`User`: `id, email, role ("user"|"platform_admin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"),
+`User`: `id, email, role ("user"|"platform_admin"), app_limit, status ("pending"|"active"|"suspended"|"deleted"|"rejected"),
 created_at, must_change_password, timezone` (IANA name or `null` = use the browser's timezone), `onboarding_dismissed` (`false` by default), `theme` (`dark` by default, or `light`; the UI applies it and keeps a per-browser copy). New users get `app_limit` 1. `must_change_password` is set by an admin password
 reset and informational only (the server does not block other calls); the UI should send the user to change it.
 
@@ -350,7 +350,8 @@ Admins can also read and operate on any app through the `/apps/{app_id}/...` rou
 |---|---|---|---|
 | GET | `/admin/users` | none | List of `AdminUser` (not deleted), by id. |
 | PATCH | `/admin/users/{user_id}` | `{"app_limit": int >= 0}` | `AdminUser`. 422 above the target's ceiling (`max_apps_per_admin` if the target is a platform admin, else `max_apps_per_user`). An admin's effective limit is at least `admin_default_app_limit`. |
-| POST | `/admin/users/{user_id}/approve` | none | `AdminUser`. 409 unless the user is `pending`. |
+| POST | `/admin/users/{user_id}/approve` | none | `AdminUser`. Works on a `pending` or a `rejected` user (rejected: restores their personal project, or creates a fresh one; API keys revoked by the rejection stay revoked; audit `user.approve` with detail `from=rejected`). 409 for any other status. |
+| POST | `/admin/users/{user_id}/reject` | none | 204. Only for a `pending` user (409 otherwise; platform administrators are refused). Sets status `rejected`, revokes their API keys, audit `user.reject`. The user can no longer log in (see `/auth/login`) and the email stays taken, so they can't re-request; an admin can still list them, `Approve` them to unlock, or `DELETE` them. Suspend on a rejected user is 409. |
 | POST | `/admin/users/{user_id}/suspend` | `{"reason": str, 1..SUSPEND_REASON_MAX, required}` | `AdminUser` (with `suspended_reason`, `suspended_at`). Suspends the personal project and its apps (unless the project is already suspended on its own) and stops the Kaisen runs they started. 400 for the main administrator. Audited with the reason. |
 | POST | `/admin/users/{user_id}/unsuspend` | none | `AdminUser`. 409 unless suspended; restores only what the user suspension did (a personal project or app suspended on its own stays suspended). |
 | POST | `/admin/users/{user_id}/reset-password` | none | `{temporary_password}`, shown once; sets `must_change_password`. |
@@ -583,6 +584,8 @@ curl -X PUT -H "Content-Length: 3000" --data-binary @bundle.tar.gz "$URL"
 GitHub push (`POST /kaisen/builds/{id}/push`) leaves out `.env*` and private-key/keystore files (legacy builds); the job `message` lists their names, never contents.
 
 ## Platform banner
+
+Shown in the UI as **Announcement Banner** (Admin > Settings).
 
 A one-line notice shown on every page (and on the login page). Plain text only, and no links (see PUT below). Until an admin saves one, the default applies: enabled, level `warning`, title "Dev/test platform." and the sign-up/no-uptime sentence (`BANNER_*` in `app/config.py`).
 

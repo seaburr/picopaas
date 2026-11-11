@@ -210,7 +210,7 @@ one and the app restarts, and owners free space with **Free up space**. Raising 
 
 Open **Admin** (tabs: Users, Apps, Projects, Suspensions, Database servers, Settings, Audit) and **Health** from the **Administration** node in the left tree (the Admin entry shows a pending-approvals count).
 
-- **Users:** approve `pending` signups; suspend or unsuspend (suspending scales all the user's apps to zero); reset a
+- **Users:** approve or reject `pending` signups (**Reject** marks the signup `rejected`: the person can log in only to be told their request wasn't approved, can't re-request with the same email, and has no apps or API keys; the row stays in the list with status `rejected`; **Approve** on a rejected user unlocks them, **Delete** removes them; audit `user.reject`); suspend or unsuspend (suspending scales all the user's apps to zero); reset a
   password (shown once, the user must change it); delete; set the per-user app limit. The hard max is
   `MAX_APPS_PER_USER` active apps per account (platform admins have their own pair, `ADMIN_DEFAULT_APP_LIMIT` 5 and `MAX_APPS_PER_ADMIN` 10). The per-user `app_limit` defaults to 1 and
   can be raised up to that max, never above. The platform administrator cannot be suspended or deleted.
@@ -223,7 +223,7 @@ Open **Admin** (tabs: Users, Apps, Projects, Suspensions, Database servers, Sett
   create/update/delete/restart/rotate, image updates, limit and replica changes, user approvals, suspensions and
   deletions, and server changes. It never stores secrets; `detail` is capped at 255 characters. Action names:
   `user.register`, `user.register_duplicate`, `login.failed`, `user.change_password`, `user.reset_password`,
-  `user.update`, `user.approve`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`, `apikey.revoke`,
+  `user.update`, `user.approve` (detail `from=rejected` when it unlocked a rejected user), `user.reject`, `user.suspend`, `user.unsuspend`, `user.delete`, `apikey.create`, `apikey.revoke`,
   `app.create`, `app.update`, `app.delete`, `app.rotate`, `app.restart`, `app.image_updated`, `app.resources`,
   `app.replicas`, `app.storage.delete`, `app.suspend`, `app.unsuspend`, `dbserver.create`, `dbserver.update`, `platform_logs.download`, `platform_backup.download`, `platform_backup.download_link`, `platform_backup.download_refused`, `platform_backup.export_succeeded`, `platform_backup.export_failed`, `platform_backup.pruned`, `platform_backup.prune_failed`.
 - **Health > Lifetime statistics** (the last section of the page): three lifetime counters that never go down. **Apps ever deployed** is every app ever created: deleted apps and Kaisen previews are included (a preview is a real deployed app), and so is an app that never became healthy. **Kaisen runs** is every run started, whatever its outcome, so it is normally higher than the builds count. **Kaisen apps ever built** is the number of Kaisen builds, deleted ones included, that have at least one run finished `done`; a build whose runs all failed or stopped doesn't count, and a build counts once however many runs it had. Nothing hard-deletes these rows, so deleting an app or build does not lower either number. Both are in `GET /admin/health` under `statistics`.
@@ -445,9 +445,9 @@ as **one row per tunable** with a **Default** and a **Ceiling** column (API: `ro
   kept per app, on-demand backups and downloads per hour, and whether new apps start with scheduled backups on. Backups kept,
   rate limits and the toggle have no per-app override, so they have a Default only.
 
-### Platform banner
+### Announcement Banner
 
-**Admin > Settings > Platform banner** (API: `GET/PUT /admin/banner`) edits the one-line notice shown on every page and the
+**Admin > Settings > Announcement Banner** (API: `GET/PUT /admin/banner`) edits the one-line notice shown on every page and the
 login page. Set **Enabled**, a **Level** (`info` or `warning`), an optional **Title** (up to 80 characters) and the **Text**
 (up to 255, required while enabled). Plain text only: line breaks, control characters and invisible Unicode are rejected, and so are links (`://`, `www.`, `mailto:`, bare domains such as `example.com`; 422 "Links aren't allowed in the banner.").
 Until you save one, the defaults from `BANNER_*` in `app/config.py` apply. Changes are audit-logged (`banner.update`).
