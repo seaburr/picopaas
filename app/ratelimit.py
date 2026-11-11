@@ -200,6 +200,23 @@ def check_bundle_fetch(db: Session, request: Request) -> None:
     _safe(db, "check_bundle_fetch", run)
 
 
+def check_improve_brief(db: Session, request: Request, user_id: int) -> None:
+    """Count a Kaisen "Improve brief" press (a billed model call) against the user; 429 past the cap."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        w, n = config.KAISEN_IMPROVE_RATE_WINDOW_SECONDS, config.KAISEN_IMPROVE_RATE_MAX
+        key = _key("kaisen-improve-user", str(user_id))
+        wait = _remaining(db, key, n, w)
+        if wait:
+            raise _deny(wait)
+        _prune(db)
+        _bump(db, key, w)
+
+    _safe(db, "check_improve_brief", run)
+
+
 def check_upload(db: Session, request: Request, user_id: int, project_id: int) -> None:
     """Count a Kaisen upload attempt (rejected ones too) against the user, the project and the client IP; 429 past the cap."""
     if not config.RATE_LIMIT_ENABLED:

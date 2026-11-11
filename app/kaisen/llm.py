@@ -13,6 +13,7 @@ from app import config
 _TEMPLATE = (Path(__file__).parent / "prompts" / "builder.md").read_text()
 _REVIEWER_TEMPLATE = (Path(__file__).parent / "prompts" / "reviewer.md").read_text()
 _PACKAGES_TEMPLATE = (Path(__file__).parent / "prompts" / "packages.md").read_text()
+_IMPROVE_TEMPLATE = (Path(__file__).parent / "prompts" / "improve_brief.md").read_text()
 
 
 _WEB_INTRO_OFF = " You have no network access."
@@ -60,6 +61,15 @@ def reviewer_system() -> str:
     for k, v in {"MAX_FINDINGS": config.KAISEN_REVIEWER_MAX_FINDINGS,
                  "FINDING_CHARS": config.KAISEN_REVIEWER_FINDING_CHARS,
                  "PORT": config.KAISEN_PREVIEW_PORT}.items():
+        text = text.replace("{{" + k + "}}", str(v))
+    return text.rstrip("\n") + "\n"
+
+
+def improve_system() -> str:
+    mb = 1024 * 1024
+    text = _IMPROVE_TEMPLATE
+    for k, v in {"MAX_CHARS": config.KAISEN_BRIEF_MAX, "MEM_MI": config.DEFAULT_MEM_LIMIT_MI,
+                 "DB_MB": config.DB_QUOTA_BYTES // mb, "STORAGE_MB": config.STORAGE_QUOTA_BYTES // mb}.items():
         text = text.replace("{{" + k + "}}", str(v))
     return text.rstrip("\n") + "\n"
 
@@ -261,6 +271,8 @@ def _with_cache_mark(messages: list) -> list:
 def build_request(model: str, messages: list, effort: str, web: dict | None = None, role: str = "builder") -> dict:
     """The kwargs for messages.stream, minus effort plumbing. At most 3 cache breakpoints (limit is 4): the last tool
     definition, the system prompt, and the last block of the latest turn."""
+    if role == "improve":  # one short reply, no tools, nothing cached (a single call per press)
+        return dict(model=model, max_tokens=config.KAISEN_IMPROVE_MAX_TOKENS, system=improve_system(), messages=messages)
     if role == "packages":
         tools = [dict(t) for t in PACKAGES_TOOLS]
         tools[-1]["cache_control"] = {"type": "ephemeral"}

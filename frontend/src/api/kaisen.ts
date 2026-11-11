@@ -30,6 +30,9 @@ export const saveBuildOutput = (id: number, payload: KaisenOutputPayload) =>
 export const testBuildOutput = (id: number) => post<KaisenTestResult>(`/kaisen/builds/${id}/output/test`)
 export const downloadUrl = (id: number) => `/kaisen/builds/${id}/download`
 
+export const improveBrief = (payload: { project_id: number | null; brief: string }) =>
+  post<{ brief: string; model: string; usd: number }>('/kaisen/improve-brief', payload)
+
 export const getKaisenSettings = (projectId: number) => apiFetch<KaisenSettings>(`/projects/${projectId}/kaisen`)
 export const saveKaisenSettings = (projectId: number, payload: KaisenSettingsPayload) =>
   apiFetch<KaisenSettings>(`/projects/${projectId}/kaisen`, { method: 'PUT', body: JSON.stringify(payload) })

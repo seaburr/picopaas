@@ -5,9 +5,12 @@ import { useRouter } from 'vue-router'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import { ApiError } from '../api/client'
-import { createBuild, getKaisenSettings, runBuild } from '../api/kaisen'
+import { createBuild, getKaisenSettings, improveBrief, runBuild } from '../api/kaisen'
+import { listTemplates } from '../api/templates'
 import AttachComposer from '../components/AttachComposer.vue'
 import { outputPayload, outputFieldErrors, blankOutputForm } from '../composables/kaisen'
+import { STARTERS, needsPg, PG_UNAVAILABLE_MSG, type Starter } from '../composables/kaisenStarters'
+import { checkBrief } from '../composables/briefCheck'
 import { useToastStore } from '../stores/toast'
 import SuspendedBanner from '../components/SuspendedBanner.vue'
 import { SUSPENDED_TITLE, useProjectSuspension } from '../composables/projectSuspension'
@@ -23,17 +26,48 @@ const store = useKaisenStore()
 const toast = useToastStore()
 
 const maxBrief = ref(8000) // replaced by the server value (config.KAISEN_BRIEF_MAX) once settings load
-const STARTERS = [
-  { title: "Fancy Docs", name: "Fancy Docs", brief: "I want a Markdown note-taking application that saves to a MySQL database. The editor is on the left and the rendered Markdown is on the right, with a nav tree in the center. Pages can be nested underneath other pages, and the nav tree can be used to move pages around in the tree (drag and drop, plus buttons for keyboard users). The editor pane can be collapsed. Support image uploads that are stored in the MySQL database and can be referenced in the Markdown. Include a dark mode toggle for the entire page, remembered in the browser." },
-  { title: "Team standup board", name: "Team standup board", brief: "Build a small standup board with Python and MySQL. Anyone can open the page, type their name and post three short fields for a chosen date: yesterday, today and blockers. There is no login. The main screen is a day view: a date picker with previous and next day buttons, and one card per person who posted that day, with blockers highlighted. Posting again for the same person and date replaces the earlier post. A second page shows one person's history, newest first, reachable by clicking a name. Save everything in MySQL. Include a dark mode toggle remembered in the browser. Out of scope: accounts, passwords, email or chat notifications, editing other people's posts." },
-  { title: "Link shortener with click counts", name: "Link shortener", brief: "Build a link shortener with Python and MySQL. The home page has a form to paste a long URL and optionally choose a short code; if no code is given, generate a random 6-character one. Only accept http and https URLs, and show a clear error for anything else or for a code that is already taken. Visiting /<code> redirects to the long URL and adds one to that link's click count. A stats page lists every link with its code, target, created date and click count, sorted by clicks, with a copy button for each short URL. Save everything in MySQL. Out of scope: accounts, QR codes, expiry, analytics beyond the count." },
-  { title: "Habit tracker with streaks", name: "Habit tracker", brief: "Build a habit tracker as a static page that saves to the browser's localStorage, with no server. I can add and remove habits. Each habit shows a month grid where I click a day to tick it on or off, with buttons to move to the previous and next month. Next to each habit show the current streak (consecutive ticked days ending today or yesterday) and the best streak ever. Add Export and Import buttons for all data as a JSON file, and validate the file on import. Support a dark mode toggle remembered in the browser. Out of scope: reminders, accounts, syncing between devices." },
-  { title: "Recipe scaler", name: "Recipe scaler", brief: "Build a recipe scaler as a static page with no server and nothing saved. I paste a recipe's ingredient list, one ingredient per line (like \"1 1/2 cups flour\"), and set the original and wanted number of servings. The page shows the scaled list, handling fractions and decimals and showing results as friendly fractions. A toggle converts between metric and US units (cups, tablespoons, teaspoons, ounces, pounds, grams, millilitres) and leaves lines it cannot parse unchanged. Include a print view that shows only the scaled recipe in a clean layout. Light theme only. Out of scope: saving recipes, importing from web pages, nutrition information." },
-]
 const name = ref('')
 const brief = ref('')
 const undo = ref<{ name: string; brief: string } | null>(null)
-function useStarter(st: { name: string; brief: string }) {
+const warnings = computed(() => checkBrief(brief.value))
+// PostgreSQL availability comes from GET /templates (`available` is false on PostgreSQL templates when no server exists).
+const pgOk = ref(true)
+async function loadPg() {
+  try {
+    const t = await listTemplates()
+    pgOk.value = !t.some((x) => x.wants_db && x.db_engine === 'pg' && x.available === false)
+  } catch {
+    pgOk.value = true // unknown: the server still refuses the database later
+  }
+}
+const starterOff = (st: Starter) => needsPg(st) && !pgOk.value
+// Improve brief: only on a click, one server call, and nothing is replaced until "Use this".
+const improving = ref(false)
+const suggestion = ref<{ brief: string; usd: number } | null>(null)
+const improveError = ref('')
+async function improve() {
+  improveError.value = ''
+  suggestion.value = null
+  if (!brief.value.trim() || noKey.value || overLimit.value) return
+  improving.value = true
+  try {
+    const r = await improveBrief({ project_id: projectId.value, brief: brief.value.trim() })
+    suggestion.value = { brief: r.brief, usd: r.usd }
+  } catch (e) {
+    improveError.value = e instanceof ApiError ? e.message : 'Could not improve the brief. Try again.'
+  } finally {
+    improving.value = false
+  }
+}
+function acceptSuggestion() {
+  if (!suggestion.value) return
+  undo.value = { name: name.value, brief: brief.value }
+  brief.value = suggestion.value.brief
+  suggestion.value = null
+}
+function useStarter(st: Starter) {
+  if (starterOff(st)) return
+  suggestion.value = null
   // Replace, and keep the previous text one click away.
   undo.value = name.value.trim() || brief.value.trim() ? { name: name.value, brief: brief.value } : null
   name.value = st.name
@@ -77,6 +111,7 @@ const totalCount = computed(() => chipList.value.filter((c) => c.file || c.statu
 
 onMounted(async () => {
   if (!projects.loaded) await projects.load()
+  void loadPg()
   await checkKey()
 })
 watch(() => props.pid, () => void checkKey())
@@ -222,12 +257,46 @@ async function startWithout() {
           />
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
-          <div class="mt-2 flex flex-wrap items-center gap-1">
-            <span class="help mr-1">Start from:</span>
-            <button v-for="st in STARTERS" :key="st.title" type="button" class="btn-secondary btn-sm" :title="st.brief" @click="useStarter(st)">{{ st.title }}</button>
+          <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : undefined" @click="improve">{{ improving ? 'Improving...' : 'Improve brief' }}</button>
+            <span class="help">One short Haiku call, well under a cent. Nothing changes until you press Use this.</span>
+          </div>
+          <p v-if="noKey" class="help">This project has no Anthropic API key yet. A project owner can add one in Kaisen settings.</p>
+          <p v-if="improveError" class="field-error" role="alert" data-testid="improve-error">{{ improveError }}</p>
+          <div v-if="suggestion" class="mt-2 rounded border border-zinc-700 p-3" data-testid="suggestion" role="region" aria-label="Suggested brief">
+            <p class="label">Suggested brief</p>
+            <pre class="mono mt-1 max-h-72 overflow-auto text-sm whitespace-pre-wrap wrap-break-word text-zinc-200" data-testid="suggestion-text">{{ suggestion.brief }}</pre>
+            <p class="help mt-1">Check it still says what you want. Cost about ${{ suggestion.usd.toFixed(4) }}.</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button type="button" class="btn-primary btn-sm" data-testid="suggestion-use" @click="acceptSuggestion">Use this</button>
+              <button type="button" class="btn-secondary btn-sm" data-testid="suggestion-keep" @click="suggestion = null">Keep mine</button>
+            </div>
+          </div>
+          <ul v-if="warnings.length" class="mt-2 space-y-1" data-testid="brief-warnings" aria-label="Brief check">
+            <li v-for="w in warnings" :key="w.id" class="alert-warn" :data-warning="w.id">{{ w.text }}</li>
+            <li class="help">These are hints from a keyword check. They do not stop you from starting.</li>
+          </ul>
+        </div>
+        <section aria-labelledby="kb-starters" data-testid="starters">
+          <div class="flex flex-wrap items-baseline gap-x-3">
+            <h2 id="kb-starters" class="label">Starters</h2>
             <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
           </div>
-        </div>
+          <p class="help mb-2">Fills the name and brief. Nothing starts until you press Start building. Costs are what we saw on Haiku, not a promise.</p>
+          <table class="tbl tbl-stack">
+            <colgroup><col class="w-[18%]"><col><col class="w-[16%]"><col class="w-[9%]"><col class="w-36"></colgroup>
+            <thead><tr><th>Starter</th><th>What it builds</th><th>Storage</th><th>Cost</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              <tr v-for="st in STARTERS" :key="st.title" class="align-top" :data-starter="st.title">
+                <td class="font-medium text-white wrap-break-word">{{ st.title }}</td>
+                <td class="wrap-break-word text-zinc-300">{{ st.description }}<span v-if="starterOff(st)" class="mt-1 block text-amber-300" data-testid="pg-off">{{ PG_UNAVAILABLE_MSG }}</span></td>
+                <td data-label="Storage"><span class="flex flex-wrap gap-1"><span v-for="p in st.storage" :key="p" class="rounded border border-zinc-700 px-1.5 text-xs text-zinc-300">{{ p }}</span></span></td>
+                <td class="mono text-zinc-300" data-label="Cost"><span v-if="st.cost" :title="st.costSource">~{{ st.cost }}</span></td>
+                <td><div class="row-acts"><button type="button" class="row-act" :class="!starterOff(st) && 'text-white'" :disabled="starterOff(st)" :data-use-starter="st.title" @click="useStarter(st)">Use this brief<span class="sr-only"> ({{ st.title }})</span></button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
         <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projName }}</strong>. Kaisen deploys into it and spends from its Anthropic key.</p>
 
         <details class="disc help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
