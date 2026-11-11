@@ -46,6 +46,6 @@ eval-data/
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
-frontend/e2e/.tmp/
+frontend/e2e/.tmp*/
 .garage-dev/
 .postgres-dev/
