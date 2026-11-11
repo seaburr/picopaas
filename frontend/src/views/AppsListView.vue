@@ -116,14 +116,14 @@ const projectName = computed(() => projectLabel(project.value))
 useProjectTitle('Apps', projectName)
 const noteRow = (a: App) => !!a.last_event || ['suspended', 'pending', 'deploying', 'error'].includes(appStatus(a))
 
-// Attached add-ons: PSQL | MySQL | Block | Blob.
+// Attached add-ons: PSQL | MySQL | Disk | Blob.
 const isPg = (a: App) => !!a.want_db && a.db_engine === 'pg'
 const isMysql = (a: App) => !!a.want_db && a.db_engine !== 'pg'
-const addOns = (a: App) => [isPg(a) && 'PSQL', isMysql(a) && 'MySQL', !!a.volume && 'Block', !!a.want_storage && 'Blob'].filter(Boolean).join(' · ')
+const addOns = (a: App) => [isPg(a) && 'PSQL', isMysql(a) && 'MySQL', !!a.volume && 'Disk', !!a.want_storage && 'Blob'].filter(Boolean).join(' · ')
 const MARKS = [
   { key: 'pg', head: 'PSQL', title: 'PostgreSQL database', on: isPg },
   { key: 'mysql', head: 'MySQL', title: 'MySQL database', on: isMysql },
-  { key: 'block', head: 'Block', title: 'Block storage (persistent volume)', on: (a: App) => !!a.volume },
+  { key: 'disk', head: 'Disk', title: 'Persistent disk (volume)', on: (a: App) => !!a.volume },
   { key: 'blob', head: 'Blob', title: 'Blob storage (bucket)', on: (a: App) => !!a.want_storage },
 ]
 </script>
@@ -178,7 +178,7 @@ const MARKS = [
         <table class="tbl min-w-[1000px]">
           <caption class="sr-only">Apps</caption>
           <colgroup>
-            <col class="w-[19%]"><col class="w-[8%]"><col class="w-[22%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[13%]"><col class="w-[5%]"><col class="w-[15%]">
+            <col class="w-[18%]"><col class="w-[8%]"><col class="w-[19%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[4.5%]"><col class="w-[17%]"><col class="w-[5%]"><col class="w-[15%]">
           </colgroup>
           <thead>
             <tr>

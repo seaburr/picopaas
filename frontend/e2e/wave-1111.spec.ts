@@ -39,14 +39,14 @@ test('apps table: columns, plain-text name, no Delete, add-on check marks, short
   const table = page.getByRole('table', { name: 'Apps' })
   await expect(table).toBeVisible()
   const heads = await table.locator('thead th').allTextContents()
-  expect(heads.map((h) => h.trim())).toEqual(['Name', 'Status', 'Image', 'PSQL', 'MySQL', 'Block', 'Blob', 'Host', 'Age', 'Actions'])
+  expect(heads.map((h) => h.trim())).toEqual(['Name', 'Status', 'Image', 'PSQL', 'MySQL', 'Disk', 'Blob', 'Host', 'Age', 'Actions'])
   const row = (n: string) => table.locator('tbody tr', { hasText: n }).first()
   // The name is plain text, not a link; Health/Restart/Settings remain; Delete is gone.
   await expect(row(plain.name).getByRole('link', { name: plain.name, exact: true })).toHaveCount(0)
   await expect(row(plain.name).getByRole('link', { name: `View health of ${plain.name}` })).toBeVisible()
   await expect(row(plain.name).getByRole('link', { name: `Settings for ${plain.name}` })).toBeVisible()
   await expect(table.getByRole('button', { name: /^Delete/ })).toHaveCount(0)
-  // Cells 4-7 are PSQL, MySQL, Block, Blob (name, status, image come first): mark = visible check + sr-only "Yes".
+  // Cells 4-7 are PSQL, MySQL, Disk, Blob (name, status, image come first): mark = visible check + sr-only "Yes".
   const marks = async (n: string) => row(n).locator('td').evaluateAll((tds) => tds.slice(3, 7).map((td) => (td.textContent ?? '').includes('✓')))
   expect(await marks(plain.name)).toEqual([false, false, false, false])
   expect(await marks(rich.name)).toEqual([false, true, true, true])
@@ -76,6 +76,9 @@ test('admin rejects a pending user, the row shows Approve, approve unlocks sign-
   await expect(dlg).toContainText(`Reject ${email}`)
   await dlg.getByRole('button', { name: 'Reject request' }).click()
   const row = page.locator('tr', { hasText: email })
+  // Rejected users are hidden until "Show rejected users" is ticked.
+  await expect(row).toHaveCount(0)
+  await page.getByTestId('show-rejected').check()
   await expect(row.getByText('Rejected')).toBeVisible()
   await expect(row.getByRole('button', { name: `Approve ${email}` })).toBeVisible()
   await expect(row.getByRole('button', { name: `Suspend ${email}` })).toHaveCount(0)

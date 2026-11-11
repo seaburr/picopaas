@@ -84,7 +84,12 @@ const match = (q: string, ...fields: (string | null | undefined)[]) => {
   return !s || fields.some((f) => (f ?? '').toLowerCase().includes(s))
 }
 const pendingUsers = computed(() => users.value.filter((u) => u.status === 'pending' && match(q.value, u.email)))
-const otherUsers = computed(() => users.value.filter((u) => u.status !== 'pending' && match(q.value, u.email)))
+// Rejected sign-ups are hidden unless asked for: they are rarely acted on (Approve unlocks one).
+const showRejected = ref(false)
+const rejectedCount = computed(() => users.value.filter((u) => u.status === 'rejected').length)
+const otherUsers = computed(() =>
+  users.value.filter((u) => u.status !== 'pending' && (showRejected.value || u.status !== 'rejected') && match(q.value, u.email)),
+)
 const pendingCount = computed(() => users.value.filter((u) => u.status === 'pending').length)
 const filteredApps = computed(() => allApps.value.filter((a) => match(q.value, a.name, a.hostname, a.owner_email, a.image)))
 const filteredAudit = computed(() => audit.value.filter((a) => match(q.value, a.action, a.actor_email, a.target_type, String(a.target_id ?? ''), a.detail)))
@@ -455,6 +460,9 @@ const overrideSummary = (a: AdminApp) => {
             </div>
           </section>
 
+          <label class="mb-2 flex items-center gap-2 text-sm text-zinc-300">
+            <input v-model="showRejected" type="checkbox" class="check" data-testid="show-rejected" /> Show rejected users<span class="meta">({{ rejectedCount }})</span>
+          </label>
           <div class="overflow-x-auto">
             <table class="tbl min-w-[60rem]">
               <colgroup><col /><col class="w-28" /><col class="w-20" /><col class="w-14" /><col class="w-32" /><col class="w-[26rem]" /></colgroup>
