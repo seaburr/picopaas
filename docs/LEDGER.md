@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-11 [scm] DONE: pushed 60b964d (starter gallery + brief check + Improve brief), 7fe3956 (preview pane + CSP frame-src), c3162cf (research docs, questions, ledger cleanup). gitleaks clean per commit; ruff, 21 targeted pytest, typecheck, lint, 9 e2e green locally. CI 43063654412 success, image 43063654329 success, deploy 43063828592 (image-triggered) then 43065022439 success with "Roll out image + platform manifests" success on c3162cf. Untracked frontend/e2e/.tmp-8791/ left unstaged.
 - 2026-11-11 [security] DONE: review of Kaisen improve-brief + preview pane + starters: OK to commit; fixed ModelTimeout -> 504 (was 500) and added visible host/anti-phish label in preview pane; LOW recs: per-project daily improve cap, 502 text echoes upstream 4xx message (<=200 chars) (uncommitted)
 - 2026-11-11 [frontend] DONE: B5 preview pane (BuildPreviewPane.vue on the build page: Phone/Tablet/Desktop, Reload, Open in new tab, sandbox="allow-scripts allow-forms allow-popups", no-referrer, collapsed on phone) + CSP frame-src https://*.APP_DOMAIN in app/main.py; pytest + e2e/kaisen-preview.spec.ts pass ((NOT browser-checked; security-reviewed OK))
 - 2026-11-11 [frontend] START: B5 live preview pane ((NOT browser-checked; security-reviewed OK))
