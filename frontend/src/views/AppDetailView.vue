@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import AdviceCard from '../components/AdviceCard.vue'
 import BackupsCard from '../components/BackupsCard.vue'
 import AppNotFound from '../components/AppNotFound.vue'
 import AppStatusNote from '../components/AppStatusNote.vue'
@@ -441,6 +442,8 @@ const secretCount = computed(() => (app.value?.env ?? []).filter((e) => e.is_sec
           <IconButton label="Dismiss alert" text="Dismiss" @click="dismiss('event')" />
         </p>
       </section>
+
+      <AdviceCard :app-id="app.id" :disabled="suspended" @applied="loadApp(true).then(() => syncPoll())" />
 
       <div class="grid gap-x-10 lg:grid-cols-2">
         <section v-if="showUsage" class="sec sec-pad min-w-0" aria-labelledby="h-usage">

@@ -768,3 +768,32 @@ BANNER_LEVELS = ("info", "warning")
 STATIC_ASSET_MAX_AGE_S = 31536000
 STATIC_OTHER_MAX_AGE_S = 3600
 STATIC_GZIP_MIN_BYTES = 1000
+
+
+# --- health advisor (app/advisor.py): every threshold the rules use lives here ---
+ADVISOR_MIN_APP_AGE_S = 3600  # apps younger than this get no advice
+ADVISOR_POD_SETTLE_S = 600  # metric samples taken this soon after a pod first appeared are ignored (start-up spikes)
+ADVISOR_MEM_ROUND_MI = 32  # suggested memory / scratch values are rounded up to this step
+ADVISOR_CPU_ROUND_M = 50  # suggested CPU values are rounded up to this step
+ADVISOR_RAISE_FACTOR = 1.25  # a suggested raise is the current limit times this, rounded, capped at the ceiling
+ADVISOR_USAGE_PCT = 90  # per-pod usage at or above this share of the limit counts as "at the limit"
+ADVISOR_USAGE_MIN_SAMPLES = 5  # consecutive samples at the limit (mem.near_limit, cpu.saturated)
+ADVISOR_CPU_SHARE_PCT = 10  # cpu.saturated also fires when this share of all samples is at the limit
+ADVISOR_OOM_WINDOW_S = 24 * 3600
+ADVISOR_OOM_CRITICAL_COUNT = 3  # OOM kills inside the window that make mem.oom critical
+ADVISOR_LOOP_WINDOW_S = 600  # restart.loop: this many crashes inside this window
+ADVISOR_LOOP_CRASHES = 3
+ADVISOR_FLAP_WINDOW_S = 24 * 3600  # restart.flapping: this many crashes inside this window
+ADVISOR_FLAP_CRASHES = 3
+ADVISOR_ROLLBACK_CORRELATION_S = 1800  # a crash this soon after a new digest went live points at the update
+ADVISOR_DISK_WINDOW_S = 7 * 24 * 3600
+ADVISOR_QUOTA_WARN_PCT = 80  # database / bucket quota use: warning
+ADVISOR_QUOTA_CRIT_PCT = 95  # critical (or over quota)
+ADVISOR_VOLUME_WARN_PCT = 80
+ADVISOR_VOLUME_CRIT_PCT = 90
+ADVISOR_ADDON_UNUSED_DAYS = 7
+ADVISOR_HEALTH_NONE_MIN_AGE_S = 24 * 3600  # health.none waits until the app is this old
+ADVISOR_STUCK_ERROR_DAYS = 7
+ADVISOR_BACKUP_INTERVAL_DAYS = {"daily": 1, "weekly": 7}
+ADVISOR_BACKUP_STALE_FACTOR = 2  # no successful backup for this many intervals
+ADVISOR_LOOP_RECENT_S = 1800  # a crash burst only counts as a loop while its last crash is this recent

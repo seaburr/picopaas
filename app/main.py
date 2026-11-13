@@ -17,7 +17,7 @@ from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
 from app import banner as banner_module
 from app.static_cache import StaticCacheMiddleware
-from app.routers import admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
+from app.routers import advice, admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
 
@@ -53,6 +53,8 @@ app.include_router(kaisen_router.router)
 app.include_router(kaisen_uploads_router.router)
 app.include_router(kaisen_uploads_router.admin_router)
 app.include_router(app_ops.router)
+app.include_router(advice.router)
+app.include_router(advice.admin_router)
 app.include_router(backups.router)
 app.include_router(usage.router)
 app.include_router(api_keys.router)
@@ -289,9 +291,7 @@ def _csp() -> str:
     return (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         f"img-src 'self' data: https://{config.PLATFORM_HOST}; font-src 'self'; connect-src 'self'; "
-        "object-src 'none'; base-uri 'self'; form-action 'self'; "
-        # Kaisen build page previews: the SPA frames tenant apps (sandboxed, no allow-same-origin). Only the apps domain.
-        f"frame-src https://*.{config.APP_DOMAIN}; frame-ancestors 'none'"
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     )
 
 

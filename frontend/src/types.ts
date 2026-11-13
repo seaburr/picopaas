@@ -1066,3 +1066,24 @@ export interface KaisenRestoreResult {
   files_count: number
   before_restore_snapshot_id: number | null
 }
+
+// GET /apps/{id}/advice and GET /admin/advice (health advisor, phase 1). Sorted critical, warning, info.
+export type AdviceSeverity = 'critical' | 'warning' | 'info'
+export type AdviceAction =
+  | { kind: 'set_resource'; label: string; field: string; from: number; to: number; unit: string; restarts_app: boolean }
+  | { kind: 'rollback'; label: string; digest: string; restarts_app: true }
+  | { kind: 'link'; label: string; to: string }
+export interface AdviceFinding {
+  rule: string
+  severity: AdviceSeverity
+  title: string
+  evidence: string
+  action: AdviceAction | null
+}
+export interface AdminAdviceFinding extends AdviceFinding {
+  app_id: number
+  app_name: string
+  project_id: number | null
+  project_name: string | null
+  owner_email: string | null
+}

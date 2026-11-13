@@ -1,4 +1,4 @@
-import type { App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, AdminBackupSets, BackupExport, PlatformBackupExport, PlatformPods, PlatformLogs } from '../types'
+import type { AdminAdviceFinding, App, AdminApp, ResourcesPatch, ResourcesPatchResult, ClusterHealth, AdminUser, AdminApiKey, AuditEntry, DbServer, DbServerCreate, SettingsGroup, BackupHealth, BackupsInfo, AdminBackupSets, BackupExport, PlatformBackupExport, PlatformPods, PlatformLogs } from '../types'
 import { apiFetch, downloadFile } from './client'
 
 export const listUsers = () => apiFetch<AdminUser[]>('/admin/users')
@@ -118,3 +118,5 @@ export const listAdminProjectsPage = (q: string, limit: number, offset: number) 
 export const setProjectFeatures = (projectId: number, body: { kaisen_web_search?: boolean; kaisen_uploads?: boolean }) =>
   apiFetch<import('../types').ProjectFeatures>(`/admin/projects/${projectId}/features`, { method: 'PUT', body: JSON.stringify(body) })
 export const getKaisenUploadsSummary = () => apiFetch<import('../types').KaisenUploadsPlatformSummary>('/admin/kaisen/uploads/summary')
+
+export const listAdminAdvice = () => apiFetch<{ findings: AdminAdviceFinding[] }>('/admin/advice')

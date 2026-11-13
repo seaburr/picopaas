@@ -1,4 +1,4 @@
-import type { App, AppEvent, MetricsHistory, ImageVersion, AppCreatePayload, AppUpdatePayload, AppWithCreated } from '../types'
+import type { App, AppEvent, MetricsHistory, ImageVersion, AppCreatePayload, AppUpdatePayload, AppWithCreated, AdviceFinding } from '../types'
 import { apiFetch, apiGetSwr, downloadFile } from './client'
 
 // Matches app/routers/apps.py exactly (prefix "/apps").
@@ -93,3 +93,6 @@ export const downloadPodEvents = (id: number, pod: string) =>
 
 // Dismiss an alert on the app health page. Shape is provisional until the backend endpoint lands (see ledger).
 export const dismissAlert = (id: number, kind: string) => apiFetch<App>(`/apps/${id}/alerts/${encodeURIComponent(kind)}/dismiss`, { method: 'POST' })
+
+// Health advisor findings for one app (secondary data: callers ignore failures).
+export const getAppAdvice = (id: number) => apiFetch<{ findings: AdviceFinding[] }>(`/apps/${id}/advice`)
