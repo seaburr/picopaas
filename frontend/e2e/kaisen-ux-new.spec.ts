@@ -8,10 +8,11 @@ async function shot(page: Page, name: string) {
 async function open(page: Page, key = true) {
   await page.route(/\/projects\/\d+\/kaisen(\?|$)/, async (r) => {
     if (r.request().resourceType() !== 'fetch') return r.continue()
-    const res = await r.fetch().catch(() => null) // the page may be gone when the test has ended
-    if (!res) return
-    const j = await res.json()
-    return r.fulfill({ response: res, json: { ...j, anthropic_key: { ...(j.anthropic_key ?? {}), set: key } } })
+    // The page may be gone when the test has ended: a late fetch or body read then throws, and that is fine.
+    const res = await r.fetch().catch(() => null)
+    const j = res ? await res.json().catch(() => null) : null
+    if (!res || !j) return
+    return r.fulfill({ response: res, json: { ...j, anthropic_key: { ...(j.anthropic_key ?? {}), set: key } } }).catch(() => undefined)
   })
   await login(page)
   const pid = ((await (await page.request.get('/projects')).json()) as { id: number; is_personal: boolean }[]).find((p) => p.is_personal)!.id

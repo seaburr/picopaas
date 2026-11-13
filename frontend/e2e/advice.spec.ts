@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { login, spillers } from './helpers'
 
 // Health advisor UI (phase 1) against the real dev-mode app; the advice endpoints are stubbed with page.route.
-const SHOTS = '/private/tmp/claude-501/-Users-cberndt-source-picopaas/d98826e0-2108-453d-9a12-d37227d8ee66/scratchpad/w4'
+const SHOTS = process.env.SHOTS_DIR ?? '' // screenshots only when asked for
 const made: number[] = []
 
 async function makeApp(page: Page) {
@@ -64,7 +64,7 @@ test('three rows in order; Apply confirms from → to and sends the owner resour
   await expect(rows.nth(2).getByRole('button')).toHaveCount(0)
   await expect(rows.nth(2).getByRole('link')).toHaveCount(0)
   expect((await table.innerText()).toLowerCase()).not.toContain('admin')
-  await page.screenshot({ path: `${SHOTS}/advice-app-dark.png` })
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/advice-app-dark.png` })
 
   await rows.nth(0).getByRole('button', { name: 'Raise memory to 320 MB' }).click()
   const dlg = page.getByRole('dialog', { name: 'Change memory limit?' })
@@ -102,7 +102,7 @@ test('admin Advice tab: table, links, empty state', async ({ page }) => {
   await expect(table.locator('tbody tr')).toHaveCount(3)
   await expect(table.getByRole('link', { name: 'app-0' })).toHaveAttribute('href', '/apps/10')
   await expect(table.getByRole('button')).toHaveCount(0)
-  await page.screenshot({ path: `${SHOTS}/advice-admin-dark.png` })
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/advice-admin-dark.png` })
   await page.unroute('**/admin/advice')
   await page.route('**/admin/advice', (r) => r.fulfill({ json: { findings: [] } }))
   await page.reload()
@@ -121,7 +121,7 @@ test('no sideways spill at 1440/1024/768/390; light screenshot', async ({ page }
       await expect(page.getByRole('table', { name: /advice/i })).toBeVisible()
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')) // visual check only
       expect(await spillers(page), `${url} at ${w}`).toEqual([])
-      await page.screenshot({ path: `${SHOTS}/advice-${url.startsWith('/admin') ? 'admin' : 'app'}-${w}-light.png` })
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/advice-${url.startsWith('/admin') ? 'admin' : 'app'}-${w}-light.png` })
     }
   }
 })
