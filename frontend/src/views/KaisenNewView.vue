@@ -47,14 +47,20 @@ const starterOff = (st: Starter) => needsPg(st) && !pgOk.value
 const improving = ref(false)
 const suggestion = ref<{ brief: string; usd: number } | null>(null)
 const improveError = ref('')
+// Every successful press cost money, used or not: all of them go to the build on create so its cost includes them.
+const MAX_IMPROVE_IDS = 20
+const improveIds = ref<number[]>([])
+const improveFull = computed(() => improveIds.value.length >= MAX_IMPROVE_IDS)
+const improveField = () => (improveIds.value.length ? { improve_ids: improveIds.value } : {})
 async function improve() {
   improveError.value = ''
   suggestion.value = null
-  if (!brief.value.trim() || noKey.value || overLimit.value) return
+  if (!brief.value.trim() || noKey.value || overLimit.value || improveFull.value) return
   improving.value = true
   try {
     const r = await improveBrief({ project_id: projectId.value, brief: brief.value.trim() })
     suggestion.value = { brief: r.brief, usd: r.usd }
+    if (typeof r.improve_id === 'number') improveIds.value = [...improveIds.value, r.improve_id]
   } catch (e) {
     improveError.value = e instanceof ApiError ? e.message : 'Could not improve the brief. Try again.'
   } finally {
@@ -160,7 +166,7 @@ async function submit() {
   try {
     const heldN = composer.value?.held.length ?? 0
     if (heldN === 0 && draftId.value === null) {
-      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm) })
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), ...improveField() })
       store.upsert(b)
       if (b.start_error) toast.error(`Build created but not started: ${b.start_error}`)
       router.push(`/kaisen/${b.id}`)
@@ -168,7 +174,7 @@ async function submit() {
     }
     if (draftId.value === null) {
       stage.value = 'creating'
-      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), start: false })
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), start: false, ...improveField() })
       store.upsert(b)
       draftId.value = b.id
     }
@@ -265,9 +271,9 @@ async function startWithout() {
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : undefined" @click="improve">{{ improving ? 'Improving…' : 'Improve brief' }}</button>
+            <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit || improveFull" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : improveFull ? `Limit of ${MAX_IMPROVE_IDS} improvements per build reached.` : undefined" @click="improve">{{ improving ? 'Improving…' : 'Improve brief' }}</button>
             <span v-if="noKey" class="help mt-0">Needs an Anthropic API key. A project owner can add one in Kaisen settings.</span>
-            <span v-else class="help mt-0">Sends the brief to the default model (Haiku) once and shows a suggested rewrite below. Your brief changes only if you press "Use this" on it.</span>
+            <span v-else class="help mt-0">Each "Improve brief" press is billed to this project's Anthropic key and counts toward the project's Kaisen daily cap. Its cost is added to this build's cost when you press "Start building". Your brief changes only if you press "Use this".</span>
             <span class="sr-only" role="status">{{ improving ? 'Improving the brief' : suggestion ? 'Suggested brief ready' : '' }}</span>
             <span v-if="filled?.kind === 'suggestion' && undo" class="help mt-0" data-testid="suggestion-note">Brief replaced by the suggestion. <button type="button" class="link" @click="undoStarter">Undo</button></span>
           </div>

@@ -201,8 +201,10 @@ def unique_slug(s: Session, name: str) -> str:
 
 def seed_message(b: KaisenBuild, secret_note: str = "") -> dict:  # secret_note also carries the uploads note
     brief = b.brief.replace("</brief", "<\\/brief")
+    fork = ("\n\nThis project started as a copy of another build: the files in the workspace are that copy. Continue from "
+            "them and change only what the brief needs." if b.forked_from_id is not None else "")
     return {"role": "user", "content": f"Project name: {b.name}\n\n<brief>\n{brief}\n</brief>\n\n"
-            "Build this project. Use list_files first to see any existing work." + secret_note}
+            "Build this project. Use list_files first to see any existing work." + fork + secret_note}
 
 
 def continue_message(s: Session, b: KaisenBuild, run: KaisenRun | None = None, reason: str = "auto") -> dict:
@@ -415,11 +417,15 @@ def spend_build(s: Session, build_id: int) -> float:
     return s.scalar(select(func.coalesce(func.sum(KaisenEvent.usd), 0.0)).where(KaisenEvent.build_id == build_id))
 
 
+def day_cap_reason(s: Session, project_id: int, rs: RuntimeSettings) -> str | None:
+    return f"Daily cap ${rs.cap_day:.2f} reached." if spend_today(s, project_id) >= rs.cap_day else None
+
+
 def check_caps(s: Session, run: KaisenRun, project_id: int, rs: RuntimeSettings) -> str | None:
     if (run.cost_usd or 0) >= rs.cap_run:
         return f"Run cap ${rs.cap_run:.2f} reached."
-    if spend_today(s, project_id) >= rs.cap_day:
-        return f"Daily cap ${rs.cap_day:.2f} reached."
+    if (why := day_cap_reason(s, project_id, rs)):
+        return why
     if spend_build(s, run.build_id) >= rs.cap_build:
         return f"Build cap ${rs.cap_build:.2f} reached."
     return members.check(s, project_id, run.build_id, run.started_by, mine=False)

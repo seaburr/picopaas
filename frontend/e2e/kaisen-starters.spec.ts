@@ -147,3 +147,44 @@ test('Improve brief shows the server error and stays usable; phone width has no 
   await expect(page.getByTestId('improve')).toBeEnabled()
   expect(await spillers(page)).toEqual([])
 })
+
+test('Improve brief: every press is remembered and Start sends all improve_ids; a cap refusal shows the server message', async ({ page }) => {
+  let n = 0
+  let refuse = false
+  const created: unknown[] = []
+  await page.route('**/kaisen/improve-brief', (r) => {
+    if (refuse) return r.fulfill({ status: 403, json: { detail: 'Kaisen daily cap reached for this project.' } })
+    n++
+    return r.fulfill({ json: { brief: `Better brief ${n}`, model: 'claude-haiku-5-5', usd: 0.0003, improve_id: 40 + n } })
+  })
+  await page.route('**/kaisen/builds', (r) => {
+    if (r.request().method() !== 'POST') return r.continue()
+    created.push(JSON.parse(r.request().postData() ?? 'null'))
+    return r.fulfill({ status: 201, json: { id: 5, name: 'x', status: 'queued' } })
+  })
+  await page.route(/\/projects\/\d+\/kaisen(\?|$)/, async (r) => {
+    if (r.request().resourceType() !== 'fetch') return r.continue()
+    const res = await r.fetch().catch(() => null)
+    const j = res ? await res.json().catch(() => null) : null
+    if (!res || !j) return
+    return r.fulfill({ response: res, json: { ...j, can_edit: true, anthropic_key: { ...(j.anthropic_key ?? {}), set: true } } }).catch(() => undefined)
+  })
+  await login(page)
+  const pid = ((await (await page.request.get('/projects')).json()) as { id: number; is_personal: boolean }[]).find((p) => p.is_personal)!.id
+  await page.goto(`/projects/${pid}/kaisen/new`)
+  await page.locator('#kb-name').fill('Todo')
+  await page.locator('#kb-brief').fill('A todo list')
+  await expect(page.getByText('Each "Improve brief" press is billed to this project\'s Anthropic key')).toContainText("counts toward the project's Kaisen daily cap")
+  await page.getByTestId('improve').click()
+  await expect(page.getByTestId('suggestion-text')).toContainText('Better brief 1')
+  await page.getByTestId('suggestion-keep').click() // not used, still paid for
+  await page.getByTestId('improve').click()
+  await expect(page.getByTestId('suggestion-text')).toContainText('Better brief 2')
+  refuse = true
+  await page.getByTestId('suggestion-keep').click()
+  await page.getByTestId('improve').click()
+  await expect(page.getByTestId('improve-error')).toContainText('Kaisen daily cap reached for this project.')
+  await page.getByRole('button', { name: 'Start building' }).click()
+  await expect.poll(() => created.length).toBe(1)
+  expect(created[0]).toMatchObject({ name: 'Todo', brief: 'A todo list', improve_ids: [41, 42] })
+})

@@ -3,12 +3,12 @@
 Everything 404s when Kaisen is off (KAISEN_ENABLED and the admin setting kaisen_enabled). Deploys go through the
 platform's own spec path as the build's creator (app/kaisen/deploy.py): no PicoPaaS API key is involved."""
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app import audit, config, image_history, models, platform_settings, projects, ratelimit
@@ -17,7 +17,7 @@ from app.dependencies import get_active_user, get_registry
 from app.kaisen import builder, buildsecrets, secretscan, uploads as kuploads, deploy as deploy_mod, members as kmembers, export, pushing, packages, reviewing, settings as ksettings, snapshots, testresults, watchdog
 from app.kaisen.github import GitHubError, RealGitHub
 from app.kaisen.llm import AnthropicClient, ModelError, ModelTimeout
-from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenFile, KaisenInbox, KaisenPush, KaisenRun, KaisenSecret, KaisenSnapshot)
+from app.kaisen.models import (KaisenBuild, KaisenBundle, KaisenEvent, KaisenFile, KaisenInbox, KaisenPush, KaisenRun, KaisenSecret, KaisenSnapshot)
 from app.kaisen.redact import redact, transcript_lines
 
 NOT_FOUND = "That page doesn't exist."
@@ -174,10 +174,29 @@ class BuildIn(BaseModel):
     brief: str = Field(min_length=1, max_length=config.KAISEN_BRIEF_MAX)
     output: Optional[OutputIn] = None
     start: bool = True  # false: create the build idle with no run queued (attach uploads first, then POST .../run)
+    # Improve brief presses (improve_id from POST /kaisen/improve-brief) whose cost belongs to this build. Ids that do
+    # not qualify are skipped silently.
+    improve_ids: list[int] = Field(default_factory=list, max_length=config.KAISEN_IMPROVE_IDS_MAX)
 
     @field_validator("name", "brief")
     @classmethod
     def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("This can't be empty.")
+        return v
+
+
+class ForkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = Field(default=None, min_length=1, max_length=config.KAISEN_NAME_MAX)
+    snapshot_id: Optional[int] = None  # a restore point of the source build; default: its current files
+
+    @field_validator("name")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         v = v.strip()
         if not v:
             raise ValueError("This can't be empty.")
@@ -209,6 +228,30 @@ class TextIn(BaseModel):
         if not v:
             raise ValueError("Write something first.")
         return v
+
+
+def _require_build_slot(db: Session, project_id: int) -> None:
+    """Lock the project and refuse (403) when it already holds the most builds allowed. Shared by create and fork."""
+    projects.lock_project(db, project_id)
+    n = db.scalar(select(func.count()).select_from(KaisenBuild).where(
+        KaisenBuild.project_id == project_id, KaisenBuild.deleted_at.is_(None))) or 0
+    if n >= config.KAISEN_MAX_BUILDS_PER_PROJECT:
+        raise HTTPException(status_code=403, detail=(
+            f"This project already has {n} builds, the most allowed. Delete one you no longer need."))
+
+
+def _attach_improve_events(db: Session, b: KaisenBuild, user: models.User, ids: list[int]) -> None:
+    """Move the cost of the caller's own, unattached Improve brief presses (same project, under 24 h old) onto the
+    new build. One conditional UPDATE, so a press can never be attached twice or to someone else's build."""
+    ids = list(dict.fromkeys(i for i in ids if i > 0))
+    if not ids:
+        return
+    db.execute(update(KaisenEvent).where(
+        KaisenEvent.id.in_(ids), KaisenEvent.user_id == user.id, KaisenEvent.project_id == b.project_id,
+        KaisenEvent.build_id.is_(None), KaisenEvent.kind == "improve",
+        KaisenEvent.at >= _now() - timedelta(hours=config.KAISEN_IMPROVE_ATTACH_HOURS)).values(build_id=b.id),
+        execution_options={"synchronize_session": False})
+    db.commit()
 
 
 def get_build(db: Session, build_id: int, user: models.User, *, include_deleted: bool = False,
@@ -271,7 +314,19 @@ def _list_item(db: Session, b: KaisenBuild) -> dict:
             KaisenInbox.build_id == b.id, KaisenInbox.kind == "question", KaisenInbox.status == "open")) or 0,
         "created_by": {"id": creator.id, "email": creator.email} if creator else None,
         "created_at": b.created_at.isoformat(),
+        "forked_from_id": b.forked_from_id,
     }
+
+
+def _forked_from(db: Session, b: KaisenBuild) -> Optional[dict]:
+    """Where a fork came from. The source's name and secret NAMES (never values) are shown only while it exists in the
+    same project (always true today: forks are same-project); otherwise name null and no names."""
+    if b.forked_from_id is None:
+        return None
+    src = db.get(KaisenBuild, b.forked_from_id)
+    live = src is not None and src.deleted_at is None and src.project_id == b.project_id
+    return {"id": b.forked_from_id, "name": src.name if live else None, "snapshot_id": b.forked_from_snapshot_id,
+            "secret_names": buildsecrets.names(db, src.id) if live else []}
 
 
 def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
@@ -286,6 +341,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
         hang_notes.setdefault(n.run_id, []).append(n)
     out.update({
         "brief": b.brief,
+        "forked_from": _forked_from(db, b),
         "files": [{"path": p, "size": n} for p, n in builder.Workspace(db, b.id).list()],
         "runs": [{
             "id": r.id, "kind": r.kind, "status": r.status, "has_diff": r.id in with_diff,
@@ -346,12 +402,7 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
         projects.forbid_if_suspended(db, project)
     else:
         project, _ = projects.get_project_for_member(db, payload.project_id, user)
-    projects.lock_project(db, project.id)
-    n = db.scalar(select(func.count()).select_from(KaisenBuild).where(
-        KaisenBuild.project_id == project.id, KaisenBuild.deleted_at.is_(None))) or 0
-    if n >= config.KAISEN_MAX_BUILDS_PER_PROJECT:
-        raise HTTPException(status_code=403, detail=(
-            f"This project already has {n} builds, the most allowed. Delete one you no longer need."))
+    _require_build_slot(db, project.id)
     b = KaisenBuild(project_id=project.id, created_by=user.id, name=payload.name, brief=payload.brief,
                     slug=builder.unique_slug(db, payload.name), status="idle",
                     output_mode="download", github_repo="", github_branch="", push_on_finish=True, open_pr=False,
@@ -364,6 +415,7 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
             raise HTTPException(status_code=422, detail=str(exc))
     db.add(b)
     db.commit()
+    _attach_improve_events(db, b, user, payload.improve_ids)
     audit.record(db, user, "kaisen.build_create", "kaisen_build", b.id, f"project={project.id}")
     start_error = None
     if not payload.start:
@@ -390,19 +442,23 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
 def improve_brief(payload: ImproveIn, request: Request, db: Session = Depends(get_db),
                   user: models.User = Depends(get_active_user), model_factory=Depends(get_model_factory)):
     """One short model call (Haiku, no tools) that rewrites a draft brief. Only on a button press; the caller decides
-    whether to use the text. Spend is recorded in the audit log (tokens and USD); a KaisenEvent needs a run, so it is
-    not part of the per-run caps, the per-user rate limit bounds it instead."""
+    whether to use the text. Each call is a KaisenEvent (kind "improve", no run, no build until a build claims it via
+    BuildIn.improve_ids), so it counts in the project's and the member's daily spend and caps; it is refused up front
+    when either daily cap is already reached. The per-user rate limit bounds the presses too. Also in the audit log."""
     if payload.project_id is None:
         project = projects.get_personal_project(db, user)
         projects.forbid_if_suspended(db, project)
     else:
         project, _ = projects.get_project_for_member(db, payload.project_id, user)
-    key = ksettings.load(db, project.id).anthropic_api_key
+    rs = ksettings.load(db, project.id)
+    key = rs.anthropic_api_key
     if not key:
         raise HTTPException(status_code=422, detail=NO_KEY_MSG)
     if secretscan.find(payload.brief):
         raise HTTPException(status_code=422, detail=(
             "The brief looks like it contains a password, token or key. Remove it before using Improve brief."))
+    if (limit := builder.day_cap_reason(db, project.id, rs) or kmembers.check(db, project.id, None, user.id)):
+        raise HTTPException(status_code=409, detail=limit)  # same code and wording as starting a run
     ratelimit.check_improve_brief(db, request, user.id)
     model = config.KAISEN_DEFAULT_MODEL
     try:
@@ -416,13 +472,19 @@ def improve_brief(payload: ImproveIn, request: Request, db: Session = Depends(ge
     text = "".join(b.get("text", "") for b in resp.content if b.get("type") == "text").strip()
     usd = builder.cost_usd(model, resp.usage)
     u = resp.usage
+    ev = KaisenEvent(run_id=None, build_id=None, project_id=project.id, user_id=user.id, model=model, usd=usd, kind="improve",
+                     input_tokens=u.get("input_tokens", 0), output_tokens=u.get("output_tokens", 0),
+                     cache_write_tokens=u.get("cache_creation_input_tokens", 0),
+                     cache_read_tokens=u.get("cache_read_input_tokens", 0), web_searches=u.get("web_search_requests", 0))
+    db.add(ev)
+    db.commit()  # billed already: recorded even when the text is then discarded below
     audit.record(db, user, "kaisen.brief_improve", "project", project.id,
                  f"model={model} in={u.get('input_tokens', 0)} out={u.get('output_tokens', 0)} usd={usd:.6f}")
     if not text:
         raise HTTPException(status_code=502, detail="The model returned no text. Try again.")
     if secretscan.find(text):
         raise HTTPException(status_code=502, detail="The suggestion was discarded. Try again.")
-    return {"brief": text[:config.KAISEN_BRIEF_MAX], "model": model, "usd": round(usd, 6)}
+    return {"brief": text[:config.KAISEN_BRIEF_MAX], "model": model, "usd": round(usd, 6), "improve_id": ev.id}
 
 
 @router.get("/kaisen/builds/{build_id}")
@@ -522,6 +584,46 @@ def stop_waiting_run(build_id: int, run_id: int, request: Request, db: Session =
     return _detail(db, b, request)
 
 
+def _has_files(db: Session, build_id: int) -> bool:
+    return db.scalar(select(func.count()).select_from(KaisenFile).where(KaisenFile.build_id == build_id)) > 0
+
+
+@router.post("/kaisen/builds/{build_id}/fork", status_code=201)
+def fork_build(build_id: int, payload: ForkIn, request: Request, db: Session = Depends(get_db),
+               user: models.User = Depends(get_active_user)):
+    """A new idle build in the same project with the source's brief and files (its current ones, or a restore point's).
+    Copies no runs, inbox, spend, app, restore points, secret values, uploads, GitHub output settings or test results.
+    No model call, no spend; the fork gets its own app only when it is deployed."""
+    src = get_build(db, build_id, user)
+    snap_files = None
+    if payload.snapshot_id is not None:
+        snap_files = _load_snapshot(_get_snapshot(db, src, payload.snapshot_id))
+    _require_build_slot(db, src.project_id)
+    if snap_files is None:
+        last = builder.latest_run(db, src.id)
+        if last is not None and last.status in builder.ACTIVE:
+            raise HTTPException(status_code=409, detail=(
+                "A run is in progress. Fork from a restore point, or wait for it to finish."))
+        files = snapshots.current_files(db, src.id)
+    else:
+        files = snap_files
+    name = payload.name
+    if name is None:
+        suffix = " fork"
+        name = (src.name[:config.KAISEN_NAME_MAX - len(suffix)].rstrip() + suffix)
+    b = KaisenBuild(project_id=src.project_id, created_by=user.id, name=name, brief=src.brief,
+                    slug=builder.unique_slug(db, name), status="idle", output_mode="download", github_repo="",
+                    github_branch="", push_on_finish=True, open_pr=False, github_auth="project",
+                    forked_from_id=src.id, forked_from_snapshot_id=payload.snapshot_id)
+    db.add(b)
+    db.flush()
+    for path, content in sorted(files.items()):
+        db.add(KaisenFile(build_id=b.id, path=path, content=content, size=len(content.encode())))
+    db.commit()
+    audit.record(db, user, "kaisen.fork", "kaisen_build", b.id, f"from={src.id} snapshot={payload.snapshot_id or '-'}")
+    return _detail(db, b, request)
+
+
 @router.post("/kaisen/builds/{build_id}/feedback")
 def feedback(build_id: int, payload: TextIn, request: Request, db: Session = Depends(get_db),
              user: models.User = Depends(get_active_user)):
@@ -529,8 +631,8 @@ def feedback(build_id: int, payload: TextIn, request: Request, db: Session = Dep
     if len(payload.text) > config.KAISEN_FEEDBACK_MAX:
         raise HTTPException(status_code=422, detail=f"Keep the change request under {config.KAISEN_FEEDBACK_MAX} characters.")
     _require_key(db, b)
-    if builder.latest_run(db, b.id) is None:
-        raise HTTPException(status_code=409, detail="Run the build first, then ask for changes.")
+    if builder.latest_run(db, b.id) is None and not (b.forked_from_id is not None and _has_files(db, b.id)):
+        raise HTTPException(status_code=409, detail="Run the build first, then ask for changes.")  # a fork with files may skip this
     projects.lock_project(db, b.project_id)
     app = _app_view(db, b)
     run, msg = builder.start_feedback(db, b, payload.text, f"https://{app['hostname']}" if app else None, user.id)

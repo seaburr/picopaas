@@ -65,6 +65,8 @@ class KaisenBuild(Base):
     test_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # running|pass|fail|timeout
     test_ran_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     test_tail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    forked_from_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # no FK: the source may be deleted later
+    forked_from_snapshot_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class KaisenFile(Base):
@@ -108,8 +110,9 @@ class KaisenEvent(Base):
     __table_args__ = (Index("ix_kaisen_events_project_at", "project_id", "at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("kaisen_runs.id"), nullable=False, index=True)
-    build_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # no FK: events outlive a deleted build for 90 days
+    # run_id/build_id are NULL for an Improve brief press (kind "improve") until a build created from that brief claims it
+    run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("kaisen_runs.id"), nullable=True, index=True)
+    build_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)  # no FK: events outlive a deleted build for 90 days
     project_id: Mapped[int] = mapped_column(Integer, nullable=False)
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -119,6 +122,7 @@ class KaisenEvent(Base):
     web_searches: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)  # member who started the run
     usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    kind: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # "improve" for Improve brief presses; NULL for run events
     at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
 

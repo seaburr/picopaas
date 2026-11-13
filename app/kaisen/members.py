@@ -35,8 +35,8 @@ def limits(s: Session, project_id: int, user_id: int) -> tuple[Optional[float], 
     return (row.cap_day, row.cap_build) if row is not None else (None, None)
 
 
-def check(s: Session, project_id: int, build_id: int, user_id: Optional[int], *, mine: bool = True) -> str | None:
-    """A plain-language reason this member may not spend more, or None."""
+def check(s: Session, project_id: int, build_id: Optional[int], user_id: Optional[int], *, mine: bool = True) -> str | None:
+    """A plain-language reason this member may not spend more, or None. No build (Improve brief): daily limit only."""
     if user_id is None:
         return None
     cap_day, cap_build = limits(s, project_id, user_id)
@@ -45,7 +45,7 @@ def check(s: Session, project_id: int, build_id: int, user_id: Optional[int], *,
     if cap_day is not None and (spent := spend_today(s, project_id, user_id)) >= cap_day:
         return (f"{who} member daily limit of ${cap_day:.2f} in this project is reached ({spent_by} ${spent:.2f} today). "
                 "A project owner can raise it in Kaisen settings; it resets at 00:00 UTC.")
-    if cap_build is not None and (spent := spend_on_build(s, build_id, user_id)) >= cap_build:
+    if build_id is not None and cap_build is not None and (spent := spend_on_build(s, build_id, user_id)) >= cap_build:
         return (f"{who} member per-build limit of ${cap_build:.2f} is reached on this build ({spent_by} ${spent:.2f}). "
                 "A project owner can raise it in Kaisen settings.")
     return None
