@@ -34,6 +34,8 @@ const props = defineProps<{
   answerBusy?: number | null
   draft?: boolean // created as a draft: nothing has run yet
   starting?: boolean
+  canStop?: boolean
+  stopping?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [v: string]
@@ -41,6 +43,7 @@ const emit = defineEmits<{
   answer: [id: number, text: string]
   dismiss: [id: number]
   interrupt: [runId: number]
+  stop: []
   resume: []
   'open-files': [uploadId?: number]
   changed: []
@@ -197,7 +200,10 @@ watch(() => props.build.id, () => stickNow())
             <!-- Kaisen: plain text across the left -->
             <div v-else class="max-w-3xl min-w-0">
               <p v-if="it.text" class="whitespace-pre-wrap text-sm text-zinc-100 [overflow-wrap:anywhere]">{{ it.text }}</p>
-              <p v-if="it.kind === 'question' && it.key === `q${answering?.id}`" class="meta mt-0.5">Waiting for your answer in the box below.</p>
+              <p v-if="it.kind === 'question' && it.key === `q${answering?.id}`" class="meta mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                Waiting for your answer in the box below.
+                <button v-if="canStop" type="button" class="btn-secondary btn-sm max-md:min-h-[44px]" :disabled="stopping" @click="emit('stop')">Stop run</button>
+              </p>
               <template v-if="it.runIdx !== null">
                 <div v-if="build.runs[it.runIdx].error" class="mt-1 flex flex-wrap items-start justify-between gap-2">
                   <p class="min-w-0 whitespace-pre-wrap text-sm text-danger-light [overflow-wrap:anywhere]">{{ build.runs[it.runIdx].error }}</p>

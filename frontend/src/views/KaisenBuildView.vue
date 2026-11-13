@@ -8,7 +8,6 @@ import BuildFilesDrawer from '../components/BuildFilesDrawer.vue'
 import BuildConversation from '../components/BuildConversation.vue'
 import BuildOutputFields from '../components/BuildOutputFields.vue'
 import BuildLastDeployment from '../components/BuildLastDeployment.vue'
-import BuildPreviewPane from '../components/BuildPreviewPane.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -18,7 +17,7 @@ import IconButton from '../components/IconButton.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, getPushJob, interruptRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, getPushJob, interruptRun, stopWaitingRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
@@ -44,7 +43,7 @@ const loadError = ref('')
 const notFound = ref(false)
 const announce = ref('')
 const actionError = ref('')
-const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume' | 'interrupt' | 'download'
+const busy = ref('') // '' | 'feedback' | 'answer' | 'deploy' | 'push' | 'resume' | 'interrupt' | 'stop' | 'download'
 const answerBusy = ref<number | null>(null)
 const feedback = ref('')
 const filesOpen = ref(false)
@@ -121,6 +120,7 @@ const attachLocked = computed(() => {
 const feedbackReason = computed(() => composerLocked.value || (hasQuestion.value ? 'Answer Kaisen\'s question first.' : ''))
 const firstRun = computed(() => !!build.value && build.value.runs.length === 0 && build.value.status === 'queued')
 const out = computed(() => build.value?.output)
+const waitingRun = computed(() => { const r = build.value?.runs[build.value.runs.length - 1]; return r && r.status === 'waiting' ? r : null })
 const activeRun = computed(() => (active.value ? build.value?.runs.find((r) => r.status === 'running' || r.status === 'queued') ?? null : null))
 const settings = ref<KaisenSettings | null>(null)
 const hint = computed(() => (build.value ? costHint(build.value.runs, settings.value?.model ?? null, settings.value?.cap_run ?? null) : ''))
@@ -313,6 +313,13 @@ async function interrupt(runId: number) {
     busy.value = ''
   }
 }
+const confirmStop = ref(false)
+async function stopRun() {
+  const r = waitingRun.value
+  if (!r) { confirmStop.value = false; return }
+  await act('stop', () => stopWaitingRun(buildId.value, r.id), 'Run stopped.')
+  confirmStop.value = false
+}
 const deployAgain = () => act('deploy', () => deployBuild(buildId.value))
 // ---- async push: POST returns a running job at once; poll it every 2 s (stop on done/error, on leaving, after ~10 min) ----
 const pushJob = ref<KaisenPushJob | null>(null)
@@ -456,8 +463,8 @@ async function doDelete() {
             <BuildConversation
               v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
               :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="composerLocked" :locked-attach="attachLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
-              :can-run="canRun" :active-run="activeRun" :first-run="firstRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" :answer-busy="answerBusy"
-              @submit="(p) => sendChange(p.text)" @answer="answer" @dismiss="dismiss" @interrupt="interrupt" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
+              :can-run="canRun" :active-run="activeRun" :first-run="firstRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" :answer-busy="answerBusy" :can-stop="canRun && !!waitingRun" :stopping="busy === 'stop'"
+              @submit="(p) => sendChange(p.text)" @answer="answer" @dismiss="dismiss" @interrupt="interrupt" @stop="confirmStop = true" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
             />
           </section>
 
@@ -498,7 +505,6 @@ async function doDelete() {
                     <p v-else-if="deployPhase === 'starting'" class="mt-2 text-sm text-zinc-300" role="status">Starting your app. This usually takes about a minute.</p>
                     <BuildLastDeployment :items="inbox" :now="now" :phase="deployPhase" />
                     <div v-if="app && app.status === 'error'" class="mt-2"><AppStatusNote compact :app="app" /></div>
-                    <BuildPreviewPane :hostname="build.app_hostname" :status="app?.status ?? build.app_status ?? ''" />
                     <div class="mt-3 flex flex-wrap gap-2">
                       <RouterLink :to="`/apps/${build.app_id}`" class="btn-secondary btn-sm">App health</RouterLink>
                       <RouterLink :to="`/apps/${build.app_id}/edit`" class="btn-secondary btn-sm">App settings</RouterLink>
@@ -579,7 +585,7 @@ async function doDelete() {
 
               <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
 
-              <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
+              <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :waiting="!!waitingRun" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
 
               <BuildFiles :build-id="build.id" :files="build.files" />
 
@@ -597,6 +603,17 @@ async function doDelete() {
     </main>
 
     <BuildFilesDrawer v-if="build?.uploads" :open="filesOpen" :focus-id="filesFocus" :build-id="build.id" :summary="build.uploads" :can-edit="canRun && !active" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @close="filesOpen = false" @changed="load(false)" @deploy="deployAgain" />
+    <ConfirmDialog
+      :open="confirmStop"
+      title="Stop this run?"
+      message="The run ends without an answer. Nothing more is spent. You can then send a change request, press Resume, or restore a restore point."
+      confirm-label="Stop run"
+      cancel-label="Keep waiting"
+      :busy="busy === 'stop'"
+      busy-label="Stopping…"
+      @confirm="stopRun"
+      @cancel="confirmStop = false"
+    />
     <DeleteAppDialog v-if="confirmOffline" :app="app" :busy="goingOffline" @confirm="takeOffline" @cancel="confirmOffline = false" />
     <ConfirmDialog
       :open="confirmDelete"

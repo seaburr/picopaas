@@ -344,6 +344,32 @@ def answer_question(s: Session, item: KaisenInbox, text: str) -> None:
     item.answer, item.status = text, "closed"
 
 
+STOPPED_ANSWER = ("The human stopped this run instead of answering. Do not wait for an answer: use your best judgement "
+                  "or finish with what exists.")
+
+
+def stop_waiting(s: Session, run: KaisenRun, who: str) -> bool:
+    """Stop a run that waits on a question. The status flip is a compare-and-set, so a racing answer and stop cannot
+    both win. The open question is closed and the history is made valid for a later Resume: the dangling ask gets its
+    tool_result (otherwise the next model call would be rejected). No model call."""
+    won = s.query(KaisenRun).filter(KaisenRun.id == run.id, KaisenRun.status == "waiting").update(
+        {"status": "stopped"}, synchronize_session=False)
+    if won != 1:
+        return False
+    s.refresh(run)
+    pend = run.pending or {}
+    if pend.get("ask_id"):
+        results = list(pend.get("results", []))
+        results.append({"type": "tool_result", "tool_use_id": pend["ask_id"], "content": STOPPED_ANSWER})
+        run.messages = list(run.messages) + [{"role": "user", "content": results}]
+    run.pending = None
+    for item in s.scalars(select(KaisenInbox).where(
+            KaisenInbox.run_id == run.id, KaisenInbox.kind == "question", KaisenInbox.status == "open")).all():
+        item.status = "closed"
+    _stop(s, run, "stopped", "stopped", f"Stopped by {who} while waiting for an answer.")
+    return True
+
+
 # ---- metering and caps -----------------------------------------------------
 
 def cost_usd(model: str, usage: dict) -> float:

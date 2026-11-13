@@ -15,6 +15,7 @@ export const deleteBuild = (id: number, deleteApp: boolean) =>
 export const runBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/run`)
 export const interruptRun = (id: number, runId: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/runs/${runId}/interrupt`)
 export const sendFeedback = (id: number, text: string) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/feedback`, { text })
+export const stopWaitingRun = (id: number, runId: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/runs/${runId}/stop`)
 export const answerInbox = (id: number, itemId: number, text: string) =>
   post<KaisenBuildDetail>(`/kaisen/builds/${id}/inbox/${itemId}/answer`, { text })
 // Closes a notice for everyone in the project (questions are answered instead).

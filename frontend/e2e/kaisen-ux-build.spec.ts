@@ -67,3 +67,40 @@ for (const [name, b] of Object.entries(states)) {
     }
   })
 }
+
+test('Stop run: shown only while a question is waiting, posts to the stop route', async ({ page }) => {
+  await login(page)
+  const waitingB = build([run(1, { summary: null }), run(2, { status: 'waiting', summary: null, finished_at: null })], { status: 'waiting', inbox: [q], open_questions: 1 })
+  const stoppedB = build([run(1, { summary: null }), run(2, { status: 'stopped', summary: null, error: 'Stopped by e2e-admin@example.com while waiting for an answer.' })], { status: 'stopped' })
+  await stub(page, waitingB)
+  await page.route(new RegExp(`/kaisen/builds/${ID}/snapshots$`), (r) => r.fulfill({ json: [{ id: 5, run_id: 2, run_number: 2, kind: 'run_start', created_at: '2026-11-05T10:01:00Z', files_count: 1, bytes: 10 }] }))
+  let posted = ''
+  await page.route(new RegExp(`/kaisen/builds/${ID}/runs/2/stop$`), (r) => {
+    posted = r.request().method() + ' ' + new URL(r.request().url()).pathname
+    return r.fulfill({ json: { ...stoppedB, uploads: summaryOk } })
+  })
+  await page.goto(`/kaisen/${ID}`)
+  await page.getByText('Restore points', { exact: true }).click()
+  await expect(page.getByText('Answer the question or stop the run, then restore.')).toBeVisible()
+  await page.getByRole('button', { name: 'Stop run' }).click()
+  const dlg = page.getByRole('dialog')
+  await expect(dlg.getByRole('heading', { name: 'Stop this run?' })).toBeVisible()
+  await dlg.getByRole('button', { name: 'Keep waiting' }).click()
+  await expect(dlg).toBeHidden()
+  await page.getByRole('button', { name: 'Stop run' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Stop run' }).click()
+  await expect(page.getByText('Stopped by e2e-admin@example.com while waiting for an answer.').first()).toBeVisible()
+  expect(posted).toBe(`POST /kaisen/builds/${ID}/runs/2/stop`)
+  await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0)
+})
+
+for (const name of ['running', 'deployed']) {
+  test(`Stop run absent in ${name} state`, async ({ page }) => {
+    await login(page)
+    await stub(page, states[name])
+    await page.route('**/apps/777', (r) => r.fulfill({ json: { id: 777, name: 'a', hostname: 'a.picopaas.xyz', status: 'running', status_detail: null, env: [] } }))
+    await page.goto(`/kaisen/${ID}`)
+    await expect(page.getByRole('heading', { name: 'UX stub' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0)
+  })
+}

@@ -503,6 +503,25 @@ def interrupt_run(build_id: int, run_id: int, request: Request, db: Session = De
     return _detail(db, b, request)
 
 
+@router.post("/kaisen/builds/{build_id}/runs/{run_id}/stop")
+def stop_waiting_run(build_id: int, run_id: int, request: Request, db: Session = Depends(get_db),
+                     user: models.User = Depends(get_active_user)):
+    """End a run that is waiting on a question. No model call, nothing more is spent. Queued and running runs are
+    not stopped here (Interrupt and the watchdog own those)."""
+    b = get_build(db, build_id, user)
+    run = db.get(KaisenRun, run_id)
+    if run is None or run.build_id != b.id:
+        raise HTTPException(status_code=404, detail="We can't find that run.")
+    projects.lock_project(db, b.project_id)
+    db.refresh(run)
+    if run.status != "waiting" or not builder.stop_waiting(db, run, user.email):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That run is not waiting on a question.")
+    db.commit()
+    audit.record(db, user, "kaisen.stop", "kaisen_build", b.id, f"run={run.id}")
+    return _detail(db, b, request)
+
+
 @router.post("/kaisen/builds/{build_id}/feedback")
 def feedback(build_id: int, payload: TextIn, request: Request, db: Session = Depends(get_db),
              user: models.User = Depends(get_active_user)):
@@ -529,7 +548,11 @@ def answer(build_id: int, item_id: int, payload: TextIn, request: Request, db: S
     item = db.get(KaisenInbox, item_id)
     if item is None or item.build_id != b.id:
         raise HTTPException(status_code=404, detail="We can't find that question.")
+    projects.lock_project(db, b.project_id)  # serializes with Stop
+    db.refresh(item)
     run = db.get(KaisenRun, item.run_id) if item.run_id else None
+    if run is not None:
+        db.refresh(run)
     if item.kind != "question" or item.status != "open" or run is None or run.status != "waiting":
         raise HTTPException(status_code=409, detail="That question was already answered or is no longer waiting.")
     if len(payload.text) > config.KAISEN_ANSWER_MAX:
@@ -548,7 +571,7 @@ def dismiss(build_id: int, item_id: int, request: Request, db: Session = Depends
     if item is None or item.build_id != b.id:
         raise HTTPException(status_code=404, detail="We can't find that message.")
     if item.kind == "question" and item.status == "open":
-        raise HTTPException(status_code=409, detail="Answer the question instead; Kaisen is waiting for it.")
+        raise HTTPException(status_code=409, detail="Answer the question or stop the run; Kaisen is waiting for it.")
     item.status = "closed"
     db.commit()
     return _detail(db, b, request)
@@ -644,7 +667,7 @@ def restore_snapshot(build_id: int, snapshot_id: int, db: Session = Depends(get_
     projects.lock_project(db, b.project_id)
     last = builder.latest_run(db, b.id)
     if last is not None and last.status in builder.ACTIVE:
-        raise HTTPException(status_code=409, detail="A run is in progress. Wait for it to finish, or answer its question, then restore.")
+        raise HTTPException(status_code=409, detail="A run is in progress. Wait for it to finish, or answer or stop its question, then restore.")
     try:
         count, before_id = snapshots.restore(db, b.id, snap)
     except snapshots.SnapshotError:

@@ -11,6 +11,7 @@ const props = defineProps<{
   title: string
   message: string
   confirmLabel?: string
+  cancelLabel?: string
   danger?: boolean
   requireText?: string
   busy?: boolean
@@ -65,7 +66,7 @@ function submit() {
       </div>
       <div class="mt-4 flex flex-col-reverse gap-2 border-t border-pico-border pt-3 sm:flex-row sm:justify-end">
         <button type="button" class="btn-secondary" :data-autofocus="!requireText && danger ? '' : undefined" :disabled="busy" @click="emit('cancel')">
-          Cancel
+          {{ cancelLabel ?? 'Cancel' }}
         </button>
         <button
           type="submit"

@@ -13,6 +13,7 @@ const props = defineProps<{
   buildId: number
   now: number
   active: boolean // a run is active: restoring is blocked
+  waiting?: boolean // the run is waiting on a question
   canRun: boolean
   canDeploy: boolean
   kept?: number // restore points kept per build (build detail snapshots_kept)
@@ -30,7 +31,7 @@ const restoreError = ref('')
 const done = ref('')
 
 const label = (s: KaisenSnapshot) => (s.kind === 'run_start' ? `Before run #${s.run_number ?? s.run_id ?? '?'}` : 'Before restore')
-const blocked = computed(() => props.active ? 'A run is active. Restore once it finishes.' : !props.canRun ? "You can't change this build." : '')
+const blocked = computed(() => props.waiting ? 'Answer the question or stop the run, then restore.' : props.active ? 'A run is active. Restore once it finishes.' : !props.canRun ? "You can't change this build." : '')
 
 async function load() {
   error.value = ''
