@@ -48,7 +48,10 @@ const parseIso = (iso: string) => new Date(iso.endsWith('Z') || /[+-]\d\d:?\d\d$
 // Elapsed time since a run started, as "42 s" / "3 min 05 s".
 export function elapsed(startIso: string, nowMs: number): string {
   const s = Math.max(0, Math.round((nowMs - parseIso(startIso)) / 1000))
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
+  if (s < 60) return `${s} s`
+  if (s < 3600) return `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
+  const h = Math.floor(s / 3600)
+  return h < 24 ? `${h} h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')} min` : `${Math.floor(h / 24)} d ${h % 24} h`
 }
 
 // Pre-run hint: the range of this build's earlier finished runs, else the per-run cap from settings.

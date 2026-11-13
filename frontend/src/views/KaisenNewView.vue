@@ -29,6 +29,8 @@ const maxBrief = ref(8000) // replaced by the server value (config.KAISEN_BRIEF_
 const name = ref('')
 const brief = ref('')
 const undo = ref<{ name: string; brief: string } | null>(null)
+// What the last one-click fill was, so the result is announced even when it lands out of view above the table.
+const filled = ref<{ kind: 'starter' | 'suggestion'; label: string } | null>(null)
 const warnings = computed(() => checkBrief(brief.value))
 // PostgreSQL availability comes from GET /templates (`available` is false on PostgreSQL templates when no server exists).
 const pgOk = ref(true)
@@ -59,9 +61,12 @@ async function improve() {
     improving.value = false
   }
 }
+// A suggestion is a rewrite of the brief as it was when Improve brief was pressed; drop it once the brief is edited.
+watch(brief, () => { if (!improving.value) suggestion.value = null })
 function acceptSuggestion() {
   if (!suggestion.value) return
   undo.value = { name: name.value, brief: brief.value }
+  filled.value = { kind: 'suggestion', label: '' }
   brief.value = suggestion.value.brief
   suggestion.value = null
 }
@@ -70,6 +75,7 @@ function useStarter(st: Starter) {
   suggestion.value = null
   // Replace, and keep the previous text one click away.
   undo.value = name.value.trim() || brief.value.trim() ? { name: name.value, brief: brief.value } : null
+  filled.value = { kind: 'starter', label: st.title }
   name.value = st.name
   brief.value = st.brief
 }
@@ -78,6 +84,7 @@ function undoStarter() {
   name.value = undo.value.name
   brief.value = undo.value.brief
   undo.value = null
+  filled.value = null
 }
 const projectId = computed(() => Number(props.pid))
 const projName = computed(() => projectLabel(curProject.value))
@@ -234,7 +241,7 @@ async function startWithout() {
       </nav>
       <div class="mb-3">
         <div class="flex flex-wrap items-center gap-2"><h1 class="page-title">New build<template v-if="projName"> in {{ projName }}</template></h1><PreviewBadge /></div>
-        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in {{ projName || 'this project' }}, and asks if it needs to know something.</p>
+        <p class="help">Describe the app. Kaisen builds it, deploys it as an app in {{ projName || 'this project' }} and asks if it needs to know something. Runs are billed to this project's Anthropic key.</p>
       </div>
 
       <p v-if="noKey" class="alert-warn mb-3" role="status">
@@ -253,15 +260,17 @@ async function startWithout() {
           <label for="kb-brief" class="label">What should it do?</label>
           <AttachComposer
             ref="composer" v-model="brief" :build-id="null" :summary="uploadsInfo" label="What should it do?" input-id="kb-brief" describedby="kb-brief-help" :invalid="!!briefError || overLimit"
-            :placeholder="uploadsInfo && !uploadsInfo.uploads_enabled ? 'Describe the app.' : 'Describe the app. Drop, paste or attach files.'" no-submit :locked="projSuspended ? SUSPENDED_TITLE : ''" :can-attach="stage === '' || stage === 'partial'" :rows="5"
+            :placeholder="uploadsInfo && !uploadsInfo.uploads_enabled ? 'Describe the app.' : 'Describe the app. Drop, paste or attach files.'" no-submit :locked="projSuspended ? SUSPENDED_TITLE : ''" :can-attach="stage === '' || stage === 'partial'" :rows="8"
           />
           <p v-if="briefError" class="field-error" role="alert">{{ briefError }}</p>
           <p id="kb-brief-help" class="help" :aria-live="overLimit ? 'polite' : undefined">{{ brief.length }} / {{ maxBrief }}<template v-if="overLimit"> · Too long. Shorten it.</template></p>
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : undefined" @click="improve">{{ improving ? 'Improving...' : 'Improve brief' }}</button>
-            <span class="help">Sends the brief to Haiku once (well under a cent) and shows a suggested rewrite below. Your brief changes only if you then press "Use this" on the suggestion.</span>
+            <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : undefined" @click="improve">{{ improving ? 'Improving…' : 'Improve brief' }}</button>
+            <span v-if="noKey" class="help mt-0">Needs an Anthropic API key. A project owner can add one in Kaisen settings.</span>
+            <span v-else class="help mt-0">Sends the brief to the default model (Haiku) once and shows a suggested rewrite below. Your brief changes only if you press "Use this" on it.</span>
+            <span class="sr-only" role="status">{{ improving ? 'Improving the brief' : suggestion ? 'Suggested brief ready' : '' }}</span>
+            <span v-if="filled?.kind === 'suggestion' && undo" class="help mt-0" data-testid="suggestion-note">Brief replaced by the suggestion. <button type="button" class="link" @click="undoStarter">Undo</button></span>
           </div>
-          <p v-if="noKey" class="help">This project has no Anthropic API key yet. A project owner can add one in Kaisen settings.</p>
           <p v-if="improveError" class="field-error" role="alert" data-testid="improve-error">{{ improveError }}</p>
           <div v-if="suggestion" class="mt-2 rounded border border-zinc-700 p-3" data-testid="suggestion" role="region" aria-label="Suggested brief">
             <p class="label">Suggested brief</p>
@@ -280,9 +289,9 @@ async function startWithout() {
         <section aria-labelledby="kb-starters" data-testid="starters">
           <div class="flex flex-wrap items-baseline gap-x-3">
             <h2 id="kb-starters" class="label">Starters</h2>
-            <button v-if="undo" type="button" class="link text-sm" @click="undoStarter">Undo</button>
+            <span v-if="filled?.kind === 'starter'" class="text-xs text-zinc-300" role="status" data-testid="starter-note">Name and brief filled from {{ filled.label }}.<template v-if="undo">{{ ' ' }}<button type="button" class="link" @click="undoStarter">Undo</button></template></span>
           </div>
-          <p class="help mb-2">Fills the name and brief. Nothing starts until you press Start building. Costs are what we saw on Haiku, not a promise.</p>
+          <p class="help mb-2">Fills the name and brief above and replaces what is there. Nothing starts until you press Start building. Cost is one recorded run on Haiku 5.5; yours will differ.</p>
           <table class="tbl tbl-stack">
             <colgroup><col class="w-[18%]"><col><col class="w-[16%]"><col class="w-[9%]"><col class="w-36"></colgroup>
             <thead><tr><th>Starter</th><th>What it builds</th><th>Storage</th><th>Cost</th><th class="text-right"><span class="sr-only">Actions</span></th></tr></thead>
@@ -291,13 +300,12 @@ async function startWithout() {
                 <td class="font-medium text-white wrap-break-word">{{ st.title }}</td>
                 <td class="wrap-break-word text-zinc-300">{{ st.description }}<span v-if="starterOff(st)" class="mt-1 block text-amber-300" data-testid="pg-off">{{ PG_UNAVAILABLE_MSG }}</span></td>
                 <td data-label="Storage"><span class="flex flex-wrap gap-1"><span v-for="p in st.storage" :key="p" class="rounded border border-zinc-700 px-1.5 text-xs text-zinc-300">{{ p }}</span></span></td>
-                <td class="mono text-zinc-300" data-label="Cost"><span v-if="st.cost" :title="st.costSource">~{{ st.cost }}</span></td>
+                <td class="mono text-zinc-300" :class="!st.cost && 'max-md:hidden'" data-label="Cost"><span v-if="st.cost" :title="st.costSource">~{{ st.cost }}</span><template v-else><span aria-hidden="true" class="text-zinc-500">-</span><span class="sr-only">not recorded</span></template></td>
                 <td><div class="row-acts"><button type="button" class="row-act" :class="!starterOff(st) && 'text-white'" :disabled="starterOff(st)" :data-use-starter="st.title" @click="useStarter(st)">Use this brief<span class="sr-only"> ({{ st.title }})</span></button></div></td>
               </tr>
             </tbody>
           </table>
         </section>
-        <p class="help">In project: <strong class="font-medium text-zinc-200">{{ projName }}</strong>. Kaisen deploys into it and spends from its Anthropic key.</p>
 
         <details class="disc help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
           <summary>Output (optional)</summary>

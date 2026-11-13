@@ -117,7 +117,7 @@ function askDelete(b: KaisenBuild) {
           <span v-if="!loading && store.builds.length" class="meta"><span class="mono">{{ store.builds.length }}</span> {{ store.builds.length === 1 ? 'build' : 'builds' }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <span v-if="atLimit && store.builds.length" class="meta mr-2">App limit reached. Ask an administrator to raise it.</span>
+          <span v-if="blocked && store.builds.length" class="meta mr-2">{{ blockedWhy }}.</span>
           <IconButton label="Kaisen settings" text="Settings" :to="projectKaisen(pidNum, '/settings')" />
           <template v-if="store.builds.length > 0">
             <IconButton v-if="blocked" :label="`New build (${blockedWhy})`" text="New build" disabled />
@@ -132,13 +132,13 @@ function askDelete(b: KaisenBuild) {
       </div>
 
       <ul v-if="loading" class="border-t border-pico-border" aria-busy="true" aria-label="Loading builds">
-        <li v-for="n in 3" :key="n" class="border-b border-pico-border py-2">
-          <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-card" />
-          <div class="mt-2 h-3 w-64 max-w-full animate-pulse rounded-sm bg-pico-card" />
+        <li v-for="n in 3" :key="n" class="border-b border-pico-border py-3">
+          <div class="h-4 w-40 animate-pulse rounded-sm bg-pico-muted" />
+          <div class="mt-2 h-3 w-64 max-w-full animate-pulse rounded-sm bg-pico-muted" />
         </li>
       </ul>
 
-      <div v-else-if="!error && store.builds.length === 0" class="sec grid gap-x-12 gap-y-6 pt-4 lg:grid-cols-2">
+      <div v-else-if="!error && store.builds.length === 0" class="sec sec-pad grid gap-x-12 gap-y-6 lg:grid-cols-2">
         <div>
           <h2 class="section-title">Build your first app with Kaisen <PreviewBadge /></h2>
           <p class="mt-1 text-sm text-zinc-300">Tell Kaisen what you want in a few sentences. It writes the code, runs it and deploys it as an app in {{ projName }}. You can download the code or push it to GitHub.</p>
@@ -170,7 +170,7 @@ function askDelete(b: KaisenBuild) {
         </div>
       </div>
 
-      <ul v-else-if="store.builds.length" class="border-t border-pico-border md:hidden" aria-label="Builds">
+      <ul v-else-if="store.builds.length" class="border-t border-pico-border lg:hidden" aria-label="Builds">
         <li v-for="b in store.builds" :key="b.id" class="border-b border-pico-border py-2">
           <div class="flex items-center justify-between gap-3">
             <RouterLink :to="`/kaisen/${b.id}`" class="min-w-0 truncate font-medium text-white hover:underline" :title="b.name">{{ b.name }}</RouterLink>
@@ -181,14 +181,14 @@ function askDelete(b: KaisenBuild) {
           <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
           <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
           <div class="row-acts !justify-start gap-x-4">
-            <RouterLink v-if="b.app_id" :to="`/apps/${b.app_id}`" class="row-act max-md:!min-h-[44px]" :aria-label="`View app health for ${b.name}`">Health</RouterLink>
-            <RouterLink :to="`/kaisen/${b.id}`" class="row-act max-md:!min-h-[44px]" :aria-label="`Open build ${b.name}`">Open</RouterLink>
-            <button type="button" class="row-act row-act-danger max-md:!min-h-[44px]" :aria-label="`Delete build ${b.name}`" @click="askDelete(b)">Delete</button>
+            <RouterLink v-if="b.app_id" :to="`/apps/${b.app_id}`" class="row-act max-lg:!min-h-[44px]" :aria-label="`View app health for ${b.name}`">Health</RouterLink>
+            <RouterLink :to="`/kaisen/${b.id}`" class="row-act max-lg:!min-h-[44px]" :aria-label="`Open build ${b.name}`">Open</RouterLink>
+            <button type="button" class="row-act row-act-danger max-lg:!min-h-[44px]" :aria-label="`Delete build ${b.name}`" @click="askDelete(b)">Delete</button>
           </div>
         </li>
       </ul>
 
-      <div v-if="!loading && store.builds.length" class="max-md:hidden">
+      <div v-if="!loading && store.builds.length" class="max-lg:hidden">
         <table class="tbl">
           <caption class="sr-only">Builds</caption>
           <colgroup>

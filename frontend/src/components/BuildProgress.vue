@@ -23,7 +23,7 @@ const slow = computed(() => props.run.status === 'running' && props.run.step != 
     </div>
     <p class="meta mt-1">{{ slow ? 'Still working. Longer changes can take a few minutes.' : 'This usually takes about a minute.' }}</p>
     <p class="meta mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span v-if="run.last_tool" class="mono">{{ run.last_tool }}</span>
+      <span v-if="run.last_tool" class="mono">{{ run.last_tool }}</span>
       <span v-if="run.context_resets">fresh context ×<span class="mono">{{ run.context_resets }}</span></span>
       <span class="mono">{{ elapsed(run.started_at, t) }}</span>
       <span><span class="mono">{{ fmtUsd(run.cost_usd) }}</span> this run</span>

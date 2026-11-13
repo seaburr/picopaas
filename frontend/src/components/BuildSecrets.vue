@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import PasswordField from './PasswordField.vue'
 import { ApiError } from '../api/client'
 import { deleteBuildSecret, putBuildSecret } from '../api/kaisen'
@@ -16,6 +17,7 @@ const busy = ref(false)
 const removing = ref('')
 const error = ref('')
 const pendingDeploy = ref(false)
+const target = ref('')
 
 async function add() {
   error.value = ''
@@ -39,6 +41,7 @@ async function add() {
   }
 }
 async function remove(n: string) {
+  target.value = ''
   error.value = ''
   removing.value = n
   try {
@@ -66,7 +69,7 @@ async function remove(n: string) {
         <span class="mono break-all text-sm text-zinc-200">{{ s.name }}</span>
         <span class="row-acts shrink-0 gap-x-2.5">
           <span class="mono meta">{{ s.value }}</span>
-          <button v-if="canEdit" type="button" class="row-act row-act-danger" :aria-label="`Delete ${s.name}`" :disabled="removing === s.name" :aria-busy="removing === s.name || undefined" @click="remove(s.name)">Delete</button>
+          <button v-if="canEdit" type="button" class="row-act row-act-danger" :aria-label="`Delete ${s.name}`" :disabled="removing === s.name" :aria-busy="removing === s.name || undefined" @click="target = s.name">Delete</button>
         </span>
       </li>
     </ul>
@@ -88,5 +91,14 @@ async function remove(n: string) {
       <button v-if="canDeploy" type="button" class="btn-secondary btn-sm" :disabled="deploying" @click="emit('deploy'); pendingDeploy = false">{{ deploying ? 'Deploying…' : 'Deploy now to apply' }}</button>
     </div>
     </div>
+    <ConfirmDialog
+      :open="!!target"
+      title="Delete secret"
+      :message="`Delete ${target}? The value is removed and cannot be shown again. The app stops seeing it on the next deploy.`"
+      confirm-label="Delete secret"
+      danger
+      @confirm="remove(target)"
+      @cancel="target = ''"
+    />
   </details>
 </template>

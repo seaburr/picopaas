@@ -6,5 +6,5 @@ const cls = 'inline-block rounded-sm border border-pico-border px-1 text-[11px] 
 
 <template>
   <RouterLink v-if="to" :to="to" :class="[cls, 'hover:text-white']" title="Built with Kaisen (Preview). Open the build.">Kaisen<span class="sr-only"> (built with Kaisen, Preview)</span></RouterLink>
-  <span v-else class="tag" title="Built with Kaisen (Preview)">Kaisen<span class="sr-only"> (built with Kaisen)</span></span>
+  <span v-else :class="cls" title="Built with Kaisen (Preview)">Kaisen<span class="sr-only"> (built with Kaisen)</span></span>
 </template>

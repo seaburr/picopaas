@@ -162,7 +162,7 @@ async function test(which: 'anthropic') {
       </div>
 
       <form v-else class="grid gap-x-8 gap-y-4 lg:grid-cols-2 lg:items-start 2xl:grid-cols-3 [&_.input]:max-w-xl [&_.field-wrap]:max-w-xl" novalidate @submit.prevent="save">
-        <p class="help col-span-full">Applies to every build in {{ projName }}. You are {{ s.can_edit ? 'an owner' : 'a member' }}<template v-if="!s.can_edit">: you can see what is set, not change it</template>. Everyone who can run builds here spends from this key.</p>
+        <p class="help col-span-full">Applies to every build in {{ projName }}. You are {{ s.can_edit ? 'an owner' : 'a member' }}. Everyone who can run builds here spends from this key.</p>
         <p v-if="readOnly && !projSuspended" class="alert-info col-span-full" role="status">Only project owners can change these settings. <template v-if="!s.anthropic_key.set">Kaisen isn't set up in {{ projName }} yet: ask an owner to add an Anthropic API key.</template></p>
 
         <section class="sec sec-pad space-y-3" aria-labelledby="ks-anthropic">
@@ -206,7 +206,8 @@ async function test(which: 'anthropic') {
         </section>
 
         <section class="sec sec-pad" aria-labelledby="ks-caps">
-          <h2 id="ks-caps" class="section-title mb-2">Spend limits (USD)</h2>
+          <h2 id="ks-caps" class="section-title mb-1">Spend limits (USD)</h2>
+          <p class="help mb-2">A run stops at the per-run limit. Per day counts all builds in this project and resets at 00:00 UTC. A limit of 0 blocks new runs.</p>
           <div class="grid gap-3 sm:grid-cols-3">
             <div><label for="ks-cap-run" class="label">Per run</label><input id="ks-cap-run" v-model.number="form.cap_run" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>
             <div><label for="ks-cap-day" class="label">Per day</label><input id="ks-cap-day" v-model.number="form.cap_day" type="number" step="0.01" min="0" class="input" :disabled="readOnly" /></div>

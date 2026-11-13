@@ -26,20 +26,13 @@ export const useKaisenStore = defineStore('kaisen', () => {
     builds.value = list
     pid.value = forPid
     // Spend and settings are secondary: a failure must not hide the list.
-    try {
-      const sp = await getKaisenSpend(forPid)
-      if (mine === seq) spend.value = sp
-    } catch {
-      if (mine === seq) spend.value = null
-    }
-    if (forPid) {
-      try {
-        const st = await getKaisenSettings(forPid)
-        if (mine === seq) settings.value = st
-      } catch {
-        if (mine === seq) settings.value = null
-      }
-    }
+    const [sp, st] = await Promise.all([
+      getKaisenSpend(forPid).catch(() => null),
+      forPid ? getKaisenSettings(forPid).catch(() => null) : Promise.resolve(undefined),
+    ])
+    if (mine !== seq) return
+    spend.value = sp
+    if (st !== undefined) settings.value = st
   }
 
   // Quiet refresh for polling: builds only.

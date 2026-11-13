@@ -49,7 +49,7 @@ test('starter gallery fills the form without starting a build; warnings never bl
   await expect(row).toContainText('Bucket')
   await expect(gallery.locator('[data-starter="Fancy Docs"]')).toContainText('~$0.05')
   await expect(gallery.locator('[data-starter="Small CRM"]')).toContainText('~$0.06')
-  await expect(gallery.locator('[data-starter="Kanban board"] td[data-label="Cost"]')).toHaveText('')
+  await expect(gallery.locator('[data-starter="Kanban board"] td[data-label="Cost"]')).toHaveText('-not recorded')
   await page.locator('[data-use-starter="Notes with uploads"]').click()
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Notes with uploads')
   await expect(page.locator('#kb-brief')).toHaveValue(/storage bucket/)

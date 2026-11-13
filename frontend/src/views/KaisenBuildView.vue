@@ -22,6 +22,7 @@ import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, ge
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
+import { statusLook } from '../composables/statusTone'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
 import { projectKaisen, projectLabel } from '../utils/paths'
@@ -157,14 +158,19 @@ function apply(b: KaisenBuildDetail) {
   }
   build.value = b
   store.upsert(b)
-  if (prev && prev !== b.status) announce.value = `Build ${b.name} is now ${b.status}.`
+  if (prev && prev !== b.status) announce.value = `Build ${b.name}: ${statusLook(b.status, 'build').label}.`
   loadApp(b)
 }
 
+// Bumped when an action starts and ends, so a poll that began earlier cannot overwrite the action's newer result.
+let actSeq = 0
 async function load(initial = true) {
   if (initial) loadError.value = ''
+  const seq = actSeq
   try {
-    apply(await getBuild(buildId.value))
+    const b = await getBuild(buildId.value)
+    if (!initial && seq !== actSeq) return
+    apply(b)
     notFound.value = false
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) notFound.value = true
@@ -201,8 +207,10 @@ watch(buildId, () => {
 async function act(kind: string, fn: () => Promise<KaisenBuildDetail>, ok?: string) {
   actionError.value = ''
   busy.value = kind
+  actSeq++
   try {
     const b = await fn()
+    actSeq++
     apply(b)
     if (ok) toast.success(ok)
     return b
@@ -430,6 +438,8 @@ async function doDelete() {
                 <PreviewBadge />
               </div>
               <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
+              <!-- Below 1024px the rail is closed by default: keep the live address one glance away. -->
+              <p v-if="build.app_id && build.app_hostname" class="meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:hidden"><HostLink :hostname="build.app_hostname" /></p>
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <IconButton label="Kaisen settings" text="Settings" :to="projectKaisen(build.project_id, '/settings')" />

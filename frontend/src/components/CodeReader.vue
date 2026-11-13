@@ -224,7 +224,7 @@ const fileCount = computed(() => props.items.length)
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-pico-border px-3 py-1.5">
               <span class="mono min-w-0 flex-1 break-all text-sm" data-testid="reader-path">{{ selected }}</span>
               <span v-if="current?.size !== undefined" class="mono text-xs text-zinc-400">{{ fmtSize(current.size) }}</span>
-              <span v-if="lines.length" class="mono text-xs text-zinc-400">{{ lines.length }} lines</span>
+              <span v-if="lines.length" class="mono text-xs text-zinc-400">{{ lines.length }} {{ lines.length === 1 ? 'line' : 'lines' }}</span>
               <label class="flex items-center gap-1.5 text-sm text-zinc-200"><input v-model="wrap" type="checkbox" class="check" /> Wrap</label>
               <CopyButton v-if="content && content.text" :text="content.text" label="Copy file" />
             </div>

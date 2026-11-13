@@ -38,11 +38,14 @@ test('preview pane: width presets and exact sandbox', async ({ page }) => {
   await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-forms allow-popups')
   await expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
   await page.getByRole('button', { name: 'Phone' }).click()
-  await expect.poll(async () => (await frame.boundingBox())?.width).toBe(390)
+  await expect.poll(() => frame.evaluate((f) => (f as HTMLElement).offsetWidth)).toBe(390)
+  expect((await frame.boundingBox())!.width).toBeLessThanOrEqual(390)
   await page.getByRole('button', { name: 'Tablet' }).click()
-  await expect.poll(async () => (await frame.boundingBox())?.width).toBe(768)
+  await expect.poll(() => frame.evaluate((f) => (f as HTMLElement).offsetWidth)).toBe(768)
+  await expect(page.getByTestId('preview-scale')).toContainText('768 × 1024 px, shown at')
   await page.getByRole('button', { name: 'Desktop' }).click()
-  await expect.poll(async () => (await frame.boundingBox())?.width).toBeGreaterThan(200)
+  await expect.poll(() => frame.evaluate((f) => (f as HTMLElement).offsetWidth)).toBe(1280)
+  expect((await frame.boundingBox())!.width).toBeLessThan(400) // scaled to fit the side panel, no sideways scroll
   await expect(page.getByRole('link', { name: /Open in new tab/ }).first()).toHaveAttribute('href', 'https://stub-app.picopaas.xyz/')
 })
 
