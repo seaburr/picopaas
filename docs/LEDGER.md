@@ -5,6 +5,11 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-13 [manager] DONE: Chas approved the one-month retrospective ("Looks good"): Ghost draft published (release-blogger); README cost $75 -> $60/mo; landing Kaisen card adds the test-build cost range ($0.01-$0.07, sourced from the 2026-11-13 live tests); landing footer links the retrospective. (uncommitted)
+- 2026-11-13 [blogger] DONE: published one-month-retrospective-picopaas-and-kaisen (id 6af7741830199f00010bb9be, status only; public URL returns 200).
+- 2026-11-13 [blogger] START: publish approved draft one-month-retrospective-picopaas-and-kaisen (Chas approved in chat).
+- 2026-11-13 [marketing-writer] DONE: one-month retrospective (26 days, 821 commits, 4048 tests at 96%, 143 pentest entries) saved to docs/marketing/one-month-retrospective-2026-11-13.md and created as a Ghost DRAFT (slug one-month-retrospective-picopaas-and-kaisen, id 6af7741830199f00010bb9be, tags picopaas-release + retrospective, meta description set). Not published; landing/README untouched (proposals at end of the md). uncommitted.
+- 2026-11-13 [marketing-writer] START: one-month retrospective post (Chas) as Ghost draft + docs/marketing copy.
 - 2026-11-13 [scm] DONE: pushed test commit 63c58e6 (coverage + pentest regression tests + 3 e2e) and docs commit (PENTEST K136-K143, ledger). gitleaks clean per commit; ruff clean; 33 new tests pass. No product code changed; pushed without security review (tests/docs only).
 - 2026-11-13 [blogger] DONE: published release-kaisen-resume-gating-restore-warnings-and-small-fixes (tag picopaas-release, published).
 - 2026-11-13 [blogger] START: devlog for the small Kaisen wave (93dfcfe) plus security review note.
