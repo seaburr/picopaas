@@ -2,7 +2,7 @@
 
 A tiny platform for hosting quick throwaway projects. You give it one Docker image, add env vars and secrets,
 and optionally get a MySQL database (50 MB; PostgreSQL when an admin attaches a server) and an S3-compatible blob storage bucket (100 MB), plus an optional persistent volume, with opt-in daily or weekly backups of all three. Each app gets its own HTTPS
-subdomain. It runs on DigitalOcean Kubernetes for about $75/mo.
+subdomain. It runs on DigitalOcean Kubernetes for about $60/mo.
 
 DigitalOcean is the reference cloud. The platform is built to run wherever you deploy it: `CLOUD_PROVIDER=generic` runs it on any Kubernetes with Garage for blob storage and in-cluster databases ([deploy/generic](deploy/generic/README.md)); AWS and GCP are planned ([portability plan](docs/PORTABILITY_PLAN.md)).
 
