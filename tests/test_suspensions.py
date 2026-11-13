@@ -801,3 +801,48 @@ def test_full_api_key_is_refused_in_a_suspended_project_but_reads_work(team, mak
     assert c.get(f"/apps/{one}", headers=h).status_code == 200
     assert c.post("/apps/spec", json={"spec": "apiVersion: picopaas/v1\nname: z\nimage: nginx:1\nport: 8080\n",
                                       "project": _db().get(models.Project, team.pid).slug}, headers=h).status_code == 403
+
+
+# ---- Resume is only offered when it can work (error_reason) ------------------------------------------
+
+def test_starter_suspended_mid_run_sets_error_reason_starter_gone(k):
+    _run(k.a, k.bid)
+    go(FakeModelClient([
+        lambda m: (k.admin.post(f"/admin/users/{_uid('a@example.com')}/suspend", json={"reason": "spam"}), reply(write("a.txt", "one")))[1],
+    ]))
+    run = _last_run(k.bid)
+    assert run.status == "stopped" and run.error_reason == "starter_gone"
+    detail = k.b.get(f"/kaisen/builds/{k.bid}").json()
+    assert detail["runs"][-1]["error_reason"] == "starter_gone"
+
+
+def test_project_suspended_mid_run_sets_error_reason_project_suspended(k):
+    _run(k.a, k.bid)
+    go(FakeModelClient([lambda m: (_suspend(k), reply(write("a.txt", "one")))[1]]))
+    assert _last_run(k.bid).error_reason == "project_suspended"
+
+
+def test_starter_removed_sets_error_reason_and_another_member_can_resume(k):
+    _run(k.b, k.bid)
+    go(FakeModelClient([
+        lambda m: (k.a.delete(f"/projects/{k.pid}/members/{_uid('b@example.com')}"), reply(write("a.txt", "one")))[1],
+    ]))
+    stopped = _last_run(k.bid)
+    assert stopped.error_reason == "starter_gone"
+    r = k.a.post(f"/kaisen/builds/{k.bid}/run")  # resume runs as the caller, who is active
+    assert r.status_code == 200, r.text
+    new = _last_run(k.bid)
+    assert new.id != stopped.id and new.kind == "resume" and new.started_by == _uid("a@example.com")
+    assert new.error_reason is None
+
+
+def test_resume_is_refused_when_the_stop_reason_still_applies(k):
+    _run(k.a, k.bid)
+    go(FakeModelClient([lambda m: (_suspend(k), reply(write("a.txt", "one")))[1]]))
+    s = _db()
+    b = s.get(KaisenBuild, k.bid)
+    run, msg = builder.start_build(s, b, _uid("a@example.com"))
+    assert run is None
+    assert msg == "This run can't be resumed: This project was suspended by an administrator."
+    k.admin.post(f"/admin/projects/{k.pid}/unsuspend")
+    assert k.a.post(f"/kaisen/builds/{k.bid}/run").status_code == 200  # the project is back: Resume works

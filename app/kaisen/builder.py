@@ -315,6 +315,11 @@ def start_build(s: Session, b: KaisenBuild, user_id: int | None = None) -> tuple
     if (limit := members.check(s, b.project_id, b.id, user_id)):
         return None, limit
     if last and last.status in ("stopped", "error") and last.messages:
+        if last.error_reason in ("starter_gone", "project_suspended") and last.error:
+            # Resume runs as the caller, so a different active member can continue a run whose starter is gone; the
+            # same refusal applies only while it would still hit the person resuming
+            if _gone_reason(s, b, user_id) is not None:
+                return None, f"This run can't be resumed: {last.error.rstrip('.')}."
         # resume: the history is append-only and valid, so continue it in a fresh run with a fresh run cap
         msgs = list(last.messages)
         if len(model_view(msgs)) > config.KAISEN_RESUME_FULL_MAX_MESSAGES:
@@ -431,34 +436,50 @@ def check_caps(s: Session, run: KaisenRun, project_id: int, rs: RuntimeSettings)
     return members.check(s, project_id, run.build_id, run.started_by, mine=False)
 
 
+_GONE_PROJECT = "This project was suspended by an administrator."
+_GONE_NO_ACCOUNT = "The person who started this run no longer has an account."
+_GONE_REJECTED = "The access request of the person who started this run was rejected."
+_GONE_PENDING = "The person who started this run is not approved yet."
+_GONE_SUSPENDED = "The person who started this run was suspended."
+_GONE_NOT_MEMBER = "The person who started this run is no longer a member of this project."
+# run.error_reason for a run stopped by one of the texts above: the UI must not offer Resume for these
+GONE_CODES = {_GONE_PROJECT: "project_suspended", _GONE_NO_ACCOUNT: "starter_gone", _GONE_REJECTED: "starter_gone",
+              _GONE_PENDING: "starter_gone", _GONE_SUSPENDED: "starter_gone", _GONE_NOT_MEMBER: "starter_gone"}
+
+
+def _gone_reason(s: Session, b: KaisenBuild, uid: int | None) -> str | None:
+    project = s.get(app_models.Project, b.project_id)
+    if project is not None and project.status == "suspended":
+        return _GONE_PROJECT
+    user = s.get(app_models.User, uid) if uid else None
+    if user is None or user.status == "deleted":
+        return _GONE_NO_ACCOUNT
+    if user.status == "rejected":
+        return _GONE_REJECTED
+    if user.status == "pending":
+        return _GONE_PENDING
+    if user.status != "active":
+        return _GONE_SUSPENDED
+    member = s.scalar(select(app_models.ProjectMember.id).where(
+        app_models.ProjectMember.project_id == b.project_id, app_models.ProjectMember.user_id == uid))
+    if member is None:
+        return _GONE_NOT_MEMBER
+    return None
+
+
 def stop_reason(s: Session, run: KaisenRun) -> str | None:
     """Why this run must not go on (suspension), or None. Checked before every model turn and before any deploy or
     push: the project must be active, and the person who started the run must be an active member of it."""
     b = s.get(KaisenBuild, run.build_id)
     if b is None:
         return None
-    project = s.get(app_models.Project, b.project_id)
-    if project is not None and project.status == "suspended":
-        return "This project was suspended by an administrator."
-    uid = run.started_by or b.created_by
-    user = s.get(app_models.User, uid) if uid else None
-    if user is None or user.status == "deleted":
-        return "The person who started this run no longer has an account."
-    if user.status == "rejected":
-        return "The access request of the person who started this run was rejected."
-    if user.status == "pending":
-        return "The person who started this run is not approved yet."
-    if user.status != "active":
-        return "The person who started this run was suspended."
-    member = s.scalar(select(app_models.ProjectMember.id).where(
-        app_models.ProjectMember.project_id == b.project_id, app_models.ProjectMember.user_id == uid))
-    if member is None:
-        return "The person who started this run is no longer a member of this project."
-    return None
+    return _gone_reason(s, b, run.started_by or b.created_by)
 
 
 def _stop(s: Session, run: KaisenRun, status: str, kind: str, text: str) -> None:
     run.error = text
+    if text in GONE_CODES:
+        run.error_reason = GONE_CODES[text]
     set_status(s, run, status)
     s.add(KaisenInbox(build_id=run.build_id, run_id=run.id, kind=kind, text=text))
 

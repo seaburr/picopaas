@@ -145,6 +145,23 @@ def listing(db: Session, build_id: int) -> list[KaisenAsset]:
                            .order_by(KaisenAsset.kind, KaisenAsset.path)))
 
 
+_UPLOAD_REF = re.compile(r"(?<![A-Za-z0-9_.-])/?uploads/([A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9])")
+
+
+def missing_from(db: Session, build_id: int, files: dict[str, str]) -> list[str]:
+    """Upload names (`uploads/<name>.<ext>`) the given files refer to that are no longer on the build. Sorted, unique."""
+    wanted = set()
+    for path, content in files.items():
+        if path.startswith("uploads/"):
+            continue
+        wanted.update(f"uploads/{m.group(1)}" for m in _UPLOAD_REF.finditer(content))
+    if not wanted:
+        return []
+    have = {p.lower() for (p,) in db.execute(select(KaisenAsset.path).where(KaisenAsset.build_id == build_id,
+                                                                            KaisenAsset.kind == "asset"))}
+    return sorted(n for n in wanted if n.lower() not in have)
+
+
 def claim(s: Session, build_id: int, run_id: int) -> int:
     """Bind every unbound upload of the build to the run being created. Returns how many were claimed."""
     rows = list(s.scalars(select(KaisenAsset).options(defer(KaisenAsset.data)).where(

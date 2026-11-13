@@ -210,6 +210,7 @@ def describe(db: Session, project_id: int, can_edit: bool) -> dict:
         "anthropic_key": _secret_view(rs.anthropic_api_key),
         "has_anthropic_key": bool(rs.anthropic_api_key),
         "model": rs.model, "effort": rs.effort,
+        "improve_model": config.KAISEN_DEFAULT_MODEL,
         "models": list(config.KAISEN_PRICES), "efforts": list(config.KAISEN_EFFORTS),
         "cap_run": rs.cap_run, "cap_day": rs.cap_day, "cap_build": rs.cap_build,
         "github_token": _secret_view(rs.github_token),

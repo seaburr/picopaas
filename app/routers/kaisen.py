@@ -778,7 +778,13 @@ def restore_snapshot(build_id: int, snapshot_id: int, db: Session = Depends(get_
     db.commit()
     audit.record(db, user, "kaisen.restore", "kaisen_build", b.id,
                  f"snapshot={snap.id} files={count} before={before_id}")
-    return {"restored": True, "files_count": count, "before_restore_snapshot_id": before_id}
+    missing: list[str] = []
+    if kuploads.project_enabled(db, b.project_id) and kuploads.platform_enabled(db):
+        try:
+            missing = kuploads.missing_from(db, b.id, snapshots.current_files(db, b.id))
+        except Exception:  # advisory only: never fail a restore that already went through
+            missing = []
+    return {"restored": True, "files_count": count, "before_restore_snapshot_id": before_id, "missing_uploads": missing}
 
 
 @router.get("/kaisen/builds/{build_id}/download")

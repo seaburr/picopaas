@@ -173,3 +173,51 @@ def test_push_with_only_secret_files_pushes_nothing(w):
     w.a.put(f"/kaisen/builds/{bid}/output", json={"mode": "github", "repo": "octo/site"})
     j = w.a.post(f"/kaisen/builds/{bid}/push").json()
     assert j["message"] == "Nothing to push yet." and w.f.github.pushes == []
+
+
+# ---- restore lists the uploads the restored files still refer to but the build no longer has -------------------
+
+def test_restore_lists_missing_uploads(w):
+    bid = _draft(w).json()["id"]
+    from app.kaisen import snapshots
+    from app.kaisen.models import KaisenBuild, KaisenFile, KaisenRun
+    from tests import imgfix
+    from tests.kaisen_helpers import db
+    from tests.test_kaisen_api import _add_files
+    assert up(w.a, bid, imgfix.png(), filename="logo.png").status_code == 201  # uploads/logo.png
+    s = db()
+    for r in s.query(KaisenRun).filter_by(build_id=bid):
+        r.status = "done"
+    s.get(KaisenBuild, bid).status = "done"
+    s.query(KaisenFile).filter_by(build_id=bid).delete()
+    s.commit()
+    _add_files(bid, {"index.html": '<img src="/uploads/logo.png"><img src="/uploads/gone-1.jpg">',
+                       "style.css": "a{background:url(uploads/gone-2.webp)}", "notes.txt": "see nouploads/x.png"})
+    snap, _ = snapshots.take(s, bid, "run_start")
+    s.commit()
+    r = w.a.post(f"/kaisen/builds/{bid}/snapshots/{snap.id}/restore")
+    assert r.status_code == 200, r.text
+    assert r.json()["missing_uploads"] == ["uploads/gone-1.jpg", "uploads/gone-2.webp"]
+
+
+def test_restore_missing_uploads_empty_when_uploads_are_off(w):
+    bid = _draft(w).json()["id"]
+    from app.kaisen import snapshots
+    from app.kaisen.models import KaisenBuild, KaisenFile
+    from tests.kaisen_helpers import db
+    from tests.test_kaisen_api import _add_files
+    s = db()
+    s.get(KaisenBuild, bid).status = "done"
+    s.query(KaisenFile).filter_by(build_id=bid).delete()
+    s.commit()
+    _add_files(bid, {"index.html": '<img src="/uploads/gone.png">'})
+    snap, _ = snapshots.take(s, bid, "run_start")
+    s.commit()
+    w.admin.put(f"/admin/projects/{w.pid}/features", json={"kaisen_uploads": False})
+    r = w.a.post(f"/kaisen/builds/{bid}/snapshots/{snap.id}/restore")
+    assert r.status_code == 200 and r.json()["missing_uploads"] == []
+
+
+def test_settings_expose_the_improve_model(w):
+    from app import config
+    assert w.a.get(f"/projects/{w.pid}/kaisen").json()["improve_model"] == config.KAISEN_DEFAULT_MODEL
