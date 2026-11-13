@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { login } from './helpers'
+import { login, spillers } from './helpers'
 
 // Apps table (F1) and rejected-user flow (F3) against the real dev-mode app. The add-on flags and ages are patched
 // into the real GET /apps response, because dev mode has no database server or bucket to attach.
@@ -56,6 +56,14 @@ test('apps table: columns, plain-text name, no Delete, add-on check marks, short
   await expect(await age(plain.name)).toHaveText('3d')
   await expect(await age(rich.name)).toHaveText('12m')
   await expect(await age(plain.name)).toHaveAttribute('title', /\d/)
+  // Below 1280px the stacked list replaces the table and nothing spills sideways.
+  await page.setViewportSize({ width: 800, height: 900 })
+  await expect(table).toBeHidden()
+  const list = page.locator('ul.xl\\:hidden > li', { hasText: rich.name })
+  await expect(list).toBeVisible()
+  await expect(list.getByText('Add-ons')).toBeVisible()
+  expect(await spillers(page)).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
 test('admin rejects a pending user, the row shows Approve, approve unlocks sign-in', async ({ page, browser, playwright }) => {

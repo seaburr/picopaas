@@ -174,7 +174,7 @@ const MARKS = [
 
     <template v-else-if="store.apps.length">
       <!-- Wide: one table. -->
-      <div class="overflow-x-auto max-md:hidden">
+      <div class="overflow-x-auto max-xl:hidden">
         <table class="tbl min-w-[1000px]">
           <caption class="sr-only">Apps</caption>
           <colgroup>
@@ -227,7 +227,7 @@ const MARKS = [
       </div>
 
       <!-- Phone: divider-separated rows. -->
-      <ul class="border-t border-pico-border md:hidden">
+      <ul class="border-t border-pico-border xl:hidden">
         <li v-for="app in store.apps" :key="app.id" class="border-b border-pico-border py-2.5">
           <div class="flex items-baseline justify-between gap-2">
             <span class="mono min-w-0 truncate text-sm font-medium text-white" :title="app.name">{{ app.name }}</span>
@@ -246,10 +246,10 @@ const MARKS = [
             <AppStatusNote compact :app="app" :restarting="restarting === app.id" @restart="askRestart(app)" />
           </div>
           <div class="row-acts mt-1 justify-start gap-x-5">
-            <RouterLink :to="`/apps/${app.id}`" class="row-act max-md:min-h-11!" :aria-label="`View health of ${app.name}`">Health</RouterLink>
-            <button type="button" class="row-act max-md:min-h-11!" :aria-label="`Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
-            <span v-if="app.status === 'suspended'" class="row-act max-md:min-h-11!" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended)`">Settings</span>
-            <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act max-md:min-h-11!" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
+            <RouterLink :to="`/apps/${app.id}`" class="row-act max-xl:min-h-[44px]!" :aria-label="`View health of ${app.name}`">Health</RouterLink>
+            <button type="button" class="row-act max-xl:min-h-[44px]!" :aria-label="`Restart ${app.name}`" :disabled="app.status === 'suspended' || restarting === app.id" @click="askRestart(app)">Restart</button>
+            <span v-if="app.status === 'suspended'" class="row-act max-xl:min-h-[44px]!" aria-disabled="true" role="link" :aria-label="`Settings for ${app.name} (suspended)`">Settings</span>
+            <RouterLink v-else :to="`/apps/${app.id}/edit`" class="row-act max-xl:min-h-[44px]!" :aria-label="`Settings for ${app.name}`">Settings</RouterLink>
           </div>
         </li>
       </ul>
