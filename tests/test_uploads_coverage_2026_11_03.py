@@ -371,6 +371,12 @@ def test_stop_reason_names_a_deleted_or_suspended_starter(w):  # noqa: F811
     owner.status = "suspended"
     w.s.commit()
     assert "suspended" in builder.stop_reason(w.s, run)
+    owner.status = "rejected"
+    w.s.commit()
+    assert "rejected" in builder.stop_reason(w.s, run) and "suspended" not in builder.stop_reason(w.s, run)
+    owner.status = "pending"
+    w.s.commit()
+    assert "not approved yet" in builder.stop_reason(w.s, run)
     owner.status = "deleted"
     w.s.commit()
     assert "no longer has an account" in builder.stop_reason(w.s, run)

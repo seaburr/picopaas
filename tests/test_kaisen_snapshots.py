@@ -162,7 +162,7 @@ def test_restore_refused_while_a_run_is_active(built):
         s.query(KaisenRun).filter_by(build_id=bid).order_by(KaisenRun.id.desc()).first().status = status
         s.commit()
         r = a.post(f"/kaisen/builds/{bid}/snapshots/{sid}/restore")
-        assert r.status_code == 409 and r.json()["detail"] == "A run is in progress; stop it before restoring."
+        assert r.status_code == 409 and r.json()["detail"] == "A run is in progress. Wait for it to finish, or answer its question, then restore."
     assert _files(bid) == V2 and len(_snaps(bid)) == 1 and _audit("kaisen.restore") == []
 
 

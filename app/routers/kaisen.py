@@ -644,7 +644,7 @@ def restore_snapshot(build_id: int, snapshot_id: int, db: Session = Depends(get_
     projects.lock_project(db, b.project_id)
     last = builder.latest_run(db, b.id)
     if last is not None and last.status in builder.ACTIVE:
-        raise HTTPException(status_code=409, detail="A run is in progress; stop it before restoring.")
+        raise HTTPException(status_code=409, detail="A run is in progress. Wait for it to finish, or answer its question, then restore.")
     try:
         count, before_id = snapshots.restore(db, b.id, snap)
     except snapshots.SnapshotError:

@@ -412,6 +412,10 @@ def stop_reason(s: Session, run: KaisenRun) -> str | None:
     user = s.get(app_models.User, uid) if uid else None
     if user is None or user.status == "deleted":
         return "The person who started this run no longer has an account."
+    if user.status == "rejected":
+        return "The access request of the person who started this run was rejected."
+    if user.status == "pending":
+        return "The person who started this run is not approved yet."
     if user.status != "active":
         return "The person who started this run was suspended."
     member = s.scalar(select(app_models.ProjectMember.id).where(
