@@ -820,7 +820,7 @@ If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from
 
 The build page is a chat. The thread holds your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run (**Run details**). The box at the bottom is pinned, so it stays in view while the thread scrolls; it sends the next change request, or your answer when Kaisen has asked a question. In it, **Enter** adds a line; **Ctrl+Enter** (Cmd+Enter on a Mac) or the **Send to Kaisen** button sends. Files you attached appear on the message they were sent with.
 
-On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Project files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
+On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Project files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy. Once the app is running, **Preview pane** in the same section shows it in a frame at **Phone** (390 px), **Tablet** (768 px) or **Desktop** (1280 px) size, scaled down to fit the panel, with **Reload** and **Open in new tab**. The frame is the app's own page, not the platform: never enter your platform password in it. An app that forbids framing shows a blank frame; use **Open in new tab**.
 
 ### Ask for changes
 
@@ -828,7 +828,8 @@ Type what to change (up to 4000 characters) in the box under the thread. Kaisen 
 
 - **Next ideas.** When a run finishes, up to three suggestion chips ("Next: ...") appear for the latest run. Pressing one copies it into the box so you can edit and send it; nothing runs until you send.
 - **Fix it.** When the preview app is in `error` or `retrying`, **Live app and preview** shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
-- **Starters.** On **New build**, the starter buttons fill the name and brief from the examples below. Press **Undo** to get your text back.
+- **Starters.** On **New build**, the Starters table lists example briefs with the storage each uses. **Use this brief** fills the name and brief and replaces what is there; nothing starts until you press **Start building**. Press **Undo** to get your text back.
+- **Brief check and Improve brief.** As you type, the page warns about things a brief often misses (for example uploads with no storage named, email, background jobs). The warnings never block a build and use no model. **Improve brief** sends the brief to the default model once and shows a suggested rewrite with its cost; your brief changes only if you press **Use this**. It needs the project's Anthropic key and is limited to 10 presses an hour per person.
 
 ### Write a good brief
 
