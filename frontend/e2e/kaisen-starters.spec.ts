@@ -174,7 +174,7 @@ test('Improve brief: every press is remembered and Start sends all improve_ids; 
   await page.goto(`/projects/${pid}/kaisen/new`)
   await page.locator('#kb-name').fill('Todo')
   await page.locator('#kb-brief').fill('A todo list')
-  await expect(page.getByText('Each "Improve brief" press is billed to this project\'s Anthropic key')).toContainText("counts toward the project's Kaisen daily cap")
+  await expect(page.getByText(/Each "Improve brief" press uses .* and is billed to this project's Anthropic key/)).toContainText("counts toward the project's Kaisen daily cap")
   await page.getByTestId('improve').click()
   await expect(page.getByTestId('suggestion-text')).toContainText('Better brief 1')
   await page.getByTestId('suggestion-keep').click() // not used, still paid for

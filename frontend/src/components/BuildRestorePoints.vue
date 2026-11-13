@@ -6,6 +6,7 @@ import IconButton from './IconButton.vue'
 import { ApiError } from '../api/client'
 import { getSnapshotDiff, listSnapshots, restoreSnapshot } from '../api/kaisen'
 import { parseTs, relTime } from '../composables/appUi'
+import { stampTitle } from '../utils/format'
 import { fmtSize } from '../composables/kaisen'
 import type { KaisenSnapshot } from '../types'
 
@@ -29,6 +30,7 @@ const target = ref<KaisenSnapshot | null>(null)
 const restoring = ref(false)
 const restoreError = ref('')
 const done = ref('')
+const missing = ref<string[]>([])
 
 const label = (s: KaisenSnapshot) => (s.kind === 'run_start' ? `Before run #${s.run_number ?? s.run_id ?? '?'}` : 'Before restore')
 const blocked = computed(() => props.waiting ? 'Answer the question or stop the run, then restore.' : props.active ? 'A run is active. Restore once it finishes.' : !props.canRun ? "You can't change this build." : '')
@@ -49,9 +51,11 @@ async function doRestore() {
   restoring.value = true
   restoreError.value = ''
   done.value = ''
+  missing.value = []
   try {
     const r = await restoreSnapshot(props.buildId, target.value.id)
     done.value = `Restored ${r.files_count} files from ${label(target.value).toLowerCase()}.`
+    missing.value = r.missing_uploads ?? []
     target.value = null
     viewing.value = null
     emit('restored')
@@ -82,7 +86,7 @@ async function doRestore() {
             <div class="min-w-0 text-sm">
               <span class="font-medium text-zinc-100">{{ label(s) }}</span>
               <!-- a restore point is never in the future: clamp clock skew -->
-              <span class="mono block text-zinc-400">{{ relTime(s.created_at, Math.max(now, parseTs(s.created_at).getTime() || now)) }} · {{ s.files_count }} files · {{ fmtSize(s.bytes) }}</span>
+              <span class="mono block text-zinc-400" :title="stampTitle(s.created_at)">{{ relTime(s.created_at, Math.max(now, parseTs(s.created_at).getTime() || now)) }} · {{ s.files_count }} files · {{ fmtSize(s.bytes) }}</span>
             </div>
             <div class="row-acts">
               <button type="button" class="row-act" :aria-expanded="viewing === s.id" :aria-label="`${viewing === s.id ? 'Hide' : 'View'} changes since ${label(s).toLowerCase()}`" @click="viewing = viewing === s.id ? null : s.id">{{ viewing === s.id ? 'Hide changes' : 'View changes' }}</button>
@@ -95,6 +99,7 @@ async function doRestore() {
       </ul>
       <p v-if="blocked && items && items.length" class="help">{{ blocked }}</p>
       <p v-if="restoreError" class="alert-error" role="alert">{{ restoreError }}</p>
+      <p v-if="missing.length" class="alert-warn" role="status">Restored. These uploads are referenced by the restored files but no longer exist: <template v-for="(n, i) in missing" :key="n"><span class="mono">{{ n }}</span><template v-if="i < missing.length - 1">, </template></template>. Upload them again or ask Kaisen to remove the references.</p>
       <div v-if="done" class="alert-success flex flex-wrap items-center justify-between gap-2" role="status">
         <span>{{ done }} The preview still runs the old version.</span>
         <button v-if="canDeploy" type="button" class="btn-secondary btn-sm" :disabled="deploying" @click="emit('deploy')">{{ deploying ? 'Deploying…' : 'Deploy now' }}</button>

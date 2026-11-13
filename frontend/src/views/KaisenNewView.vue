@@ -273,7 +273,7 @@ async function startWithout() {
           <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <button type="button" class="link text-sm" data-testid="improve" :disabled="improving || noKey || !brief.trim() || overLimit || improveFull" :title="noKey ? 'Add an Anthropic API key in Kaisen settings first.' : improveFull ? `Limit of ${MAX_IMPROVE_IDS} improvements per build reached.` : undefined" @click="improve">{{ improving ? 'Improving…' : 'Improve brief' }}</button>
             <span v-if="noKey" class="help mt-0">Needs an Anthropic API key. A project owner can add one in Kaisen settings.</span>
-            <span v-else class="help mt-0">Each "Improve brief" press is billed to this project's Anthropic key and counts toward the project's Kaisen daily cap. Its cost is added to this build's cost when you press "Start building". Your brief changes only if you press "Use this".</span>
+            <span v-else class="help mt-0">Each "Improve brief" press uses {{ store.settings?.improve_model || 'the default model' }} and is billed to this project's Anthropic key and counts toward the project's Kaisen daily cap. Its cost is added to this build's cost when you press "Start building". Your brief changes only if you press "Use this".</span>
             <span class="sr-only" role="status">{{ improving ? 'Improving the brief' : suggestion ? 'Suggested brief ready' : '' }}</span>
             <span v-if="filled?.kind === 'suggestion' && undo" class="help mt-0" data-testid="suggestion-note">Brief replaced by the suggestion. <button type="button" class="link" @click="undoStarter">Undo</button></span>
           </div>

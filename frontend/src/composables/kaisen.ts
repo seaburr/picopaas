@@ -68,3 +68,6 @@ export function costHint(runs: { cost_usd: number; finished_at: string | null }[
 }
 
 export const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`)
+
+// Run error reasons where resuming cannot help (the error text says why).
+export const RESUME_BLOCKED = ['starter_gone', 'project_suspended']

@@ -104,3 +104,24 @@ for (const name of ['running', 'deployed']) {
     await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0)
   })
 }
+
+test('cap-hit build offers exactly one Resume, in the conversation by the run', async ({ page }) => {
+  await login(page)
+  await stub(page, states.cap)
+  await page.goto(`/kaisen/${ID}`)
+  await expect(page.getByRole('heading', { name: 'UX stub' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resume' })).toHaveCount(1)
+  await expect(page.getByText('press Resume on the run below')).toBeVisible()
+  await expect(page.getByText('Use Resume in the conversation')).toBeVisible()
+})
+
+for (const reason of ['starter_gone', 'project_suspended']) {
+  test(`no Resume when the run failed with ${reason}`, async ({ page }) => {
+    await login(page)
+    await stub(page, build([run(1, { status: 'error', summary: null, error: 'Cannot continue.', error_reason: reason })], { status: 'error' }))
+    await page.goto(`/kaisen/${ID}`)
+    await expect(page.getByText('Cannot continue.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Resume' })).toHaveCount(0)
+    await expect(page.getByText('Use Resume in the conversation')).toHaveCount(0)
+  })
+}

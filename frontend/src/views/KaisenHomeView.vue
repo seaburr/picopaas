@@ -8,6 +8,7 @@ import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError } from '../api/client'
 import { relTime, useNow } from '../composables/appUi'
+import { stampTitle } from '../utils/format'
 import { fmtUsd, isActive } from '../composables/kaisen'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
@@ -180,7 +181,7 @@ function askDelete(b: KaisenBuild) {
             <StatusBadge kind="build" :status="b.status" />
           </div>
           <div v-if="b.app_hostname" class="mt-0.5 truncate"><HostLink compact :hostname="b.app_hostname" /></div>
-          <p class="meta mt-0.5"><span v-if="b.last_run_at">Last run <span class="mono">{{ relTime(b.last_run_at, now) }}</span> · </span><span class="mono">{{ b.file_count }}</span> {{ b.file_count === 1 ? 'file' : 'files' }} · <span class="mono">{{ fmtUsd(b.cost_usd) }}</span></p>
+          <p class="meta mt-0.5"><span v-if="b.last_run_at">Last run <span class="mono" :title="stampTitle(b.last_run_at)">{{ relTime(b.last_run_at, now) }}</span> · </span><span class="mono">{{ b.file_count }}</span> {{ b.file_count === 1 ? 'file' : 'files' }} · <span class="mono">{{ fmtUsd(b.cost_usd) }}</span></p>
           <p v-if="forkOf(b)" class="meta truncate" :title="`fork of ${forkOf(b)}`" data-testid="fork-of">fork of {{ forkOf(b) }}</p>
           <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
           <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
@@ -224,7 +225,7 @@ function askDelete(b: KaisenBuild) {
               </td>
               <td><StatusBadge kind="build" :status="b.status" /></td>
               <td class="mono text-right">{{ b.file_count }}</td>
-              <td class="mono">{{ b.last_run_at ? relTime(b.last_run_at, now) : '' }}</td>
+              <td class="mono" :title="b.last_run_at ? stampTitle(b.last_run_at) : undefined">{{ b.last_run_at ? relTime(b.last_run_at, now) : '' }}</td>
               <td class="mono text-right">{{ fmtUsd(b.cost_usd) }}</td>
               <td>
                 <div class="row-acts">

@@ -175,6 +175,13 @@ async function test(which: 'anthropic') {
             <p v-if="fieldErr.anthropic_key" class="field-error" role="alert">{{ fieldErr.anthropic_key }}</p>
             <label v-if="s.anthropic_key.set" class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="form.clear_anthropic_key" type="checkbox" class="check" /> Clear stored key</label>
           </template>
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button type="button" class="btn-secondary" :disabled="testing !== '' || dirty" @click="test('anthropic')">{{ testing === 'anthropic' ? 'Testing…' : 'Test Anthropic' }}</button>
+            <span v-if="dirty" class="help mt-0">Save first, then test.</span>
+          </div>
+          <div role="status">
+            <p v-if="testResult" :class="testResult.ok ? 'alert-success' : 'alert-error'">{{ testResult.message }}</p>
+          </div>
           <div class="grid gap-3 sm:grid-cols-2">
             <div>
               <label for="ks-model" class="label">Model</label>
@@ -249,13 +256,6 @@ async function test(which: 'anthropic') {
         <div v-if="saveError" role="alert" class="alert-error whitespace-pre-wrap col-span-full">{{ saveError }}</div>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between col-span-full">
           <button v-if="!readOnly" type="submit" class="btn-primary" :disabled="saving">{{ saving ? 'Saving…' : 'Save settings' }}</button>
-          <div class="flex flex-col gap-2 sm:flex-row">
-            <button type="button" class="btn-secondary" :disabled="testing !== '' || dirty" @click="test('anthropic')">{{ testing === 'anthropic' ? 'Testing…' : 'Test Anthropic' }}</button>
-          </div>
-        </div>
-        <p v-if="dirty && !readOnly" class="help col-span-full">Save first, then test.</p>
-        <div role="status" class="col-span-full">
-          <p v-if="testResult" :class="testResult.ok ? 'alert-success' : 'alert-error'">{{ testResult.message }}</p>
         </div>
       </form>
     </main>

@@ -4,6 +4,7 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import { ApiError } from '../api/client'
 import { listSnapshots } from '../api/kaisen'
 import { parseTs, relTime } from '../composables/appUi'
+import { stampTitle } from '../utils/format'
 import type { KaisenSnapshot } from '../types'
 
 // "Fork this build": name + source (current files or one restore point). Loads the restore points itself when opened.
@@ -80,7 +81,7 @@ function confirm() {
       <p v-if="loadError" class="field-error pl-6" role="alert">{{ loadError }} <button type="button" class="link" @click="load">Retry</button></p>
       <label v-for="s in items ?? []" :key="s.id" class="flex items-start gap-2 py-0.5 text-sm text-zinc-200" :data-snapshot="s.id">
         <input v-model="source" type="radio" :name="`${uid}-src`" :value="s.id" class="check mt-0.5" />
-        <span>Restore point: {{ label(s) }} <span class="mono text-zinc-400">{{ relTime(s.created_at, Math.max(now, parseTs(s.created_at).getTime() || now)) }}</span></span>
+        <span>Restore point: {{ label(s) }} <span class="mono text-zinc-400" :title="stampTitle(s.created_at)">{{ relTime(s.created_at, Math.max(now, parseTs(s.created_at).getTime() || now)) }}</span></span>
       </label>
       <p v-if="items && items.length === 0" class="help pl-6">No restore points yet.</p>
     </fieldset>

@@ -986,6 +986,7 @@ export interface KaisenSecretState {
 export interface KaisenSettings {
   anthropic_key: KaisenSecretState
   model: string
+  improve_model?: string
   effort: string
   models: string[]
   efforts: string[]
@@ -1070,6 +1071,7 @@ export interface KaisenRestoreResult {
   restored: boolean
   files_count: number
   before_restore_snapshot_id: number | null
+  missing_uploads?: string[]
 }
 
 // GET /apps/{id}/advice and GET /admin/advice (health advisor, phase 1). Sorted critical, warning, info.

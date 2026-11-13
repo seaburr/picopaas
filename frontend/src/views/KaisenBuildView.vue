@@ -21,7 +21,8 @@ import { ApiError, downloadFile } from '../api/client'
 import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, forkBuild, getBuild, getPushJob, listSnapshots, interruptRun, stopWaitingRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
-import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
+import { stampTitle } from '../utils/format'
+import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, RESUME_BLOCKED, outputPayload, outputToForm } from '../composables/kaisen'
 import { statusLook } from '../composables/statusTone'
 import { useAuthStore } from '../stores/auth'
 import { useKaisenStore } from '../stores/kaisen'
@@ -485,7 +486,7 @@ async function doDelete() {
                 <StatusBadge kind="build" :status="build.status" />
                 <PreviewBadge />
               </div>
-              <p class="meta mt-1">Started {{ relTime(build.created_at, now) }} by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
+              <p class="meta mt-1">Started <span :title="stampTitle(build.created_at)">{{ relTime(build.created_at, now) }}</span> by {{ you ? 'you' : build.created_by.email }} · <span class="mono">{{ fmtUsd(build.spend.build_usd) }}</span> spent on this build</p>
               <!-- Below 1024px the rail is closed by default: keep the live address one glance away. -->
               <p v-if="build.app_id && build.app_hostname" class="meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:hidden"><HostLink :hostname="build.app_hostname" /></p>
             </div>
@@ -540,7 +541,7 @@ async function doDelete() {
                         <h3 id="h-tests" class="text-xs font-medium text-zinc-200">Tests</h3>
                         <template v-if="build.tests">
                           <span :class="['st', `tone-${TEST_LOOK[build.tests.status]?.tone ?? 'off'}`]"><span :class="['dot', `dot-${TEST_LOOK[build.tests.status]?.tone ?? 'off'}`]" aria-hidden="true" />{{ TEST_LOOK[build.tests.status]?.label ?? build.tests.status }}</span>
-                          <span v-if="build.tests.ran_at" class="meta mono">{{ relTime(build.tests.ran_at, now) }}</span>
+                          <span v-if="build.tests.ran_at" class="meta mono" :title="stampTitle(build.tests.ran_at)">{{ relTime(build.tests.ran_at, now) }}</span>
                           <button v-if="testsFailing && !active && !appBroken" type="button" class="btn-primary btn-sm" :disabled="!!feedbackReason || busy === 'feedback'" @click="fixTests">{{ busy === 'feedback' ? 'Sending…' : 'Fix it' }}</button>
                         </template>
                         <span v-else class="meta">No test result yet. Add a "test" command in kaisen.json.</span>
@@ -565,7 +566,7 @@ async function doDelete() {
                     <span>Offline. The code and conversation are kept here.</span>
                     <button type="button" class="btn-secondary btn-sm" :disabled="busy === 'deploy' || !canRun" @click="deployAgain">{{ busy === 'deploy' ? 'Deploying…' : 'Deploy again' }}</button>
                   </div>
-                  <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. Use Resume in the conversation to continue.</p>
+                  <p v-else-if="build.status === 'error' || build.status === 'stopped'" class="text-sm text-zinc-300">Not deployed. The build {{ build.status === 'error' ? 'stopped on an error' : 'was stopped' }}. <template v-if="!RESUME_BLOCKED.includes(build.runs[0]?.error_reason ?? '')">Use Resume in the conversation to continue.</template></p>
                   <p v-else class="text-sm text-zinc-300">Not deployed yet. Kaisen deploys the app when the first build finishes.</p>
                   <BuildLastDeployment v-if="!(build.app_id && build.app_hostname)" :items="inbox" :now="now" />
                 </div>
@@ -594,7 +595,7 @@ async function doDelete() {
                       <p class="mt-1 flex flex-wrap gap-x-3">
                         <a v-if="pushJob.pr_url" :href="pushJob.pr_url" target="_blank" rel="noopener noreferrer" class="link">Open pull request<span class="sr-only"> (opens in new tab)</span></a>
                         <a v-if="pushJob.url" :href="pushJob.url" target="_blank" rel="noopener noreferrer" class="link">View on GitHub<span class="sr-only"> (opens in new tab)</span></a>
-                        <span v-if="pushJob.finished_at" class="meta">{{ relTime(pushJob.finished_at, now) }}</span>
+                        <span v-if="pushJob.finished_at" class="meta" :title="stampTitle(pushJob.finished_at)">{{ relTime(pushJob.finished_at, now) }}</span>
                       </p>
                     </div>
                     <div v-else-if="pushJob?.status === 'error'" class="alert-error" role="alert">

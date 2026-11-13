@@ -7,7 +7,8 @@ import BuildRunDetails from './BuildRunDetails.vue'
 import StatusBadge from './StatusBadge.vue'
 import { listUploads, uploadContentUrl } from '../api/kaisen'
 import { relTime } from '../composables/appUi'
-import { duration, fmtSize, fmtUsd, RUN_KIND_LABEL } from '../composables/kaisen'
+import { stampTitle } from '../utils/format'
+import { duration, fmtSize, fmtUsd, RESUME_BLOCKED, RUN_KIND_LABEL } from '../composables/kaisen'
 import type { KaisenBuildDetail, KaisenInboxItem, KaisenRun, KaisenUpload, KaisenUploadsSummary } from '../types'
 
 // The conversation is the page: a scrolling thread (yours on the right in a box, Kaisen's across the left as plain
@@ -189,7 +190,7 @@ watch(() => props.build.id, () => stickNow())
                   </li>
                 </ul>
               </div>
-              <p class="meta mt-0.5 text-[11px]">{{ relTime(it.iso, now) }}</p>
+              <p class="meta mt-0.5 text-[11px]" :title="stampTitle(it.iso)">{{ relTime(it.iso, now) }}</p>
             </div>
 
             <!-- an open notice (spend cap, refusal, error) -->
@@ -207,7 +208,7 @@ watch(() => props.build.id, () => stickNow())
               <template v-if="it.runIdx !== null">
                 <div v-if="build.runs[it.runIdx].error" class="mt-1 flex flex-wrap items-start justify-between gap-2">
                   <p class="min-w-0 whitespace-pre-wrap text-sm text-danger-light [overflow-wrap:anywhere]">{{ build.runs[it.runIdx].error }}</p>
-                  <button v-if="it.runIdx === 0 && canResume && (build.runs[it.runIdx].status === 'error' || build.runs[it.runIdx].status === 'stopped')" type="button" class="btn-secondary btn-sm" :disabled="resuming" @click="emit('resume')">{{ resuming ? 'Resuming…' : 'Resume' }}</button>
+                  <button v-if="it.runIdx === 0 && canResume && !RESUME_BLOCKED.includes(build.runs[0].error_reason ?? '') && (build.runs[it.runIdx].status === 'error' || build.runs[it.runIdx].status === 'stopped')" type="button" class="btn-secondary btn-sm" :disabled="resuming" @click="emit('resume')">{{ resuming ? 'Resuming…' : 'Resume' }}</button>
                 </div>
                 <div v-if="it.runIdx === 0 && build.runs[0].status === 'done' && canPick && build.runs[0].suggestions && build.runs[0].suggestions.length" class="mt-2 flex flex-wrap items-center gap-2">
                   <span class="meta">Next:</span>
@@ -216,7 +217,7 @@ watch(() => props.build.id, () => stickNow())
                 <p class="meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <StatusBadge kind="build" :status="build.runs[it.runIdx].status" />
                   <span class="sr-only">{{ RUN_KIND_LABEL[build.runs[it.runIdx].kind] }} run</span>
-                  <span aria-hidden="true">·</span><span class="mono">{{ relTime(build.runs[it.runIdx].started_at, now) }}</span>
+                  <span aria-hidden="true">·</span><span class="mono" :title="stampTitle(build.runs[it.runIdx].started_at)">{{ relTime(build.runs[it.runIdx].started_at, now) }}</span>
                   <template v-if="duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at)"><span aria-hidden="true">·</span><span class="mono">{{ duration(build.runs[it.runIdx].started_at, build.runs[it.runIdx].finished_at) }}</span></template>
                   <span aria-hidden="true">·</span><span class="mono">{{ fmtUsd(build.runs[it.runIdx].cost_usd) }}</span>
                 </p>

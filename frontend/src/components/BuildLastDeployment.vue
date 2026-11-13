@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { relTime } from '../composables/appUi'
+import { stampTitle } from '../utils/format'
 import type { KaisenInboxItem } from '../types'
 
 const props = defineProps<{ items: KaisenInboxItem[]; now: number; phase?: 'updating' | 'starting' | 'live' | 'other' }>()
@@ -28,7 +29,7 @@ const output = computed(() => (item.value?.text ?? '').replace(OK, '').replace(U
     <div class="flex flex-wrap items-center gap-2">
       <h3 id="h-last-deploy" class="text-xs font-medium text-zinc-200">Last deployment</h3>
       <span :class="['st', `tone-${look.tone}`]"><span :class="['dot', `dot-${look.tone}`]" aria-hidden="true" />{{ look.label }}</span>
-      <span class="meta mono">{{ relTime(item.created_at, now) }}<template v-if="http"> · HTTP {{ http }}</template></span>
+      <span class="meta mono" :title="stampTitle(item.created_at)">{{ relTime(item.created_at, now) }}<template v-if="http"> · HTTP {{ http }}</template></span>
     </div>
     <!-- Open by default only when something needs reading. Keyed so a new deployment gets its own default. -->
     <details :key="item.id" class="disc mt-1" :open="!look.quiet">
