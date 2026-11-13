@@ -74,6 +74,8 @@ background on each item if you want it.
 
 ## Resolved
 
+- **Improve brief cap and next research item (2026-11-12).** Chas: no separate Improve brief cap; its cost goes into the cost of building the app (counted as Kaisen spend under the existing caps). Next item to build: Fork a Kaisen build (research B1).
+
 - **Health advisor, rule-based, no LLM (2026-11-11).** Research: [research/health-advisor-2026-11-11.md](research/health-advisor-2026-11-11.md).
   Phase 1 is about 1 day, $0/mo, existing data only (OOM, near-limit memory/CPU, crash loops, quotas, unused add-ons,
   mutable image tags, health checks, backups). Please answer: (1) show owners "lower your limit" advice, or info-only for

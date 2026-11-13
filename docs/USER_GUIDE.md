@@ -833,7 +833,7 @@ Type what to change (up to 4000 characters) in the box under the thread. Kaisen 
 - **Next ideas.** When a run finishes, up to three suggestion chips ("Next: ...") appear for the latest run. Pressing one copies it into the box so you can edit and send it; nothing runs until you send.
 - **Fix it.** When the preview app is in `error` or `retrying`, **Live app and preview** shows **Fix it**. It sends a standard change request asking Kaisen to read the app's recent logs and fix the cause, so it costs a run like any message. If the generated tests fail, the Tests row has its own **Fix it**.
 - **Starters.** On **New build**, the Starters table lists example briefs with the storage each uses. **Use this brief** fills the name and brief and replaces what is there; nothing starts until you press **Start building**. Press **Undo** to get your text back.
-- **Brief check and Improve brief.** As you type, the page warns about things a brief often misses (for example uploads with no storage named, email, background jobs). The warnings never block a build and use no model. **Improve brief** sends the brief to the default model once and shows a suggested rewrite with its cost; your brief changes only if you press **Use this**. It needs the project's Anthropic key and is limited to 10 presses an hour per person.
+- **Brief check and Improve brief.** As you type, the page warns about things a brief often misses (for example uploads with no storage named, email, background jobs). The warnings never block a build and use no model. **Improve brief** sends the brief to the default model once and shows a suggested rewrite with its cost; your brief changes only if you press **Use this**. It needs the project's Anthropic key and is limited to 10 presses an hour per person. Each press costs a fraction of a cent and counts as Kaisen spend: it adds to the project's spend and daily cap and to your member daily limit, and is refused when either is already reached. When you then build from that brief, the presses are added to that build's cost.
 
 ### Write a good brief
 
@@ -954,6 +954,12 @@ On by default. When the builder finishes a run, a small model checks that the pa
 - **Cost.** It is a model call or a few per run, billed to your key, counted in every cap, and it uses the reviewer's model setting. Each registry lookup is free. If a cap is reached mid-pass, the pass is skipped and the run does not fail.
 - **Skipped.** An app with no dependency file and no versioned CDN tag has nothing to check, so there is no model call and no cost. The check is also skipped when the model is unavailable, the registries can't be reached, or it never got to look anything up. It only reports packages that really exist in those registries.
 - **Limits.** Up to 8 findings per run, 6 model calls and 40 distinct package names looked up per pass, and one fix round, never a second check.
+
+### Fork a build
+
+**Fork** makes a new build in the same project from an existing one: the same brief and the same files, either the current ones or, if you pick a restore point, that version. Use it to try a different direction (say, the same app on another database) while keeping the original as it is. A fork costs nothing until you run it: no model is called. It starts idle with no runs, so you can ask for a change, press **Build** (the model continues from the copied files) or **Deploy** as it is.
+
+What is **not** copied: runs and their history, spend, the live app (a fork gets its own app, address and empty database when you deploy it, and uses one of the project's app slots), restore points, secret values (the page lists the secret names so you can set them again), uploaded files, the GitHub output settings and token, and test results. A fork counts toward the project's build limit. You can't fork the current files while a run is in progress; fork from a restore point, or wait.
 
 ### Restore points
 
