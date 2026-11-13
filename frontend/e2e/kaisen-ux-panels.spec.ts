@@ -22,6 +22,7 @@ function build(): Record<string, unknown> {
   }
 }
 const diff = { from: 'a', to: 'b', added: ['new.py'], removed: ['old.py'], changed: [{ path: LONG, diff: '@@ -1,2 +1,2 @@\n-a\n+b' }, { path: 'big.py', diff: '' }], truncated: true }
+let restoreMissing: string[] = []
 async function stub(page: Page) {
   await page.route(new RegExp(`/kaisen/builds/${ID}(/|\\?|$)`), (route) => {
     const req = route.request()
@@ -29,6 +30,7 @@ async function stub(page: Page) {
     const path = new URL(req.url()).pathname.replace(`/kaisen/builds/${ID}`, '')
     if (req.method() === 'GET' && path === '') return route.fulfill({ json: build() })
     if (path === '/uploads') return route.fulfill({ json: uploadsOk })
+    if (req.method() === 'POST' && /^\/snapshots\/\d+\/restore$/.test(path)) return route.fulfill({ json: { files_count: 3, before_id: 9, missing_uploads: restoreMissing } })
     if (path === '/snapshots') return route.fulfill({ json: [snap(2, 'run_start', 2), snap(1, 'before_restore', 1)] })
     if (path.startsWith('/snapshots/')) return route.fulfill({ json: diff })
     if (path.startsWith('/files/')) return route.fulfill({ json: { content: 'print(1)\n', binary: false, truncated: false } })
@@ -96,3 +98,25 @@ test('secret delete asks first', async ({ page }) => {
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Delete secret' })).toHaveCount(0)
 })
+
+for (const missing of [['logo.png', 'data.csv'], []]) {
+  test(`restore ${missing.length ? 'warns about' : 'has no warning for'} missing uploads`, async ({ page }) => {
+    restoreMissing = missing
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await login(page)
+    await stub(page)
+    await page.goto(`/kaisen/${ID}`)
+    await expect(page.locator('#h-restore')).toBeAttached()
+    await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true }))
+    await page.getByRole('button', { name: 'Restore before run #2' }).click()
+    await page.getByRole('dialog', { name: 'Restore these files?' }).getByRole('button', { name: 'Restore', exact: true }).click()
+    await expect(page.getByText('Restored 3 files from before run #2.')).toBeVisible()
+    const warn = page.getByText('no longer exist')
+    if (missing.length) {
+      await expect(warn).toContainText('logo.png')
+      await expect(warn).toContainText('data.csv')
+    } else {
+      await expect(warn).toHaveCount(0)
+    }
+  })
+}

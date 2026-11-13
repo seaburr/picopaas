@@ -5,14 +5,14 @@ const SHOTS = process.env.KAISEN_SHOTS ?? ''
 async function shot(page: Page, name: string) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true })
 }
-async function open(page: Page, key = true) {
+async function open(page: Page, key = true, improveModel?: string) {
   await page.route(/\/projects\/\d+\/kaisen(\?|$)/, async (r) => {
     if (r.request().resourceType() !== 'fetch') return r.continue()
     // The page may be gone when the test has ended: a late fetch or body read then throws, and that is fine.
     const res = await r.fetch().catch(() => null)
     const j = res ? await res.json().catch(() => null) : null
     if (!res || !j) return
-    return r.fulfill({ response: res, json: { ...j, anthropic_key: { ...(j.anthropic_key ?? {}), set: key } } }).catch(() => undefined)
+    return r.fulfill({ response: res, json: { ...j, ...(improveModel ? { improve_model: improveModel } : {}), anthropic_key: { ...(j.anthropic_key ?? {}), set: key } } }).catch(() => undefined)
   })
   await login(page)
   const pid = ((await (await page.request.get('/projects')).json()) as { id: number; is_personal: boolean }[]).find((p) => p.is_personal)!.id
@@ -69,4 +69,9 @@ test('improve errors: 422 refused, 502, 504', async ({ page }) => {
     await expect(page.getByTestId('improve-error')).toContainText(detail)
     await shot(page, `improve-${status}`)
   }
+})
+
+test('improve hint names the improve model from settings', async ({ page }) => {
+  await open(page, true, 'claude-haiku-test-model')
+  await expect(page.getByText('Each "Improve brief" press uses claude-haiku-test-model')).toBeVisible()
 })
