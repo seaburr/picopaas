@@ -266,6 +266,9 @@ implemented; see `docs/deployment/runbooks.md`.
 - Client IP = rightmost `X-Forwarded-For` entry (Traefik discards client-supplied XFF and writes the peer it saw). Behind the DO LB in TCP mode without PROXY protocol the peer may be the LB, so IP buckets are effectively shared platform-wide; the per-IP limits are therefore a generous floodwall (not per-client) and the per-email lockout is the real control. Enable PROXY protocol on LB+Traefik to make the IP buckets precise, then tighten them.
 - Every response carries HSTS, nosniff, X-Frame-Options DENY and an enforcing CSP (`/docs`, `/redoc` exempt from CSP: they load a CDN).
 
+## Health advisor (phase 1, 2026-11-12)
+Rule-based, no LLM, $0. Design and later phases: `docs/research/health-advisor-2026-11-11.md`. Phase 1 is read-only and built from rows we already have: `app/advisor.py` (16 pure rules over an `AppFacts` struct, thresholds in `ADVISOR_*` config, caps from `app/resources.py`), `app/routers/advice.py` (`GET /apps/{id}/advice`, `GET /admin/advice`). No migration, no scheduler job, no cluster call, no new permission, no dismiss, no stored findings. Applying a suggestion goes through the existing owner endpoints (`PATCH /apps/{id}`, `POST /apps/{id}/rollback`) after a confirm in the UI. At a ceiling a finding carries no action and no upsell. Phase 2 (hourly rollup and stored findings) and phase 3 (new data sources) are not started.
+
 ## Production hardening (deferred 2026-10-20)
 This is a hobby/dev deployment. Before any real production use (tracked in docs/QUESTIONS.md):
 - **Scope the cloud credentials.** The API pod's `picopaas-env` secret currently holds an account-wide DigitalOcean API token and a full-access Spaces key, so a code-execution bug in the API reaches the whole DO account. Replace with a DO token scoped to only what bootstrap/the reconciler need and a Spaces key limited as far as DO allows; update the GitHub/k8s secrets and re-run bootstrap.

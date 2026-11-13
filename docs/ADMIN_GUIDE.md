@@ -377,6 +377,10 @@ with `Authorization: Bearer <token>` (store the token in a Secret; without it on
 everyone else gets 404). Counters are per API replica: scrape each pod or sum across them. Ingress-wise it is reachable on the
 platform host like any API path; restrict it at the edge if you don't want it public-routable.
 
+## Advice
+
+`GET /admin/advice` lists every open finding across all apps (critical first), with app, project and owner, the evidence, and a link to the app's health page. It adds one admin-only rule, `app.stuck_error` (an app in `error` for at least 7 days). It is read-only: there are no override or raise actions here. Owners see the same findings for their own app in the Advice card on the health page. Rules and thresholds are in `app/advisor.py` and the `ADVISOR_*` values in `app/config.py`; the design is `docs/research/health-advisor-2026-11-11.md`.
+
 ## Platform database backup
 
 The platform's own database is backed up too (not just tenant databases): `app/platform_backup.py`, run by the same leader tick, backup

@@ -686,6 +686,10 @@ Through the API, call `GET /apps/{id}/logs?tail=N` (default 200, at most 1000). 
 The **App health** page has a **Resource usage** panel of gauges. Each row shows a label, the value against its limit and a bar that is green normally, amber from 75% and red from 90% of the limit. CPU and memory (and the database, bucket and volume where the app has them) get a row each, and CPU and memory also show a trend: one point a minute, about the last 3 hours. The same data is at `GET /apps/{id}/metrics-history`. Use it
 to tell a CPU-bound app (the 200m limit throttles rather than kills) from one nearing the 384 MB memory limit.
 
+### Advice
+
+When the **App health** page has something to say, an **Advice** card appears above the charts. Each row has a severity (Critical, Warning, Info), a title, the evidence (what was measured, over which window, against which limit) and, where you can fix it yourself, one button. A button asks you to confirm the exact change first, for example **Raise memory to 320 MB**, and says if the app restarts; it uses the same limits and checks as the Settings page. When an app is at the platform cap, or a quota can only be raised by an administrator, the row has no button: it says what to reduce or delete. Advice reads data PicoPaaS already collects (the last 3 hours of CPU and memory, restart events, sizes, backups and image versions). Apps younger than 1 hour and suspended apps get none. The same list is at `GET /apps/{id}/advice`.
+
 ## 13. Troubleshooting
 
 | Symptom | Likely cause and fix |
@@ -809,7 +813,7 @@ Also in settings:
 2. Give it a name (up to 60 characters) and a brief (up to 8000 characters). The page shows **In project: X**; a project holds at most 20 builds. You can attach files to the brief (see "Attach files").
 3. Press **Start building**. Creating the build starts it. If the project has no Anthropic key or a cap is reached, the build is created but not started, and the page says why. If you attached files, the build is first saved as a draft, each file is uploaded, then the run starts (see "Attach files").
 4. Watch the build page: while a run is going, a progress strip shows the run type, elapsed time, what the run has cost so far and how much of the build cap is used. The status is `idle` (not started), `queued`, `running`, `waiting` (needs your answer), `done`, `stopped` or `error`. A stopped or failed build can be run again and resumes where it left off; after a long run, Resume starts a fresh model context from `PLAN.md` and the files instead of the whole conversation. Work happens in steps of up to 15 minutes and 40 model calls; a long build continues on its own in a fresh context (the plan, brief and files carry over) for up to 4 steps before it stops and waits for you; the transcript is redacted and trimmed 14 days after a run ends.
-5. If Kaisen has a question, it appears in the conversation with the status `waiting`. Answer it in the box at the bottom (up to 4000 characters) and press **Send answer**; the build continues. Files can't go with an answer: attach them to your next message.
+5. If Kaisen has a question, it appears in the conversation with the status `waiting`. Answer it in the box at the bottom (up to 4000 characters) and press **Send answer**; the build continues. Files can't go with an answer: attach them to your next message. If you would rather not answer, press **Stop run**: it ends a run that is waiting for an answer, nothing more is spent, and the build can then take a new change request, **Resume** or a restore.
 6. When it is `done`, open the app from **Live app and preview** in the panel beside the conversation.
 
 ### Interrupt and retry
@@ -820,7 +824,7 @@ If a run shows no progress for 10 minutes, Kaisen interrupts it and retries from
 
 The build page is a chat. The thread holds your brief, each change request and answer, and Kaisen's replies, questions and run summaries, with the run's details (steps, cost, diff) under each run (**Run details**). The box at the bottom is pinned, so it stays in view while the thread scrolls; it sends the next change request, or your answer when Kaisen has asked a question. In it, **Enter** adds a line; **Ctrl+Enter** (Cmd+Enter on a Mac) or the **Send to Kaisen** button sends. Files you attached appear on the message they were sent with.
 
-On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Project files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy. Once the app is running, **Preview pane** in the same section shows it in a frame at **Phone** (390 px), **Tablet** (768 px) or **Desktop** (1280 px) size, scaled down to fit the panel, with **Reload** and **Open in new tab**. The frame is the app's own page, not the platform: never enter your platform password in it. An app that forbids framing shows a blank frame; use **Open in new tab**.
+On a wide screen a panel beside the thread holds **Live app and preview**, **Output**, **Spend**, **Secrets**, **Project files**, **Restore points** and **Delete build**; on a phone it is one **Build details** section above the thread. The thread opens at the newest message. The result of the latest deployment is under **Live app and preview**, in **Last deployment**: a status and time, plus the full output in a scrollable window, which opens on its own when a deployment fails or is not healthy.
 
 ### Ask for changes
 
