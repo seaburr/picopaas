@@ -11,13 +11,14 @@ import BuildLastDeployment from '../components/BuildLastDeployment.vue'
 import BuildSecrets from '../components/BuildSecrets.vue'
 import BuildRestorePoints from '../components/BuildRestorePoints.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import ForkBuildDialog from '../components/ForkBuildDialog.vue'
 import DeleteAppDialog from '../components/DeleteAppDialog.vue'
 import HostLink from '../components/HostLink.vue'
 import IconButton from '../components/IconButton.vue'
 import PreviewBadge from '../components/PreviewBadge.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { ApiError, downloadFile } from '../api/client'
-import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, getBuild, getPushJob, interruptRun, stopWaitingRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
+import { getKaisenSettings, answerInbox, deployBuild, dismissInbox, forkBuild, getBuild, getPushJob, listSnapshots, interruptRun, stopWaitingRun, pushBuild, runBuild, saveBuildOutput, sendFeedback, testBuildOutput } from '../api/kaisen'
 import { deleteApp, getApp } from '../api/apps'
 import { relTime, useNow } from '../composables/appUi'
 import { blankOutputForm, costHint, fmtUsd, isActive, outputFieldErrors, outputPayload, outputToForm } from '../composables/kaisen'
@@ -91,6 +92,46 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', measure)
   aboveRo?.disconnect()
 })
+// ---- fork ----
+const forkOpen = ref(false)
+const forkSnap = ref<number | null>(null)
+const forking = ref(false)
+const forkError = ref('')
+function openFork(snapshotId: number | null = null) {
+  forkSnap.value = snapshotId
+  forkError.value = ''
+  forkOpen.value = true
+}
+async function doFork(p: { name?: string; snapshot_id?: number }) {
+  if (!build.value) return
+  forking.value = true
+  forkError.value = ''
+  const from = build.value.name
+  try {
+    const nb = await forkBuild(build.value.id, p)
+    store.upsert(nb)
+    forkOpen.value = false
+    toast.success(`Forked from ${from}.`)
+    router.push(`/kaisen/${nb.id}`)
+  } catch (e) {
+    forkError.value = e instanceof ApiError ? e.message : "Couldn't fork this build. Try again."
+  } finally {
+    forking.value = false
+  }
+}
+// The restore point a fork came from: show its time when the source still lists it.
+const forkSnapAt = ref<string | null>(null)
+const forkedFrom = computed(() => build.value?.forked_from ?? null)
+watch(forkedFrom, async (f) => {
+  forkSnapAt.value = null
+  if (!f || f.name === null || f.snapshot_id == null) return
+  try {
+    forkSnapAt.value = (await listSnapshots(f.id)).find((x) => x.id === f.snapshot_id)?.created_at ?? null
+  } catch {
+    forkSnapAt.value = null // the notice still reads fine without the time
+  }
+}, { immediate: true })
+const forkWhy = computed(() => (projSuspended.value ? SUSPENDED_TITLE : !canRun.value ? 'You can not fork this build.' : ''))
 const confirmDelete = ref(false)
 const alsoApp = ref(false)
 const deleting = ref(false)
@@ -449,9 +490,17 @@ async function doDelete() {
               <p v-if="build.app_id && build.app_hostname" class="meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:hidden"><HostLink :hostname="build.app_hostname" /></p>
             </div>
             <div class="flex shrink-0 items-center gap-2">
+              <IconButton label="Fork this build" text="Fork" :disabled="!!forkWhy" @click="openFork()" />
               <IconButton label="Kaisen settings" text="Settings" :to="projectKaisen(build.project_id, '/settings')" />
             </div>
           </header>
+          <p v-if="forkWhy" class="meta -mt-2 mb-3" data-testid="fork-why">Fork is off: {{ forkWhy }}</p>
+          <p v-if="forkedFrom" class="meta mb-3 max-w-3xl" data-testid="fork-notice">
+            <template v-if="forkedFrom.name === null">Forked from a deleted build.</template>
+            <template v-else>Forked from <RouterLink :to="`/kaisen/${forkedFrom.id}`" class="link">{{ forkedFrom.name }}</RouterLink> ({{ forkedFrom.snapshot_id == null ? 'current files' : forkSnapAt ? `restore point of ${relTime(forkSnapAt, now)}` : 'a restore point' }}).</template>
+            <template v-if="build.runs.length === 0"> Send a change request to continue; nothing has run yet.</template>
+            <template v-if="forkedFrom.secret_names.length"> Build secrets are not copied. The source had: <template v-for="(n, i) in forkedFrom.secret_names" :key="n"><span class="mono">{{ n }}</span>{{ i < forkedFrom.secret_names.length - 1 ? ', ' : '' }}</template>. Add them under Secrets if this build needs them.</template>
+          </p>
 
           <p v-if="auth.user?.features?.kaisen === false" class="alert-warn mb-3">Kaisen is turned off on this instance.</p>
           <p v-if="actionError" role="alert" class="alert-error mb-3 whitespace-pre-wrap">{{ actionError }}</p>
@@ -462,7 +511,7 @@ async function doDelete() {
             <h2 id="h-convo" class="sr-only">Conversation</h2>
             <BuildConversation
               v-model="feedback" :build="build" :now="now" :you="you" :summary="build.uploads" :can-pick="!feedbackReason" :can-resume="canRun && !active" :resuming="busy === 'resume'"
-              :draft="build.runs.length === 0 && !active && build.status === 'idle'" :starting="busy === 'resume'" :locked="composerLocked" :locked-attach="attachLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
+              :draft="build.runs.length === 0 && !active && build.status === 'idle' && !forkedFrom" :starting="busy === 'resume'" :locked="composerLocked" :locked-attach="attachLocked" :can-attach="canRun && !active" :busy="busy === 'feedback'" :hint="hint"
               :can-run="canRun" :active-run="activeRun" :first-run="firstRun" :interrupting="busy === 'interrupt'" :interrupt-error="interruptErr" :answer-busy="answerBusy" :can-stop="canRun && !!waitingRun" :stopping="busy === 'stop'"
               @submit="(p) => sendChange(p.text)" @answer="answer" @dismiss="dismiss" @interrupt="interrupt" @stop="confirmStop = true" @resume="resume" @start="resume" @open-files="openFiles" @changed="load(false)"
             />
@@ -585,7 +634,7 @@ async function doDelete() {
 
               <BuildSecrets :build-id="build.id" :secrets="build.secrets ?? []" :can-edit="canRun" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" @changed="(sec) => { if (build) build = { ...build, secrets: sec } }" @deploy="deployAgain" />
 
-              <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :waiting="!!waitingRun" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" />
+              <BuildRestorePoints :build-id="build.id" :now="now" :active="active" :waiting="!!waitingRun" :can-run="canRun" :kept="build.snapshots_kept" :can-deploy="canRun && !!build.app_id && !active" :deploying="busy === 'deploy'" :refresh-key="build.runs.length + ':' + active" @restored="load(false)" @deploy="deployAgain" @fork="openFork" />
 
               <BuildFiles :build-id="build.id" :files="build.files" />
 
@@ -614,6 +663,7 @@ async function doDelete() {
       @confirm="stopRun"
       @cancel="confirmStop = false"
     />
+    <ForkBuildDialog v-if="build" :open="forkOpen" :build-id="build.id" :build-name="build.name" :active="active" :now="now" :preselect="forkSnap" :busy="forking" :error="forkError" @confirm="doFork" @cancel="forkOpen = false" />
     <DeleteAppDialog v-if="confirmOffline" :app="app" :busy="goingOffline" @confirm="takeOffline" @cancel="confirmOffline = false" />
     <ConfirmDialog
       :open="confirmDelete"

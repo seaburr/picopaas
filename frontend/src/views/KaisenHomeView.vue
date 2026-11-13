@@ -38,6 +38,9 @@ useProjectTitle('Kaisen builds', projName)
 const blocked = computed(() => projSuspended.value || noKey.value || atLimit.value)
 const blockedWhy = computed(() => (projSuspended.value ? 'Project is suspended' : noKey.value ? (canEdit.value ? 'Add an Anthropic key in Kaisen settings first' : 'Ask an owner to add an Anthropic API key') : 'App limit reached. Ask an administrator to raise it.'))
 
+// Name of the build a fork came from, when that build is in this list.
+const forkOf = (b: KaisenBuild) => (b.forked_from_id ? store.builds.find((x) => x.id === b.forked_from_id)?.name ?? '' : '')
+
 let timer: ReturnType<typeof setInterval> | null = null
 function syncPolling() {
   const busy = store.builds.some((b) => isActive(b.status))
@@ -178,6 +181,7 @@ function askDelete(b: KaisenBuild) {
           </div>
           <div v-if="b.app_hostname" class="mt-0.5 truncate"><HostLink compact :hostname="b.app_hostname" /></div>
           <p class="meta mt-0.5"><span v-if="b.last_run_at">Last run <span class="mono">{{ relTime(b.last_run_at, now) }}</span> · </span><span class="mono">{{ b.file_count }}</span> {{ b.file_count === 1 ? 'file' : 'files' }} · <span class="mono">{{ fmtUsd(b.cost_usd) }}</span></p>
+          <p v-if="forkOf(b)" class="meta truncate" :title="`fork of ${forkOf(b)}`" data-testid="fork-of">fork of {{ forkOf(b) }}</p>
           <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
           <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
           <div class="row-acts !justify-start gap-x-4">
@@ -214,6 +218,7 @@ function askDelete(b: KaisenBuild) {
               <td class="min-w-0 !whitespace-normal">
                 <RouterLink :to="`/kaisen/${b.id}`" class="block truncate font-medium text-white hover:underline" :title="b.name">{{ b.name }}</RouterLink>
                 <div v-if="b.app_hostname" class="truncate"><HostLink compact :hostname="b.app_hostname" /></div>
+                <p v-if="forkOf(b)" class="meta truncate" :title="`fork of ${forkOf(b)}`" data-testid="fork-of">fork of {{ forkOf(b) }}</p>
                 <p v-if="b.status === 'waiting' || b.open_questions > 0" class="meta">Kaisen is waiting for your answer. <RouterLink :to="`/kaisen/${b.id}`" class="link">Open the build</RouterLink></p>
                 <p v-if="(b.status === 'error' || b.status === 'stopped') && b.last_error" class="truncate text-xs text-danger-light" :title="b.last_error">{{ b.last_error }}</p>
               </td>

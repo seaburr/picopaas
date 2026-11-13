@@ -731,7 +731,11 @@ export interface KaisenBuild {
   open_questions: number
   created_by: { id: number; email: string }
   created_at: string
+  forked_from_id?: number | null // list items: the build this one was forked from
 }
+
+// Build detail of a fork: name null = the source build was deleted.
+export interface KaisenForkedFrom { id: number; name: string | null; snapshot_id: number | null; secret_names: string[] }
 
 export interface KaisenRun {
   id: number
@@ -809,6 +813,7 @@ export interface KaisenBuildDetail extends KaisenBuild {
   tests?: KaisenTests | null
   uploads?: KaisenUploadsSummary
   push?: KaisenPushJob | null // newest push job
+  forked_from?: KaisenForkedFrom | null
 }
 
 // docs/API.md: POST /kaisen/builds/{id}/push returns 202 with this job; poll GET .../push/{push_id}.

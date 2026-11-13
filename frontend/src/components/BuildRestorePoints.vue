@@ -20,7 +20,7 @@ const props = defineProps<{
   deploying?: boolean
   refreshKey?: string | number
 }>()
-const emit = defineEmits<{ restored: []; deploy: [] }>()
+const emit = defineEmits<{ restored: []; deploy: []; fork: [snapshotId: number] }>()
 
 const items = ref<KaisenSnapshot[] | null>(null)
 const error = ref('')
@@ -87,6 +87,7 @@ async function doRestore() {
             <div class="row-acts">
               <button type="button" class="row-act" :aria-expanded="viewing === s.id" :aria-label="`${viewing === s.id ? 'Hide' : 'View'} changes since ${label(s).toLowerCase()}`" @click="viewing = viewing === s.id ? null : s.id">{{ viewing === s.id ? 'Hide changes' : 'View changes' }}</button>
               <button type="button" class="row-act" :disabled="!!blocked" :title="blocked || undefined" :aria-label="`Restore ${label(s).toLowerCase()}`" @click="target = s">Restore</button>
+              <button type="button" class="row-act" :disabled="!canRun" :title="canRun ? undefined : 'You can\'t fork this build.'" :aria-label="`Fork from ${label(s).toLowerCase()}`" @click="emit('fork', s.id)">Fork from here</button>
             </div>
           </div>
           <BuildDiffPanel v-if="viewing === s.id" :load="() => getSnapshotDiff(buildId, s.id)" title="Changes from this restore point to the current files" />

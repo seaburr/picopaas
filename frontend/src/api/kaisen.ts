@@ -8,8 +8,11 @@ const post = <T>(url: string, body?: unknown) =>
 export const listBuilds = (projectId?: number | null) =>
   apiFetch<KaisenBuild[]>(projectId ? `/kaisen/builds?project_id=${projectId}` : '/kaisen/builds')
 export const getBuild = (id: number) => apiFetch<KaisenBuildDetail>(`/kaisen/builds/${id}`)
-export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload; start?: boolean }) =>
+export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload; start?: boolean; improve_ids?: number[] }) =>
   post<KaisenBuildDetail>('/kaisen/builds', payload)
+// Copies the brief and files (current, or a restore point's); 201 with the new build's detail.
+export const forkBuild = (id: number, payload: { name?: string; snapshot_id?: number }) =>
+  post<KaisenBuildDetail>(`/kaisen/builds/${id}/fork`, payload)
 export const deleteBuild = (id: number, deleteApp: boolean) =>
   apiFetch<void>(`/kaisen/builds/${id}?delete_app=${deleteApp ? 'true' : 'false'}`, { method: 'DELETE' })
 export const runBuild = (id: number) => post<KaisenBuildDetail>(`/kaisen/builds/${id}/run`)
@@ -32,7 +35,7 @@ export const testBuildOutput = (id: number) => post<KaisenTestResult>(`/kaisen/b
 export const downloadUrl = (id: number) => `/kaisen/builds/${id}/download`
 
 export const improveBrief = (payload: { project_id: number | null; brief: string }) =>
-  post<{ brief: string; model: string; usd: number }>('/kaisen/improve-brief', payload)
+  post<{ brief: string; model: string; usd: number; improve_id: number }>('/kaisen/improve-brief', payload)
 
 export const getKaisenSettings = (projectId: number) => apiFetch<KaisenSettings>(`/projects/${projectId}/kaisen`)
 export const saveKaisenSettings = (projectId: number, payload: KaisenSettingsPayload) =>
