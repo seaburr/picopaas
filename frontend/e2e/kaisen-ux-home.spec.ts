@@ -19,7 +19,8 @@ async function setup(page: Page, builds: unknown[], keySet: boolean, canEdit = t
   await page.route('**/kaisen/spend?*', (r) => r.fulfill({ json: { last30_usd: 1.5, today_usd: 0.2, cap_day: 5 } }))
   await page.route(/\/projects\/\d+\/kaisen(\?|$)/, async (r) => {
     if (r.request().resourceType() !== 'fetch') return r.continue()
-    const res = await r.fetch()
+    const res = await r.fetch().catch(() => null) // the page may be gone when the test has ended
+    if (!res) return
     const j = await res.json()
     return r.fulfill({ response: res, json: { ...j, can_edit: canEdit, anthropic_key: { ...(j.anthropic_key ?? {}), set: keySet } } })
   })

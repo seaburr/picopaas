@@ -22,7 +22,11 @@ test('theme: dark by default, light applies immediately and persists across relo
   await expect(group.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
 
   await test.step('choosing Light applies at once', async () => {
-    await group.getByRole('radio', { name: 'Light' }).click()
+    // Wait for the save: a reload that races it gets the old server value back.
+    await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith('/auth/me') && r.request().method() === 'PATCH'),
+      group.getByRole('radio', { name: 'Light' }).click(),
+    ])
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     expect(await bg(page)).toBe('rgb(241, 238, 230)')
   })

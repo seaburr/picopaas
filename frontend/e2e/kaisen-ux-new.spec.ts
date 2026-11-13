@@ -8,7 +8,8 @@ async function shot(page: Page, name: string) {
 async function open(page: Page, key = true) {
   await page.route(/\/projects\/\d+\/kaisen(\?|$)/, async (r) => {
     if (r.request().resourceType() !== 'fetch') return r.continue()
-    const res = await r.fetch()
+    const res = await r.fetch().catch(() => null) // the page may be gone when the test has ended
+    if (!res) return
     const j = await res.json()
     return r.fulfill({ response: res, json: { ...j, anthropic_key: { ...(j.anthropic_key ?? {}), set: key } } })
   })

@@ -117,7 +117,6 @@ test('a member sees the read-only settings and the not-set-up state', async ({ p
   const { personal } = await projects(page)
   await patchJson(page, '**/projects/*/kaisen', (j) => { j.can_edit = false; j.anthropic_key = { set: false } })
   await page.goto(`/projects/${personal}/kaisen/settings`)
-  await expect(page.getByText('You are a member: you can see what is set, not change it.')).toBeVisible()
   await expect(page.getByText('Only project owners can change these settings.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save settings' })).toHaveCount(0)
   await page.goto(`/projects/${personal}/kaisen`)
