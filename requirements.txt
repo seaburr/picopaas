@@ -7,7 +7,7 @@ psycopg[binary]==3.3.6
 bcrypt==5.0.0
 PyJWT==2.15.1
 email-validator==2.3.0
-dnspython==2.9.1
+dnspython==2.9.2
 cryptography==50.0.2
 pydantic-settings==2.16.2
 
