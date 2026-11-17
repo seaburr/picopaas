@@ -153,6 +153,16 @@ MYSQL_SSL_CA = os.environ.get("MYSQL_SSL_CA", "")
 DEFAULT_APP_LIMIT = 1
 API_KEY_PREFIX = "pp_sk_"
 
+# Optional break-glass key (app/routers/root.py). When set, `POST /root/admin-reset` with `Authorization: Bearer <key>`
+# gives a platform admin a new temporary password without a login or cluster access. Unset (the default): the route is
+# 404. A short key is refused at startup, because this key alone is enough to take over an administrator account.
+ROOT_MANAGEMENT_KEY_MIN = 32
+ROOT_MANAGEMENT_KEY = os.environ.get("ROOT_MANAGEMENT_KEY", "").strip()
+if ROOT_MANAGEMENT_KEY and len(ROOT_MANAGEMENT_KEY) < ROOT_MANAGEMENT_KEY_MIN:
+    raise RuntimeError(f"ROOT_MANAGEMENT_KEY must be at least {ROOT_MANAGEMENT_KEY_MIN} characters; unset it to turn the root route off")
+ROOT_KEY_MAX_FAILS = 20            # wrong keys per client IP per window (shared LB address today), then 429 for wrong keys only
+ROOT_KEY_WINDOW_SECONDS = 15 * 60
+
 # Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
 APP_DOMAIN = os.environ.get("APP_DOMAIN", "picopaas.xyz")
 

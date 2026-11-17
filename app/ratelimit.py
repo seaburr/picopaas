@@ -200,6 +200,25 @@ def check_bundle_fetch(db: Session, request: Request) -> None:
     _safe(db, "check_bundle_fetch", run)
 
 
+def record_root_key_failure(db: Session, request: Request) -> None:
+    """Count a wrong ROOT_MANAGEMENT_KEY against the client IP; 429 past the cap. Only wrong keys are counted and only
+    wrong keys are refused: the right key always works, so a flood of bad attempts cannot lock the operator out of the
+    recovery route. The key's length is what stops guessing; this bounds the audit rows a flood can write."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        w, n = config.ROOT_KEY_WINDOW_SECONDS, config.ROOT_KEY_MAX_FAILS
+        key = _key("root-key-ip", client_ip(request))
+        wait = _remaining(db, key, n, w)
+        if wait:
+            raise _deny(wait)
+        _prune(db)
+        _bump(db, key, w)
+
+    _safe(db, "record_root_key_failure", run)
+
+
 def check_improve_brief(db: Session, request: Request, user_id: int) -> None:
     """Count a Kaisen "Improve brief" press (a billed model call) against the user; 429 past the cap."""
     if not config.RATE_LIMIT_ENABLED:

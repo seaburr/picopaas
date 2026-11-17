@@ -17,6 +17,7 @@ from app.dependencies import _user_from_request
 from app.db import Base, engine, get_db
 from app import banner as banner_module
 from app.static_cache import StaticCacheMiddleware
+from app.routers import root as root_router
 from app.routers import advice, admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
@@ -67,6 +68,7 @@ app.include_router(banner_module.admin_router)
 app.include_router(admin_diag.router)
 app.include_router(backups.admin_router)
 app.include_router(admin_docs.router)
+app.include_router(root_router.router)
 
 
 @app.get("/healthz")
