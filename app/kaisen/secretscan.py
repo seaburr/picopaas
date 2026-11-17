@@ -57,7 +57,78 @@ def find(text: str, *, code: bool = False, _depth: int = 0) -> tuple[str, int] |
                 continue
             if (hit := find(dec, _depth=1)):
                 return hit[0], text.count("\n", 0, m.start()) + 1
+        return _encoded_token(text, 0)  # short or unaligned base64 the 60-character pass above does not decode
     return None
+
+
+_B64_ANY = re.compile(r"[A-Za-z0-9+/_-]{16,}")
+
+
+# Decoded base64 has no word boundaries to rely on: the token may follow any byte.
+_PATTERNS_DECODED = [(kind, re.compile(rx.pattern.removeprefix(r"\b"))) for kind, rx in _PATTERNS]
+
+
+def _token_kind(line: str, decoded: bool = False) -> str | None:
+    for kind, rx in (_PATTERNS_DECODED if decoded else _PATTERNS):
+        m = rx.search(line)
+        if m and "EXAMPLE" not in m.group(0):
+            return kind
+    return None
+
+
+_INVISIBLE = re.compile("[\u00ad\u200b-\u200f\u2060\ufeff]")
+_WS = re.compile(r"\s+")
+
+
+def _encoded_token(text: str, depth: int) -> tuple[str, int] | None:
+    """`_encoded_token_runs`, then once more with whitespace removed: `base64` output is wrapped at 76 columns and a
+    person may paste it with line breaks or spaces inside."""
+    if (hit := _encoded_token_runs(text, depth)):
+        return hit
+    squashed = _WS.sub("", text)
+    if depth == 0 and squashed != text:
+        hit = _encoded_token_runs(squashed, depth)
+        return (hit[0], 1) if hit else None
+    return None
+
+
+def _encoded_token_runs(text: str, depth: int) -> tuple[str, int] | None:
+    """A provider token inside base64 (standard or URL-safe alphabet, padded or not, up to two layers). Each run is
+    decoded at all four alignments, so a token is found wherever it sits in the encoded text and whatever is glued in
+    front of the run."""
+    for m in _B64_ANY.finditer(text):
+        run = m.group(0).replace("-", "+").replace("_", "/")
+        for off in range(4):
+            part = run[off:]
+            if len(part) % 4 == 1:
+                part = part[:-1]
+            try:
+                dec = base64.b64decode(part + "=" * (-len(part) % 4)).decode("latin-1")
+            except ValueError:
+                continue
+            kind = _token_kind(dec, decoded=True)
+            if kind is None and depth < 1 and (hit := _encoded_token(dec, depth + 1)):
+                kind = hit[0]
+            if kind:
+                return (kind if kind.endswith("(base64-encoded)") else kind + " (base64-encoded)",
+                        text.count("\n", 0, m.start()) + 1)
+    return None
+
+
+def find_token(text: str) -> tuple[str, int] | None:
+    """(kind, 1-based line) of the first provider token or private key, plain or base64-encoded, else None. For text a
+    person types into the Kaisen conversation (brief, change request, answer, names): prefixed tokens only, none of the
+    assignment heuristics of `find`, so ordinary prose about passwords and settings is not refused."""
+    text = _INVISIBLE.sub("", text)  # a zero-width character inside a key must not hide it
+    for n, line in enumerate(text.split("\n"), 1):
+        if (kind := _token_kind(line)):
+            return kind, n
+    return _encoded_token(text, 0)
+
+
+def chat_refusal(kind: str, line: int) -> str:
+    return (f"This text looks like it contains a credential (line {line}: {kind}), so it was not sent. Remove it and try "
+            "again. A value the app needs goes under Build secrets, never in the conversation.")
 
 
 def refusal_for_upload(kind: str, line: int) -> str:

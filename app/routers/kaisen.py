@@ -230,6 +230,16 @@ class TextIn(BaseModel):
         return v
 
 
+def _refuse_credential(db: Session, user: models.User, field: str, text: Optional[str], build_id: Optional[int] = None) -> None:
+    """422 when text a person typed for the Kaisen conversation holds a provider token (Anthropic, OpenAI-style,
+    PicoPaaS, ...) or private key, plain or base64-encoded. Checked before anything is stored or queued, so the value
+    never reaches the database, the model or the transcript. The audit row names the field and kind, never the value."""
+    if text and (hit := secretscan.find_token(text)):
+        audit.record(db, user, "kaisen.credential_blocked", "kaisen_build" if build_id else None, build_id,
+                     f"field={field} kind={hit[0]}")
+        raise HTTPException(status_code=422, detail=secretscan.chat_refusal(*hit))
+
+
 def _require_build_slot(db: Session, project_id: int) -> None:
     """Lock the project and refuse (403) when it already holds the most builds allowed. Shared by create and fork."""
     projects.lock_project(db, project_id)
@@ -402,6 +412,8 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
         projects.forbid_if_suspended(db, project)
     else:
         project, _ = projects.get_project_for_member(db, payload.project_id, user)
+    _refuse_credential(db, user, "name", payload.name)
+    _refuse_credential(db, user, "brief", payload.brief)
     _require_build_slot(db, project.id)
     b = KaisenBuild(project_id=project.id, created_by=user.id, name=payload.name, brief=payload.brief,
                     slug=builder.unique_slug(db, payload.name), status="idle",
@@ -595,6 +607,7 @@ def fork_build(build_id: int, payload: ForkIn, request: Request, db: Session = D
     Copies no runs, inbox, spend, app, restore points, secret values, uploads, GitHub output settings or test results.
     No model call, no spend; the fork gets its own app only when it is deployed."""
     src = get_build(db, build_id, user)
+    _refuse_credential(db, user, "name", payload.name, src.id)
     snap_files = None
     if payload.snapshot_id is not None:
         snap_files = _load_snapshot(_get_snapshot(db, src, payload.snapshot_id))
@@ -628,6 +641,7 @@ def fork_build(build_id: int, payload: ForkIn, request: Request, db: Session = D
 def feedback(build_id: int, payload: TextIn, request: Request, db: Session = Depends(get_db),
              user: models.User = Depends(get_active_user)):
     b = get_build(db, build_id, user)
+    _refuse_credential(db, user, "feedback", payload.text, b.id)
     if len(payload.text) > config.KAISEN_FEEDBACK_MAX:
         raise HTTPException(status_code=422, detail=f"Keep the change request under {config.KAISEN_FEEDBACK_MAX} characters.")
     _require_key(db, b)
@@ -650,6 +664,7 @@ def answer(build_id: int, item_id: int, payload: TextIn, request: Request, db: S
     item = db.get(KaisenInbox, item_id)
     if item is None or item.build_id != b.id:
         raise HTTPException(status_code=404, detail="We can't find that question.")
+    _refuse_credential(db, user, "answer", payload.text, b.id)
     projects.lock_project(db, b.project_id)  # serializes with Stop
     db.refresh(item)
     run = db.get(KaisenRun, item.run_id) if item.run_id else None
