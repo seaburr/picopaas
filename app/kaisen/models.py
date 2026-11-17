@@ -34,6 +34,7 @@ class KaisenSettings(Base):
     reviewer: Mapped[str] = mapped_column(String(8), nullable=False, default="off", server_default="off")  # off | on
     reviewer_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # None = config default
     package_steward: Mapped[str] = mapped_column(String(8), nullable=False, default="on", server_default="on")  # off | on
+    plan_first: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())  # default for new builds
     updated_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
@@ -67,6 +68,7 @@ class KaisenBuild(Base):
     test_tail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     forked_from_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # no FK: the source may be deleted later
     forked_from_snapshot_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    plan_first: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa_false())  # confirm the plan before building
 
 
 class KaisenFile(Base):

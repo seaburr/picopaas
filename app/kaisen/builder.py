@@ -199,12 +199,74 @@ def unique_slug(s: Session, name: str) -> str:
     return slug
 
 
-def seed_message(b: KaisenBuild, secret_note: str = "") -> dict:  # secret_note also carries the uploads note
+def seed_message(b: KaisenBuild, secret_note: str = "", plan: bool | None = None) -> dict:  # secret_note also carries the uploads note
     brief = b.brief.replace("</brief", "<\\/brief")
     fork = ("\n\nThis project started as a copy of another build: the files in the workspace are that copy. Continue from "
             "them and change only what the brief needs." if b.forked_from_id is not None else "")
+    plan = PLAN_FIRST_NOTE if (b.plan_first if plan is None else plan) else ""
     return {"role": "user", "content": f"Project name: {b.name}\n\n<brief>\n{brief}\n</brief>\n\n"
-            "Build this project. Use list_files first to see any existing work." + fork + secret_note}
+            f"{SEED_MARK} to see any existing work." + fork + plan + secret_note}
+
+
+SEED_MARK = "Build this project. Use list_files first"  # the first message of a build run (feedback runs start differently)
+PLAN_MARK = "The human wants to confirm the plan before you build."
+PLAN_FIRST_NOTE = (
+    "\n\n" + PLAN_MARK + " Before you write any other file or deploy, write "
+    "PLAN.md (what you will build, the runtime and storage you chose, the features in build order as checklist items, "
+    "what is out of scope, your assumptions). Then call ask_human exactly once with the whole plan in the question, and "
+    "ask the human to reply \"go\" or to say what to change. Do nothing else until the answer. After the answer, update "
+    "PLAN.md to match it and build as usual; do not ask for the plan again.")
+PLAN_FIRST_REFUSAL = "Show the plan first: write PLAN.md, then call ask_human with the plan and wait for the answer."
+
+
+def _plan_seeded(messages) -> bool:
+    first = (messages or [None])[0]
+    c = first.get("content") if isinstance(first, dict) and first.get("role") == "user" else None
+    return isinstance(c, str) and SEED_MARK in c and PLAN_MARK in c
+
+
+PLAN_GATED_TOOLS = ("write_file", "edit_file", "delete_file", "deploy_preview", "finish")
+
+
+def _plan_path(inp) -> bool:
+    """True when the call targets PLAN.md (the only file allowed before the plan is confirmed)."""
+    p = inp.get("path") if isinstance(inp, dict) else None
+    try:
+        return isinstance(p, str) and normalize_path(p) == "PLAN.md"
+    except Exception:
+        return False
+
+
+def plan_pending(b: KaisenBuild, run: KaisenRun) -> bool:
+    """True while a plan-first build run has not yet had its plan question answered (or stopped). Read from the
+    transcript, so no state is stored: the first ask_human tool_result ends it, and a Resume keeps that history."""
+    if not b.plan_first or run.kind not in ("build", "resume") or not _plan_seeded(run.messages):
+        return False
+    ask_ids = set()
+    for m in run.messages:
+        c = m.get("content")
+        if not isinstance(c, list):
+            continue
+        for blk in c:
+            if not isinstance(blk, dict):
+                continue
+            if m.get("role") == "assistant" and blk.get("type") == "tool_use" and blk.get("name") == "ask_human":
+                ask_ids.add(blk.get("id"))
+            elif m.get("role") == "user" and blk.get("type") == "tool_result" and blk.get("tool_use_id") in ask_ids:
+                return False
+    return True
+
+
+def plan_confirm_ids(s: Session, b: KaisenBuild) -> set[int]:
+    """Inbox item ids that carry the plan: the first question of the build's first plan-gated run."""
+    if not b.plan_first:
+        return set()
+    for it in s.scalars(select(KaisenInbox).where(KaisenInbox.build_id == b.id, KaisenInbox.kind == "question")
+                        .order_by(KaisenInbox.id)):
+        run = s.get(KaisenRun, it.run_id) if it.run_id else None
+        if run is not None and run.kind in ("build", "resume") and (not run.messages or _plan_seeded(run.messages)):
+            return {it.id}
+    return set()
 
 
 def continue_message(s: Session, b: KaisenBuild, run: KaisenRun | None = None, reason: str = "auto") -> dict:
@@ -328,8 +390,10 @@ def start_build(s: Session, b: KaisenBuild, user_id: int | None = None) -> tuple
         run = KaisenRun(build_id=b.id, kind="resume", status="queued", messages=msgs, started_by=user_id)
         msg = "Run resumed."
     else:
+        # the plan is confirmed once per build: "Run again" after a finished run does not ask for it a second time
+        plan = b.plan_first and s.scalar(select(KaisenRun.id).where(KaisenRun.build_id == b.id, KaisenRun.status == "done").limit(1)) is None
         run = KaisenRun(build_id=b.id, kind="build", status="queued", started_by=user_id,
-                        messages=[seed_message(b, buildsecrets.prompt_note(s, b.id) + uploads.prompt_note(s, b.id))])
+                        messages=[seed_message(b, buildsecrets.prompt_note(s, b.id) + uploads.prompt_note(s, b.id), plan)])
         msg = "Build queued."
     s.add(run)
     b.status = "queued"
@@ -825,11 +889,15 @@ def _handle_response(s: Session, run: KaisenRun, resp, recent: list, deployer=No
 
     ws = Workspace(s, run.build_id)
     results, ask, finished = [], None, None
+    build = s.get(KaisenBuild, run.build_id)
     for tu in uses:
         name, inp, tid = tu.get("name"), tu.get("input"), tu["id"]
         watchdog.set_phase("tool")
         watchdog.stamp(run)
         try:
+            if build is not None and name in PLAN_GATED_TOOLS and plan_pending(build, run) and not (
+                    name in ("write_file", "edit_file", "delete_file") and _plan_path(inp)):
+                raise ToolError(PLAN_FIRST_REFUSAL)
             if name == "ask_human":
                 q = _str_arg(inp, "question")
                 if ask:

@@ -66,6 +66,7 @@ class SettingsIn(BaseModel):
     reviewer: Optional[str] = Field(default=None, max_length=8)
     reviewer_model: Optional[str] = Field(default=None, max_length=64)
     package_steward: Optional[str] = Field(default=None, max_length=8)
+    plan_first: Optional[bool] = None
     web_allowed_domains: Optional[list[str]] = Field(default=None, max_length=config.KAISEN_WEB_DOMAINS_MAX)
 
 
@@ -173,6 +174,7 @@ class BuildIn(BaseModel):
     name: str = Field(min_length=1, max_length=config.KAISEN_NAME_MAX)
     brief: str = Field(min_length=1, max_length=config.KAISEN_BRIEF_MAX)
     output: Optional[OutputIn] = None
+    plan_first: Optional[bool] = None  # None: the project default; true/false overrides it for this build
     start: bool = True  # false: create the build idle with no run queued (attach uploads first, then POST .../run)
     # Improve brief presses (improve_id from POST /kaisen/improve-brief) whose cost belongs to this build. Ids that do
     # not qualify are skipped silently.
@@ -325,6 +327,7 @@ def _list_item(db: Session, b: KaisenBuild) -> dict:
         "created_by": {"id": creator.id, "email": creator.email} if creator else None,
         "created_at": b.created_at.isoformat(),
         "forked_from_id": b.forked_from_id,
+        "plan_first": bool(b.plan_first),
     }
 
 
@@ -349,6 +352,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
     for n in db.scalars(select(KaisenInbox).where(KaisenInbox.build_id == b.id, KaisenInbox.kind == "hang")
                         .order_by(KaisenInbox.id)):
         hang_notes.setdefault(n.run_id, []).append(n)
+    plan_ids = builder.plan_confirm_ids(db, b)
     out.update({
         "brief": b.brief,
         "forked_from": _forked_from(db, b),
@@ -373,6 +377,7 @@ def _detail(db: Session, b: KaisenBuild, request: Request) -> dict:
             "transcript_trimmed": not r.messages and r.status in ("done", "stopped", "error"),
         } for r in runs],
         "inbox": [{"id": i.id, "kind": i.kind, "text": redact(i.text, sec), "status": i.status,
+                   "plan_confirm": i.id in plan_ids,
                    "answer": redact(i.answer, sec) if i.answer else None, "created_at": i.created_at.isoformat()}
                   for i in db.scalars(select(KaisenInbox).where(KaisenInbox.build_id == b.id).order_by(KaisenInbox.id.desc()).limit(50))],
         "app": _app_view(db, b),
@@ -418,7 +423,8 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
     b = KaisenBuild(project_id=project.id, created_by=user.id, name=payload.name, brief=payload.brief,
                     slug=builder.unique_slug(db, payload.name), status="idle",
                     output_mode="download", github_repo="", github_branch="", push_on_finish=True, open_pr=False,
-                    github_auth="project")
+                    github_auth="project",
+                    plan_first=ksettings.load(db, project.id).plan_first if payload.plan_first is None else payload.plan_first)
     out_data = payload.output.model_dump(exclude_unset=True) if payload.output else {}
     if out_data:
         try:
@@ -428,7 +434,8 @@ def create_build(payload: BuildIn, request: Request, db: Session = Depends(get_d
     db.add(b)
     db.commit()
     _attach_improve_events(db, b, user, payload.improve_ids)
-    audit.record(db, user, "kaisen.build_create", "kaisen_build", b.id, f"project={project.id}")
+    audit.record(db, user, "kaisen.build_create", "kaisen_build", b.id,
+                 f"project={project.id}" + (" plan_first=1" if b.plan_first else ""))
     start_error = None
     if not payload.start:
         pass  # draft: nothing queued; POST /kaisen/builds/{id}/run starts run 1 with the stored brief
