@@ -845,6 +845,10 @@ Type what to change (up to 4000 characters) in the box under the thread. Kaisen 
 - Remember the limits: one web process only (no background workers or cron), no email sending. Outside API keys go in as build secrets (see "Build secrets").
 - Fold changes you already know you want into the brief. One bigger first run is cheaper than three small follow-ups.
 
+### Confirm the plan first
+
+Tick **Confirm the plan first** on New build (it starts from the project default, which owners set under **Plan first** in Kaisen settings; off by default) and the builder writes PLAN.md, then asks you one question that holds the whole plan and waits. The build page shows it as **Plan to confirm**: press **Build it** (sends "Go."), or say what to change in the box below (**Send changes**); the build then continues in the same run. Until you answer, the builder cannot write other files, deploy or finish. It adds one model turn and one wait to the build, and Stop while waiting also lifts the hold. A change request on the finished build is never held back. A fork does not copy the setting.
+
 ### Starter briefs
 
 Paste one into the brief box and edit to taste. Costs vary by model, effort and how many questions Kaisen asks; the figures below are what we saw, not a promise.
