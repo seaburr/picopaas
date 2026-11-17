@@ -732,6 +732,7 @@ export interface KaisenBuild {
   created_by: { id: number; email: string }
   created_at: string
   forked_from_id?: number | null // list items: the build this one was forked from
+  plan_first?: boolean
 }
 
 // Build detail of a fork: name null = the source build was deleted.
@@ -793,6 +794,7 @@ export interface KaisenInboxItem {
   text: string
   status: 'open' | 'answered' | 'dismissed'
   answer: string | null
+  plan_confirm?: boolean // the one question that carries the plan to confirm
   created_at: string
 }
 
@@ -996,6 +998,7 @@ export interface KaisenSettings {
   reviewer_default_model?: string
   package_steward?: 'off' | 'on'
   package_steward_modes?: string[]
+  plan_first?: boolean
   cap_run: number
   cap_day: number
   cap_build: number
@@ -1027,6 +1030,7 @@ export interface KaisenSettingsPayload {
   reviewer?: 'off' | 'on'
   reviewer_model?: string
   package_steward?: 'off' | 'on'
+  plan_first?: boolean
   cap_run: number
   cap_day: number
   cap_build: number

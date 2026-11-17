@@ -51,6 +51,9 @@ const improveError = ref('')
 const MAX_IMPROVE_IDS = 20
 const improveIds = ref<number[]>([])
 const improveFull = computed(() => improveIds.value.length >= MAX_IMPROVE_IDS)
+// Starts from the project default; once toggled here it stays as chosen when the project changes.
+const planFirst = ref(false)
+const planTouched = ref(false)
 const improveField = () => (improveIds.value.length ? { improve_ids: improveIds.value } : {})
 async function improve() {
   improveError.value = ''
@@ -135,6 +138,7 @@ async function checkKey() {
     store.settings = s
     if (s.brief_max) maxBrief.value = s.brief_max
     noKey.value = !s.anthropic_key.set
+    if (!planTouched.value) planFirst.value = s.plan_first === true
     if (!s.github_token.set && outForm.github_auth === 'project') outForm.github_auth = 'build'
   } catch {
     noKey.value = false // unknown: let the server decide
@@ -166,7 +170,7 @@ async function submit() {
   try {
     const heldN = composer.value?.held.length ?? 0
     if (heldN === 0 && draftId.value === null) {
-      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), ...improveField() })
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), plan_first: planFirst.value, ...improveField() })
       store.upsert(b)
       if (b.start_error) toast.error(`Build created but not started: ${b.start_error}`)
       router.push(`/kaisen/${b.id}`)
@@ -174,7 +178,7 @@ async function submit() {
     }
     if (draftId.value === null) {
       stage.value = 'creating'
-      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), start: false, ...improveField() })
+      const b = await createBuild({ project_id: projectId.value, name: n, brief: brief.value.trim(), output: outputPayload(outForm), start: false, plan_first: planFirst.value, ...improveField() })
       store.upsert(b)
       draftId.value = b.id
     }
@@ -312,6 +316,11 @@ async function startWithout() {
             </tbody>
           </table>
         </section>
+
+        <div>
+          <label class="flex items-center gap-2 text-sm text-zinc-200"><input v-model="planFirst" type="checkbox" class="check" data-testid="plan-first" @change="planTouched = true" /> Confirm the plan first</label>
+          <p class="help">Kaisen writes a plan and waits for your go before it builds. Adds one model turn.</p>
+        </div>
 
         <details class="disc help" :open="outOpen" @toggle="outOpen = ($event.target as HTMLDetailsElement).open">
           <summary>Output (optional)</summary>

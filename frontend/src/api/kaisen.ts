@@ -8,7 +8,7 @@ const post = <T>(url: string, body?: unknown) =>
 export const listBuilds = (projectId?: number | null) =>
   apiFetch<KaisenBuild[]>(projectId ? `/kaisen/builds?project_id=${projectId}` : '/kaisen/builds')
 export const getBuild = (id: number) => apiFetch<KaisenBuildDetail>(`/kaisen/builds/${id}`)
-export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload; start?: boolean; improve_ids?: number[] }) =>
+export const createBuild = (payload: { project_id: number | null; name: string; brief: string; output?: KaisenOutputPayload; start?: boolean; improve_ids?: number[]; plan_first?: boolean }) =>
   post<KaisenBuildDetail>('/kaisen/builds', payload)
 // Copies the brief and files (current, or a restore point's); 201 with the new build's detail.
 export const forkBuild = (id: number, payload: { name?: string; snapshot_id?: number }) =>

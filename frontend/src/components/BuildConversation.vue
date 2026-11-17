@@ -52,7 +52,7 @@ const emit = defineEmits<{
 }>()
 const text = computed({ get: () => props.modelValue, set: (v: string) => emit('update:modelValue', v) })
 
-interface Item { key: string; at: number; iso: string; who: 'you' | 'kaisen'; kind: string; text: string; runIdx: number | null; files: KaisenUpload[]; notice?: KaisenInboxItem }
+interface Item { key: string; at: number; iso: string; who: 'you' | 'kaisen'; kind: string; text: string; runIdx: number | null; files: KaisenUpload[]; notice?: KaisenInboxItem; plan?: boolean }
 const ts = (iso: string) => {
   const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`).getTime()
   return Number.isNaN(d) ? 0 : d
@@ -96,7 +96,7 @@ const items = computed<Item[]>(() => {
   })
   for (const it of b.inbox) {
     if (it.kind === 'question') {
-      out.push({ key: `q${it.id}`, at: ts(it.created_at) + 1, iso: it.created_at, who: 'kaisen', kind: 'question', text: it.text, runIdx: null, files: [] })
+      out.push({ key: `q${it.id}`, at: ts(it.created_at) + 1, iso: it.created_at, who: 'kaisen', kind: 'question', text: it.text, runIdx: null, files: [], plan: it.plan_confirm === true })
       if (it.answer) out.push({ key: `a${it.id}`, at: ts(it.created_at) + 2, iso: it.created_at, who: 'you', kind: 'answer', text: it.answer, runIdx: null, files: [] })
     } else if (NOTICE_KINDS.includes(it.kind) && it.status === 'open') {
       out.push({ key: `n${it.id}`, at: ts(it.created_at) + 1, iso: it.created_at, who: 'kaisen', kind: 'notice', text: '', runIdx: null, files: [], notice: it })
@@ -200,9 +200,19 @@ watch(() => props.build.id, () => stickNow())
 
             <!-- Kaisen: plain text across the left -->
             <div v-else class="max-w-3xl min-w-0">
-              <p v-if="it.text" class="whitespace-pre-wrap text-sm text-zinc-100 [overflow-wrap:anywhere]">{{ it.text }}</p>
-              <p v-if="it.kind === 'question' && it.key === `q${answering?.id}`" class="meta mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                Waiting for your answer in the box below.
+              <template v-if="it.plan">
+                <h3 class="label">{{ it.key === `q${answering?.id}` ? 'Plan to confirm' : 'Plan' }}</h3>
+                <div class="max-h-96 overflow-y-auto rounded-md border border-pico-border px-3 py-2" tabindex="0" role="region" aria-label="Plan text" data-testid="plan-text">
+                  <p class="whitespace-pre-wrap text-sm text-zinc-100 [overflow-wrap:anywhere]">{{ it.text }}</p>
+                </div>
+              </template>
+              <p v-else-if="it.text" class="whitespace-pre-wrap text-sm text-zinc-100 [overflow-wrap:anywhere]">{{ it.text }}</p>
+              <p v-if="it.kind === 'question' && it.key === `q${answering?.id}`" class="meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <template v-if="it.plan">
+                  <button v-if="canRun" type="button" class="btn-primary btn-sm max-md:min-h-[44px]" :disabled="answerBusy != null" data-testid="plan-go" @click="stickNow(); answering && emit('answer', answering.id, 'Go.')">Build it</button>
+                  Or say what to change in the box below.
+                </template>
+                <template v-else>Waiting for your answer in the box below.</template>
                 <button v-if="canStop" type="button" class="btn-secondary btn-sm max-md:min-h-[44px]" :disabled="stopping" @click="emit('stop')">Stop run</button>
               </p>
               <template v-if="it.runIdx !== null">
@@ -267,13 +277,13 @@ watch(() => props.build.id, () => stickNow())
     </div>
 
     <div v-if="!draft" class="mt-2 shrink-0 border-t border-pico-border pt-2">
-      <p v-if="answering" class="meta mb-1" role="status">
+      <p v-if="answering && !answering.plan_confirm" class="meta mb-1" role="status">
         Answering Kaisen's question: <span class="[overflow-wrap:anywhere]">"{{ brief(answering.text) }}"</span><template v-if="remaining"> · <span class="mono">{{ remaining }}</span> more waiting after this one</template>
       </p>
       <AttachComposer
-        v-model="text" :build-id="build.id" :summary="summary" :label="answering ? 'Your answer to Kaisen' : 'Tell Kaisen what to change'"
-        :placeholder="answering ? 'Answer Kaisen\'s question.' : 'Tell Kaisen what to change. Drop, paste or attach files.'"
-        :submit-label="answering ? 'Send answer' : 'Send to Kaisen'" :busy="answerBusy != null || (!answering && busy)" :locked="locked" :locked-attach-reason="lockedAttach" :can-attach="canAttach && !answering"
+        v-model="text" :build-id="build.id" :summary="summary" :label="answering?.plan_confirm ? 'Or say what to change' : answering ? 'Your answer to Kaisen' : 'Tell Kaisen what to change'"
+        :placeholder="answering?.plan_confirm ? 'Say what to change in the plan.' : answering ? 'Answer Kaisen\'s question.' : 'Tell Kaisen what to change. Drop, paste or attach files.'"
+        :submit-label="answering?.plan_confirm ? 'Send changes' : answering ? 'Send answer' : 'Send to Kaisen'" :busy="answerBusy != null || (!answering && busy)" :locked="locked" :locked-attach-reason="lockedAttach" :can-attach="canAttach && !answering"
         :attach-off-reason="answering ? 'Files can\'t go with an answer. Attach them to your next message.' : undefined" :unsent="unsent" :hint="answering ? '' : (hint || 'Kaisen edits the code and redeploys. About a minute.')"
         :rows="2" autogrow :max-rows="7" key-hint
         @submit="onSubmit" @open-files="emit('open-files')" @changed="emit('changed'); loadUploads()"
