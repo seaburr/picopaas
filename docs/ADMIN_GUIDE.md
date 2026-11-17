@@ -63,6 +63,7 @@ required.
 | `FERNET_KEY` | Encrypts every stored secret. The JWT signing key is derived from it. |
 | `FERNET_KEYS_PREVIOUS` | Comma-separated older keys, for rotation. |
 | `SECRET_KEY` | Optional explicit JWT key; normally derived from `FERNET_KEY`. |
+| `ROOT_MANAGEMENT_KEY` | Optional break-glass key, at least 32 characters (a shorter one stops startup). Set: `POST /root/admin-reset` resets a platform administrator's password. Unset (default): that route is 404. See "Root management key" under Admins and recovery. |
 | `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
 | `RATE_LIMIT_ENABLED` | Login and signup rate limiting; on by default. |
 | `LOG_LEVEL` | Log level for the JSON logs (default `INFO`). |
@@ -317,7 +318,31 @@ manage reset-password you@example.com
 - `grant-admin <email>` makes an existing user an administrator and activates them if pending or suspended.
 - `reset-password <email>` prints a one-time temporary password; the user must change it at next login.
 
-Each command records an audit entry with actor `manage-cli`. Whoever holds cluster credentials can make themselves
+### Root management key
+
+The CLI above needs cluster access. If you want a way back in that needs only HTTPS, set the optional env var
+`ROOT_MANAGEMENT_KEY` before the platform starts (for example `openssl rand -base64 48`; at least 32 characters). Then:
+
+```bash
+curl -sS -X POST https://<platform-host>/root/admin-reset \
+  -H "Authorization: Bearer $ROOT_MANAGEMENT_KEY" -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com"}'
+# {"email": "you@example.com", "temporary_password": "..."}
+```
+
+- It resets the password of one **active platform administrator**, returns the temporary password once, forces a
+  password change at the next login and clears the failed-login lockout for that email. Leave `email` out when there
+  is only one administrator.
+- It does nothing else: it cannot create, promote or unsuspend accounts (use `manage grant-admin` for that), and it
+  does not end existing sessions or revoke API keys.
+- Unset, the route answers 404, so the platform has no such door unless you add one.
+- **Treat the key like `FERNET_KEY`.** Whoever holds it can take over an administrator account. Keep it out of the
+  database, tickets and chat; store it where the other platform secrets live and rotate it by changing the env var and
+  restarting. Give it only to the API pods, not to the Kaisen worker or image pod.
+- Every use is in the audit log: `user.reset_password` with actor `root-management-key`, and `root.auth_failed` for a
+  wrong key. Wrong keys are limited to 20 per client address per 15 minutes; the right key is never blocked by that.
+
+Each CLI command records an audit entry with actor `manage-cli`. Whoever holds cluster credentials can make themselves
 an administrator this way (and can read the signing and encryption keys from the pod environment), so treat
 kubeconfig access as full platform control.
 

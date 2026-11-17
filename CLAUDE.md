@@ -68,6 +68,7 @@ cd frontend && npm run build && npm run test:e2e   # Playwright smoke vs the rea
 Required env vars outside `ENVIRONMENT=dev`: `SECRET_KEY` (JWT signing), `FERNET_KEY` (encrypts env var
 values at rest — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`).
 Dev/test runs use fixed insecure defaults baked into `app/config.py`.
+Optional `ROOT_MANAGEMENT_KEY` (>= 32 chars): enables `POST /root/admin-reset` (break-glass admin password reset, `app/routers/root.py`); unset = 404.
 
 Reconciler/scheduler env vars (all optional; see `app/scheduler.py`, `app/config.py`):
 - `RECONCILER_ENABLED=1`: start the APScheduler jobs (reconcile every 15s, quota poll every 5 min) in the app lifespan.

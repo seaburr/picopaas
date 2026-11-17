@@ -7,6 +7,38 @@ background on each item if you want it.
 
 ## Open questions
 
+- **Kaisen: what to build next (review of the unbuilt list, 2026-11-16).** From research B (competitive-quick-wins),
+  B1 Fork, B2 starters, B4 brief check + Improve brief are live; B5 preview pane was built and removed. Not built, in
+  the order I would do them:
+  1. **Confirm the plan before building** (research B3). Checkbox on New build plus a project default, off by
+     default: the builder writes `PLAN.md`, asks one question containing the plan, and continues in the same run on
+     "go" or a correction. About 0.5-1 day: one flag + migration, one conditional prompt paragraph, a checkbox, tests
+     with the fake model. Adds one model turn (a fraction of a cent on Haiku). No runtime image change, no re-pin.
+     **I recommend starting here; say "go" and I build it.**
+  2. **Browser errors fed back to the builder** (the "no browser in the loop" gap from jamtunez). Cheapest form: the
+     runtime injects a small error reporter into served HTML and `deploy_preview` returns the JavaScript errors and
+     failed requests it collected. Needs a design, a security review (a script injected into tenant pages), a
+     runtime change and one re-pin; no new paid resource. A real headless browser needs RAM, so a request. I
+     recommend the design doc next, after item 1.
+  3. **Vision: the model reads up to 3 reference images per run** (uploads P2, design 16; you said "later" on
+     2026-11-03). Blocked on uploads being switched on for a project (your to-do below) and adds about 1.5k tokens
+     per image per run.
+  4. **Start a build from an existing GitHub repo.** 2-3 days: import limits, secret scan of the import, mapping
+     to `kaisen.json`.
+  5. **Public read-only share link for a build.** 2-3 days with review; new unauthenticated surface.
+  6. Not recommended now: database state in restore points (not small), click-an-element-to-edit (weeks, and
+     the preview pane it needs was removed), automatic fix loop (burns spend; the manual **Fix it** stays).
+  Small leftovers I can fold into any wave: GitHub push pacing for many blobs (S7), a CI gate for Pillow CVEs,
+  K102 (builder can repeat its prompt, INFO), and two of your open answers below (the standalone test Kaisen
+  delete, the 1-app default). Which of 1-5 do you want, and in what order?
+
+- **Root management key: wire it into production? (2026-11-16)** `ROOT_MANAGEMENT_KEY` is built and optional
+  (ADMIN_GUIDE "Root management key"); production has no key, so `/root/admin-reset` answers 404 there. To turn it
+  on for picopaas.xyz: add a repo secret `ROOT_MANAGEMENT_KEY` (`openssl rand -base64 48`), and I add it to
+  `picopaas-env` in `bootstrap.yml` (API pods only; the Kaisen worker and image pod never get it), which needs one
+  approved bootstrap run. The existing `python -m app.manage` break-glass via kubectl keeps working either way. I
+  recommend leaving it off in production (you have cluster access) and keeping it for self-hosted installs. Yes/no?
+
 - **AWS account for P4 testing: ON HOLD (Chas 2026-11-03: "Hold off on AWS for the time being. I will review more in depth and let you know.").** Decisions when you resume (2026-11-02): Checklist: [deployment/aws-account-setup.md](deployment/aws-account-setup.md);
   request [0010](requests/0010-aws-test-environment.md) (PROPOSED). Answers the existing portability question (3) below
   (it supersedes nothing). Please decide: (1) **whose account and credits** (new account: $100-$200 credits for 6 months, needs the

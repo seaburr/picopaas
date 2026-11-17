@@ -438,6 +438,19 @@ Not an HTTP API. Break-glass commands, run in the API pod (`kubectl exec -it dep
 `grant-admin <email>` (promote an existing user and activate them), `list-admins`, `reset-password <email>` (prints a
 temporary password once and sets `must_change_password`). They use the app's `DATABASE_URL` and audit as actor `manage-cli`.
 
+### Root management key
+
+`POST /root/admin-reset` with `Authorization: Bearer $ROOT_MANAGEMENT_KEY`, body `{email?}`. Optional and off by
+default: with no `ROOT_MANAGEMENT_KEY` env var (at least 32 characters, else the platform refuses to start) the route
+answers 404. It sets a random temporary password on one **active platform administrator** and returns
+`{email, temporary_password}` once (`Cache-Control: no-store`), sets `must_change_password` and clears the failed-login
+lockout for that email. `email` may be left out when there is exactly one active administrator; with several, 409 lists
+their emails. 404 for an email that is not an active administrator; 409 when there is none (use the recovery CLI). It
+cannot create, promote or unsuspend an account, and it leaves sessions and API keys alone. A wrong or missing key is 401
+(audit `root.auth_failed`); after `ROOT_KEY_MAX_FAILS` (20) wrong keys per client IP in 15 minutes, wrong keys get 429
+while the right key still works. Audit `user.reset_password` with actor `root-management-key` and `via=root-key`. A
+session cookie or a `pp_sk_` API key is never accepted here.
+
 ### Audit log
 
 `GET /admin/audit?limit=100` (1 to 1000, newest first): `[{id, at, actor_email, action, target_type, target_id, detail}]`.
@@ -525,7 +538,7 @@ Every route below returns 404 when Kaisen is off (env `KAISEN_ENABLED` and the a
 | POST | `/kaisen/builds/{id}/run` | | Starts, or resumes a stopped/failed build. 422 without an Anthropic key, 409 if a run is active or the project is at a cap. A resume runs as the caller (`started_by`), so a different active member can resume a run whose starter is gone; the stopped run's reason is refused with 409 `This run can't be resumed: <reason>.` only while it still applies to the caller (e.g. the project is still suspended). Audit `kaisen.run`. Returns detail. |
 | POST | `/kaisen/builds/{id}/runs/{run_id}/interrupt` | | Abandons the step in flight and requeues the run to retry from its last saved state. Any member of the build's project (same access as Run). 404 for another build's run, 409 when the run is not `running`. Not counted against the automatic hang retries, but limited to 3 per build per hour (429 "This build was interrupted too often. Wait a while, or let the run finish."). Audit `kaisen.interrupt`. Returns detail. |
 | POST | `/kaisen/builds/{id}/runs/{run_id}/stop` | | Ends a run that is `waiting` on a question: run `stopped`, `error` "Stopped by <email> while waiting for an answer.", its open question closed, a `stopped` notice added. No model call, nothing more is spent. The history stays valid, so Resume, a change request or a restore work afterwards. Any member who can run the build (not read keys). 404 for another build's run, 409 `That run is not waiting on a question.` for queued, running or finished runs (Interrupt and the watchdog own those). Racing an answer: only one succeeds. Audit `kaisen.stop` (`run=<id>`). Returns detail. |
-| POST | `/kaisen/builds/{id}/feedback` | `{text (<=4000)}` | New change run. 409 before a first run (a fork that has files is allowed without one). Audit `kaisen.run`. |
+| POST | `/kaisen/builds/{id}/feedback` | `{text (<=4000)}` | New change run. 409 before a first run (a fork that has files is allowed without one). Audit `kaisen.run`. **Credential block:** `name` and `brief` of `POST /kaisen/builds`, this `text`, the answer `text` and the fork `name` are refused with 422 "This text looks like it contains a credential (line N: kind), so it was not sent. ..." when they hold a provider token (Anthropic `sk-ant-`, OpenAI-style `sk-`, PicoPaaS `pp_sk_`, GitHub, AWS, Slack, Stripe, Google, DigitalOcean), a private-key header or a JWT, plain or base64-encoded (standard or URL-safe, any alignment, up to two layers). Nothing is stored or sent to the model; audit `kaisen.credential_blocked` (field and kind, never the value). |
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/answer` | `{text (<=4000)}` | Answer an open question; 409 if already answered. |
 | POST | `/kaisen/builds/{id}/inbox/{item_id}/dismiss` | none | Close a notice (deploy, push, error, budget, refusal) for everyone in the project; returns the build. 409 for an open question (answer it instead). A deploy that goes through also closes the build's open deploy notices. |
 | POST | `/kaisen/builds/{id}/deploy` | | Redeploys the current files as the build's app, in its project, with the usual app limits and errors. Audit `kaisen.deploy`. |
