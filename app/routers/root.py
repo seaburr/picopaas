@@ -9,7 +9,7 @@ import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app import audit, config, models, ratelimit
@@ -50,9 +50,21 @@ def _require_root_key(request: Request, db: Session = Depends(get_db)) -> None:
                             headers={"WWW-Authenticate": "Bearer"})
 
 
+async def _payload(request: Request, _key: None = Depends(_require_root_key)) -> Optional[AdminResetIn]:
+    """The body is read here, after the key check, not by FastAPI before the dependencies run: a malformed body must not
+    get a 422 (which would tell an anonymous caller the route exists) while no key is configured or the key is wrong."""
+    raw = await request.body()
+    if not raw.strip():
+        return None
+    try:
+        return AdminResetIn.model_validate_json(raw)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=[{"loc": ["body", *map(str, e["loc"])], "msg": e["msg"]} for e in exc.errors()])
+
+
 @router.post("/admin-reset", response_model=AdminResetOut)
-def admin_reset(request: Request, response: Response, payload: Optional[AdminResetIn] = None,
-                db: Session = Depends(get_db), _key: None = Depends(_require_root_key)):
+def admin_reset(request: Request, response: Response, payload: Optional[AdminResetIn] = Depends(_payload),
+                db: Session = Depends(get_db)):
     """Set a random temporary password on an active platform admin and return it once. The admin must change it at the
     next login; failed-login lockout for that email is cleared. Sessions and API keys are left as they are."""
     admins = (db.query(models.User).filter(models.User.role == "platform_admin", models.User.status == "active")

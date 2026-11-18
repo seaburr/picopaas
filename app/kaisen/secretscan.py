@@ -2,7 +2,10 @@
 Returns the kind and the line number, never the value. A heuristic: custom secrets slip through, so it favours
 precision (few false alarms on ordinary code) over recall."""
 import base64
+import html
 import re
+import unicodedata
+import urllib.parse
 
 _PATTERNS = [
     ("a private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
@@ -57,7 +60,8 @@ def find(text: str, *, code: bool = False, _depth: int = 0) -> tuple[str, int] |
                 continue
             if (hit := find(dec, _depth=1)):
                 return hit[0], text.count("\n", 0, m.start()) + 1
-        return _encoded_token(text, 0)  # short or unaligned base64 the 60-character pass above does not decode
+        # short or unaligned base64 the 60-character pass above does not decode, then the disguises find_token undoes
+        return _encoded_token(text, 0) or find_token(text)
     return None
 
 
@@ -115,15 +119,55 @@ def _encoded_token_runs(text: str, depth: int) -> tuple[str, int] | None:
     return None
 
 
+_HEX_RUN = re.compile(r"(?:[0-9a-fA-F]{2}){16,}")
+_B32_RUN = re.compile(r"[A-Za-z2-7]{26,}={0,6}")
+
+
+def _normalize(text: str) -> str:
+    """Undo cheap disguises: fullwidth and other compatibility forms (NFKD), zero-width, bidi and tag characters and
+    combining marks, HTML entities and percent-encoding."""
+    t = unicodedata.normalize("NFKD", text)
+    t = "".join(c for c in t if unicodedata.category(c) not in ("Cf", "Mn", "Me"))
+    return urllib.parse.unquote(html.unescape(t))
+
+
+def _hex_base32_token(text: str) -> str | None:
+    """A provider token written as hex digits or as base32."""
+    for m in _HEX_RUN.finditer(text):
+        try:
+            dec = bytes.fromhex(m.group(0)).decode("latin-1")
+        except ValueError:
+            continue
+        if (kind := _token_kind(dec, decoded=True)):
+            return kind + " (hex-encoded)"
+    for m in _B32_RUN.finditer(text):
+        raw = m.group(0).upper().rstrip("=")
+        try:
+            dec = base64.b32decode(raw + "=" * (-len(raw) % 8)).decode("latin-1")
+        except ValueError:
+            continue
+        if (kind := _token_kind(dec, decoded=True)):
+            return kind + " (base32-encoded)"
+    return None
+
+
 def find_token(text: str) -> tuple[str, int] | None:
-    """(kind, 1-based line) of the first provider token or private key, plain or base64-encoded, else None. For text a
-    person types into the Kaisen conversation (brief, change request, answer, names): prefixed tokens only, none of the
-    assignment heuristics of `find`, so ordinary prose about passwords and settings is not refused."""
+    """(kind, 1-based line) of the first provider token or private key, plain or encoded (base64, hex, base32, percent,
+    HTML entities, fullwidth or zero-width disguised), else None. For text a person types into the Kaisen conversation
+    (brief, change request, answer, names): prefixed tokens only, none of the assignment heuristics of `find`, so
+    ordinary prose about passwords and settings is not refused. Not caught, by design: a token split across lines or
+    messages, reversed, interleaved with ordinary characters, rot13, or written with look-alike letters from another
+    alphabet. The block is a guard against pasting a key by accident, not a data-loss-prevention system."""
     text = _INVISIBLE.sub("", text)  # a zero-width character inside a key must not hide it
-    for n, line in enumerate(text.split("\n"), 1):
-        if (kind := _token_kind(line)):
-            return kind, n
-    return _encoded_token(text, 0)
+    for cand in dict.fromkeys((text, _normalize(text))):
+        for n, line in enumerate(cand.split("\n"), 1):
+            if (kind := _token_kind(line)):
+                return kind, n
+        if (hit := _encoded_token(cand, 0)):
+            return hit
+        if (kind := _hex_base32_token(cand)):
+            return kind, 1
+    return None
 
 
 def chat_refusal(kind: str, line: int) -> str:

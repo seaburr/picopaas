@@ -252,7 +252,8 @@ def plan_pending(b: KaisenBuild, run: KaisenRun) -> bool:
                 continue
             if m.get("role") == "assistant" and blk.get("type") == "tool_use" and blk.get("name") == "ask_human":
                 ask_ids.add(blk.get("id"))
-            elif m.get("role") == "user" and blk.get("type") == "tool_result" and blk.get("tool_use_id") in ask_ids:
+            elif (m.get("role") == "user" and blk.get("type") == "tool_result" and blk.get("tool_use_id") in ask_ids
+                  and not blk.get("is_error")):  # a malformed ask_human gets an error result: that is not the human's answer
                 return False
     return True
 

@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import audit, models, schemas
+from app import audit, config, models, schemas
 from app.db import get_db
 from app.dependencies import get_active_user, require_session_auth
 from app.security import api_key_prefix_for_display, generate_api_key, hash_api_key
@@ -39,6 +39,10 @@ def create_api_key(
     current_user: models.User = Depends(require_session_auth),
 ):
     scope = payload.scope if payload else "full"
+    active = db.query(models.ApiKey).filter(models.ApiKey.user_id == current_user.id, models.ApiKey.revoked_at.is_(None)).count()
+    if active >= config.MAX_ACTIVE_API_KEYS_PER_USER:
+        raise HTTPException(status_code=409, detail=(
+            f"You already have {active} active API keys, the most allowed. Revoke one you no longer use."))
     raw_key = generate_api_key()
     api_key = models.ApiKey(
         user_id=current_user.id,

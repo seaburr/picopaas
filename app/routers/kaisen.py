@@ -870,6 +870,7 @@ def put_secret(build_id: int, name: str, payload: SecretIn, db: Session = Depend
                user: models.User = Depends(get_active_user)):
     """Set or replace a secret. It reaches the preview app on the next deploy (press Deploy, or the builder deploys)."""
     b = get_build(db, build_id, user)
+    _refuse_credential(db, user, "secret_name", name, b.id)  # names reach the model and the audit log; values are meant to be secret
     try:
         created = buildsecrets.put(db, b.id, name, payload.value, user.id)
     except ValueError as exc:
