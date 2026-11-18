@@ -6,6 +6,8 @@ from pathlib import Path
 import hmac
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response, FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,7 +20,7 @@ from app.db import Base, engine, get_db
 from app import banner as banner_module
 from app.static_cache import StaticCacheMiddleware
 from app.routers import root as root_router
-from app.routers import advice, admin, admin_diag, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
+from app.routers import advice, admin, admin_diag, admin_security, admin_docs, api_keys, app_ops, apps, auth, backups, admin_settings, projects as projects_router, kaisen as kaisen_router, kaisen_uploads as kaisen_uploads_router, spec, templates, usage
 
 logging_setup.configure()
 
@@ -45,7 +47,9 @@ async def lifespan(_app: FastAPI):
             sched.shutdown(wait=False)
 
 
-app = FastAPI(title="PicoPaaS API", lifespan=lifespan)
+# The built-in docs URLs are off: /docs, /redoc and /openapi.json are registered below and answer only to a signed-in
+# active user (anyone else gets the same 404 as an unknown path). The repo is public, so this is hygiene, not a control.
+app = FastAPI(title="PicoPaaS API", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 app.include_router(auth.router)
 app.include_router(apps.router)
@@ -66,9 +70,74 @@ app.include_router(admin_settings.router)
 app.include_router(banner_module.public_router)
 app.include_router(banner_module.admin_router)
 app.include_router(admin_diag.router)
+app.include_router(admin_security.router)
 app.include_router(backups.admin_router)
 app.include_router(admin_docs.router)
 app.include_router(root_router.router)
+
+
+# Never in the served schema, for anyone: platform-admin and root routes (filtered by path prefix, so a new admin
+# router is covered without touching this).
+HIDDEN_SCHEMA_PREFIXES = ("/admin", "/root")
+
+
+def _schema_refs(node, acc: set) -> None:
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            acc.add(ref.rsplit("/", 1)[1])
+        for v in node.values():
+            _schema_refs(v, acc)
+    elif isinstance(node, list):
+        for v in node:
+            _schema_refs(v, acc)
+
+
+def public_openapi() -> dict:
+    """The OpenAPI document minus every /admin and /root path, and minus the component schemas only they used."""
+    if app.openapi_schema is None:
+        full = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        full["paths"] = {p: v for p, v in full["paths"].items() if not p.startswith(HIDDEN_SCHEMA_PREFIXES)}
+        comps = full.get("components", {}).get("schemas", {})
+        used: set = set()
+        _schema_refs(full["paths"], used)
+        todo = list(used)
+        while todo:  # keep schemas referenced by kept schemas, too
+            more: set = set()
+            _schema_refs(comps.get(todo.pop(), {}), more)
+            todo.extend(more - used)
+            used |= more
+        if comps:
+            full["components"]["schemas"] = {k: v for k, v in comps.items() if k in used}
+        app.openapi_schema = full
+    return app.openapi_schema
+
+
+app.openapi = public_openapi  # type: ignore[method-assign]
+
+
+def _docs_user_or_404(request: Request, db) -> None:
+    user = _user_from_request(request, db)
+    if user is None or user.status != "active":
+        raise HTTPException(status_code=404, detail="Not Found")  # same body as an unknown path
+
+
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_json(request: Request, db=Depends(get_db)):
+    _docs_user_or_404(request, db)
+    return JSONResponse(app.openapi(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_docs(request: Request, db=Depends(get_db)):
+    _docs_user_or_404(request, db)
+    return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{app.title} - Swagger UI")
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_docs(request: Request, db=Depends(get_db)):
+    _docs_user_or_404(request, db)
+    return get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} - ReDoc")
 
 
 @app.get("/healthz")

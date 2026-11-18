@@ -204,6 +204,24 @@ def audit_purge_job() -> None:
         session.close()
 
 
+def security_alerts_job() -> None:
+    """Leader-only: evaluate the rule-based security alerts (app/security_alerts.py) and upsert admin alerts."""
+    if not try_acquire_leader():
+        return
+    from app import security_alerts
+
+    session = SessionLocal()
+    try:
+        n = security_alerts.run(session)
+        if n:
+            log.info("security alerts: %d opened or updated", n)
+    except Exception:
+        session.rollback()
+        log.exception("security alerts job failed")
+    finally:
+        session.close()
+
+
 def kaisen_upload_sweep_job() -> None:
     """Leader-only hourly: delete uploaded files whose build is gone or was deleted (docs/design/kaisen.md 16.8 R9)."""
     if not try_acquire_leader():
@@ -437,6 +455,8 @@ def start_scheduler() -> BackgroundScheduler:
                   coalesce=True, id="metrics_sample", next_run_time=now + timedelta(seconds=45))
     sched.add_job(audit_purge_job, "interval", hours=24, max_instances=1, coalesce=True, id="audit_purge",
                   next_run_time=now + timedelta(minutes=5))
+    sched.add_job(security_alerts_job, "interval", seconds=config.SECURITY_ALERT_POLL_SECONDS, max_instances=1,
+                  coalesce=True, id="security_alerts", next_run_time=now + timedelta(seconds=90))
     sched.add_job(kaisen_upload_sweep_job, "interval", hours=1, max_instances=1, coalesce=True, id="kaisen_upload_sweep",
                   next_run_time=now + timedelta(minutes=10))
     if config.BACKUPS_ENABLED:

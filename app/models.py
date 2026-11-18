@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy import false as sa_false
 from sqlalchemy import true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -549,6 +549,29 @@ class AuthThrottle(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     window_start: Mapped[datetime] = mapped_column(nullable=False, index=True)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class SecurityAlert(Base):
+    """A rule-based alert for platform admins (app/security_alerts.py). `message` is fixed platform text built from counts;
+    `evidence` holds counts, windows and ids only (never secrets, never unrelated users' emails). While open, repeats of
+    the same condition merge into one row by `dedupe_key`; acknowledging renames the key so a new alert can open."""
+
+    __tablename__ = "security_alerts"
+    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_security_alerts_dedupe_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(48), nullable=False)
+    severity: Mapped[str] = mapped_column(String(8), nullable=False)  # high | medium | low
+    subject_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # user | api_key | project
+    subject_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    message: Mapped[str] = mapped_column(String(255), nullable=False)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(nullable=False, default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(nullable=False, default=_utcnow, index=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    acknowledged_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # admin user id
 
 
 def release_unique_hosts(app: "App") -> None:

@@ -818,3 +818,32 @@ ADVISOR_STUCK_ERROR_DAYS = 7
 ADVISOR_BACKUP_INTERVAL_DAYS = {"daily": 1, "weekly": 7}
 ADVISOR_BACKUP_STALE_FACTOR = 2  # no successful backup for this many intervals
 ADVISOR_LOOP_RECENT_S = 1800  # a crash burst only counts as a loop while its last crash is this recent
+
+
+# --- Security alerts (app/security_alerts.py): rule-based identity-velocity detection for platform admins -------------
+# Why these numbers: a human admin approves/promotes a handful of accounts a day, so 10 policy actions in 10 minutes or
+# 20 account changes in an hour is machine speed; a person mistyping a password never reaches 50 failures in 15 minutes
+# across the whole platform; the per-email value reuses LOGIN_EMAIL_MAX_FAILS (the lockout threshold).
+SECURITY_ALERT_POLL_SECONDS = 300
+SECURITY_ALERT_LOOKBACK_MINUTES = 120        # audit window each run reads (must cover the longest audit rule window)
+SECURITY_ALERT_MAX_ROWS = 500                # table cap: acknowledged rows go first, then the oldest
+SECURITY_ALERT_ACK_RETENTION_DAYS = 30       # acknowledged alerts older than this are purged
+SECURITY_ALERT_LIST_MAX = 200                # most rows one GET /admin/security-alerts returns
+SECURITY_ALERT_ADMIN_BURST_ACTIONS = 10      # rule 1: admin identity/policy actions by one actor ...
+SECURITY_ALERT_ADMIN_BURST_MINUTES = 10      # ... inside this many minutes
+SECURITY_ALERT_ROOT_FAIL_HIGH = 5            # rule 2: root.auth_failed count that makes it high ...
+SECURITY_ALERT_ROOT_FAIL_MINUTES = 15        # ... inside this many minutes
+SECURITY_ALERT_NEWKEY_MINUTES = 30           # rule 3: watch a new API key's user for this long ...
+SECURITY_ALERT_NEWKEY_ACTIONS = 30           # ... audited actions by that user that count as a burst
+SECURITY_ALERT_LOGIN_FAILS = 50              # rule 4: login.failed across all emails ...
+SECURITY_ALERT_LOGIN_MINUTES = 15            # ... inside this many minutes
+SECURITY_ALERT_LOGIN_LOCKED_EMAILS = 5       # rule 4: distinct emails at LOGIN_EMAIL_MAX_FAILS failures in the window
+SECURITY_ALERT_INVALID_KEY_COUNT = 100       # rule 5: invalid API keys in one one-minute counter window
+SECURITY_ALERT_INVALID_KEY_PREFIX = "invalid-api-key:global:"  # AuthThrottle row keys written by app/ratelimit.py (+ minute)
+SECURITY_ALERT_KAISEN_SPIKE_FACTOR = 3.0     # rule 6: today's Kaisen spend vs the prior-days daily average ...
+SECURITY_ALERT_KAISEN_SPIKE_MIN_USD = 2.0    # ... and at least this much
+SECURITY_ALERT_KAISEN_BASELINE_DAYS = 14
+SECURITY_ALERT_KAISEN_HOUR_USD = 5.0         # rule 6: any one clock hour (also a non-owner member's own hourly spend)
+SECURITY_ALERT_MASS_ACCOUNT_CHANGES = 20     # rule 7: approve/delete/reject ...
+SECURITY_ALERT_MASS_ACCOUNT_MINUTES = 60     # ... inside this many minutes
+SECURITY_ALERT_MAX_AUDIT_ROWS = 20000        # hard cap on audit rows one rule loads per run (bounds memory under a flood)

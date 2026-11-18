@@ -15,7 +15,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app import audit, backups, config, crypto, health, models, naming, platform_backup, platform_settings, projects, quota, ratelimit, resources, schemas, volumes
+from app import audit, backups, config, crypto, health, models, naming, platform_backup, platform_settings, projects, quota, ratelimit, resources, schemas, security_alerts, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
 from app.dependencies import get_db_server_checker, get_kube, require_admin_action, require_admin_session, require_platform_admin
@@ -1040,7 +1040,7 @@ def admin_health(db: Session = Depends(get_db), kube=Depends(get_kube),
                  mysql_admin_factory=Depends(get_mysql_admin_factory)):
     servers = [_server_out(db, s).model_dump() for s in db.query(models.DbServer).order_by(models.DbServer.id).all()]
     return {**health.build(db, kube, servers, mysql_admin_factory), **health.db_counts(db),
-            "backups": backups.health_summary(db)}
+            "backups": backups.health_summary(db), "security_alerts_open": security_alerts.open_count(db)}
 
 
 def _check_connection(checker, *, engine, host, port, user, password, ca_cert, flavor=DEFAULT_FLAVOR) -> None:

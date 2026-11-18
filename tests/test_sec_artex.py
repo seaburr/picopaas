@@ -105,7 +105,10 @@ def test_inventory_is_complete():
     """Guards the guard: the inventory must match the OpenAPI schema, so no test below runs over a shrunken route list."""
     assert len(ROUTES) > 120, f"route inventory only found {len(ROUTES)} routes; FastAPI internals changed, fix inventory()"
     seen = {(r.method.lower(), re.sub(r"\{([^}:]+):[^}]*\}", r"{\1}", r.path)) for r in ROUTES}
-    schema = fastapi_app.openapi()["paths"]
+    # The served schema hides /admin and /root, so cross-check against the UNFILTERED route list.
+    from fastapi.openapi.utils import get_openapi
+    schema = get_openapi(title="t", version="0", routes=fastapi_app.routes)["paths"]
+    assert any(p.startswith("/admin") for p in schema), "unfiltered schema lost the admin routes"
     missing = [f"{m.upper()} {p}" for p, ops in schema.items() for m in ops if (m, p) not in seen]
     assert not missing, f"routes in OpenAPI but missing from the test inventory: {missing}"
 
@@ -137,6 +140,9 @@ PUBLIC_ROUTES = {
     "GET /api/banner",  # the platform notice every visitor sees, including the login page
     "GET /kaisen/bundles/{token}.tar.gz",  # unguessable expiring token is the credential (download link)
     "POST /root/admin-reset",  # 404 unless ROOT_MANAGEMENT_KEY is set; then it checks that key itself (K145)
+    "GET /openapi.json",  # 404 unless a signed-in active user (browser or key); checked in tests/test_api_docs_login.py
+    "GET /docs",  # same
+    "GET /redoc",  # same
     "GET /healthz",  # liveness probe, no data
     "GET /metrics",  # 404 on public hosts; probe/auth rules live in app/main.py
     "GET /{full_path:path}",  # SPA shell and static files
