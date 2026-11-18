@@ -408,7 +408,7 @@ API_KEY_RATE_PER_HOUR = int(os.environ.get("API_KEY_RATE_PER_HOUR", "3000"))
 # per-minute-window row; the alerting job reads it with ratelimit.invalid_api_keys_last. Rows are kept this long.
 INVALID_API_KEY_RETENTION_SECONDS = 60 * 60
 API_KEY_MINUTE_WINDOW_SECONDS = 60
-MAX_ACTIVE_API_KEYS_PER_USER = int(os.environ.get("MAX_ACTIVE_API_KEYS_PER_USER", "50"))  # K159: keys are minted without a throttle; each has its own request budget and alert row
+MAX_ACTIVE_API_KEYS_PER_USER = int(os.environ.get("MAX_ACTIVE_API_KEYS_PER_USER", "25"))  # K159: keys are minted without a throttle; each has its own request budget and alert row
 API_KEY_HOUR_WINDOW_SECONDS = 60 * 60
 
 # Optional managed-DB disk size (MB) so the Health page can show data/disk %. Unset = show data size only.

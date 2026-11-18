@@ -5,6 +5,7 @@ token exhaustion. Format: `- YYYY-MM-DD [agent] STATUS: what (files / commit)`.
 STATUS ∈ START, DONE, BLOCKED, HANDOFF. **Next session: read "Now / Next" first.**
 
 ## Now / Next
+- 2026-11-18 [manager] DONE: Chas: API key cap 25 (MAX_ACTIVE_API_KEYS_PER_USER default 50 -> 25; ADMIN_GUIDE env row, API.md, test). Next: Dependabot PRs (picopaas + kaisen), then PROXY protocol on the DO LB (Chas: yes) on its own. uncommitted.
 - 2026-11-18 [manager] DONE: pentest/coverage round live: public 5055563 (fixes), e2f1a7c (tests), 71c5aed (docs); private picopaas-security f39cdeb. CI 44380470400 green, deploy 44382507505 'Roll out image + platform manifests' success. Live check: root route with malformed body and no key 404 (was 422, K161), /openapi.json anonymous 404, /healthz 200. Blog: release-hardening-against-machine-speed-attacks, release-kaisen-confirm-the-plan-first (both 200). Doc fixes after the blogger's check: ADMIN_GUIDE admin-key list (db servers and platform hostnames are web-only; list now points at ADMIN_KEY_WRITE_ALLOWLIST), API.md db-servers/platform-host rows web-only, /api/keys row documents the 50-key cap and the per-key budget. Open for Chas: the 50-key cap number; PROXY protocol on the LB.
 - 2026-11-18 [blogger] DONE: posted release-hardening-against-machine-speed-attacks (security roundup) and release-kaisen-confirm-the-plan-first, both published.
 - 2026-11-18 [blogger] START: devlog for 2026-11-16..18 (security roundup + Kaisen plan-first).

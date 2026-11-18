@@ -68,6 +68,7 @@ required.
 | `RATE_LIMIT_ENABLED` | Login, signup and API-key rate limiting; on by default. |
 | `API_KEY_RATE_PER_MINUTE` | Requests one API key may make per minute (any scope; browser sessions are not counted). Default 120. Over it: 429 with `Retry-After`, audit `api_key.rate_limited` once per window. |
 | `API_KEY_RATE_PER_HOUR` | Same, per hour. Default 3000. Unrelated bearer tokens are counted (not blocked) in one global per-minute row, `invalid-api-key:global:<UTC yyyymmddHHMM>` in `auth_throttle`. `/docs`, `/redoc` and `/openapi.json` need a login (404 otherwise) and never list `/admin` or `/root` routes. |
+| `MAX_ACTIVE_API_KEYS_PER_USER` | Most active (not revoked) API keys one user may hold; creating another answers 409 until one is revoked. Default 25. |
 | `LOG_LEVEL` | Log level for the JSON logs (default `INFO`). |
 | `METRICS_TOKEN` | Bearer token for `GET /metrics` (Prometheus). Unset: only a platform-admin browser session can read it. |
 | `CLOUD_PROVIDER` | Which provider set the platform builds: `digitalocean` (default), `generic` (self-hosted Garage object store, in-cluster databases; see `deploy/generic/README.md`), or `aws` / `gcp` (accepted, not implemented yet). Anything else stops startup. |

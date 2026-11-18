@@ -232,3 +232,9 @@ def test_admin_lists_and_revokes_user_keys(make_client):
         assert db.query(models.AuditLog).filter(models.AuditLog.action == "apikey.admin_revoke").count() == 1
     finally:
         db.close()
+
+
+def test_default_active_key_cap_is_25():
+    """Chas 2026-11-18: at most 25 active API keys per user (K159)."""
+    from app import config
+    assert config.MAX_ACTIVE_API_KEYS_PER_USER == 25
