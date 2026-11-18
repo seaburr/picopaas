@@ -5,9 +5,8 @@ if the store errors we log and allow the request rather than lock people out on 
 
 Client IP: Traefik (untrusted forwarded-headers, the default) discards any client-supplied X-Forwarded-For and
 sets it to the TCP peer it saw. We take the RIGHTMOST entry, which is the one our own proxy wrote, so a client
-cannot spoof it by sending its own header. Behind the DO load balancer in TCP mode without PROXY protocol that peer
-may be the LB rather than the end user, so the IP buckets can be coarse. That is why the per-email login lockout is
-the primary control and the IP limits are best-effort (login IP limit is looser than the email one).
+cannot spoof it by sending its own header. Traefik's Service uses externalTrafficPolicy Local, so that peer is the real client IP (measured 2026-11-18).
+In-cluster callers appear as Traefik pod IPs and share buckets. The per-email login lockout stays the primary login control.
 """
 import hashlib
 import logging
@@ -292,6 +291,31 @@ def _audit_first_refusal(db: Session, api_key: "models.ApiKey", window_name: str
     owner = db.get(models.User, api_key.user_id)
     audit.record(db, None, "api_key.rate_limited", "user", api_key.user_id,
                  f"key_id={api_key.id} window={window_name}", actor_email=owner.email if owner else None)
+
+
+def check_invalid_api_key_ip(db: Session, request: Request) -> None:
+    """Called only for a bearer that matches no key. Refuse (429) once this client IP has sent too many wrong keys in
+    a minute or an hour, else count this one (check first, then bump: one write per invalid request, on a per-IP row).
+    Wrong keys only: a valid key never reaches this, so it is never blocked by an IP's bad-key history. In-cluster
+    callers share the Traefik pod IPs but do not send invalid keys to the platform API in normal operation."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        ip = client_ip(request)
+        limits = ((config.INVALID_API_KEY_IP_MAX_PER_MINUTE, config.API_KEY_MINUTE_WINDOW_SECONDS),
+                  (config.INVALID_API_KEY_IP_MAX_PER_HOUR, config.API_KEY_HOUR_WINDOW_SECONDS))
+        keys = [_key(f"invalid-key-ip-{w}", ip) for _, w in limits]
+        for k, (n, w) in zip(keys, limits):
+            wait = _remaining(db, k, n, w)
+            if wait:
+                raise HTTPException(status_code=429, headers={"Retry-After": str(wait)},
+                                    detail="Too many invalid API keys from this address. Try again later.")
+        _prune(db)
+        for k, (_, w) in zip(keys, limits):
+            _bump(db, k, w)
+
+    _safe(db, "check_invalid_api_key_ip", run)
 
 
 def _invalid_key_bucket(now: datetime) -> str:

@@ -73,8 +73,10 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             .first()
         )
         if api_key is None:
-            # A key-looking bearer, or any bearer that matches no key: counted globally, never blocked.
+            # A bearer that matches no key: counted globally (security alert), then per client IP; 429 past the
+            # per-IP limit propagates (wrong keys only). Valid keys never reach the per-IP check.
             ratelimit.record_invalid_api_key(db)
+            ratelimit.check_invalid_api_key_ip(db, request)
         else:
             ratelimit.check_api_key_budget(db, api_key)  # 429 propagates: not swallowed into "no user" -> 401
             now = datetime.now(timezone.utc)

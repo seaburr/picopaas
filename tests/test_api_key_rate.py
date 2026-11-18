@@ -10,6 +10,9 @@ AUTH = lambda k: {"Authorization": f"Bearer {k}"}  # noqa: E731
 @pytest.fixture
 def limiter_on(monkeypatch):
     monkeypatch.setattr(config, "RATE_LIMIT_ENABLED", True)
+    # the per-IP invalid-key throttle has its own file (tests/test_ip_limits_2026_11_18.py); keep it out of the way here
+    monkeypatch.setattr(config, "INVALID_API_KEY_IP_MAX_PER_MINUTE", 10**6)
+    monkeypatch.setattr(config, "INVALID_API_KEY_IP_MAX_PER_HOUR", 10**6)
     ratelimit._invalid_pending.clear()  # in-memory batch is per process: start each test empty
     yield
     ratelimit._invalid_pending.clear()
@@ -111,7 +114,7 @@ def test_invalid_keys_are_counted_not_blocked_and_not_stored(make_client, limite
     assert ratelimit.invalid_api_keys_last(db_session, 1) == 301
     for row in db_session.query(models.AuthThrottle).all():
         assert "1111" not in row.key and "random-bearer" not in row.key
-        assert row.key.startswith("invalid-api-key:global:")
+        assert row.key.startswith("invalid-api-key:global:") or len(row.key) == 64  # global row or hashed per-IP row
 
 
 def test_prune_cutoff_covers_the_windows(db_session, monkeypatch):

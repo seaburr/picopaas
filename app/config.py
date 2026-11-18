@@ -160,7 +160,7 @@ ROOT_MANAGEMENT_KEY_MIN = 32
 ROOT_MANAGEMENT_KEY = os.environ.get("ROOT_MANAGEMENT_KEY", "").strip()
 if ROOT_MANAGEMENT_KEY and len(ROOT_MANAGEMENT_KEY) < ROOT_MANAGEMENT_KEY_MIN:
     raise RuntimeError(f"ROOT_MANAGEMENT_KEY must be at least {ROOT_MANAGEMENT_KEY_MIN} characters; unset it to turn the root route off")
-ROOT_KEY_MAX_FAILS = 20            # wrong keys per client IP per window (shared LB address today), then 429 for wrong keys only
+ROOT_KEY_MAX_FAILS = int(os.environ.get("ROOT_KEY_MAX_FAILS", "5"))  # wrong keys per client IP per window, then 429 for wrong keys only
 ROOT_KEY_WINDOW_SECONDS = 15 * 60
 
 # Wildcard DNS domain apps are deployed under (ARCHITECTURE.md "DNS and TLS").
@@ -390,22 +390,24 @@ DEPLOY_TIMEOUT_MINUTES = 10
 # Brute-force protection on /auth/login and /auth/register (app/ratelimit.py). DB-backed so the limits are
 # shared by every replica. RATE_LIMIT_ENABLED=0 turns it off (the test suite does; limiter tests turn it on).
 RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "1") != "0"
-# The per-email login lockout is the real brute-force control and is IP-independent. The per-IP limits are a
-# coarse floodwall: the DO LB runs in TCP mode without PROXY protocol, so the app currently sees the LB's
-# address, not the client's — the IP buckets are effectively shared platform-wide. They're set generously so
-# they never block a legitimate trickle; enabling PROXY protocol (see docs/ARCHITECTURE.md) would let us tighten
-# them to real per-client values.
+# The per-email login lockout is the real brute-force control and is IP-independent. The per-IP limits are real
+# per-client values: Traefik's Service uses externalTrafficPolicy Local, so it sees (and forwards) the true client
+# IP, and a forged X-Forwarded-For is dropped (measured 2026-11-18; docs/ARCHITECTURE.md "Auth throttling").
+# In-cluster callers (Kaisen previews, tenant-to-tenant calls) appear as the Traefik pod IPs and share buckets.
 LOGIN_EMAIL_MAX_FAILS = 10       # failed logins per email per window: the primary control
-LOGIN_IP_MAX_FAILS = 100         # per client IP (shared LB address today) — a floodwall, not the main control
+LOGIN_IP_MAX_FAILS = int(os.environ.get("LOGIN_IP_MAX_FAILS", "30"))  # failed logins per client IP per window; the per-email lockout stays primary
 LOGIN_WINDOW_SECONDS = 15 * 60
-REGISTER_IP_MAX = 40             # signups per IP per window (shared LB address today); approval still gates every account
+REGISTER_IP_MAX = int(os.environ.get("REGISTER_IP_MAX", "10"))  # signups per client IP per window (room for an office NAT); approval still gates every account
 REGISTER_WINDOW_SECONDS = 60 * 60
 # Per-API-key request budget (app/ratelimit.py check_api_key_budget): every request a valid key authenticates counts,
 # any scope; browser sessions do not. Over either limit: 429 with Retry-After. Env-overridable.
 API_KEY_RATE_PER_MINUTE = int(os.environ.get("API_KEY_RATE_PER_MINUTE", "120"))
 API_KEY_RATE_PER_HOUR = int(os.environ.get("API_KEY_RATE_PER_HOUR", "3000"))
-# Bearer tokens that match no key are counted (never blocked: the IP buckets are shared behind the LB) in one global
-# per-minute-window row; the alerting job reads it with ratelimit.invalid_api_keys_last. Rows are kept this long.
+# Bearer tokens that match no key are counted in one global per-minute-window row (the alerting job reads it with
+# ratelimit.invalid_api_keys_last) and per client IP: past either per-IP limit a request with a wrong key gets 429
+# (a valid key from the same IP is never blocked by this). Rows are kept INVALID_API_KEY_RETENTION_SECONDS.
+INVALID_API_KEY_IP_MAX_PER_MINUTE = int(os.environ.get("INVALID_API_KEY_IP_MAX_PER_MINUTE", "30"))
+INVALID_API_KEY_IP_MAX_PER_HOUR = int(os.environ.get("INVALID_API_KEY_IP_MAX_PER_HOUR", "300"))
 INVALID_API_KEY_RETENTION_SECONDS = 60 * 60
 API_KEY_MINUTE_WINDOW_SECONDS = 60
 MAX_ACTIVE_API_KEYS_PER_USER = int(os.environ.get("MAX_ACTIVE_API_KEYS_PER_USER", "25"))  # K159: keys are minted without a throttle; each has its own request budget and alert row
