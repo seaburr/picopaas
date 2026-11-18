@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app import models
+from app import models, ratelimit
 from app.config import SESSION_COOKIE_NAME
 from app.db import get_db
 from app.providers.base import Registry
@@ -72,7 +72,11 @@ def _user_from_request(request: Request, db: Session) -> Optional[models.User]:
             .filter(models.ApiKey.hashed == key_hash, models.ApiKey.revoked_at.is_(None))
             .first()
         )
-        if api_key is not None:
+        if api_key is None:
+            # A key-looking bearer, or any bearer that matches no key: counted globally, never blocked.
+            ratelimit.record_invalid_api_key(db)
+        else:
+            ratelimit.check_api_key_budget(db, api_key)  # 429 propagates: not swallowed into "no user" -> 401
             now = datetime.now(timezone.utc)
             last = api_key.last_used_at
             if last is not None and last.tzinfo is None:

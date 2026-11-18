@@ -12,13 +12,15 @@ the primary control and the IP limits are best-effort (login IP limit is looser 
 import hashlib
 import logging
 import random
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app import config, models
+from app import audit, config, models
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +88,9 @@ def _bump(db: Session, key: str, window: int) -> None:
 
 def _prune(db: Session) -> None:
     if random.random() < 0.02:
-        cutoff = _now() - timedelta(seconds=max(config.LOGIN_WINDOW_SECONDS, config.REGISTER_WINDOW_SECONDS) + 60)
+        keep = max(config.LOGIN_WINDOW_SECONDS, config.REGISTER_WINDOW_SECONDS, config.API_KEY_HOUR_WINDOW_SECONDS,
+                   config.INVALID_API_KEY_RETENTION_SECONDS)
+        cutoff = _now() - timedelta(seconds=keep + 60)
         db.query(models.AuthThrottle).filter(models.AuthThrottle.window_start < cutoff).delete()
         db.commit()
 
@@ -253,3 +257,106 @@ def check_upload(db: Session, request: Request, user_id: int, project_id: int) -
             _bump(db, k, w)
 
     _safe(db, "check_upload", run)
+
+
+def check_api_key_budget(db: Session, api_key: "models.ApiKey") -> None:
+    """Count one request authenticated by `api_key` (any scope) against its per-minute and per-hour budget; 429 past
+    either. Keyed by the key's database id, never the key text. Check first, then bump (one write per request), so a
+    refused request does not extend its own lockout. The first refusal in a window writes one audit row."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+
+    def run():
+        limits = (("minute", config.API_KEY_RATE_PER_MINUTE, config.API_KEY_MINUTE_WINDOW_SECONDS),
+                  ("hour", config.API_KEY_RATE_PER_HOUR, config.API_KEY_HOUR_WINDOW_SECONDS))
+        keys = {name: _key(f"api-key-{name}", str(api_key.id)) for name, _, _ in limits}
+        for name, limit, window in limits:
+            wait = _remaining(db, keys[name], limit, window)
+            if wait:
+                _audit_first_refusal(db, api_key, name, _key(f"api-key-refused-{name}", str(api_key.id)), window)
+                raise HTTPException(
+                    status_code=429, headers={"Retry-After": str(wait)},
+                    detail=f"This API key made too many requests ({limit} per {name}). Try again in {wait} seconds.")
+        _prune(db)
+        for name, _, window in limits:
+            _bump(db, keys[name], window)
+
+    _safe(db, "check_api_key_budget", run)
+
+
+def _audit_first_refusal(db: Session, api_key: "models.ApiKey", window_name: str, dedupe_key: str, window: int) -> None:
+    """One `api_key.rate_limited` audit row per key per window: a second AuthThrottle row marks 'already audited'."""
+    if _remaining(db, dedupe_key, 1, window):
+        return
+    _bump(db, dedupe_key, window)
+    owner = db.get(models.User, api_key.user_id)
+    audit.record(db, None, "api_key.rate_limited", "user", api_key.user_id,
+                 f"key_id={api_key.id} window={window_name}", actor_email=owner.email if owner else None)
+
+
+def _invalid_key_bucket(now: datetime) -> str:
+    return "invalid-api-key:global:" + now.strftime("%Y%m%d%H%M")
+
+
+# Invalid bearers are counted in process memory and written in batches (K158): an anonymous flood of bad keys must not
+# become one database write per request on a single hot row. Each process writes at most once per
+# INVALID_API_KEY_FLUSH_SECONDS (and when the minute bucket changes), adding its pending count in one statement.
+INVALID_API_KEY_FLUSH_SECONDS = 5.0
+_invalid_lock = threading.Lock()
+_invalid_pending: dict[str, int] = {}
+_invalid_last_flush = 0.0
+
+
+def _add_to_bucket(db: Session, key: str, n: int) -> None:
+    row = db.get(models.AuthThrottle, key)
+    if row is None:
+        db.add(models.AuthThrottle(key=key, window_start=_now(), count=n))
+        try:
+            db.commit()
+            return
+        except Exception:
+            db.rollback()  # another replica inserted it first: fall through and add
+    db.execute(update(models.AuthThrottle).where(models.AuthThrottle.key == key)
+               .values(count=models.AuthThrottle.count + n))
+    db.commit()
+
+
+def _flush_invalid(db: Session, force: bool = False) -> None:
+    global _invalid_last_flush
+    with _invalid_lock:
+        due = force or time.monotonic() - _invalid_last_flush >= INVALID_API_KEY_FLUSH_SECONDS \
+            or any(k != _invalid_key_bucket(_now()) for k in _invalid_pending)
+        if not due or not _invalid_pending:
+            return
+        batch = dict(_invalid_pending)
+        _invalid_pending.clear()
+        _invalid_last_flush = time.monotonic()
+
+    def run():
+        _prune(db)
+        for key, n in batch.items():
+            _add_to_bucket(db, key, n)
+
+    _safe(db, "flush_invalid_api_keys", run)
+
+
+def record_invalid_api_key(db: Session) -> None:
+    """Count one bearer that resolved to no API key in the current minute's global bucket. Never blocks and never stores
+    the bearer. Buckets are named invalid-api-key:global:<UTC YYYYmmddHHMM>; read them with invalid_api_keys_last.
+    Counted in memory and written in batches, so a flood costs at most one write per process every few seconds."""
+    if not config.RATE_LIMIT_ENABLED:
+        return
+    with _invalid_lock:
+        key = _invalid_key_bucket(_now())
+        _invalid_pending[key] = _invalid_pending.get(key, 0) + 1
+    _flush_invalid(db)
+
+
+def invalid_api_keys_last(db: Session, minutes: int) -> int:
+    """Invalid API-key bearers seen in the last `minutes` whole-minute buckets (the current one included). Retained for
+    INVALID_API_KEY_RETENTION_SECONDS; 0 when rate limiting is disabled (nothing is counted)."""
+    _flush_invalid(db, force=True)  # this process's pending count; other replicas flush within a few seconds
+    now = _now()
+    names = [_invalid_key_bucket(now - timedelta(minutes=i)) for i in range(max(1, minutes))]
+    rows = db.query(models.AuthThrottle).filter(models.AuthThrottle.key.in_(names)).all()
+    return sum(r.count for r in rows)

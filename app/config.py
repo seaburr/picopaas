@@ -400,6 +400,15 @@ LOGIN_IP_MAX_FAILS = 100         # per client IP (shared LB address today) — a
 LOGIN_WINDOW_SECONDS = 15 * 60
 REGISTER_IP_MAX = 40             # signups per IP per window (shared LB address today); approval still gates every account
 REGISTER_WINDOW_SECONDS = 60 * 60
+# Per-API-key request budget (app/ratelimit.py check_api_key_budget): every request a valid key authenticates counts,
+# any scope; browser sessions do not. Over either limit: 429 with Retry-After. Env-overridable.
+API_KEY_RATE_PER_MINUTE = int(os.environ.get("API_KEY_RATE_PER_MINUTE", "120"))
+API_KEY_RATE_PER_HOUR = int(os.environ.get("API_KEY_RATE_PER_HOUR", "3000"))
+# Bearer tokens that match no key are counted (never blocked: the IP buckets are shared behind the LB) in one global
+# per-minute-window row; the alerting job reads it with ratelimit.invalid_api_keys_last. Rows are kept this long.
+INVALID_API_KEY_RETENTION_SECONDS = 60 * 60
+API_KEY_MINUTE_WINDOW_SECONDS = 60
+API_KEY_HOUR_WINDOW_SECONDS = 60 * 60
 
 # Optional managed-DB disk size (MB) so the Health page can show data/disk %. Unset = show data size only.
 # The true disk capacity comes from DO's managed-DB metrics API (planned follow-up); do not guess it.
