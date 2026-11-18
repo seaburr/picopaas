@@ -8,7 +8,7 @@ DigitalOcean is the reference cloud. The platform is built to run wherever you d
 
 Live: https://platform.picopaas.xyz (sign up, and if your account is approved, a PicoPaaS platform admin will reach out)
 
-Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Admin guide](docs/ADMIN_GUIDE.md) | [Deployment](docs/deployment/README.md) | [Architecture](docs/ARCHITECTURE.md) | [Pentest notes](docs/PENTEST.md) | [Ledger](docs/LEDGER.md)
+Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md) | [Admin guide](docs/ADMIN_GUIDE.md) | [Deployment](docs/deployment/README.md) | [Architecture](docs/ARCHITECTURE.md) | [Ledger](docs/LEDGER.md)
 
 ## Documentation map
 
@@ -23,7 +23,7 @@ Docs: [User guide](docs/USER_GUIDE.md) | [API](docs/API.md) | [CLI](docs/CLI.md)
 | Operator | [Generic target](deploy/generic/README.md) | PicoPaaS on any Kubernetes with Garage and in-cluster databases. |
 | Contributor | [Architecture](docs/ARCHITECTURE.md), [Portability plan](docs/PORTABILITY_PLAN.md), [Roadmap](docs/ROADMAP.md) | Design decisions, cost model, running on other clouds, what is next. |
 | Contributor | [Process](docs/PROCESS.md), [Ledger](docs/LEDGER.md), [Questions](docs/QUESTIONS.md) | How work is done, what is done, open decisions. |
-| Contributor | [Pentest notes](docs/PENTEST.md), [Design notes](docs/design/backups.md), [Research](docs/research/app-candidates-2026-11.md), [Requests](docs/requests/) | Security findings, feature designs ([projects](docs/design/projects.md), [Kaisen](docs/design/kaisen.md), [suspensions](docs/design/suspensions.md)), research, infra requests (`docs/requests/`). |
+| Contributor, [Design notes](docs/design/backups.md), [Research](docs/research/app-candidates-2026-11.md), [Requests](docs/requests/) | Security findings, feature designs ([projects](docs/design/projects.md), [Kaisen](docs/design/kaisen.md), [suspensions](docs/design/suspensions.md)), research, infra requests (`docs/requests/`). |
 
 ## Features
 

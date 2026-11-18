@@ -10,6 +10,8 @@ MySQL DB (50MB) and Spaces bucket (100MB). Caps: 384MB RAM, 512MB image, CPU per
   carry answers into ARCHITECTURE/requests, and move answered items to its Resolved section. Put every new question for
   Chas here (one place to look), linking to the request file for background.
 - `docs/requests/`: infra requests to Chas (what / why / monthly cost). Never provision without an approved request.
+- Security log: private repo `seaburr/picopaas-security` (`~/source/picopaas-security/PENTEST.md`), moved there 2026-11-18;
+  public files refer to findings by K-number only. Only scm-security commits there too.
 - `docs/KAISEN_OPS.md`: how PicoPaaS and the seaburr/kaisen repo fit together, how Kaisen ships and runs (worker,
   runtime image pin via bootstrap), test accounts and traps. Read it before any Kaisen work.
 

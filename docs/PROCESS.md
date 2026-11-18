@@ -14,7 +14,7 @@ Use exactly these in `[role]`. No ad-hoc names (`backend`, `frontend`, `main`, `
 | ui-ux-designer | agent | mockups, browser checks, visual diffs, small UI fixes |
 | infra-ops | agent | `infra/`, `deploy/`, `.github/workflows`, images, approved applies, Ghost/app recipes' infra side |
 | qa-tester | agent (ledger name `qa-tester`; old `qa`, `qa-engineer` are retired) | coverage passes, live E2E on throwaway apps |
-| security-reviewer | agent | review/pentest of risky diffs, `docs/PENTEST.md` |
+| security-reviewer | agent | review/pentest of risky diffs, the private pentest log (`seaburr/picopaas-security`, `PENTEST.md`) |
 | scm-security | agent | the ONLY committer/pusher; secret gate; CI watch |
 | dependabot-steward | agent | Dependabot PR queue (merge via `gh pr merge` or hand to scm-security) |
 | package-steward | agent | dependency currency while code is written: latest stable or a recorded reason, incl. template images Dependabot misses; never commits |
@@ -69,7 +69,7 @@ Run when Chas hands over a review/feedback doc. The manager drives it; each phas
 5. **UX.** ui-ux-designer checks every UI change in a browser (desktop + 390px), including all `NOT browser-checked`
    items, and fixes small issues. *Gate:* no P1/P2 open; P3s listed in the ledger.
 6. **Pentest.** security-reviewer reviews the wave's diff and probes on throwaway apps. *Gate:* no open HIGH/CRIT;
-   MED+ either fixed or in `docs/PENTEST.md` + `docs/QUESTIONS.md`.
+   MED+ either fixed or in the private PENTEST.md + `docs/QUESTIONS.md`. Public files (QUESTIONS, LEDGER, commit messages) name the K-number and the decision, not how to exploit an open weakness.
 7. **Docs and devlog.** tech-writer audits docs against the code (API, guides, recipes, config tables);
    marketing-writer touches public copy only if limits/claims changed; release-blogger publishes the roundup.
    *Gate:* docs match shipped behavior.
