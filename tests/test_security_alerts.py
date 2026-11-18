@@ -190,18 +190,12 @@ def test_kaisen_spike_under_threshold(db_session):
 
 
 def test_kaisen_single_hour(db_session):
-    kev(db_session, 1, 2.6, NOW - timedelta(minutes=50))
-    kev(db_session, 1, 2.6, NOW - timedelta(minutes=45))
+    h = (NOW - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)  # one fixed clock hour, never straddles
+    kev(db_session, 3, 2.6, h + timedelta(minutes=1))
+    kev(db_session, 3, 2.6, h + timedelta(minutes=2))
     security_alerts.run(db_session, NOW)
-    # both land in at most two clock hours; force one bucket deterministically
-    rows = alerts(db_session, "kaisen_hour_spend")
-    if not rows:
-        h = (NOW - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
-        kev(db_session, 3, 2.6, h + timedelta(minutes=1))
-        kev(db_session, 3, 2.6, h + timedelta(minutes=2))
-        security_alerts.run(db_session, NOW)
-        rows = alerts(db_session, "kaisen_hour_spend")
-    assert rows and rows[0].severity == "medium"
+    [a] = alerts(db_session, "kaisen_hour_spend")
+    assert (a.severity, a.subject_id) == ("medium", "3") and a.evidence["hour_usd"] == 5.2
 
 
 def test_kaisen_single_hour_under(db_session):
