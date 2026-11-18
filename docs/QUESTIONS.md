@@ -7,14 +7,20 @@ background on each item if you want it.
 
 ## Open questions
 
+- **ARTEX hardening (2026-11-17): four decisions** (details K148-K156 in `docs/PENTEST.md`). Done: admin identity and
+  policy writes now need a web login (a stolen admin API key can no longer reset a password, promote or change settings),
+  plus a regression suite. Yours to decide: (1) make `db-servers` and `platform-host` admin writes web-only too (recommended,
+  small; a stolen admin key could otherwise point new databases at a server the attacker controls); (2) invalid-bearer
+  volume has no throttle and a per-IP one would lock out everyone behind the load balancer: do nothing, throttle per key
+  prefix, or an edge limit (I suggest alert-only, see 3); (3) build a rule-based identity-velocity alert from the audit log
+  (about 1 day, no cost)?; (4) raise the priority of the scoped DO token and per-bucket Spaces keys: a framework like this
+  tests a stolen cloud key first. Also: spend-spike alert for stored Kaisen keys (small, same job as 3).
+
 - **Kaisen: what to build next (review of the unbuilt list, 2026-11-16).** From research B (competitive-quick-wins),
   B1 Fork, B2 starters, B4 brief check + Improve brief are live; B5 preview pane was built and removed. Not built, in
   the order I would do them:
-  1. **Confirm the plan before building** (research B3). Checkbox on New build plus a project default, off by
-     default: the builder writes `PLAN.md`, asks one question containing the plan, and continues in the same run on
-     "go" or a correction. About 0.5-1 day: one flag + migration, one conditional prompt paragraph, a checkbox, tests
-     with the fake model. Adds one model turn (a fraction of a cent on Haiku). No runtime image change, no re-pin.
-     **I recommend starting here; say "go" and I build it.**
+  1. ~~Confirm the plan before building (research B3)~~ **Chas 2026-11-16: "sounds right"; built the same day**
+     (New build checkbox, project default, enforced gate; off by default).
   2. **Browser errors fed back to the builder** (the "no browser in the loop" gap from jamtunez). Cheapest form: the
      runtime injects a small error reporter into served HTML and `deploy_preview` returns the JavaScript errors and
      failed requests it collected. Needs a design, a security review (a script injected into tenant pages), a
@@ -30,7 +36,7 @@ background on each item if you want it.
      the preview pane it needs was removed), automatic fix loop (burns spend; the manual **Fix it** stays).
   Small leftovers I can fold into any wave: GitHub push pacing for many blobs (S7), a CI gate for Pillow CVEs,
   K102 (builder can repeat its prompt, INFO), and two of your open answers below (the standalone test Kaisen
-  delete, the 1-app default). Which of 1-5 do you want, and in what order?
+  delete, the 1-app default). Which of 2-5 do you want next, and in what order?
 
 - **Root management key: wire it into production? (2026-11-16)** `ROOT_MANAGEMENT_KEY` is built and optional
   (ADMIN_GUIDE "Root management key"); production has no key, so `/root/admin-reset` answers 404 there. To turn it

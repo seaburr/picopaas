@@ -295,6 +295,11 @@ shouldn't lock you out of the platform.
   another active administrator exists.
 - **Last-admin protection**: the platform refuses (409) to demote, suspend or delete the last active administrator.
   Administrators can't be suspended or deleted directly; demote them first.
+- **Web login for account and policy changes**: approving, suspending, promoting, demoting, rejecting or deleting a user,
+  resetting a password, changing project limits or feature flags, and saving **Settings** or the **Banner** need a browser
+  login. An admin API key gets 403 on these, so a leaked key cannot create a second admin or take over an account. An admin
+  key can still do the operational calls: list apps, suspend and unsuspend or delete an app, resource and replica overrides,
+  the per-app backup lock, restore a backup, DB-server records, and read health. The exact list is in `docs/PENTEST.md` (K149).
 - **Audit**: promotions and demotions are logged (`user.promote`, `user.demote`). **Admin → Audit** downloads the full
   log (up to 50,000 newest rows) as CSV or JSON, streamed, and each download is logged too (`audit.export`).
   Rows older than `AUDIT_RETENTION_DAYS` (default 90) are deleted daily (`audit.purge`); download the export

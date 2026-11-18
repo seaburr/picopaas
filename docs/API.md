@@ -29,8 +29,8 @@ everywhere a user is accepted except where marked "session only".
 | POST, GET | `/projects/{project_id}/invites`, `/projects/{project_id}/invites` | project owner (POST: session only) |
 | DELETE | `/projects/{project_id}/invites/{invite_id}` | project owner, session only |
 | POST | `/invites/{token}/accept` | active, session only, rate limited |
-| GET, PATCH | `/admin/projects`, `/admin/projects/{project_id}` | admin (PATCH sets the project's app limit). GET with no query parameter: the shared projects as a plain list. With `q` (case-insensitive substring of name or an owner's email, max 100), `limit` (1..`ADMIN_PROJECTS_PAGE_MAX`, default `ADMIN_PROJECTS_PAGE_DEFAULT`), `offset` and/or `include_personal=true`: `{items [AdminProject], total, limit, offset}`. `X-Total-Count` is set in both forms. |
-| GET, PUT | `/admin/projects/{project_id}/features` | admin. PUT `{kaisen_web_search?: bool, kaisen_uploads?: bool}` (omitted = unchanged); both return `{project_id, name, kaisen_web_search, kaisen_uploads}`. 404 unknown project, 422 bad body. Audit `kaisen.web_search_flag` / `kaisen.uploads_flag`. `AdminProject` rows carry `kaisen_web_search_enabled` (default true) and `kaisen_uploads_enabled`. |
+| GET, PATCH | `/admin/projects`, `/admin/projects/{project_id}` | admin (PATCH is **web login only** and sets the project's app limit). GET with no query parameter: the shared projects as a plain list. With `q` (case-insensitive substring of name or an owner's email, max 100), `limit` (1..`ADMIN_PROJECTS_PAGE_MAX`, default `ADMIN_PROJECTS_PAGE_DEFAULT`), `offset` and/or `include_personal=true`: `{items [AdminProject], total, limit, offset}`. `X-Total-Count` is set in both forms. |
+| GET, PUT | `/admin/projects/{project_id}/features` | admin; PUT is **web login only**. PUT `{kaisen_web_search?: bool, kaisen_uploads?: bool}` (omitted = unchanged); both return `{project_id, name, kaisen_web_search, kaisen_uploads}`. 404 unknown project, 422 bad body. Audit `kaisen.web_search_flag` / `kaisen.uploads_flag`. `AdminProject` rows carry `kaisen_web_search_enabled` (default true) and `kaisen_uploads_enabled`. |
 | GET, PATCH, DELETE | `/apps/{app_id}` | owner |
 | POST | `/apps/{app_id}/rotate-credentials` | owner |
 | PUT, DELETE | `/apps/{app_id}/domain` | owner |
@@ -48,9 +48,12 @@ everywhere a user is accepted except where marked "session only".
 | POST | `/admin/backups/{run_id}/restore` | admin, full-scope key |
 | POST, GET | `/admin/platform-backups/{run_id}/download`, `/admin/platform-backups/exports/{export_id}` | admin, **browser session only** (403 with an API key, any scope); POST also needs the admin's current password |
 | GET | `/admin/users`*, `/admin/apps`, `/admin/advice`, `/admin/audit`*, `/admin/audit/export`*, `/admin/settings`*, `/admin/db-servers`, `/admin/health`, `/admin/health/backups`, `/admin/health/logs[/pods|/download]`, `/admin/backups`, `/admin/docs/admin-guide` | admin (*browser session only: 403 with an API key, any scope) |
-| PATCH | `/admin/users/{user_id}` | admin |
-| POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote` | admin |
-| DELETE | `/admin/users/{user_id}`, `/admin/apps/{app_id}` | admin |
+| PATCH | `/admin/users/{user_id}` | admin (API key allowed; app_limit only, capped) |
+| POST | `/admin/users/{user_id}/approve`, `/suspend`, `/unsuspend`, `/reset-password`, `/promote`, `/demote`, `/reject` | admin, **web login only** (403 "This admin action needs a web login, not an API key." with any key) |
+| DELETE | `/admin/users/{user_id}` | admin, **web login only** |
+| DELETE | `/admin/apps/{app_id}` | admin (API key allowed) |
+| PUT | `/admin/settings`, `/admin/banner`, `/admin/projects/{project_id}/kaisen-uploads` | admin, **web login only** |
+| POST, PATCH, DELETE / PUT, DELETE | `/admin/db-servers[/{server_id}]` / `/admin/apps/{app_id}/platform-host` | admin, **web login only** (a db server receives every new tenant database and its password; since 2026-11-17) |
 | POST | `/admin/apps/{app_id}/suspend`, `/unsuspend` | admin |
 | POST | `/admin/projects/{project_id}/suspend`, `/unsuspend` | admin |
 | GET, PUT | `/admin/projects/{project_id}/kaisen-uploads` | admin (older alias of `/features` for the uploads flag only; PUT turns Kaisen file uploads on or off for the project; see Kaisen file uploads) |
