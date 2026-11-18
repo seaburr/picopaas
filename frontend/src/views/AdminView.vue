@@ -12,12 +12,13 @@ import ResourcesDialog from '../components/ResourcesDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import BackupAdminDialog from '../components/BackupAdminDialog.vue'
 import AdminAdvice from '../components/AdminAdvice.vue'
+import AdminSecurityAlerts from '../components/AdminSecurityAlerts.vue'
 import AdminProjects from '../components/AdminProjects.vue'
 import AdminSuspensions from '../components/AdminSuspensions.vue'
 import SuspendDialog from '../components/SuspendDialog.vue'
 import {
   approveUser, createDbServer, deleteAdminApp, detachDbServer, deleteUser, rejectUser, listAllApps, listSuspensions, downloadAuditLog, demoteUser, listAudit, promoteUser, listDbServers, listUsers,
-  patchAppResources, patchDbServer, resetUserPassword, setAppLimit, setAppReplicas, suspendUser, unsuspendApp, unsuspendUser,
+  patchAppResources, patchDbServer, resetUserPassword, securityAlertsSummary, setAppLimit, setAppReplicas, suspendUser, unsuspendApp, unsuspendUser,
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { dbEngineLabel } from '../composables/appUi'
@@ -61,7 +62,7 @@ const error = ref('')
 const msg = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // Tabs live in ?tab= so they are linkable.
-const TABS = ['users', 'apps', 'projects', 'suspensions', 'advice', 'servers', 'settings', 'audit'] as const
+const TABS = ['users', 'apps', 'projects', 'suspensions', 'advice', 'security', 'servers', 'settings', 'audit'] as const
 type Tab = (typeof TABS)[number]
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'users'))
 // ?q= pre-fills the search (the Suspensions tab links to a user this way).
@@ -111,6 +112,9 @@ async function load() {
     loaded.value = true
   }
 }
+// Open security alerts, for the tab count (a failure here only hides the count).
+const alertsOpen = ref<number | null>(null)
+onMounted(() => { securityAlertsSummary().then((r) => { alertsOpen.value = r.open }).catch(() => {}) })
 onMounted(load)
 
 async function act(fn: () => Promise<unknown>, ok: string, fail: string) {
@@ -412,7 +416,7 @@ const overrideSummary = (a: AdminApp) => {
       <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -- roving tabindex: the tab buttons inside are the focusable elements -->
       <div role="tablist" aria-label="Admin sections" class="flex flex-wrap gap-x-1 border-b border-pico-border" @keydown="onTabKey">
         <button
-          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'suspensions', label: 'Suspensions', n: suspensionCount }, { id: 'advice', label: 'Advice', n: null }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
+          v-for="t in [{ id: 'users', label: 'Users', n: users.length }, { id: 'apps', label: 'Apps', n: allApps.length }, { id: 'projects', label: 'Projects', n: null }, { id: 'suspensions', label: 'Suspensions', n: suspensionCount }, { id: 'advice', label: 'Advice', n: null }, { id: 'security', label: 'Security alerts', n: alertsOpen }, { id: 'servers', label: 'Database servers', n: servers.length }, { id: 'settings', label: 'Settings', n: null }, { id: 'audit', label: 'Audit', n: null }] as const"
           :id="`${uid}-tab-${t.id}`"
           :key="t.id"
           type="button"
@@ -431,7 +435,7 @@ const overrideSummary = (a: AdminApp) => {
       </div>
 
       <div :id="`${uid}-panel`" role="tabpanel" :aria-labelledby="`${uid}-tab-${tab}`" class="space-y-3">
-        <div v-if="tab !== 'servers' && tab !== 'settings' && tab !== 'projects' && tab !== 'suspensions' && tab !== 'advice'">
+        <div v-if="tab !== 'servers' && tab !== 'settings' && tab !== 'projects' && tab !== 'suspensions' && tab !== 'advice' && tab !== 'security'">
           <label :for="`${uid}-q`" class="sr-only">Search</label>
           <input :id="`${uid}-q`" v-model="q" type="search" class="input sm:max-w-xs" :placeholder="tab === 'users' ? 'Search users' : tab === 'apps' ? 'Search apps, owners, images' : 'Filter by action, actor, target'" />
         </div>
@@ -608,6 +612,7 @@ const overrideSummary = (a: AdminApp) => {
         <AdminProjects v-else-if="tab === 'projects'" @changed="refreshSuspensions" />
         <AdminSuspensions v-else-if="tab === 'suspensions'" :items="suspensions" :loaded="loaded" @changed="load" />
         <AdminAdvice v-else-if="tab === 'advice'" />
+        <AdminSecurityAlerts v-else-if="tab === 'security'" :users="users" @open="(n) => (alertsOpen = n)" />
         <div v-else-if="tab === 'settings'" class="space-y-4"><AdminBanner /><SettingsPanel /></div>
 
         <!-- AUDIT -->

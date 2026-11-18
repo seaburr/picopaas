@@ -420,6 +420,7 @@ export interface ClusterHealth {
   apps: HealthApp[]
   platform: HealthPlatform[]
   db_servers: DbServer[]
+  security_alerts_open?: number
   statistics?: { apps_ever_deployed: number; kaisen_apps_ever_built: number; kaisen_runs_ever: number }
   users?: { total: number; active: number; pending: number; suspended: number; admins?: number }
   pending_users?: { id: number; email: string; created_at: string }[]
@@ -1097,4 +1098,21 @@ export interface AdminAdviceFinding extends AdviceFinding {
   project_id: number | null
   project_name: string | null
   owner_email: string | null
+}
+
+// GET /admin/security-alerts (platform admin, web login). Times are naive UTC; acknowledged_by is a user id.
+export type SecurityAlertSeverity = 'high' | 'medium' | 'low'
+export interface SecurityAlert {
+  id: number
+  kind: string
+  severity: SecurityAlertSeverity
+  subject_type: 'user' | 'api_key' | 'project' | null
+  subject_id: string | null
+  message: string
+  evidence: Record<string, unknown>
+  first_seen: string
+  last_seen: string
+  count: number
+  acknowledged_at: string | null
+  acknowledged_by: number | null
 }

@@ -139,7 +139,8 @@ const problems = computed<Problem[]>(() => {
   for (const e of otherErrors.value) out.push({ text: e })
   return out
 })
-const problemCount = computed(() => problems.value.length + (pendingN.value ? 1 : 0))
+const alertsN = computed(() => data.value?.security_alerts_open ?? 0)
+const problemCount = computed(() => problems.value.length + (pendingN.value ? 1 : 0) + (alertsN.value ? 1 : 0))
 const pendingN = computed(() => data.value?.users?.pending ?? data.value?.pending_users?.length ?? 0)
 function jump(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -161,7 +162,7 @@ function jump(id: string) {
     <div v-if="error" role="alert" class="alert-error">{{ error }}</div>
 
     <template v-if="data">
-      <div v-if="problems.length || pendingN" class="alert-warn" role="status" aria-label="Overall status">
+      <div v-if="problems.length || pendingN || alertsN" class="alert-warn" role="status" aria-label="Overall status">
         <strong>{{ problemCount }} {{ problemCount === 1 ? 'problem' : 'problems' }}</strong>
         <ul class="mt-1 space-y-0.5">
           <li v-for="p in problems" :key="p.text">
@@ -170,6 +171,7 @@ function jump(id: string) {
             <span v-if="p.detail">: {{ p.detail }}</span>
           </li>
           <li v-if="pendingN"><RouterLink to="/admin" class="underline underline-offset-2">{{ pendingN }} {{ pendingN === 1 ? 'user' : 'users' }} waiting for approval</RouterLink></li>
+          <li v-if="alertsN"><RouterLink :to="{ path: '/admin', query: { tab: 'security' } }" class="underline underline-offset-2">{{ alertsN }} open security {{ alertsN === 1 ? 'alert' : 'alerts' }}</RouterLink></li>
         </ul>
       </div>
       <p v-else class="sr-only" role="status" aria-label="Overall status">All systems normal. Nodes ready, no failed apps, database capacity fine.</p>

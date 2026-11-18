@@ -1,4 +1,4 @@
-import type { AdviceSeverity, OwnerKey } from '../types'
+import type { AdviceSeverity, OwnerKey, SecurityAlertSeverity } from '../types'
 
 export const SEVERITY: Record<AdviceSeverity, { word: string; tone: 'err' | 'warn' | 'off' }> = {
   critical: { word: 'Critical', tone: 'err' },
@@ -17,3 +17,9 @@ const FIELDS: Record<string, { key: OwnerKey; label: string }> = {
   storage_quota_mb: { key: 'storage_quota_mb', label: 'Storage quota' },
 }
 export const resourceField = (field: string) => FIELDS[field] ?? null
+
+export const ALERT_SEVERITY: Record<SecurityAlertSeverity, { word: string; tone: 'err' | 'warn' | 'off' }> = {
+  high: { word: 'High', tone: 'err' },
+  medium: { word: 'Medium', tone: 'warn' },
+  low: { word: 'Low', tone: 'off' },
+}
