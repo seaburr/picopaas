@@ -17,11 +17,11 @@ from pydantic import BaseModel
 
 from app import config, crypto, models
 from app.db import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_kube
 from app.kaisen.models import KaisenSettings
 from app.main import app as fastapi_app
 from app.providers import mysql as mysql_provider
-from app.providers.fake import FakeObjectStore
+from app.providers.fake import FakeKubeProvider, FakeObjectStore
 from app.routers.apps import get_object_store
 from app.providers import postgres as postgres_provider
 from app.routers.kaisen import get_github_factory, get_model_factory
@@ -113,7 +113,10 @@ def test_inventory_is_complete():
 # ------------------------------------------------------------------------------------------------------ fixtures
 @pytest.fixture()
 def world(make_client):
-    """admin (first user), owner, outsider; sessions and keys. Returns a namespace-like dict."""
+    """admin (first user), owner, outsider; sessions and keys. Returns a namespace-like dict. The cluster client is faked,
+    so routes that read pods behave the same with or without a local kube config (CI has none)."""
+    kube = FakeKubeProvider()
+    fastapi_app.dependency_overrides[get_kube] = lambda: kube
     admin, owner, outsider = make_client(), make_client(), make_client()
     register_and_login(admin, "admin@example.com")
     register_and_login(owner, "owner@example.com")
