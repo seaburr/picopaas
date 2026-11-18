@@ -7,14 +7,10 @@ background on each item if you want it.
 
 ## Open questions
 
-- **ARTEX hardening (2026-11-17): four decisions** (details K148-K156 in `docs/PENTEST.md`). Done: admin identity and
-  policy writes now need a web login (a stolen admin API key can no longer reset a password, promote or change settings),
-  plus a regression suite. Yours to decide: (1) make `db-servers` and `platform-host` admin writes web-only too (recommended,
-  small; a stolen admin key could otherwise point new databases at a server the attacker controls); (2) invalid-bearer
-  volume has no throttle and a per-IP one would lock out everyone behind the load balancer: do nothing, throttle per key
-  prefix, or an edge limit (I suggest alert-only, see 3); (3) build a rule-based identity-velocity alert from the audit log
-  (about 1 day, no cost)?; (4) raise the priority of the scoped DO token and per-bucket Spaces keys: a framework like this
-  tests a stolen cloud key first. Also: spend-spike alert for stored Kaisen keys (small, same job as 3).
+- **ARTEX hardening (2026-11-17), answered 2026-11-18** (details in the private security log, K148-K156): db-servers
+  and platform-host done; scoped cloud credentials: Chas handles; API docs behind login and the security log moved
+  private: being built; security alerts: being built; API rate limit: per-key budget plus invalid-key alert (manager's
+  call), being built.
 
 - **Kaisen: what to build next (review of the unbuilt list, 2026-11-16).** From research B (competitive-quick-wins),
   B1 Fork, B2 starters, B4 brief check + Improve brief are live; B5 preview pane was built and removed. Not built, in

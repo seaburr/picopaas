@@ -65,7 +65,9 @@ required.
 | `SECRET_KEY` | Optional explicit JWT key; normally derived from `FERNET_KEY`. |
 | `ROOT_MANAGEMENT_KEY` | Optional break-glass key, at least 32 characters (a shorter one stops startup). Set: `POST /root/admin-reset` resets a platform administrator's password. Unset (default): that route is 404. See "Root management key" under Admins and recovery. |
 | `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
-| `RATE_LIMIT_ENABLED` | Login and signup rate limiting; on by default. |
+| `RATE_LIMIT_ENABLED` | Login, signup and API-key rate limiting; on by default. |
+| `API_KEY_RATE_PER_MINUTE` | Requests one API key may make per minute (any scope; browser sessions are not counted). Default 120. Over it: 429 with `Retry-After`, audit `api_key.rate_limited` once per window. |
+| `API_KEY_RATE_PER_HOUR` | Same, per hour. Default 3000. Unrelated bearer tokens are counted (not blocked) in one global per-minute row, `invalid-api-key:global:<UTC yyyymmddHHMM>` in `auth_throttle`. `/docs`, `/redoc` and `/openapi.json` need a login (404 otherwise) and never list `/admin` or `/root` routes. |
 | `LOG_LEVEL` | Log level for the JSON logs (default `INFO`). |
 | `METRICS_TOKEN` | Bearer token for `GET /metrics` (Prometheus). Unset: only a platform-admin browser session can read it. |
 | `CLOUD_PROVIDER` | Which provider set the platform builds: `digitalocean` (default), `generic` (self-hosted Garage object store, in-cluster databases; see `deploy/generic/README.md`), or `aws` / `gcp` (accepted, not implemented yet). Anything else stops startup. |
@@ -497,6 +499,32 @@ The environment variables in the Configuration section (for example `MAX_REPLICA
 default; resetting a setting returns it to the env value. Changes take effect within about 5 seconds on every replica and
 are audit-logged (`settings.update`). Lowering a ceiling doesn't touch values already set on apps, it only limits future
 changes. The floors (minimums) are fixed in code.
+
+## Security alerts
+
+A background job (every `SECURITY_ALERT_POLL_SECONDS`, 300) reads the audit log, the login throttle and Kaisen spend and
+raises alerts for machine-speed identity activity (the ARTEX pattern). No AI is involved and nothing is emailed: open the
+alerts in Admin > Security alerts (`GET /admin/security-alerts`, web login only; Health links to it when any are open); the Admin Health payload carries
+`security_alerts_open`. Acknowledge an alert once handled (audited as `security_alert.acknowledge`); the same condition
+merges into one open alert while it stays open (`count`, `last_seen`) and a fresh alert opens only on new evidence after an
+acknowledge. Acknowledged alerts are purged after 30 days and the table is capped at 500 rows.
+
+| Rule (kind) | Fires when | Severity | What to do |
+|---|---|---|---|
+| `admin_burst` | one actor makes 10 or more admin identity/policy actions in 10 minutes | high | Check the Audit log for that actor; if it is not you, suspend the account and reset its password. |
+| `privilege_outside_web` | `user.promote` / `user.reset_password` run by `manage-cli` or the root management key | medium | Confirm it was you; rotate `ROOT_MANAGEMENT_KEY` if not. |
+| `root_auth_failed` | any `root.auth_failed`; 5 in 15 minutes | medium / high | Someone is guessing the root key. Rotate it. |
+| `new_key_burst` | a user creates an API key and within 30 minutes makes 30 or more audited actions or hits the key rate limit | medium | Ask the user; revoke the key (Admin > Users) if unexpected. |
+| `login_pressure` | 50 failed logins across all emails in 15 minutes | medium | Credential stuffing. Check the IPs at the edge; consider pausing sign-ups. |
+| `login_lockouts` | 5 or more different emails reached the per-email lockout in 15 minutes | medium | As above. |
+| `invalid_api_keys` | 100 invalid API keys presented in one minute | medium | Key guessing. Check the edge logs. |
+| `kaisen_spend_spike` | a project's Kaisen spend today is 3x its 14-day daily average and at least $2 | medium | Check the project's runs; a stolen Anthropic key used through Kaisen looks like this. |
+| `kaisen_hour_spend` | one project spends $5 or more in one clock hour | medium | As above; lower the project's caps. |
+| `kaisen_member_spend` | a member who is not the project owner spends $5 or more in one hour | medium | Ask the owner; remove the member. |
+| `mass_account_changes` | 20 or more approve/reject/delete in an hour | high | Look at who did it (also fires `admin_burst`). |
+
+Tunables are constants in `app/config.py` (block `SECURITY_ALERT_*`: poll, lookback, per-rule counts and windows, row cap,
+retention); `LOGIN_EMAIL_MAX_FAILS` sets the per-email lockout count rule 4 uses.
 
 ## Persistent volumes
 

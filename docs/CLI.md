@@ -215,5 +215,5 @@ writes return once it's under the limit. Connection settings and TLS examples pe
 
 Errors print `error: <message>` and exit 1. The message is the server's plain-language explanation (for example
 `error: Your blob storage bucket is still being created. Try again in a minute.`); `-v` prefixes the HTTP code. A missing
-token, a 401, an unreachable server and a timeout each say what to check (`PICOPAAS_TOKEN`, `PICOPAAS_URL`, your
+token, a 429 (this API key's request budget, with the wait in seconds), a 401, an unreachable server and a timeout each say what to check (`PICOPAAS_TOKEN`, `PICOPAAS_URL`, your
 network).

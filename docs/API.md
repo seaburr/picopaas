@@ -1,7 +1,16 @@
 # PicoPaaS API
 
 Base URL: `https://platform.picopaas.xyz`. JSON in, JSON out. FastAPI also serves interactive docs at
-`/docs` and the schema at `/openapi.json`.
+`/docs` and `/redoc` and the schema at `/openapi.json`, but only to a signed-in active user (browser session or any API
+key); everyone else gets the same 404 as an unknown path. The served schema never lists `/admin` or `/root` routes
+(they are documented in this file only).
+
+**API key budget.** Every request an API key authenticates (any scope) counts against that key:
+`API_KEY_RATE_PER_MINUTE` (default 120) and `API_KEY_RATE_PER_HOUR` (default 3000). Over either: 429 with
+`Retry-After` and "This API key made too many requests (N per minute|hour). Try again in S seconds."; the first refusal
+in a window writes the audit row `api_key.rate_limited` (target: the key's owner, detail `key_id=<id> window=...`).
+Browser sessions are not counted. Bearer tokens that match no key are only counted (one global per-minute row), never
+blocked.
 
 ## Endpoint index
 
@@ -329,6 +338,8 @@ persistent volume (`volume`, only while the admin has set `BACKUP_KEY_SCOPED=1`;
 `PUT /admin/apps/{app_id}/backups` (admin, full-scope key): body (send only what changes) `{admin_disabled?: bool, reason?: string (required, max 255, when disabling; shown to the owner), max_bytes?: int|null (per-app storage ceiling, at least 1 MiB and not above `backup_max_bytes_total`; null clears it)}`. While disabled no scheduled or manual backup runs, the owner cannot turn backups on, and existing backups are kept (still downloadable and deletable). Returns the same payload as `GET /apps/{id}/backups`. `GET /admin/apps/{app_id}/backups` returns that payload without changing anything. Audit `backup.admin_disabled` / `backup.admin_enabled` / `backup.ceiling_set`. Owner toggles are audited as `backup.config_changed`.
 
 Retention (system audit rows): after each tick an app holding more than `backup_max_held_per_app` backups, or at its storage ceiling, has backups rolled off (`backup.rolled_off`) through the owner-delete machinery: failed and partial backups first (oldest first), then the oldest successful ones; the newest successful backup is never rolled off. A scheduled backup that cannot start because the app or the platform is at its ceiling is recorded as a failed backup carrying the reason.
+
+`GET /admin/security-alerts?status=open|all` (admin, browser session only; default `open`, newest first, at most 200): `[{id, kind, severity: high|medium|low, subject_type: user|api_key|project|null, subject_id, message, evidence{}, first_seen, last_seen, count, acknowledged_at, acknowledged_by}]`. `GET /admin/security-alerts/summary` (same auth): `{open}`. `POST /admin/security-alerts/{id}/acknowledge` (admin, browser session only): returns the alert; idempotent; 404 unknown; audited. `GET /admin/health` also carries `security_alerts_open`.
 
 `GET /admin/backups` (admin): `{enabled, configured, cap_per_app_bytes, cap_total_bytes, total_repo_bytes, warning, counts{ok, pending, stale, failing, disabled}, apps[], retained[]}`; `retained` lists deleted apps whose repositories are still within their 14 days. `GET /admin/health` also carries a compact `backups` block.
 
