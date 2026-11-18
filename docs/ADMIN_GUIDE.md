@@ -67,7 +67,12 @@ required.
 | `RECONCILER_ENABLED` | `1` starts the scheduled jobs. Off in tests. |
 | `RATE_LIMIT_ENABLED` | Login, signup and API-key rate limiting; on by default. |
 | `API_KEY_RATE_PER_MINUTE` | Requests one API key may make per minute (any scope; browser sessions are not counted). Default 120. Over it: 429 with `Retry-After`, audit `api_key.rate_limited` once per window. |
-| `API_KEY_RATE_PER_HOUR` | Same, per hour. Default 3000. Unrelated bearer tokens are counted (not blocked) in one global per-minute row, `invalid-api-key:global:<UTC yyyymmddHHMM>` in `auth_throttle`. `/docs`, `/redoc` and `/openapi.json` need a login (404 otherwise) and never list `/admin` or `/root` routes. |
+| `API_KEY_RATE_PER_HOUR` | Same, per hour. Default 3000. Bearer tokens that match no key are counted in one global per-minute row, `invalid-api-key:global:<UTC yyyymmddHHMM>` in `auth_throttle`, and per client IP (see the next rows). `/docs`, `/redoc` and `/openapi.json` need a login (404 otherwise) and never list `/admin` or `/root` routes. |
+| `INVALID_API_KEY_IP_MAX_PER_MINUTE` | Bearer tokens that match no API key, per client IP per minute. Default 30. Past it (or the hourly limit) a request with a wrong key gets 429 with `Retry-After`; a valid key from the same IP is never blocked by this. |
+| `INVALID_API_KEY_IP_MAX_PER_HOUR` | Same, per hour. Default 300. |
+| `LOGIN_IP_MAX_FAILS` | Failed logins per client IP per 15 minutes. Default 30 (was 100). The per-email lockout of 10 stays the primary control. |
+| `REGISTER_IP_MAX` | Sign-up attempts per client IP per hour. Default 10 (was 40). |
+| `ROOT_KEY_MAX_FAILS` | Wrong `ROOT_MANAGEMENT_KEY` attempts per client IP per 15 minutes. Default 5 (was 20); the right key is never blocked. |
 | `MAX_ACTIVE_API_KEYS_PER_USER` | Most active (not revoked) API keys one user may hold; creating another answers 409 until one is revoked. Default 25. |
 | `LOG_LEVEL` | Log level for the JSON logs (default `INFO`). |
 | `METRICS_TOKEN` | Bearer token for `GET /metrics` (Prometheus). Unset: only a platform-admin browser session can read it. |

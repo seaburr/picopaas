@@ -9,8 +9,9 @@ key); everyone else gets the same 404 as an unknown path. The served schema neve
 `API_KEY_RATE_PER_MINUTE` (default 120) and `API_KEY_RATE_PER_HOUR` (default 3000). Over either: 429 with
 `Retry-After` and "This API key made too many requests (N per minute|hour). Try again in S seconds."; the first refusal
 in a window writes the audit row `api_key.rate_limited` (target: the key's owner, detail `key_id=<id> window=...`).
-Browser sessions are not counted. Bearer tokens that match no key are only counted (one global per-minute row), never
-blocked.
+Browser sessions are not counted. Bearer tokens that match no key are counted (one global per-minute row) and throttled per client IP:
+`INVALID_API_KEY_IP_MAX_PER_MINUTE` (30) and `INVALID_API_KEY_IP_MAX_PER_HOUR` (300). Past either, a request with a
+wrong key gets 429 with `Retry-After`; a valid key from the same address is never blocked by this.
 
 ## Endpoint index
 
