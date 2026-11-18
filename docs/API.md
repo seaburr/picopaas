@@ -68,10 +68,10 @@ everywhere a user is accepted except where marked "session only".
 | GET, PUT | `/admin/projects/{project_id}/kaisen-uploads` | admin (older alias of `/features` for the uploads flag only; PUT turns Kaisen file uploads on or off for the project; see Kaisen file uploads) |
 | GET, DELETE | `/admin/kaisen/uploads`, `/admin/kaisen/uploads/summary`, `/admin/kaisen/builds/{id}/uploads/{uid}` | admin (search by hash: browser session only; platform totals; takedown) |
 | GET | `/admin/suspensions` | admin (browser session only) |
-| PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin |
+| PUT, DELETE | `/admin/apps/{app_id}/platform-host` | admin, **web login only** |
 | PUT | `/admin/apps/{app_id}/replicas` | admin |
 | PATCH | `/admin/apps/{app_id}/resources` | admin |
-| POST, PATCH, DELETE | `/admin/db-servers`, `/admin/db-servers/{server_id}` | admin |
+| POST, PATCH, DELETE | `/admin/db-servers`, `/admin/db-servers/{server_id}` | admin, **web login only** |
 | GET | `/api/banner` | none (public) |
 | GET, PUT | `/admin/banner` | admin |
 
@@ -155,7 +155,7 @@ change a scope). Pre-existing keys are `full`.
 
 | Method | Path | Response |
 |---|---|---|
-| POST | `/api/keys` | Optional body `{"name": "...", "scope": "read"\|"full"}` (name trimmed, printable, max 64, blank = unnamed; scope defaults `full`; unknown fields and other scope values rejected 422). 201 `{id, key, prefix, name, scope, created_at}`. The raw `key` is shown **once**. **Session only** (403 if called with an API key). |
+| POST | `/api/keys` | Optional body `{"name": "...", "scope": "read"\|"full"}` (name trimmed, printable, max 64, blank = unnamed; scope defaults `full`; unknown fields and other scope values rejected 422). 201 `{id, key, prefix, name, scope, created_at}`. The raw `key` is shown **once**. **Session only** (403 if called with an API key). 409 once you have `MAX_ACTIVE_API_KEYS_PER_USER` (50) active keys; revoking one frees a slot. Every key has its own request budget (120/minute, 3000/hour, then 429 with `Retry-After`). |
 | GET | `/api/keys` | List of `{id, prefix, name, scope, created_at, last_used_at, revoked_at}` for your keys, newest first. `last_used_at` is updated at most every 5 minutes. |
 | DELETE | `/api/keys/{key_id}` | 204. Revokes (idempotent). **Session only** (403 if called with an API key). 404 if not yours. |
 | GET | `/admin/users/{user_id}/api-keys` | Admin only. Same row shape as `GET /api/keys` (`{id, prefix, name, scope, created_at, last_used_at, revoked_at}`, newest first, never the secret/hash) for that user. 404 unknown user. |
