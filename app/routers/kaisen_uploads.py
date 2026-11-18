@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, defer
 
 from app import audit, config, models, projects, ratelimit
 from app.db import get_db
-from app.dependencies import get_active_user, require_admin_session, require_platform_admin
+from app.dependencies import get_active_user, require_admin_action, require_admin_session, require_platform_admin
 from app.kaisen import builder, deploy as deploy_mod, secretscan, uploads as ku
 from app.kaisen.models import KaisenAsset, KaisenBuild, KaisenBundle, KaisenUploadBlock
 from app.providers.base import ImageProcessError, ImageProcessor
@@ -289,7 +289,7 @@ def get_project_flag(project_id: int, db: Session = Depends(get_db)):
 
 @admin_router.put("/projects/{project_id}/kaisen-uploads")
 def set_project_flag(project_id: int, payload: FlagIn, db: Session = Depends(get_db),
-                     admin: models.User = Depends(require_platform_admin)):
+                     admin: models.User = Depends(require_admin_action)):
     """Turn Kaisen file uploads on or off for one project (the only way to change the flag)."""
     p = _project_or_404(db, project_id)
     p.kaisen_uploads_enabled = payload.enabled

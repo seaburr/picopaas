@@ -116,7 +116,9 @@ def test_non_admin_403(admin, make_client, checker):
     assert u.patch(f"/admin/db-servers/{sid}", json={"admin_password": "new-not-a-password"}).status_code == 403
 
 
-def test_read_scope_key_403_full_key_allowed(admin, make_client, checker):
+def test_admin_api_keys_refused_web_session_allowed(admin, make_client, checker):
+    """K149: a db server holds DB admin credentials and receives every new tenant database, so changing one needs a web
+    login. Any admin API key, read or full scope, is refused."""
     sid = admin.post("/admin/db-servers", json=BODY).json()["id"]
     read = admin.post("/api/keys", json={"scope": "read"}).json()["key"]
     full = admin.post("/api/keys", json={"scope": "full"}).json()["key"]
@@ -126,7 +128,10 @@ def test_read_scope_key_403_full_key_allowed(admin, make_client, checker):
     assert r.status_code == 403
     r = k.patch(f"/admin/db-servers/{sid}", json={"admin_password": "new-not-a-password"},
                 headers={"Authorization": f"Bearer {full}"})
-    assert r.status_code == 200
+    assert r.status_code == 403 and "web login" in r.json()["detail"]
+    assert k.post("/admin/db-servers", json=BODY, headers={"Authorization": f"Bearer {full}"}).status_code == 403
+    assert k.delete(f"/admin/db-servers/{sid}", headers={"Authorization": f"Bearer {full}"}).status_code == 403
+    assert admin.patch(f"/admin/db-servers/{sid}", json={"admin_password": "new-not-a-password"}).status_code == 200
 
 
 def test_classify_never_leaks():

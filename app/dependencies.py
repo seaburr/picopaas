@@ -150,3 +150,12 @@ def require_admin_session(request: Request, current_user: models.User = Depends(
     if getattr(request.state, "auth_via", None) != "cookie":
         raise HTTPException(status_code=403, detail="This admin view can only be read from the web UI, not with an API key.")
     return current_user
+
+
+def require_admin_action(request: Request, current_user: models.User = Depends(require_platform_admin)) -> models.User:
+    """Platform admin AND a browser session, for admin writes that change identity, privilege or platform policy
+    (approve, promote, reset a password, delete a user, settings, banner...). A stolen admin API key, even at full
+    scope, must not be able to plant a second admin or take over another account (ARTEX persistence pattern)."""
+    if getattr(request.state, "auth_via", None) != "cookie":
+        raise HTTPException(status_code=403, detail="This admin action needs a web login, not an API key.")
+    return current_user

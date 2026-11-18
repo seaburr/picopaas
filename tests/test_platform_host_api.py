@@ -73,17 +73,20 @@ def _key(c, scope):
     return {"Authorization": "Bearer " + c.post("/api/keys", json={"scope": scope}).json()["key"]}
 
 
-def test_admin_read_key_cannot_set_or_clear_but_full_key_can(admin, user, make_client):
+def test_admin_api_keys_cannot_set_or_clear_web_session_can(admin, user, make_client):
+    """K149: assigning a platform hostname needs a web login; any admin API key, read or full scope, is refused."""
     aid = user.post("/apps", json=APP).json()["id"]
     ro, rw = _key(admin, "read"), _key(admin, "full")
     api = make_client()
     assert _put(api, aid, {"subdomain": "blog"}, headers=ro).status_code == 403
     assert api.delete(f"/admin/apps/{aid}/platform-host", headers=ro).status_code == 403
     assert user.get(f"/apps/{aid}").json()["platform_subdomain"] is None
-    assert _put(api, aid, {"subdomain": "blog"}, headers=rw).status_code == 200
-    assert api.delete(f"/admin/apps/{aid}/platform-host", headers=ro).status_code == 403  # still set: read key can't clear
+    assert _put(api, aid, {"subdomain": "blog"}, headers=rw).status_code == 403
+    assert user.get(f"/apps/{aid}").json()["platform_subdomain"] is None
+    assert _put(admin, aid, {"subdomain": "blog"}).status_code == 200
+    assert api.delete(f"/admin/apps/{aid}/platform-host", headers=rw).status_code == 403  # still set: keys can't clear
     assert user.get(f"/apps/{aid}").json()["platform_subdomain"] == "blog"
-    assert api.delete(f"/admin/apps/{aid}/platform-host", headers=rw).status_code == 200
+    assert admin.delete(f"/admin/apps/{aid}/platform-host").status_code == 200
 
 
 def test_non_admin_full_key_is_still_forbidden(admin, user, make_client):

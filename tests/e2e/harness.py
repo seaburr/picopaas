@@ -105,6 +105,14 @@ class Api:
 
 
 class Admin(Api):
+    def req(self, method: str, path: str, **kw) -> httpx.Response:
+        """Admin identity/policy writes need a browser session since 2026-11-17 (ARTEX hardening): a token-based harness
+        can't make them, so tests that depend on one skip instead of failing."""
+        r = super().req(method, path, **kw)
+        if r.status_code == 403 and "needs a web login" in r.text:
+            pytest.skip(f"{method} {path} needs a web login, not an API key (admin identity/policy write)")
+        return r
+
     def delete_app(self, app_id: int) -> None:
         self.req("DELETE", f"/admin/apps/{app_id}")
 

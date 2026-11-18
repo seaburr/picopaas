@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import audit, backups, config, crypto, health, models, naming, platform_backup, platform_settings, projects, quota, ratelimit, resources, schemas, volumes
 from app.config import APP_DOMAIN
 from app.db import get_db
-from app.dependencies import get_db_server_checker, get_kube, require_admin_session, require_platform_admin
+from app.dependencies import get_db_server_checker, get_kube, require_admin_action, require_admin_session, require_platform_admin
 from app.providers.db_flavor import DEFAULT_FLAVOR, FLAVOR_NAMES
 from app.providers.dbcheck import DbServerCheckError
 from app.schemas import ResourcesOut
@@ -329,7 +329,7 @@ def get_project_features(project_id: int, db: Session = Depends(get_db)):
 
 @router.put("/projects/{project_id}/features")
 def set_project_features(project_id: int, payload: FeaturesIn, db: Session = Depends(get_db),
-                         admin: models.User = Depends(require_platform_admin)):
+                         admin: models.User = Depends(require_admin_action)):
     """Turn per-project Kaisen features on or off. Audit: kaisen.uploads_flag / kaisen.web_search_flag."""
     p = projects.live_project(db, project_id)
     if p is None:
@@ -348,7 +348,7 @@ def set_project_features(project_id: int, payload: FeaturesIn, db: Session = Dep
 
 @router.patch("/projects/{project_id}", response_model=AdminProjectOut)
 def patch_project(project_id: int, payload: AdminProjectPatch, db: Session = Depends(get_db),
-                  admin: models.User = Depends(require_platform_admin)):
+                  admin: models.User = Depends(require_admin_action)):
     """Override a shared project's active-app limit (capped at the per-account ceiling). Personal projects follow the
     user's own limit (PATCH /admin/users/{id})."""
     project = projects.live_project(db, project_id)
@@ -373,7 +373,7 @@ def _project_or_404(db: Session, project_id: int) -> models.Project:
 
 @router.post("/projects/{project_id}/suspend", response_model=AdminProjectOut)
 def suspend_project(project_id: int, payload: SuspendIn, db: Session = Depends(get_db),
-                    admin: models.User = Depends(require_platform_admin)):
+                    admin: models.User = Depends(require_admin_action)):
     """Suspend a project (shared or personal): every live app goes to 0 replicas with the 503 page, members keep
     read access, writes return 403, Kaisen runs in it stop. Apps already suspended keep their own reason."""
     project = _project_or_404(db, project_id)
@@ -393,7 +393,7 @@ def suspend_project(project_id: int, payload: SuspendIn, db: Session = Depends(g
 
 
 @router.post("/projects/{project_id}/unsuspend", response_model=AdminProjectOut)
-def unsuspend_project(project_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def unsuspend_project(project_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     """Lift the suspension and restore only the apps this project suspension put to sleep (via='project')."""
     project = _project_or_404(db, project_id)
     if project.status != "suspended":
@@ -485,7 +485,7 @@ def list_suspensions(db: Session = Depends(get_db)):
 
 
 @router.post("/users/{user_id}/approve", response_model=AdminUserOut)
-def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     user = _get_user_or_404(db, user_id)
     if user.status not in ("pending", "rejected"):
         if user.status == "active":
@@ -504,7 +504,7 @@ def approve_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 
 @router.post("/users/{user_id}/suspend", response_model=AdminUserOut)
 def suspend_user(user_id: int, payload: SuspendIn, db: Session = Depends(get_db),
-                 admin: models.User = Depends(require_platform_admin)):
+                 admin: models.User = Depends(require_admin_action)):
     """Block login, suspend the personal project (and so its apps) unless it is already suspended on its own, and
     (via the Kaisen worker's checks) stop every Kaisen run this person started. Shared projects keep running."""
     user = _get_user_or_404(db, user_id)
@@ -529,7 +529,7 @@ def suspend_user(user_id: int, payload: SuspendIn, db: Session = Depends(get_db)
 
 @router.post("/users/{user_id}/unsuspend", response_model=AdminUserOut)
 def unsuspend_user(user_id: int, db: Session = Depends(get_db),
-                   admin: models.User = Depends(require_platform_admin)):
+                   admin: models.User = Depends(require_admin_action)):
     """Restore only what suspending the user did: apps tagged via='user', and the personal project when its
     suspension came from the user's. A project or app an admin suspended on its own stays suspended."""
     user = _get_user_or_404(db, user_id)
@@ -550,7 +550,7 @@ def unsuspend_user(user_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/users/{user_id}/promote", response_model=AdminUserOut)
-def promote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def promote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     user = _get_user_or_404(db, user_id)
     if user.status != "active":
         raise HTTPException(status_code=409, detail=f"Only active users can be promoted (this user is {user.status}).")
@@ -563,7 +563,7 @@ def promote_user(user_id: int, db: Session = Depends(get_db), admin: models.User
 
 
 @router.post("/users/{user_id}/demote", response_model=AdminUserOut)
-def demote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def demote_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     user = _get_user_or_404(db, user_id)
     if not user.is_platform_admin:
         raise HTTPException(status_code=409, detail="This user isn't an administrator. Refresh the list.")
@@ -576,7 +576,7 @@ def demote_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 
 
 @router.post("/users/{user_id}/reset-password", response_model=schemas.TemporaryPasswordOut)
-def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def reset_password(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     """Set a random temporary password (shown once, never stored in clear or logged). The user is flagged
     must_change_password and should change it via POST /auth/change-password after logging in."""
     user = _get_user_or_404(db, user_id)
@@ -616,7 +616,7 @@ def _retire_user(db: Session, user: models.User, new_status: str) -> None:
 
 
 @router.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     user = _get_user_or_404(db, user_id)
     _protect_platform_admin(user, db)
     _retire_user(db, user, "deleted")
@@ -625,7 +625,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: models.User 
 
 
 @router.post("/users/{user_id}/reject", status_code=204)
-def reject_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_platform_admin)):
+def reject_user(user_id: int, db: Session = Depends(get_db), admin: models.User = Depends(require_admin_action)):
     """Turn down a pending signup. They can log in only to be told so (403); the email stays taken, so they can't
     re-request. Approve unlocks them again."""
     user = _get_user_or_404(db, user_id)
@@ -745,7 +745,7 @@ def _requeue(a: models.App) -> None:
 
 @router.put("/apps/{app_id}/platform-host", response_model=schemas.AppOut)
 def set_platform_host(app_id: int, payload: PlatformHostSet, db: Session = Depends(get_db),
-                      admin: models.User = Depends(require_platform_admin)):
+                      admin: models.User = Depends(require_admin_action)):
     """Give an app a fixed `<label>.<APP_DOMAIN>` host in addition to its generated one. Covered by the wildcard
     cert, so only an extra Ingress rule is needed (no per-host cert)."""
     a = _get_app_or_404(db, app_id)
@@ -777,7 +777,7 @@ def set_platform_host(app_id: int, payload: PlatformHostSet, db: Session = Depen
 
 @router.delete("/apps/{app_id}/platform-host", response_model=schemas.AppOut)
 def clear_platform_host(app_id: int, db: Session = Depends(get_db),
-                        admin: models.User = Depends(require_platform_admin)):
+                        admin: models.User = Depends(require_admin_action)):
     a = _get_app_or_404(db, app_id)
     if a.platform_subdomain:
         label = a.platform_subdomain
@@ -1053,7 +1053,7 @@ def _check_connection(checker, *, engine, host, port, user, password, ca_cert, f
 
 @router.post("/db-servers", response_model=DbServerOut, status_code=201)
 def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
-                     admin: models.User = Depends(require_platform_admin),
+                     admin: models.User = Depends(require_admin_action),
                      checker=Depends(get_db_server_checker)):
     _check_connection(checker, engine=payload.engine, host=payload.host, port=payload.port,
                       user=payload.admin_user, password=payload.admin_password, ca_cert=payload.ca_cert,
@@ -1078,7 +1078,7 @@ def create_db_server(payload: DbServerCreate, db: Session = Depends(get_db),
 
 @router.patch("/db-servers/{server_id}", response_model=DbServerOut)
 def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depends(get_db),
-                    admin: models.User = Depends(require_platform_admin),
+                    admin: models.User = Depends(require_admin_action),
                     checker=Depends(get_db_server_checker)):
     server = db.get(models.DbServer, server_id)
     if server is None:
@@ -1115,7 +1115,7 @@ def patch_db_server(server_id: int, payload: DbServerPatch, db: Session = Depend
 
 @router.delete("/db-servers/{server_id}", status_code=204)
 def delete_db_server(server_id: int, db: Session = Depends(get_db),
-                     admin: models.User = Depends(require_platform_admin)):
+                     admin: models.User = Depends(require_admin_action)):
     """Detach a database server. Refused while any app database (including a soft-deleted app's not yet torn down)
     still lives on it."""
     server = db.get(models.DbServer, server_id)
@@ -1140,6 +1140,7 @@ def delete_db_server(server_id: int, db: Session = Depends(get_db),
 # app backups use (app/platform_backup.py "admin download").
 
 class PlatformDownloadIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     password: str = Field(min_length=1, max_length=1024)
 
 

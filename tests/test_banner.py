@@ -158,8 +158,11 @@ def test_api_keys_on_banner_routes(make_client):
     other = make_client()
     assert other.put("/admin/banner", json=GOOD, headers=hdr(ukey)).status_code == 403
     assert other.get("/api/banner", headers=hdr(ukey)).status_code == 200
-    # the banner is not a session-only route: an admin key is accepted (documents current behaviour)
-    assert other.put("/admin/banner", json=GOOD, headers=hdr(akey)).status_code == 200
+    # a banner write is a platform-policy change: an admin key is refused, the admin's browser session is accepted
+    r = other.put("/admin/banner", json=GOOD, headers=hdr(akey))
+    assert r.status_code == 403 and "web login" in r.json()["detail"]
+    assert admin.put("/admin/banner", json=GOOD).status_code == 200
+    assert other.get("/admin/banner", headers=hdr(akey)).status_code == 200  # reads stay available to an admin key
 
 
 LINKS = ["https://evil.example/login", "HTTP://x", "see WWW.evil", "mailto:a@b", "JavaScript:alert(1)", "javascript: x",

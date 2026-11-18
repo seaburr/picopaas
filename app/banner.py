@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, config, models, platform_settings
 from app.db import get_db
-from app.dependencies import require_platform_admin
+from app.dependencies import require_admin_action, require_platform_admin
 
 # Cc control, Cf format (bidi overrides/isolates, zero-width, joiners, BOM), Zl/Zp line/paragraph separators, Cs, Co, Cn
 _BAD_CATEGORIES = frozenset({"Cc", "Cf", "Zl", "Zp", "Cs", "Co", "Cn"})
@@ -85,7 +85,7 @@ def get_admin_banner(db: Session = Depends(get_db)):
 
 @admin_router.put("/banner", response_model=BannerOut)
 def put_banner(payload: BannerIn, db: Session = Depends(get_db),
-               admin: models.User = Depends(require_platform_admin)):
+               admin: models.User = Depends(require_admin_action)):
     before = current(db)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     values = {"banner_enabled": "1" if payload.enabled else "0", "banner_level": payload.level,

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, models, platform_settings
 from app.db import get_db
-from app.dependencies import require_admin_session, require_platform_admin
+from app.dependencies import require_admin_action, require_admin_session, require_platform_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_platform_admin)])
 
@@ -25,7 +25,7 @@ def get_settings(db: Session = Depends(get_db)):
 
 @router.put("/settings")
 def put_settings(payload: SettingsPatch, db: Session = Depends(get_db),
-                 admin: models.User = Depends(require_platform_admin)):
+                 admin: models.User = Depends(require_admin_action)):
     if not payload.settings:
         raise HTTPException(status_code=422, detail="No settings given.")
     before = {k: platform_settings.get(db, k) for k in payload.settings if k in platform_settings.BY_KEY}
