@@ -7,6 +7,9 @@ background on each item if you want it.
 
 ## Open questions
 
+- **API key cap (K159, 2026-11-18 pentest)**: new rule, at most 50 active API keys per user (`MAX_ACTIVE_API_KEYS_PER_USER`,
+  409 past it; revoking frees a slot). Say if you want another number. (K160, the per-key budget not triggering live, was
+  not reproduced: a re-check gave exactly 120 x 200 then 429. Nothing to do.)
 - **ARTEX hardening (2026-11-17), answered 2026-11-18** (details in the private security log, K148-K156): db-servers
   and platform-host done; scoped cloud credentials: Chas handles; API docs behind login and the security log moved
   private: being built; security alerts: being built; API rate limit: per-key budget plus invalid-key alert (manager's
