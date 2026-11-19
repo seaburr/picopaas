@@ -592,6 +592,8 @@ def test_platform_request_has_a_total_deadline_against_slow_drip(local_server, m
 
 
 def test_deeply_nested_json_is_a_warning_not_a_crash():
-    """K99: json.loads raises RecursionError (not ValueError) on 100k nested brackets; write_file must not crash the run."""
+    """K99: before Python 3.15, json.loads raised RecursionError (not ValueError) on 100k nested brackets; 3.15's
+    parser no longer recurses and reports a plain parse error. Either way write_file must warn, not crash the run."""
     for name in ("data.json", "kaisen.json"):
-        assert "nested too deeply" in checks.check(name, "[" * 100000)
+        out = checks.check(name, "[" * 100000)
+        assert "WARNING" in out and ("nested too deeply" in out or "invalid JSON" in out)
