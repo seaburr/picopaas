@@ -41,7 +41,7 @@ docs/           ledger, architecture, requests
 ## Commands
 ```bash
 # one-time setup
-python3.13 -m venv .venv  # same Python as CI and the image; a newer one hides import problems
+python3.15 -m venv .venv  # same Python as CI and the image; a newer one hides import problems
 source .venv/bin/activate
 pip install -r requirements.txt
 

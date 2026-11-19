@@ -87,7 +87,7 @@ administrator restores the account.
 Example Dockerfile:
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.15-slim
 USER 10001:10001
 CMD ["python", "-m", "http.server", "8080"]
 ```
