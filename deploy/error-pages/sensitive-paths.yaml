@@ -5,7 +5,7 @@
 # An app that really serves such paths opts out (allow_sensitive_paths): its Ingress gets a higher router.priority.
 # The regex must start with "/" (Kubernetes validates that), and matches whole path segments at any depth, so
 # /repo.git, /.github and /.well-known are untouched. ";" also ends a segment, for servers that strip path parameters.
-# Sources: OWASP CRS v4.30.0 (Apache-2.0, see scripts/sensitive_paths/NOTICE) and our own additions.
+# Sources: OWASP CRS v4.31.0 (Apache-2.0, see scripts/sensitive_paths/NOTICE) and our own additions.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
