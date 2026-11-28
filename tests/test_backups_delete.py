@@ -116,7 +116,7 @@ def test_last_success_summary_recomputed_from_remaining_runs(on, user, db_sessio
     cfg.db_last_backup_at = cfg.last_backup_at = cfg.last_success_at = NOW
     cfg.db_last_status = cfg.last_status = "succeeded"
     cfg.db_last_bytes = 20
-    cfg.next_backup_at = NOW + timedelta(days=30)
+    cfg.next_backup_at = utcnow_naive() + timedelta(days=30)  # real clock: the ticks below use it
     db_session.commit()
     from app.main import app as fastapi_app
     from app.routers.backups import get_backup_runner

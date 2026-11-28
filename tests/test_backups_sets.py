@@ -66,7 +66,7 @@ def _mk_set(db, aid, parts, trigger="manual", created=NOW, delete_status=None):
     cfg = db.get(models.AppBackupConfig, aid)
     if cfg.repo_password_enc is None:
         cfg.repo_password_enc = crypto.encrypt("not-the-repo-password")
-    cfg.next_backup_at = NOW + timedelta(days=30)
+    cfg.next_backup_at = utcnow_naive() + timedelta(days=30)  # real clock: the ticks below use it
     st = models.BackupSet(app_id=aid, trigger=trigger, created_at=created, delete_status=delete_status)
     db.add(st)
     db.flush()

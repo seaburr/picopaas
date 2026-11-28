@@ -86,7 +86,7 @@ def _succeeded(db, aid, kind="db", snap="aa11bb22"):
     backups.ensure_config(db, db.get(models.App, aid), NOW)
     cfg = db.get(models.AppBackupConfig, aid)
     cfg.repo_password_enc = cfg.repo_password_enc or crypto.encrypt("not-the-repo-password")
-    cfg.next_backup_at = NOW + timedelta(days=30)
+    cfg.next_backup_at = utcnow_naive() + timedelta(days=30)  # real clock: the ticks below use it
     run = models.BackupRun(app_id=aid, kind=kind, trigger="scheduled", status="succeeded", snapshot_id=snap,
                            created_at=NOW, finished_at=NOW)
     db.add(run)

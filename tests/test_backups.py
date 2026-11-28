@@ -710,7 +710,7 @@ def pair(on, user, admin, db_session):
     ids = _succeeded(db_session, src, "db", "d0d0d0d0"), _succeeded(db_session, src, "bucket", "b0b0b0b0")
     _succeeded(db_session, dst, "db", "e0e0e0e0")
     for a in (src, dst):  # keep the nightly scheduler out of these tests
-        db_session.get(models.AppBackupConfig, a).next_backup_at = NOW + timedelta(days=30)
+        db_session.get(models.AppBackupConfig, a).next_backup_at = utcnow_naive() + timedelta(days=30)
     db_session.commit()
     return src, dst, *ids
 
@@ -1140,7 +1140,7 @@ def dl(on, user, admin, db_session, runner):
     aid = _ghost_like(user, db_session, "devlog")
     run_db = _succeeded(db_session, aid, "db", "d0d0d0d0")
     run_bk = _succeeded(db_session, aid, "bucket", "b0b0b0b0")
-    db_session.get(models.AppBackupConfig, aid).next_backup_at = NOW + timedelta(days=30)
+    db_session.get(models.AppBackupConfig, aid).next_backup_at = utcnow_naive() + timedelta(days=30)  # real clock: the ticks below use it
     db_session.commit()
     return aid, run_db, run_bk
 

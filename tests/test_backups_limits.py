@@ -49,7 +49,7 @@ def aid(on, api, user, db_session):
     a = _ghost_like(user, db_session, "devlog", with_db=True)
     backups.ensure_config(db_session, db_session.get(models.App, a), NOW)
     cfg = db_session.get(models.AppBackupConfig, a)
-    cfg.next_backup_at = NOW + timedelta(days=30)
+    cfg.next_backup_at = utcnow_naive() + timedelta(days=30)  # real clock: the ticks below use it
     cfg.repo_password_enc = crypto.encrypt("not-the-repo-password")
     db_session.commit()
     return a
